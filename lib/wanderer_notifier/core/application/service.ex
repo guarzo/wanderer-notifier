@@ -245,9 +245,6 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def init(_opts) do
-    require Logger
-    Logger.info("DEBUG: Service init called")
-
     # Initialize state
     state = %State{
       service_start_time: System.system_time(:second)
@@ -262,18 +259,13 @@ defmodule WandererNotifier.Core.Application.Service do
     # Schedule startup notification
     state = schedule_startup_notice(state)
 
-    Logger.info("DEBUG: Service init completed", state: inspect(state))
     {:ok, state}
   end
 
   @impl true
-  def terminate(reason, state) do
-    require Logger
-    Logger.info("DEBUG: Service terminating", reason: inspect(reason))
-
+  def terminate(_reason, state) do
     # Stop the RedisQ client if it exists
     if state.redisq_pid && Process.alive?(state.redisq_pid) do
-      Logger.info("DEBUG: Stopping RedisQ client")
       GenServer.stop(state.redisq_pid, :normal)
     end
 
@@ -303,13 +295,6 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:run_maintenance, state) do
-    require Logger
-
-    Logger.info("DEBUG: Service maintenance cycle running", %{
-      uptime: System.system_time(:second) - state.service_start_time,
-      redisq_pid: inspect(state.redisq_pid)
-    })
-
     try do
       run_maintenance()
     rescue
@@ -324,170 +309,113 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:test_alive, state) do
-    require Logger
-
-    Logger.info("DEBUG: Service received test_alive message", %{
-      uptime: System.system_time(:second) - state.service_start_time,
-      redisq_pid: inspect(state.redisq_pid)
-    })
-
     AppLogger.processor_info("[TRACE] Service is alive and responding to messages")
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:zkill_message, data}, state) do
-    require Logger
-
-    Logger.info("DEBUG: Service handle_info :zkill_message called", %{
-      kill_id: data["killID"],
-      uptime: System.system_time(:second) - state.service_start_time,
-      redisq_pid: inspect(state.redisq_pid),
-      message_queue_len: Process.info(self(), :message_queue_len) |> elem(1)
-    })
-
-    AppLogger.processor_info("[TRACE] Service received :zkill_message", %{
-      kill_id: data["killID"],
-      data: inspect(data),
-      message_queue_len: Process.info(self(), :message_queue_len) |> elem(1)
-    })
-
     try do
-      # Transform the data into the expected format
-      killmail_data = %{
-        "killmail_id" => data["killID"],
-        "killmail" => data["killmail"],
-        "zkb" => data["zkb"],
-        "solar_system_id" => get_in(data, ["killmail", "solar_system_id"]),
-        "victim" => get_in(data, ["killmail", "victim"]),
-        "attackers" => get_in(data, ["killmail", "attackers"])
-      }
+      # Track that we received a killmail from RedisQ
+      WandererNotifier.Core.Stats.track_killmail_received()
 
-      Logger.info("DEBUG: Transformed killmail data", %{
-        data: inspect(killmail_data),
-        message_queue_len: Process.info(self(), :message_queue_len) |> elem(1)
-      })
+      # Transform the data into the expected format
+      killmail_data = transform_zkill_data(data)
 
       # Check if we've already processed this killmail
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      key = "killmail:#{data["killID"]}:processed"
-
-      Logger.info("DEBUG: Checking cache for killmail", %{
-        cache_name: cache_name,
-        key: key,
-        message_queue_len: Process.info(self(), :message_queue_len) |> elem(1)
-      })
-
-      case Cachex.get(cache_name, key) do
-        {:ok, true} ->
-          Logger.info("DEBUG: Killmail already processed", kill_id: data["killID"])
-
-          AppLogger.processor_info(
-            "[TRACE] Skipping already processed killmail due to deduplication",
-            %{kill_id: data["killID"]}
-          )
-
+      case check_killmail_processed(data["killID"]) do
+        :already_processed ->
           {:noreply, state}
 
-        {:ok, nil} ->
-          Logger.info("DEBUG: Killmail not in cache, proceeding with processing",
-            kill_id: data["killID"]
-          )
-
-          AppLogger.processor_info("[TRACE] Deduplication check passed, processing killmail", %{
-            kill_id: data["killID"]
-          })
-
-          # Process through the consolidated API
-          Logger.info("DEBUG: Calling KillmailProcessor.process_killmail", %{
-            kill_id: data["killID"],
-            source: :zkill_redisq
-          })
-
-          # Process the killmail asynchronously
-          Task.start(fn ->
-            case KillmailProcessor.process_killmail(killmail_data,
-                   source: :zkill_redisq,
-                   state: state
-                 ) do
-              {:ok, result} ->
-                # Mark as processed in cache
-                Logger.info("DEBUG: Marking killmail as processed in cache",
-                  kill_id: data["killID"]
-                )
-
-                Cachex.put(cache_name, key, true, ttl: 3600)
-
-                # Log successful processing
-                Logger.info("DEBUG: Successfully processed killmail", %{
-                  kill_id: data["killID"],
-                  result: inspect(result)
-                })
-
-                AppLogger.processor_info("Successfully processed killmail", %{
-                  kill_id: data["killID"],
-                  result: inspect(result)
-                })
-
-              {:error, reason} ->
-                # Error occurred, log it but don't crash the process
-                Logger.error("DEBUG: Error processing killmail", %{
-                  error: inspect(reason),
-                  kill_id: data["killID"]
-                })
-
-                AppLogger.processor_error("Error processing zkill message", %{
-                  error: inspect(reason),
-                  kill_id: data["killID"]
-                })
-
-              unexpected ->
-                # Unexpected return value, log for debugging
-                Logger.error("DEBUG: Unexpected return from process_killmail", %{
-                  return_value: inspect(unexpected),
-                  kill_id: data["killID"]
-                })
-
-                AppLogger.processor_error("Unexpected return from process_killmail", %{
-                  return_value: inspect(unexpected),
-                  kill_id: data["killID"]
-                })
-            end
-          end)
-
+        :not_processed ->
+          process_killmail_async(killmail_data, data["killID"], state)
           {:noreply, state}
 
         {:error, reason} ->
-          Logger.error("DEBUG: Error checking cache", %{
-            error: inspect(reason),
-            kill_id: data["killID"]
-          })
-
+          log_cache_error(reason, data["killID"])
           {:noreply, state}
       end
     rescue
       e ->
-        Logger.error("DEBUG: Exception in handle_info for :zkill_message", %{
-          error: Exception.message(e),
-          kill_id: data["killID"],
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
-
-        AppLogger.processor_error("Exception in handle_info for :zkill_message", %{
-          error: Exception.message(e),
-          kill_id: data["killID"],
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
-
+        stacktrace = __STACKTRACE__
+        log_processing_exception(e, data["killID"], stacktrace)
         {:noreply, state}
     end
   end
 
-  @impl true
-  # Catch-all to make unhandled messages visible in logs
-  def handle_info(other, state) do
-    AppLogger.processor_debug("Unhandled message in Service", msg: inspect(other))
-    {:noreply, state}
+  defp transform_zkill_data(data) do
+    %{
+      "killmail_id" => data["killID"],
+      "killmail" => data["killmail"],
+      "zkb" => data["zkb"],
+      "solar_system_id" => get_in(data, ["killmail", "solar_system_id"]),
+      "victim" => get_in(data, ["killmail", "victim"]),
+      "attackers" => get_in(data, ["killmail", "attackers"])
+    }
+  end
+
+  defp check_killmail_processed(kill_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    key = "killmail:#{kill_id}:processed"
+
+    case Cachex.get(cache_name, key) do
+      {:ok, true} -> :already_processed
+      {:ok, nil} -> :not_processed
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp process_killmail_async(killmail_data, kill_id, state) do
+    Task.start(fn ->
+      case KillmailProcessor.process_killmail(killmail_data,
+             source: :zkill_redisq,
+             state: state
+           ) do
+        {:ok, _result} ->
+          mark_killmail_as_processed(kill_id)
+
+        {:error, reason} ->
+          log_killmail_processing_error(reason, kill_id)
+
+        unexpected ->
+          log_unexpected_processing_result(unexpected, kill_id)
+      end
+    end)
+  end
+
+  defp mark_killmail_as_processed(kill_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    key = "killmail:#{kill_id}:processed"
+    Cachex.put(cache_name, key, true, ttl: 3600)
+  end
+
+  defp log_cache_error(reason, kill_id) do
+    AppLogger.processor_error("Error checking cache", %{
+      error: inspect(reason),
+      kill_id: kill_id
+    })
+  end
+
+  defp log_killmail_processing_error(reason, kill_id) do
+    AppLogger.processor_error("Error processing zkill message", %{
+      error: inspect(reason),
+      kill_id: kill_id
+    })
+  end
+
+  defp log_unexpected_processing_result(unexpected, kill_id) do
+    AppLogger.processor_error("Unexpected return from process_killmail", %{
+      result: inspect(unexpected),
+      kill_id: kill_id
+    })
+  end
+
+  defp log_processing_exception(e, kill_id, stacktrace) do
+    AppLogger.processor_error("Exception in handle_info for :zkill_message", %{
+      error: Exception.message(e),
+      stacktrace: Exception.format_stacktrace(stacktrace),
+      kill_id: kill_id
+    })
   end
 
   ## Internal helpers

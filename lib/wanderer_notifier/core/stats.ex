@@ -73,6 +73,13 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @doc """
+  Track a killmail received from RedisQ/zkill.
+  """
+  def track_killmail_received do
+    GenServer.cast(__MODULE__, {:track_killmail_received})
+  end
+
+  @doc """
   Returns the current statistics.
   """
   def get_stats do
@@ -205,7 +212,9 @@ defmodule WandererNotifier.Core.Stats do
          system: true
        },
        # Added for killmail metrics
-       metrics: %{}
+       metrics: %{},
+       # Track killmails received from RedisQ
+       killmails_received: 0
      }}
   end
 
@@ -277,6 +286,11 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @impl true
+  def handle_cast({:track_killmail_received}, state) do
+    {:noreply, Map.update(state, :killmails_received, 1, &(&1 + 1))}
+  end
+
+  @impl true
   def handle_cast({:update_counts, systems_count, characters_count, notifications_count}, state) do
     # Update only the provided counts, leave others unchanged
     state =
@@ -316,7 +330,8 @@ defmodule WandererNotifier.Core.Stats do
       processing: state.processing,
       systems_count: Map.get(state, :systems_count, 0),
       characters_count: Map.get(state, :characters_count, 0),
-      metrics: state.metrics || %{}
+      metrics: state.metrics || %{},
+      killmails_received: Map.get(state, :killmails_received, 0)
     }
 
     {:reply, stats, state}

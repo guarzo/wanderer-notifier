@@ -113,8 +113,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     ]
 
     opts = [
-      recv_timeout: 10000,
-      timeout: 10000,
+      recv_timeout: 10_000,
+      timeout: 10_000,
       follow_redirect: true
     ]
 
@@ -136,7 +136,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         {:error, {:http_error, status}}
 
       {:error, %{reason: :timeout}} ->
-        AppLogger.api_error("ZKill timeout", %{url: url, timeout: 10000})
+        AppLogger.api_error("ZKill timeout", %{url: url, timeout: 10_000})
         {:error, :timeout}
 
       {:error, reason} ->

@@ -13,7 +13,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
   @callback cache_key() :: String.t()
   @callback primed_key() :: atom()
-  @callback log_update(any(), any()) :: :ok
+  @callback log_emoji() :: String.t()
+  @callback log_label() :: String.t()
 
   @impl GenServer
   def init(opts) do
@@ -38,42 +39,10 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
         primed? = Cachex.get(cache_name, primed_key()) == {:ok, true}
 
         # Get the configured interval for this scheduler type
-        interval =
-          case __MODULE__ do
-            WandererNotifier.Schedulers.SystemUpdateScheduler ->
-              Application.get_env(:wanderer_notifier, :system_update_scheduler_interval, 30_000)
-
-            WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-              Application.get_env(
-                :wanderer_notifier,
-                :character_update_scheduler_interval,
-                30_000
-              )
-
-            _ ->
-              Keyword.get(opts, :interval, 30_000)
-          end
+        interval = get_scheduler_interval(opts)
 
         # Get cached data, defaulting to empty list if not found
-        cached_data =
-          case Cachex.get(cache_name, cache_key()) do
-            {:ok, data} when is_list(data) ->
-              data
-            {:ok, nil} ->
-              []
-            {:ok, data} ->
-              AppLogger.scheduler_error("Invalid cached data format",
-                key: cache_key(),
-                data: inspect(data)
-              )
-              []
-            {:error, reason} ->
-              AppLogger.scheduler_error("Failed to get cached data",
-                key: cache_key(),
-                error: inspect(reason)
-              )
-              []
-          end
+        cached_data = get_cached_data(cache_name)
 
         state = %{
           interval: interval,
@@ -91,6 +60,51 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
         # Return with continue to trigger handle_continue
         {:ok, state, {:continue, :schedule}}
+      end
+
+      # Get the interval configuration for different scheduler types
+      defp get_scheduler_interval(opts) do
+        case __MODULE__ do
+          WandererNotifier.Schedulers.SystemUpdateScheduler ->
+            Application.get_env(:wanderer_notifier, :system_update_scheduler_interval, 30_000)
+
+          WandererNotifier.Schedulers.CharacterUpdateScheduler ->
+            Application.get_env(
+              :wanderer_notifier,
+              :character_update_scheduler_interval,
+              30_000
+            )
+
+          _ ->
+            Keyword.get(opts, :interval, 30_000)
+        end
+      end
+
+      # Get cached data with error handling
+      defp get_cached_data(cache_name) do
+        case Cachex.get(cache_name, cache_key()) do
+          {:ok, data} when is_list(data) ->
+            data
+
+          {:ok, nil} ->
+            []
+
+          {:ok, data} ->
+            AppLogger.scheduler_error("Invalid cached data format",
+              key: cache_key(),
+              data: inspect(data)
+            )
+
+            []
+
+          {:error, reason} ->
+            AppLogger.scheduler_error("Failed to get cached data",
+              key: cache_key(),
+              error: inspect(reason)
+            )
+
+            []
+        end
       end
 
       @impl GenServer
@@ -136,27 +150,40 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
         case update_data(state.cached_data) do
           {:ok, new_data} ->
-            Cachex.put(cache_name, primed_key(), true)
-            Cachex.put(cache_name, cache_key(), new_data)
-            log_update(new_data, state.cached_data)
-
-            # Schedule next update and update state
-            new_state = schedule_update(%{state | cached_data: new_data})
-            {:noreply, new_state}
+            handle_update_success(new_data, state, cache_name)
 
           {:error, reason} ->
-            error_type = get_error_type(reason)
-
-            AppLogger.scheduler_error("Update failed",
-              module: __MODULE__,
-              error: inspect(reason),
-              error_type: error_type
-            )
-
-            # Reschedule after error with a shorter delay
-            new_state = schedule_update(state)
-            {:noreply, new_state}
+            handle_update_error(reason, state)
         end
+      end
+
+      # Handle successful data update
+      defp handle_update_success(new_data, state, cache_name) do
+        Cachex.put(cache_name, primed_key(), true)
+        Cachex.put(cache_name, cache_key(), new_data)
+        log_update(__MODULE__, new_data, state.cached_data)
+
+        # Update Stats module with the tracked count
+        update_stats_count(__MODULE__, length(new_data))
+
+        # Schedule next update and update state
+        new_state = schedule_update(%{state | cached_data: new_data})
+        {:noreply, new_state}
+      end
+
+      # Handle update error
+      defp handle_update_error(reason, state) do
+        error_type = get_error_type(reason)
+
+        AppLogger.scheduler_error("Update failed",
+          module: __MODULE__,
+          error: inspect(reason),
+          error_type: error_type
+        )
+
+        # Reschedule after error with a shorter delay
+        new_state = schedule_update(state)
+        {:noreply, new_state}
       end
 
       defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error
@@ -179,35 +206,88 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       """
       def run do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        cached_data =
-          case Cachex.get(cache_name, cache_key()) do
-            {:ok, data} when is_list(data) ->
-              data
-            {:ok, nil} ->
-              AppLogger.scheduler_info("No cached data found")
-              []
-            {:ok, data} ->
-              AppLogger.scheduler_error("Invalid cached data format",
-                data: inspect(data)
-              )
-              []
-            {:error, reason} ->
-              AppLogger.scheduler_error("Failed to get cached data",
-                error: inspect(reason)
-              )
-              []
-          end
+        cached_data = get_cached_data_for_run(cache_name)
 
         case update_data(cached_data) do
           {:ok, new_data} ->
-            Cachex.put(cache_name, cache_key(), new_data)
-            {:ok, new_data}
+            handle_successful_run(new_data, cache_name)
+
           {:error, reason} ->
-            AppLogger.scheduler_error("Manual update failed",
+            handle_failed_run(reason)
+        end
+      end
+
+      # Get cached data for manual run operation
+      defp get_cached_data_for_run(cache_name) do
+        case Cachex.get(cache_name, cache_key()) do
+          {:ok, data} when is_list(data) ->
+            data
+
+          {:ok, nil} ->
+            AppLogger.scheduler_info("No cached data found")
+            []
+
+          {:ok, data} ->
+            AppLogger.scheduler_error("Invalid cached data format",
+              data: inspect(data)
+            )
+
+            []
+
+          {:error, reason} ->
+            AppLogger.scheduler_error("Failed to get cached data",
               error: inspect(reason)
             )
 
-            {:error, reason}
+            []
+        end
+      end
+
+      # Handle successful manual run
+      defp handle_successful_run(new_data, cache_name) do
+        Cachex.put(cache_name, cache_key(), new_data)
+        {:ok, new_data}
+      end
+
+      # Handle failed manual run
+      defp handle_failed_run(reason) do
+        AppLogger.scheduler_error("Manual update failed",
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+      end
+
+      def log_update(module, new_data, old_data) do
+        new_count = length(new_data)
+        old_count = length(old_data)
+        change = new_count - old_count
+
+        change_indicator =
+          cond do
+            change > 0 -> "📈 + #{change}"
+            change < 0 -> "📉 #{change}"
+            true -> "➡️  No change"
+          end
+
+        emoji = module.log_emoji()
+        label = module.log_label()
+
+        AppLogger.api_info(
+          "#{emoji} #{label} updated | #{old_count} → #{new_count} | #{change_indicator}"
+        )
+      end
+
+      defp update_stats_count(module, count) do
+        stat_type =
+          case module do
+            WandererNotifier.Schedulers.SystemUpdateScheduler -> :systems
+            WandererNotifier.Schedulers.CharacterUpdateScheduler -> :characters
+            _ -> nil
+          end
+
+        if stat_type do
+          WandererNotifier.Core.Stats.set_tracked_count(stat_type, count)
         end
       end
     end

@@ -41,8 +41,8 @@ defmodule WandererNotifier.Killmail.CacheTest do
     Cache.init()
 
     # Ensure cache is clean
-    CacheKeys.zkill_recent_kills()
-    |> Cachex.put(cache_name, [], ttl: @test_ttl)
+    cache_key = CacheKeys.zkill_recent_kills()
+    Cachex.put(cache_name, cache_key, [], ttl: @test_ttl)
 
     # Add sample killmail data to the test context
     sample_killmail = %{
@@ -86,14 +86,18 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert to_string(kill_id) in kill_ids
 
       # Verify it was stored in the cache
-      key = CacheKeys.zkill_recent_kill(to_string(kill_id))
+      key =
+        kill_id
+        |> to_string()
+        |> CacheKeys.zkill_recent_kill()
+
       assert {:ok, _} = Cachex.get(cache_name, key)
     end
 
     test "handles empty kill list when updating", %{cache_name: cache_name} do
       # Ensure the recent_kills list is empty
-      CacheKeys.zkill_recent_kills()
-      |> Cachex.put(cache_name, [], ttl: @test_ttl)
+      cache_key = CacheKeys.zkill_recent_kills()
+      Cachex.put(cache_name, cache_key, [], ttl: @test_ttl)
 
       # Cache a killmail
       kill_id = 54_321
@@ -116,9 +120,11 @@ defmodule WandererNotifier.Killmail.CacheTest do
       :ok = Cache.cache_kill(kill_id, killmail)
 
       # Now try to retrieve it using a pipeline
-      assert kill_id
-             |> Cache.get_kill()
-             |> elem(1) == killmail
+      result =
+        kill_id
+        |> Cache.get_kill()
+
+      assert {:ok, ^killmail} = result
     end
 
     test "returns error for non-existent kill ID" do

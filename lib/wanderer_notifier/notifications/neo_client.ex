@@ -5,57 +5,31 @@ defmodule WandererNotifier.Notifications.NeoClient do
   require Logger
 
   def send_embed(embed, channel_id) do
-    Logger.info("DEBUG: [NeoClient] Starting send_embed function")
-    Logger.info("DEBUG: [NeoClient] Attempting to send embed to channel #{channel_id}")
-    Logger.debug("DEBUG: [NeoClient] Embed content: #{inspect(embed, limit: 200)}")
-
     case validate_inputs(embed, channel_id) do
       :ok ->
-        Logger.info("DEBUG: [NeoClient] Input validation passed")
-        Logger.info("DEBUG: [NeoClient] Calling Nostrum.Api.Message.create")
-
         try do
           case Nostrum.Api.Message.create(channel_id, embed: embed) do
-            {:ok, response} ->
-              Logger.info("DEBUG: [NeoClient] Successfully sent embed to channel #{channel_id}")
-              Logger.debug("DEBUG: [NeoClient] Response: #{inspect(response, limit: 200)}")
+            {:ok, _response} ->
               :ok
 
             {:error, error} ->
               error_message = format_error(error)
-
-              Logger.error(
-                "DEBUG: [NeoClient] Failed to send embed to channel #{channel_id}: #{error_message}"
-              )
-
-              Logger.error("DEBUG: [NeoClient] Error details: #{inspect(error, pretty: true)}")
-              Logger.error("DEBUG: [NeoClient] Stack trace: #{Exception.format_stacktrace()}")
+              Logger.error("Failed to send embed to channel #{channel_id}: #{error_message}")
               {:error, error}
           end
         rescue
           e ->
-            Logger.error(
-              "DEBUG: [NeoClient] Exception while sending message: #{Exception.message(e)}"
-            )
-
-            Logger.error(
-              "DEBUG: [NeoClient] Stack trace: #{Exception.format_stacktrace(__STACKTRACE__)}"
-            )
-
+            Logger.error("Exception while sending message: #{Exception.message(e)}")
             {:error, e}
         end
 
       {:error, reason} ->
-        Logger.error("DEBUG: [NeoClient] Input validation failed: #{reason}")
+        Logger.error("Input validation failed: #{reason}")
         {:error, reason}
     end
   end
 
   defp validate_inputs(embed, channel_id) do
-    Logger.debug(
-      "DEBUG: [NeoClient] Validating inputs - embed type: #{inspect(embed.__struct__)}, channel_id: #{inspect(channel_id)}"
-    )
-
     cond do
       is_nil(embed) ->
         {:error, "Embed cannot be nil"}

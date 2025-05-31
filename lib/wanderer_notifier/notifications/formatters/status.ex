@@ -37,6 +37,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
     redisq_icon = get_redisq_status_icon(stats)
     notification_info = get_notification_info(stats)
     formatted_features = format_feature_statuses(features_status)
+    killmails_received = Map.get(stats, :killmails_received, 0)
 
     notification_data = %{
       title: title,
@@ -46,6 +47,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       redisq_icon: redisq_icon,
       systems_count: systems_count,
       characters_count: characters_count,
+      killmails_received: killmails_received,
       notification_info: notification_info,
       formatted_features: formatted_features
     }
@@ -110,9 +112,10 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       fields: [
         %{name: "Uptime", value: data.uptime_str, inline: true},
         %{name: "License", value: data.license_icon, inline: true},
-        %{name: "RedisQ", value: data.redisq_icon, inline: true},
+        %{name: "Zkill", value: data.redisq_icon, inline: true},
         %{name: "Systems", value: "🗺️ #{data.systems_count}", inline: true},
         %{name: "Characters", value: "👤 #{data.characters_count}", inline: true},
+        %{name: "Killmails", value: "🗄️ #{data.killmails_received}", inline: true},
         %{name: "📊 Notifications", value: data.notification_info, inline: false},
         %{name: "⚙️ Primary Features", value: data.formatted_features, inline: false}
       ]

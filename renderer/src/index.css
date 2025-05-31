@@ -1,8 +1,0 @@
-/* src/index.css */
-@import "tailwindcss";
-
-/* Tailwind Directives */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-

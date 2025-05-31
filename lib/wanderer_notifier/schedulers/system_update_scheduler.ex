@@ -7,7 +7,6 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Map.Clients.Client
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl true
   def feature_flag, do: :system_tracking_enabled
@@ -24,10 +23,8 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   def primed_key, do: :map_systems_primed
 
   @impl true
-  def log_update(new_systems, old_systems) do
-    AppLogger.api_info("System cache updated",
-      current: length(new_systems),
-      new: length(new_systems) - length(old_systems)
-    )
-  end
+  def log_emoji, do: "🗺️ "
+
+  @impl true
+  def log_label, do: "System cache"
 end

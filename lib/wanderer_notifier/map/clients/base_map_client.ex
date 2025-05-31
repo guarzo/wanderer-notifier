@@ -74,44 +74,55 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
              {:ok, decoded} <- decode_body(body),
              {:ok, items} <- extract_data(decoded) do
-          case validate_data(items) do
-            :ok ->
-              process_with_notifications(items, cached, opts)
-
-            {:error, :invalid_data} ->
-              AppLogger.api_error("Data validation failed",
-                url: url,
-                item_count: length(items)
-              )
-
-              {:error, :invalid_data}
-          end
+          validate_and_process(items, cached, opts, url)
         else
-          {:ok, %{status_code: status, body: body}} ->
-            AppLogger.api_error("HTTP error",
-              status: status,
-              url: url,
-              response: String.slice(body, 0, 100)
-            )
-
-            {:error, {:http_error, status, body}}
-
-          {:error, reason} ->
-            AppLogger.api_error("Request failed",
-              url: url,
-              error: inspect(reason)
-            )
-
-            {:error, {:request_error, reason}}
-
-          other ->
-            AppLogger.api_error("Unexpected result",
-              url: url,
-              result: inspect(other)
-            )
-
-            {:error, {:unexpected_result, other}}
+          error -> handle_fetch_error(error, url)
         end
+      end
+
+      # Validate data and process if valid
+      defp validate_and_process(items, cached, opts, url) do
+        case validate_data(items) do
+          :ok ->
+            process_with_notifications(items, cached, opts)
+
+          {:error, :invalid_data} ->
+            AppLogger.api_error("Data validation failed",
+              url: url,
+              item_count: length(items)
+            )
+
+            {:error, :invalid_data}
+        end
+      end
+
+      # Handle different types of fetch errors
+      defp handle_fetch_error({:ok, %{status_code: status, body: body}}, url) do
+        AppLogger.api_error("HTTP error",
+          status: status,
+          url: url,
+          response: String.slice(body, 0, 100)
+        )
+
+        {:error, {:http_error, status, body}}
+      end
+
+      defp handle_fetch_error({:error, reason}, url) do
+        AppLogger.api_error("Request failed",
+          url: url,
+          error: inspect(reason)
+        )
+
+        {:error, {:request_error, reason}}
+      end
+
+      defp handle_fetch_error(other, url) do
+        AppLogger.api_error("Unexpected result",
+          url: url,
+          result: inspect(other)
+        )
+
+        {:error, {:unexpected_result, other}}
       end
 
       defp process_with_notifications(new_items, cached_items, opts) do
@@ -123,7 +134,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           new_items = find_new_items(cached_items, new_items)
 
           # Process notifications if not suppressed
-          unless Keyword.get(opts, :suppress_notifications, false) do
+          if !Keyword.get(opts, :suppress_notifications, false) do
             process_notifications(new_items)
           end
         end
@@ -221,34 +232,40 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
              {:ok, items} <- extract_data(decoded) do
           {:ok, items}
         else
-          {:ok, %{status_code: status, body: body}} ->
-            error_preview =
-              if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
-
-            AppLogger.api_error("HTTP error",
-              status: status,
-              url: url,
-              response: error_preview
-            )
-
-            {:error, {:http_error, status, error_preview}}
-
-          {:error, reason} ->
-            AppLogger.api_error("Request failed",
-              url: url,
-              error: inspect(reason)
-            )
-
-            {:error, {:request_error, reason}}
-
-          other ->
-            AppLogger.api_error("Unexpected result",
-              url: url,
-              result: inspect(other)
-            )
-
-            {:error, {:unexpected_result, other}}
+          error -> handle_api_fetch_error(error, url)
         end
+      end
+
+      # Handle errors from API fetch (reusing existing error handling pattern)
+      defp handle_api_fetch_error({:ok, %{status_code: status, body: body}}, url) do
+        error_preview =
+          if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
+
+        AppLogger.api_error("HTTP error",
+          status: status,
+          url: url,
+          response: error_preview
+        )
+
+        {:error, {:http_error, status, error_preview}}
+      end
+
+      defp handle_api_fetch_error({:error, reason}, url) do
+        AppLogger.api_error("Request failed",
+          url: url,
+          error: inspect(reason)
+        )
+
+        {:error, {:request_error, reason}}
+      end
+
+      defp handle_api_fetch_error(other, url) do
+        AppLogger.api_error("Unexpected result",
+          url: url,
+          result: inspect(other)
+        )
+
+        {:error, {:unexpected_result, other}}
       end
 
       # Helper functions

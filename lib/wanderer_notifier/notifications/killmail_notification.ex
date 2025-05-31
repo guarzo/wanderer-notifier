@@ -51,9 +51,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   def send_kill_notification(killmail, notification_type, notification_data) do
     kill_id = extract_kill_id(killmail)
 
-    require Logger
-    Logger.info("DEBUG: KillmailNotification.send_kill_notification called for #{kill_id}")
-
     AppLogger.kill_info("Starting kill notification process", %{
       kill_id: kill_id,
       type: notification_type

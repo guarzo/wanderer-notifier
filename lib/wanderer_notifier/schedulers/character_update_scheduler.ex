@@ -7,7 +7,6 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Map.Clients.Client
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl true
   def feature_flag, do: :character_tracking_enabled
@@ -24,10 +23,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   def primed_key, do: :character_list_primed
 
   @impl true
-  def log_update(new_characters, old_characters) do
-    AppLogger.api_info("Character cache updated",
-      current: length(new_characters),
-      new: length(new_characters) - length(old_characters)
-    )
-  end
+  def log_emoji, do: "👤"
+
+  @impl true
+  def log_label, do: "Character cache"
 end

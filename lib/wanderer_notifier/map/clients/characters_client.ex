@@ -91,11 +91,30 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   defp valid_character?(character) do
     is_map(character) and
-      is_binary(character["name"]) and
-      (is_binary(character["eve_id"]) or is_integer(character["eve_id"])) and
+      valid_character_required_fields?(character) and
+      valid_character_optional_fields?(character)
+  end
+
+  defp valid_character_required_fields?(character) do
+    is_binary(character["name"]) and
+      valid_eve_id?(character["eve_id"]) and
       is_binary(character["corporation_ticker"]) and
-      (is_binary(character["corporation_id"]) or is_integer(character["corporation_id"])) and
-      (is_binary(character["alliance_id"]) or is_integer(character["alliance_id"]) or
-         is_nil(character["alliance_id"]))
+      valid_corporation_id?(character["corporation_id"])
+  end
+
+  defp valid_character_optional_fields?(character) do
+    valid_alliance_id?(character["alliance_id"])
+  end
+
+  defp valid_eve_id?(eve_id) do
+    is_binary(eve_id) or is_integer(eve_id)
+  end
+
+  defp valid_corporation_id?(corp_id) do
+    is_binary(corp_id) or is_integer(corp_id)
+  end
+
+  defp valid_alliance_id?(alliance_id) do
+    is_binary(alliance_id) or is_integer(alliance_id) or is_nil(alliance_id)
   end
 end

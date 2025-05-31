@@ -84,18 +84,30 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
 
   defp valid_system?(system) do
     is_map(system) and
-      is_binary(system["name"]) and
+      valid_required_fields?(system) and
+      valid_optional_fields?(system)
+  end
+
+  defp valid_required_fields?(system) do
+    is_binary(system["name"]) and
       is_binary(system["id"]) and
       is_integer(system["solar_system_id"]) and
       is_boolean(system["locked"]) and
       is_boolean(system["visible"]) and
       is_integer(system["position_x"]) and
       is_integer(system["position_y"]) and
-      is_integer(system["status"]) and
-      (is_binary(system["custom_name"]) or is_nil(system["custom_name"])) and
-      (is_binary(system["description"]) or is_nil(system["description"])) and
-      (is_binary(system["original_name"]) or is_nil(system["original_name"])) and
-      (is_binary(system["temporary_name"]) or is_nil(system["temporary_name"])) and
-      (is_binary(system["tag"]) or is_nil(system["tag"]))
+      is_integer(system["status"])
+  end
+
+  defp valid_optional_fields?(system) do
+    valid_optional_string_field?(system["custom_name"]) and
+      valid_optional_string_field?(system["description"]) and
+      valid_optional_string_field?(system["original_name"]) and
+      valid_optional_string_field?(system["temporary_name"]) and
+      valid_optional_string_field?(system["tag"])
+  end
+
+  defp valid_optional_string_field?(field) do
+    is_binary(field) or is_nil(field)
   end
 end

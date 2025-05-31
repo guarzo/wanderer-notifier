@@ -15,14 +15,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   Returns data in a generic format that can be converted to platform-specific format.
   """
   def format_kill_notification(%Killmail{} = killmail) do
-    require Logger
-
-    Logger.info(
-      "DEBUG: [KillmailFormatter] Starting to format kill notification for killmail_id: #{killmail.killmail_id}"
-    )
-
-    log_killmail_data(killmail)
-
     kill_id = killmail.killmail_id
     kill_time = Map.get(killmail.esi_data || %{}, "killmail_time")
     victim_info = extract_victim_info(killmail)
@@ -39,10 +31,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
         final_blow_details,
         fields
       )
-
-    Logger.info(
-      "DEBUG: [KillmailFormatter] Created kill notification embed: #{inspect(notification, limit: 200)}"
-    )
 
     notification
   rescue
@@ -70,12 +58,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       color: 0xFF0000,
       fields: format_fields(killmail)
     }
-  end
-
-  defp log_killmail_data(killmail) do
-    AppLogger.processor_debug(
-      "[KillmailFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}"
-    )
   end
 
   defp extract_victim_info(killmail) do
@@ -150,9 +132,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   defp format_security_status(_), do: "Unknown"
 
   defp get_final_blow_details(killmail) do
-    require Logger
-    Logger.info("DEBUG: Getting final blow details from killmail")
-
     # Get the final blow attacker or fall back to first attacker
     final_blow_attacker =
       Enum.find(killmail.attackers, fn attacker ->
@@ -270,20 +249,19 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp build_kill_notification_fields(_victim_info, kill_context, final_blow_details) do
-    require Logger
-    Logger.info("DEBUG: Building kill notification fields")
+    # Build base fields (value, attackers, final blow)
+    fields = build_base_fields(kill_context, final_blow_details)
 
-    base_fields = build_base_fields(kill_context, final_blow_details)
+    # Add attacker corp field if available
     corp_field = build_corp_field(final_blow_details)
     alliance_field = build_alliance_field(final_blow_details)
     security_field = build_security_field(kill_context)
 
-    fields = base_fields
+    # Combine all fields
     fields = if corp_field, do: fields ++ [corp_field], else: fields
     fields = if alliance_field, do: fields ++ [alliance_field], else: fields
     fields = if security_field, do: fields ++ [security_field], else: fields
 
-    Logger.info("DEBUG: Built fields: #{inspect(fields, limit: 200)}")
     fields
   end
 
@@ -493,17 +471,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp format_corp_display_with_link(corp, corp_ticker, corp_id) do
-    display_name =
-      cond do
-        corp_ticker && corp_ticker != "" && corp_ticker != "Unknown" ->
-          corp_ticker
-
-        corp && corp != "" && corp != "Unknown Corp" ->
-          corp
-
-        true ->
-          "Unknown Corp"
-      end
+    display_name = get_corp_display_name(corp, corp_ticker)
 
     if corp_id && corp_id > 0 do
       "[#{display_name}](#{build_zkillboard_url(:corporation, corp_id)})"
@@ -513,23 +481,48 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp format_alliance_display_with_link(alliance, alliance_ticker, alliance_id) do
+    if valid_alliance?(alliance) do
+      display_name = get_alliance_display_name(alliance, alliance_ticker)
+      format_alliance_link(display_name, alliance_id)
+    else
+      nil
+    end
+  end
+
+  # Helper functions to reduce complexity
+  defp get_corp_display_name(corp, corp_ticker) do
     cond do
-      alliance && alliance != "" && alliance != "Unknown" && alliance != "Unknown Alliance" ->
-        display_name =
-          if alliance_ticker && alliance_ticker != "" && alliance_ticker != "Unknown" do
-            alliance_ticker
-          else
-            alliance
-          end
+      valid_ticker?(corp_ticker) -> corp_ticker
+      valid_corp?(corp) -> corp
+      true -> "Unknown Corp"
+    end
+  end
 
-        if alliance_id && alliance_id > 0 do
-          "[#{display_name}](#{build_zkillboard_url(:alliance, alliance_id)})"
-        else
-          display_name
-        end
+  defp get_alliance_display_name(alliance, alliance_ticker) do
+    if valid_ticker?(alliance_ticker) do
+      alliance_ticker
+    else
+      alliance
+    end
+  end
 
-      true ->
-        nil
+  defp valid_alliance?(alliance) do
+    alliance && alliance != "" && alliance != "Unknown" && alliance != "Unknown Alliance"
+  end
+
+  defp valid_ticker?(ticker) do
+    ticker && ticker != "" && ticker != "Unknown"
+  end
+
+  defp valid_corp?(corp) do
+    corp && corp != "" && corp != "Unknown Corp"
+  end
+
+  defp format_alliance_link(display_name, alliance_id) do
+    if alliance_id && alliance_id > 0 do
+      "[#{display_name}](#{build_zkillboard_url(:alliance, alliance_id)})"
+    else
+      display_name
     end
   end
 
@@ -543,20 +536,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
       true ->
         "Unknown Corp"
-    end
-  end
-
-  defp format_alliance_display(alliance, alliance_ticker) do
-    cond do
-      alliance && alliance != "" && alliance != "Unknown" && alliance != "Unknown Alliance" ->
-        if alliance_ticker && alliance_ticker != "" && alliance_ticker != "Unknown" do
-          alliance_ticker
-        else
-          alliance
-        end
-
-      true ->
-        nil
     end
   end
 
@@ -696,10 +675,13 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     item_name = Map.get(item_info, "name", "Unknown Item")
 
     # Check for special item types
-    is_abyssal = String.contains?(String.downcase(item_name), "abyssal")
+    is_abyssal =
+      item_name
+      |> String.downcase()
+      |> String.contains?("abyssal")
 
     # Check if item is likely worth 50M+ ISK
-    is_high_value = is_expensive_item(type_id, item_name)
+    is_high_value = expensive_item?(type_id, item_name)
 
     # Notable if abyssal OR high value
     is_notable = is_abyssal or is_high_value
@@ -725,24 +707,13 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   # Heuristic to identify items likely worth 50M+ ISK
-  defp is_expensive_item(type_id, item_name) when is_integer(type_id) do
+  defp expensive_item?(type_id, item_name) when is_integer(type_id) do
     item_name_lower = String.downcase(item_name)
 
     # Check by item name patterns (high-value item types)
     name_indicators = [
       "deadspace",
       "officer",
-      "faction",
-      "capital",
-      "dread",
-      "carrier",
-      "titan",
-      "supercarrier",
-      "fortizar",
-      "keepstar",
-      "azbel",
-      "sotiyo",
-      "tatara",
       "x-type",
       "a-type",
       "b-type",
@@ -755,11 +726,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       "republic fleet",
       "imperial navy",
       "caldari navy",
-      "federation navy",
-      "drone",
-      "plex",
-      "injector",
-      "extractor"
+      "federation navy"
     ]
 
     has_valuable_name =
@@ -767,28 +734,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
         String.contains?(item_name_lower, indicator)
       end)
 
-    # Check by type ID ranges (approximate)
-    has_valuable_type_id =
-      cond do
-        # Capital ship modules and rigs
-        type_id >= 2048 and type_id <= 3000 -> true
-        # High-end modules
-        type_id >= 10000 and type_id <= 25000 -> true
-        # Faction/officer modules
-        type_id >= 40000 and type_id <= 50000 -> true
-        # Ships (many expensive ships in these ranges)
-        type_id >= 11000 and type_id <= 12000 -> true
-        type_id >= 23000 and type_id <= 24000 -> true
-        # Blueprints
-        type_id >= 44000 and type_id <= 45000 -> true
-        # Default
-        true -> false
-      end
-
-    has_valuable_name or has_valuable_type_id
+    has_valuable_name
   end
 
-  defp is_expensive_item(_, _), do: false
+  defp expensive_item?(_, _), do: false
 
   defp get_item_category_simple(is_abyssal, is_high_value, item_name) do
     item_name_lower = String.downcase(item_name)
@@ -797,52 +746,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       is_abyssal -> "Abyssal"
       String.contains?(item_name_lower, "officer") -> "Officer"
       String.contains?(item_name_lower, "deadspace") -> "Deadspace"
-      String.contains?(item_name_lower, "faction") -> "Faction"
-      String.contains?(item_name_lower, "capital") -> "Capital"
       is_high_value -> "High-Value"
-      true -> "Notable"
-    end
-  end
-
-  # TEMPORARY TESTING FUNCTION - makes most items notable for testing
-  defp is_testable_item(type_id, item_name) when is_integer(type_id) do
-    # Skip very common/basic items to avoid spam
-    excluded_items = [
-      "tritanium",
-      "pyerite",
-      "mexallon",
-      "isogen",
-      "nocxium",
-      "zydrine",
-      "megacyte",
-      "ammunition",
-      "charge",
-      "cap booster",
-      "nanite repair",
-      "civilian"
-    ]
-
-    item_name_lower = String.downcase(item_name)
-
-    # Exclude basic materials and ammo
-    is_excluded =
-      Enum.any?(excluded_items, fn excluded ->
-        String.contains?(item_name_lower, excluded)
-      end)
-
-    # For testing: consider most items notable unless they're excluded basic items
-    not is_excluded
-  end
-
-  defp is_testable_item(_, _), do: false
-
-  defp get_item_category(is_abyssal, is_deadspace, is_officer, is_faction, is_likely_expensive) do
-    cond do
-      is_abyssal -> "Abyssal"
-      is_officer -> "Officer"
-      is_deadspace -> "Deadspace"
-      is_faction -> "Faction"
-      is_likely_expensive -> "High-Value"
       true -> "Notable"
     end
   end

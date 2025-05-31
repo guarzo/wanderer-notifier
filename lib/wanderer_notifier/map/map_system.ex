@@ -199,103 +199,105 @@ defmodule WandererNotifier.Map.MapSystem do
   end
 
   @doc """
-  Updates a MapSystem struct with static info from a map.
-
-  ## Parameters
-    - system: MapSystem struct to update
-    - static_info: Map containing static information to merge
-
-  ## Returns
-    - Updated MapSystem struct
+  Updates a MapSystem struct with static system information.
   """
   @spec update_with_static_info(t() | map(), map()) :: t()
-  def update_with_static_info(system, static_info) do
-    # Get all valid struct fields from the module attributes
-    valid_fields = [
+  def update_with_static_info(system, static_info) when is_map(static_info) do
+    valid_fields = get_valid_fields()
+
+    # Convert and normalize inputs
+    atomized_static_info = atomize_and_filter_keys(static_info, valid_fields)
+    system_map = convert_system_to_map(system, valid_fields)
+
+    # Normalize system_class fields
+    system_map = normalize_system_class(system_map)
+    atomized_static_info = normalize_system_class(atomized_static_info)
+
+    # Merge and create final struct
+    system_map
+    |> Map.merge(atomized_static_info)
+    |> then(&struct(__MODULE__, &1))
+    |> tap(&validate_types/1)
+  end
+
+  # Extract valid fields list to separate function
+  defp get_valid_fields do
+    [
+      :id,
       :solar_system_id,
       :name,
       :original_name,
-      :system_type,
       :type_description,
       :class_title,
       :effect_name,
-      :is_shattered,
-      :locked,
-      :region_name,
-      :static_details,
-      :statics,
-      :system_class,
-      :temporary_name,
-      :sun_type_id,
-      :id,
-      :security_status,
       :effect_power,
       :region_id,
+      :region_name,
+      :security_status,
+      :sun_type_id,
+      :system_class,
+      :system_type,
+      :temporary_name,
       :triglavian_invasion_status,
+      :static_details,
+      :statics,
+      :is_shattered,
+      :locked,
       :constellation_id,
       :constellation_name
     ]
+  end
 
-    # Convert only valid string keys to atoms, skipping others
-    atomized_static_info =
-      Enum.reduce(static_info, %{}, fn
-        {k, v}, acc when is_binary(k) ->
-          try do
-            atom = String.to_existing_atom(k)
-            if atom in valid_fields, do: Map.put(acc, atom, v), else: acc
-          rescue
-            ArgumentError -> acc
-          end
-
-        {k, v}, acc when is_atom(k) ->
-          if k in valid_fields, do: Map.put(acc, k, v), else: acc
-
-        _, acc ->
-          acc
-      end)
-
-    # Convert system to map if it's a struct
+  # Convert system to map and filter keys
+  defp convert_system_to_map(system, valid_fields) do
     system_map =
       case system do
         %__MODULE__{} -> Map.from_struct(system)
         %{} -> system
       end
 
-    # Convert string keys in system_map to atoms
-    system_map =
-      Enum.reduce(system_map, %{}, fn
-        {k, v}, acc when is_binary(k) ->
-          try do
-            atom = String.to_existing_atom(k)
-            if atom in valid_fields, do: Map.put(acc, atom, v), else: acc
-          rescue
-            ArgumentError -> acc
-          end
+    atomize_and_filter_keys(system_map, valid_fields)
+  end
 
-        {k, v}, acc when is_atom(k) ->
-          if k in valid_fields, do: Map.put(acc, k, v), else: acc
+  # Normalize system_class field from integer to string
+  defp normalize_system_class(map) do
+    case Map.get(map, :system_class) do
+      n when is_integer(n) -> Map.put(map, :system_class, Integer.to_string(n))
+      _ -> map
+    end
+  end
 
-        _, acc ->
-          acc
-      end)
+  # Helper function to atomize and filter keys
+  defp atomize_and_filter_keys(map, valid_fields) do
+    Enum.reduce(map, %{}, fn entry, acc ->
+      process_map_entry(entry, acc, valid_fields)
+    end)
+  end
 
-    # Convert numeric system_class to string if present
-    system_map =
-      case Map.get(system_map, :system_class) do
-        n when is_integer(n) -> Map.put(system_map, :system_class, Integer.to_string(n))
-        _ -> system_map
-      end
+  # Process individual map entries
+  defp process_map_entry({k, v}, acc, valid_fields) when is_binary(k) do
+    process_binary_key(k, v, acc, valid_fields)
+  end
 
-    atomized_static_info =
-      case Map.get(atomized_static_info, :system_class) do
-        n when is_integer(n) -> Map.put(atomized_static_info, :system_class, Integer.to_string(n))
-        _ -> atomized_static_info
-      end
+  defp process_map_entry({k, v}, acc, valid_fields) when is_atom(k) do
+    process_atom_key(k, v, acc, valid_fields)
+  end
 
-    system_map
-    |> Map.merge(atomized_static_info)
-    |> then(&struct(__MODULE__, &1))
-    |> tap(&validate_types/1)
+  defp process_map_entry(_, acc, _valid_fields), do: acc
+
+  # Process binary keys by converting to atoms
+  defp process_binary_key(key, value, acc, valid_fields) do
+    try do
+      atom = String.to_existing_atom(key)
+      if atom in valid_fields, do: Map.put(acc, atom, value), else: acc
+    rescue
+      ArgumentError -> acc
+    end
+  end
+
+  # Process atom keys directly
+  defp process_atom_key(key, value, acc, valid_fields) do
+    if key in valid_fields, do: Map.put(acc, key, value), else: acc
   end
 
   @doc """

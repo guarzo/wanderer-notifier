@@ -32,39 +32,25 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash, opts \\ []) do
-    AppLogger.api_info(
-      "ESI Service: Starting killmail request for kill_id=#{kill_id} hash=#{killmail_hash}"
-    )
-
     cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
 
     case Cachex.get(cache_name, cache_key) do
       {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_info("ESI Service: Cache hit for kill_id=#{kill_id}")
         {:ok, data}
 
       _ ->
-        AppLogger.api_info("ESI Service: Cache miss for kill_id=#{kill_id}, fetching from ESI")
         fetch_from_esi(kill_id, killmail_hash, cache_name, cache_key, opts)
     end
   end
 
   defp fetch_from_esi(kill_id, killmail_hash, cache_name, cache_key, opts) do
-    AppLogger.api_info(
-      "ESI Service: Starting ESI request for kill_id=#{kill_id} hash=#{killmail_hash} with opts=#{inspect(opts)}"
-    )
-
     # Get the raw response from the client
     response =
       esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts))
 
     case response do
       {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_info(
-          "ESI Service: Successfully fetched killmail data for kill_id=#{kill_id}"
-        )
-
         # Only cache if we have a cache name and key
         if cache_name && cache_key do
           cache_put(cache_name, cache_key, data)
@@ -101,26 +87,13 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character_info(character_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.character(character_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
-
-        case esi_client().get_character_info(character_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :character,
+      character_id,
+      opts,
+      &esi_client().get_character_info/2,
+      "character"
+    )
   end
 
   @doc """
@@ -142,26 +115,13 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_corporation_info(corporation_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.corporation(corporation_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for corporation", corporation_id: corporation_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for corporation", corporation_id: corporation_id)
-
-        case esi_client().get_corporation_info(corporation_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :corporation,
+      corporation_id,
+      opts,
+      &esi_client().get_corporation_info/2,
+      "corporation"
+    )
   end
 
   @doc """
@@ -183,26 +143,13 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_alliance_info(alliance_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.alliance(alliance_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for alliance", alliance_id: alliance_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for alliance", alliance_id: alliance_id)
-
-        case esi_client().get_alliance_info(alliance_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :alliance,
+      alliance_id,
+      opts,
+      &esi_client().get_alliance_info/2,
+      "alliance"
+    )
   end
 
   @doc """
@@ -292,26 +239,13 @@ defmodule WandererNotifier.ESI.Service do
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.search_inventory_type(query, strict)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for inventory type search", query: query)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for inventory type search", query: query)
-
-        case esi_client().search_inventory_type(query, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache_custom_key(
+      query,
+      opts,
+      &esi_client().search_inventory_type/2,
+      "inventory type search",
+      fn -> CacheKeys.search_inventory_type(query, strict) end
+    )
   end
 
   @impl true
@@ -367,26 +301,13 @@ defmodule WandererNotifier.ESI.Service do
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system(system_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.system(system_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for solar system", system_id: system_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for solar system", system_id: system_id)
-
-        case esi_client().get_system(system_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :system,
+      system_id,
+      opts,
+      &esi_client().get_system/2,
+      "solar system"
+    )
   end
 
   @doc """
@@ -401,10 +322,12 @@ defmodule WandererNotifier.ESI.Service do
     - {:error, reason} on failure
   """
   def get_system_struct(system_id, opts \\ []) do
-    with {:ok, data} when is_map(data) and map_size(data) > 0 <- get_system(system_id, opts) do
-      {:ok, SolarSystem.from_esi_data(data)}
-    else
-      _ -> {:error, :system_not_found}
+    case get_system(system_id, opts) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        {:ok, SolarSystem.from_esi_data(data)}
+
+      _ ->
+        {:error, :system_not_found}
     end
   end
 
@@ -451,82 +374,43 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character(character_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.character(character_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
-
-        case esi_client().get_character_info(character_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :character,
+      character_id,
+      opts,
+      &esi_client().get_character_info/2,
+      "character"
+    )
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_type(type_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.type(type_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for type", type_id: type_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for type", type_id: type_id)
-
-        case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache(
+      :type,
+      type_id,
+      opts,
+      &esi_client().get_universe_type/2,
+      "type"
+    )
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system_kills(system_id, limit, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.system_kills(system_id, limit)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for system kills", system_id: system_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for system kills", system_id: system_id)
-
-        case esi_client().get_system_kills(system_id, limit, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            cache_put(cache_name, cache_key, data)
-            {:ok, data}
-
-          error ->
-            error
-        end
-    end
+    fetch_with_cache_custom_key(
+      system_id,
+      opts,
+      fn id, options -> esi_client().get_system_kills(id, limit, options) end,
+      "system kills",
+      fn -> CacheKeys.system_kills(system_id, limit) end
+    )
   end
 
   # Get retry options with default values
   defp retry_opts do
     [
       max_attempts: 3,
-      base_timeout: 5000,
-      max_timeout: 15000,
+      base_timeout: 5_000,
+      max_timeout: 15_000,
       backoff: :exponential
     ]
   end
@@ -552,5 +436,59 @@ defmodule WandererNotifier.ESI.Service do
 
   defp cache_put(cache_name, key, value) do
     Cachex.put(cache_name, key, value)
+  end
+
+  # Common pattern for cache-and-fetch operations
+  defp fetch_with_cache(cache_type, id, opts, fetch_fn, log_name) do
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
+    cache_key = apply(CacheKeys, cache_type, [id])
+
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        log_cache_hit(log_name, id)
+        {:ok, data}
+
+      _ ->
+        log_cache_miss(log_name, id)
+        fetch_and_cache_data(cache_name, cache_key, id, fetch_fn, opts)
+    end
+  end
+
+  defp log_cache_hit(log_name, id) do
+    AppLogger.api_debug("✨ ESI cache hit for #{log_name}", [
+      {String.to_atom("#{log_name}_id"), id}
+    ])
+  end
+
+  defp log_cache_miss(log_name, id) do
+    AppLogger.api_debug("🔍 ESI cache miss for #{log_name}", [
+      {String.to_atom("#{log_name}_id"), id}
+    ])
+  end
+
+  defp fetch_and_cache_data(cache_name, cache_key, id, fetch_fn, opts) do
+    case fetch_fn.(id, Keyword.merge(retry_opts(), opts)) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        cache_put(cache_name, cache_key, data)
+        {:ok, data}
+
+      error ->
+        error
+    end
+  end
+
+  defp fetch_with_cache_custom_key(query, opts, fetch_fn, log_name, key_fn) do
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
+    cache_key = key_fn.()
+
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        log_cache_hit(log_name, query)
+        {:ok, data}
+
+      _ ->
+        log_cache_miss(log_name, query)
+        fetch_and_cache_data(cache_name, cache_key, query, fetch_fn, opts)
+    end
   end
 end
