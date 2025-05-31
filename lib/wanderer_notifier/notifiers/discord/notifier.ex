@@ -16,6 +16,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifications.Formatters.Character, as: CharacterFormatter
   alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Notifications.Formatters.PlainText, as: PlainTextFormatter
+  alias WandererNotifier.Notifications.LicenseLimiter
   alias WandererNotifier.Config
   # Default embed colors
   @default_embed_color 0x3498DB
@@ -146,7 +147,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   def send_kill_notification(kill_data) do
     try do
-      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:killmail) do
+      if LicenseLimiter.should_send_rich?(:killmail) do
         # Ensure we have a Killmail struct
         killmail =
           if is_struct(kill_data, Killmail),
@@ -154,7 +155,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
             else: struct(Killmail, Map.from_struct(kill_data))
 
         send_killmail_notification(killmail)
-        WandererNotifier.Notifications.LicenseLimiter.increment(:killmail)
+        LicenseLimiter.increment(:killmail)
       else
         # Get the default channel ID
         channel_id = Config.discord_channel_id()
@@ -256,10 +257,10 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Map.MapCharacter) do
     try do
-      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:character) do
+      if LicenseLimiter.should_send_rich?(:character) do
         generic_notification = CharacterFormatter.format_character_notification(character)
         send_to_discord(generic_notification, :character_tracking)
-        WandererNotifier.Notifications.LicenseLimiter.increment(:character)
+        LicenseLimiter.increment(:character)
       else
         message = PlainTextFormatter.plain_character_notification(character)
         NeoClient.send_message(message)
@@ -278,11 +279,11 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   def send_new_system_notification(system) do
     try do
-      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:system) do
+      if LicenseLimiter.should_send_rich?(:system) do
         enriched_system = system
         generic_notification = SystemFormatter.format_system_notification(enriched_system)
         send_to_discord(generic_notification, :system_tracking)
-        WandererNotifier.Notifications.LicenseLimiter.increment(:system)
+        LicenseLimiter.increment(:system)
       else
         message = PlainTextFormatter.plain_system_notification(system)
         NeoClient.send_message(message)

@@ -272,7 +272,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       # Timeout for receiving data once connected (same as total)
       recv_timeout: total_timeout,
       # Connection timeout - keep fast to detect network issues quickly
-      connect_timeout: 5000,
+      connect_timeout: 10_000,
       # Pool timeout to prevent connection pool exhaustion
       pool_timeout: 3000
     ]

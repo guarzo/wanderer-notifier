@@ -169,8 +169,8 @@ Code.require_file("support/test_mocks.ex", __DIR__)
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")
-System.put_env("MAP_TOKEN", "test_map_token")
 System.put_env("MAP_NAME", "test_map")
+System.put_env("MAP_API_KEY", "test_map_api_key")
 System.put_env("NOTIFIER_API_TOKEN", "test_notifier_token")
 System.put_env("LICENSE_KEY", "test_license_key")
 System.put_env("LICENSE_MANAGER_API_URL", "http://test.license.url")

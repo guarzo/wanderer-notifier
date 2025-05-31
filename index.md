@@ -62,11 +62,15 @@ DISCORD_CHANNEL_ID=your_discord_channel_id
 # DISCORD_CHARACTER_CHANNEL_ID=your_character_channel_id
 
 # Map Configuration
-MAP_URL="https://wanderer.ltd/<yourmap>"
-MAP_TOKEN=your_map_api_token
+MAP_URL="https://wanderer.ltd"
+MAP_NAME="yourmap"
+MAP_API_KEY=your_map_api_key
 
 # License Configuration
 LICENSE_KEY=your_license_key  # Provided with your map subscription
+
+# Notifier API Configuration
+NOTIFIER_API_TOKEN=your_notifier_api_token
 
 # Feature Flags (default values shown below)
 # General Settings
@@ -79,16 +83,26 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
 
 # Tracking-Related Flags
-# TRACK_KSPACE=true  # Controls whether K-Space systems are tracked
+# TRACK_KSPACE_ENABLED=true  # Controls whether K-Space systems are tracked
 # SYSTEM_TRACKING_ENABLED=true  # Controls system data tracking scheduler
 # CHARACTER_TRACKING_ENABLED=true  # Controls character data tracking scheduler
 
 # Character Configuration
 # CHARACTER_EXCLUDE_LIST=character_id1,character_id2
 
+# Cache and RedisQ Configuration
+# CACHE_DIR=/app/data/cache
+# REDISQ_URL=https://zkillredisq.stream/listen.php
+# REDISQ_POLL_INTERVAL_MS=1000
+
+# License Manager Configuration
+# LICENSE_MANAGER_URL=https://lm.wanderer.ltd
+
 ```
 
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
+
+> **Note:** The map configuration now uses separate `MAP_URL` and `MAP_NAME` variables for cleaner configuration. The application automatically combines these to create the full map URL.
 
 #### 3. Create the Docker Compose Configuration
 

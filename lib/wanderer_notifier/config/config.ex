@@ -100,7 +100,15 @@ defmodule WandererNotifier.Config do
 
   # --- Map config ---
   def map_url do
-    raise "map_url/0 is deprecated. Use map_url_with_name/0 and parse as needed."
+    # First try the explicit MAP_URL, then fall back to parsing from URL
+    explicit_url = get(:map_url)
+
+    if explicit_url && explicit_url != "" do
+      explicit_url
+    else
+      # Fall back to base_map_url for backward compatibility
+      base_map_url()
+    end
   end
 
   def map_token do
@@ -109,30 +117,71 @@ defmodule WandererNotifier.Config do
   end
 
   def map_name do
-    value = get(:map_name)
-    value
+    # First try the explicit MAP_NAME, then fall back to parsing from URL
+    explicit_name = get(:map_name)
+
+    if explicit_name && explicit_name != "" do
+      explicit_name
+    else
+      # Fall back to parsing from map_url_with_name for backward compatibility
+      parse_map_name_from_url()
+    end
+  end
+
+  def map_api_url do
+    # Alias for map_url for backward compatibility
+    map_url()
   end
 
   def map_url_with_name, do: get(:map_url_with_name)
   def map_csrf_token, do: get(:map_csrf_token)
 
-  def map_slug do
+  # Helper function to parse map name from legacy URL format
+  defp parse_map_name_from_url do
     url = map_url_with_name()
 
     if nil_or_empty?(url) do
-      # Return empty string for missing URL
       ""
     else
       uri = URI.parse(url)
 
-      # Check if URI has a path
-      if uri.path != nil and uri.path != "" do
-        uri.path |> String.trim("/") |> String.split("/") |> List.last()
-      else
-        # Log warning and return empty string for missing path
-        require Logger
-        Logger.warning("No path in map URL: #{url}")
+      # Try to get name from query parameter
+      case uri.query do
+        nil ->
+          ""
+
+        query_string ->
+          URI.decode_query(query_string)
+          |> Map.get("name", "")
+      end
+    end
+  end
+
+  def map_slug do
+    # First try the explicit MAP_NAME, which is now the preferred approach
+    name = map_name()
+
+    if name && name != "" do
+      name
+    else
+      # Fallback to parsing from URL path for backward compatibility
+      url = map_url_with_name()
+
+      if nil_or_empty?(url) do
+        # Return empty string for missing URL
         ""
+      else
+        uri = URI.parse(url)
+
+        # Check if URI has a path
+        if uri.path != nil and uri.path != "" do
+          uri.path |> String.trim("/") |> String.split("/") |> List.last()
+        else
+          # Log warning and return empty string for missing path
+          require Logger
+          Logger.warning("No path in map URL: #{url}")
+          ""
+        end
       end
     end
   end
@@ -348,8 +397,41 @@ defmodule WandererNotifier.Config do
     %{
       debug_logging_enabled: debug_logging_enabled?(),
       map_url_with_name: map_url_with_name(),
-      map_token: map_token(),
-      map_name: map_name()
+      map_url: map_url(),
+      map_name: map_name(),
+      map_token: map_token()
+    }
+  end
+
+  # --- Map Config Diagnostics ---
+  @doc """
+  Returns a diagnostic map of all map-related configuration.
+  Useful for troubleshooting map API issues.
+  """
+  def map_config_diagnostics do
+    url = map_url_with_name()
+    token = map_token()
+    base_url = map_url()
+    name = map_name()
+
+    %{
+      map_url_with_name: url,
+      map_url_with_name_present: !nil_or_empty?(url),
+      map_url: base_url,
+      map_url_present: !nil_or_empty?(base_url),
+      map_url_explicit: !nil_or_empty?(get(:map_url)),
+      map_name: name,
+      map_name_present: !nil_or_empty?(name),
+      map_name_explicit: !nil_or_empty?(get(:map_name)),
+      map_token: token,
+      map_token_present: !nil_or_empty?(token),
+      map_token_length: if(token, do: String.length(token), else: 0),
+      map_slug: map_slug(),
+      map_slug_present: !nil_or_empty?(map_slug()),
+      base_map_url: base_map_url(),
+      base_map_url_present: !nil_or_empty?(base_map_url()),
+      system_tracking_enabled: system_tracking_enabled?(),
+      track_kspace_systems: track_kspace_systems?()
     }
   end
 
@@ -433,31 +515,5 @@ defmodule WandererNotifier.Config do
       end
 
     "#{uri.scheme}://#{uri.host}#{port_part}"
-  end
-
-  # --- Map Config Diagnostics ---
-  @doc """
-  Returns a diagnostic map of all map-related configuration.
-  Useful for troubleshooting map API issues.
-  """
-  def map_config_diagnostics do
-    url = map_url_with_name()
-    token = map_token()
-
-    %{
-      map_url_with_name: url,
-      map_url_with_name_present: !nil_or_empty?(url),
-      map_token: token,
-      map_token_present: !nil_or_empty?(token),
-      map_token_length: if(token, do: String.length(token), else: 0),
-      map_name: map_name(),
-      map_name_present: !nil_or_empty?(map_name()),
-      map_slug: map_slug(),
-      map_slug_present: !nil_or_empty?(map_slug()),
-      base_map_url: base_map_url(),
-      base_map_url_present: !nil_or_empty?(base_map_url()),
-      system_tracking_enabled: system_tracking_enabled?(),
-      track_kspace_systems: track_kspace_systems?()
-    }
   end
 end

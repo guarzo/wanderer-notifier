@@ -63,12 +63,31 @@ feature_env_vars =
   end)
   |> Enum.into(%{})
 
+# Helper function to build map_url_with_name from separate components
+map_url_with_name =
+  case {System.get_env("MAP_URL"), System.get_env("MAP_NAME")} do
+    {base_url, map_name} when not is_nil(base_url) and not is_nil(map_name) ->
+      # Build the full URL with name parameter
+      base_url = String.trim_trailing(base_url, "/")
+      "#{base_url}/?name=#{map_name}"
+
+    {base_url, nil} when not is_nil(base_url) ->
+      # Just the base URL without name (for backward compatibility)
+      base_url
+
+    {nil, _} ->
+      # Fall back to old combined MAP_URL_WITH_NAME if new variables aren't set
+      System.get_env("MAP_URL_WITH_NAME") || "missing_url"
+  end
+
 config :wanderer_notifier,
   # Required settings (will raise at runtime if not set in production)
-  map_token: System.get_env("MAP_TOKEN") || "missing_token",
-  api_token: System.get_env("API_TOKEN") || "missing_token",
+  map_token: System.get_env("MAP_API_KEY") || "missing_token",
+  api_token: System.get_env("NOTIFIER_API_TOKEN") || "missing_token",
   license_key: System.get_env("LICENSE_KEY") || "missing_key",
-  map_url_with_name: System.get_env("MAP_URL") || "missing_url",
+  map_url_with_name: map_url_with_name,
+  map_url: System.get_env("MAP_URL"),
+  map_name: System.get_env("MAP_NAME"),
 
   # Set discord_channel_id explicitly
   discord_channel_id: System.get_env("DISCORD_CHANNEL_ID") || "",
@@ -96,7 +115,7 @@ config :wanderer_notifier,
           Helpers.parse_bool(System.get_env("CHARACTER_NOTIFICATIONS_ENABLED"), true),
         status_messages_disabled:
           Helpers.parse_bool(System.get_env("DISABLE_STATUS_MESSAGES"), false),
-        track_kspace: Helpers.parse_bool(System.get_env("TRACK_KSPACE"), true),
+        track_kspace: Helpers.parse_bool(System.get_env("TRACK_KSPACE_ENABLED"), true),
         system_tracking_enabled:
           Helpers.parse_bool(System.get_env("SYSTEM_TRACKING_ENABLED"), true),
         character_tracking_enabled:

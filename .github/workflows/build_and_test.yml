@@ -27,11 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
-      API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
+      NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
       DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
-      MAP_URL: "http://example.com/map?name=testmap"
-      MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+      MAP_URL: "http://example.com"
+      MAP_NAME: "testmap"
+      MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
       DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
       LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
       LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
@@ -78,8 +79,9 @@ jobs:
     needs: test
     env:
       MIX_ENV: dev
-      MAP_URL: "http://example.com/map?name=testmap"
-      MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+      MAP_URL: "http://example.com"
+      MAP_NAME: "testmap"
+      MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
       DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
       LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
       LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
@@ -166,8 +168,9 @@ jobs:
       - name: Full Docker validation with web server
         env:
           DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-          MAP_URL_WITH_NAME: "http://example.com/map?name=testmap"
-          MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+          MAP_URL: "http://example.com"
+          MAP_NAME: "testmap"
+          MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
         run: |
@@ -177,12 +180,13 @@ jobs:
             -i guarzo/wanderer-notifier \
             -t sha-${{ steps.sha.outputs.short_sha }} \
             -d "${{ secrets.FAKE_DISCORD_TOKEN }}" \
-            -e "MAP_URL=http://example.com/map?name=testmap" \
-            -e "MAP_TOKEN=${{ secrets.MAP_TOKEN }}" \
+            -e "MAP_URL=http://example.com" \
+            -e "MAP_NAME=testmap" \
+            -e "MAP_API_KEY=${{ secrets.MAP_API_KEY }}" \
             -e "DISCORD_CHANNEL_ID=${{ secrets.DISCORD_CHANNEL_ID }}" \
             -e "LICENSE_KEY=${{ secrets.LICENSE_KEY }}" \
             -e "LICENSE_MANAGER_URL=${{ secrets.LICENSE_MANAGER_URL }}" \
-            -e "API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
+            -e "NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
             -e "ENV=test" \
             -e "DISABLE_WEBSOCKET=true"
           echo "Docker image validation successful!"

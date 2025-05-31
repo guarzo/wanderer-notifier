@@ -18,7 +18,8 @@ config :wanderer_notifier,
     channel_id: "123456789"
   },
   map_url: "https://example.com",
-  map_token: "test_map_token",
+  map_name: "testmap",
+  map_token: "test_map_api_key",
   test_mode: true,
   minimal_test: System.get_env("MINIMAL_TEST") == "true",
   features: %{

@@ -154,15 +154,15 @@ Environment variables now use simplified naming without redundant prefixes for c
 
 3. **Map API Configuration**
 
-   - `MAP_URL`: URL for the wanderer map
-   - `MAP_TOKEN`: Authentication token for map API
+   - `MAP_URL`: Base URL for the wanderer map API
+   - `MAP_NAME`: Name of your specific map
+   - `MAP_API_KEY`: Authentication token for map API
 
-4. **Web Server Configuration**
+   > **Note:** The application will automatically combine `MAP_URL` and `MAP_NAME` to create the full map URL with name parameter. For backward compatibility, you can still use `MAP_URL_WITH_NAME` with the full URL including the name parameter.
 
-   - `PORT`: Port for the web server (default: 4000)
-   - `HOST`: Host for the web server (default: localhost)
-   - `SCHEME`: HTTP scheme to use (default: http)
-   - `PUBLIC_URL`: Public URL for the web interface
+4. **Notifier API Configuration**
+
+   - `NOTIFIER_API_TOKEN`: Authentication token for the notifier API
 
 5. **Feature Flags**
 
@@ -171,7 +171,7 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
    - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
-   - `TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
+   - `TRACK_KSPACE_ENABLED`: Track K-Space systems in addition to wormholes (default: true)
    - `SYSTEM_TRACKING_ENABLED`: Enable system data tracking scheduler (default: true)
    - `CHARACTER_TRACKING_ENABLED`: Enable character data tracking scheduler (default: true)
 

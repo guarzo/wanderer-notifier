@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
@@ -129,7 +130,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   defp enrich_killmail(killmail) do
-    case WandererNotifier.Killmail.Enrichment.enrich_killmail_data(killmail) do
+    case Enrichment.enrich_killmail_data(killmail) do
       {:ok, enriched} -> {:ok, enriched}
       error -> error
     end

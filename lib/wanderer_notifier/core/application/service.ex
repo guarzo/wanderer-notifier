@@ -7,6 +7,7 @@ defmodule WandererNotifier.Core.Application.Service do
   use GenServer
 
   alias WandererNotifier.Config
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Killmail.RedisQClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -317,7 +318,7 @@ defmodule WandererNotifier.Core.Application.Service do
   def handle_info({:zkill_message, data}, state) do
     try do
       # Track that we received a killmail from RedisQ
-      WandererNotifier.Core.Stats.track_killmail_received()
+      Stats.track_killmail_received()
 
       # Transform the data into the expected format
       killmail_data = transform_zkill_data(data)

@@ -7,6 +7,7 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   require Logger
   alias WandererNotifier.Config
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -103,9 +104,9 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   defp handle_notification_by_type(%{type: :system_notification} = system) do
     # Check if this is the first notification
-    if WandererNotifier.Core.Stats.is_first_notification?(:system) do
+    if Stats.is_first_notification?(:system) do
       # Skip notification for first run
-      WandererNotifier.Core.Stats.mark_notification_sent(:system)
+      Stats.mark_notification_sent(:system)
       {:ok, :skipped_first_run}
     else
       # Send system notification
@@ -115,9 +116,9 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   defp handle_notification_by_type(%{type: :character_notification} = character) do
     # Check if this is the first notification
-    if WandererNotifier.Core.Stats.is_first_notification?(:character) do
+    if Stats.is_first_notification?(:character) do
       # Skip notification for first run
-      WandererNotifier.Core.Stats.mark_notification_sent(:character)
+      Stats.mark_notification_sent(:character)
       {:ok, :skipped_first_run}
     else
       # Send character activity notification

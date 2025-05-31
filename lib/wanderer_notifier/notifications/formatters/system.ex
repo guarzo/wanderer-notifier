@@ -4,6 +4,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   Provides rich formatting for system tracking events.
   """
   require Logger
+  alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -228,7 +229,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       # Get kill information from enrichment module
       try do
         # The response should now be safe strings we can directly use
-        case WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3) do
+        case Enrichment.recent_kills_for_system(system_id_int, 3) do
           kills when is_binary(kills) and kills != "" ->
             # Add as a field if we have kill data
             fields ++ [%{name: "Recent Kills", value: kills, inline: false}]

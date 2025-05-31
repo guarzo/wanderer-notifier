@@ -8,6 +8,7 @@ defmodule WandererNotifier.Killmail.Processor do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
 
   @type state :: term()
   @type kill_id :: String.t()
@@ -174,7 +175,7 @@ defmodule WandererNotifier.Killmail.Processor do
 
   defp should_notify?(%Killmail{} = killmail) do
     # Get the determination from the Kill Determiner
-    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    result = KillDeterminer.should_notify?(killmail)
 
     # Only log errors and inconsistencies
     case result do
@@ -197,7 +198,7 @@ defmodule WandererNotifier.Killmail.Processor do
 
   defp should_notify?(kill_data) do
     # Get the determination from the Kill Determiner
-    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data)
+    result = KillDeterminer.should_notify?(kill_data)
 
     # Only log errors and inconsistencies
     case result do
