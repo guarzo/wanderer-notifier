@@ -149,19 +149,6 @@ jobs:
           elixir-version: "1.18"
           otp-version: "27"
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
@@ -276,19 +263,6 @@ jobs:
           workflow: docs.yml
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         id: build_release
@@ -362,19 +336,6 @@ jobs:
           mode: adhoc
           branch: ${{ github.event.inputs.branch }}
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA & adhoc tag)
         uses: ./.github/actions/common-docker-build
         with:
@@ -407,19 +368,6 @@ jobs:
         id: version
         with:
           mode: automatic
-
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
 
       - name: Build & Push Docker image (SHA & latest)
         uses: ./.github/actions/common-docker-build

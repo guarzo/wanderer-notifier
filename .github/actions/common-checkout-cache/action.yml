@@ -15,8 +15,6 @@ inputs:
       deps
       _build
       priv/static
-      renderer/node_modules
-      ~/.npm
 runs:
   using: "composite"
   steps:
