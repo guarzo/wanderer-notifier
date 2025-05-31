@@ -182,12 +182,12 @@ Environment variables now use simplified naming without redundant prefixes for c
 7. **Cache and RedisQ Configuration**
 
    - `CACHE_DIR`: Directory for cache files (default: /app/data/cache)
-   - `REDISQ_URL`: ZKillboard RedisQ URL (default: https://zkillredisq.stream/listen.php)
+   - `REDISQ_URL`: ZKillboard RedisQ URL (default: [https://zkillredisq.stream/listen.php](https://zkillredisq.stream/listen.php))
    - `REDISQ_POLL_INTERVAL_MS`: RedisQ polling interval in milliseconds (default: 1000)
 
 8. **License Manager Configuration**
 
-   - `LICENSE_MANAGER_URL`: License manager API URL (default: https://lm.wanderer.ltd)
+   - `LICENSE_MANAGER_URL`: License manager API URL (default: [https://lm.wanderer.ltd](https://lm.wanderer.ltd))
 
 ## Development
 

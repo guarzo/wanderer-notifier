@@ -7,6 +7,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   use GenServer
   require Logger
 
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @callback feature_flag() :: atom()
@@ -15,6 +16,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   @callback primed_key() :: atom()
   @callback log_emoji() :: String.t()
   @callback log_label() :: String.t()
+  @callback interval_key() :: atom()
+  @callback stats_type() :: atom() | nil
 
   @impl GenServer
   def init(opts) do
@@ -64,20 +67,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       # Get the interval configuration for different scheduler types
       defp get_scheduler_interval(opts) do
-        case __MODULE__ do
-          WandererNotifier.Schedulers.SystemUpdateScheduler ->
-            Application.get_env(:wanderer_notifier, :system_update_scheduler_interval, 30_000)
+        # Get the default interval from opts
+        default_interval = Keyword.get(opts, :interval, 30_000)
 
-          WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-            Application.get_env(
-              :wanderer_notifier,
-              :character_update_scheduler_interval,
-              30_000
-            )
+        # Get the config key from the callback
+        config_key = interval_key()
 
-          _ ->
-            Keyword.get(opts, :interval, 30_000)
-        end
+        # Fetch from application config with the callback-provided key and default
+        Application.get_env(:wanderer_notifier, config_key, default_interval)
       end
 
       # Get cached data with error handling
@@ -276,15 +273,10 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       defp update_stats_count(module, count) do
-        stat_type =
-          case module do
-            WandererNotifier.Schedulers.SystemUpdateScheduler -> :systems
-            WandererNotifier.Schedulers.CharacterUpdateScheduler -> :characters
-            _ -> nil
-          end
+        stat_type = module.stats_type()
 
         if stat_type do
-          WandererNotifier.Core.Stats.set_tracked_count(stat_type, count)
+          Stats.set_tracked_count(stat_type, count)
         end
       end
     end

@@ -6,8 +6,8 @@ defmodule WandererNotifier.Map.Clients.Client do
   for different map API endpoints, handling feature checks and error management.
   """
 
+  alias WandererNotifier.Logger.Logger
   alias WandererNotifier.Map.Clients.{SystemsClient, CharactersClient}
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Updates system information from the map API.
@@ -22,7 +22,7 @@ defmodule WandererNotifier.Map.Clients.Client do
         {:ok, systems}
 
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to update systems", error: inspect(reason))
+        Logger.api_error("Failed to update systems", error: inspect(reason))
         error
     end
   end
@@ -43,7 +43,7 @@ defmodule WandererNotifier.Map.Clients.Client do
         {:ok, systems}
 
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to update systems with cache", error: inspect(reason))
+        Logger.api_error("Failed to update systems with cache", error: inspect(reason))
         error
     end
   end
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Map.Clients.Client do
         {:ok, characters}
 
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to update tracked characters", error: inspect(reason))
+        Logger.api_error("Failed to update tracked characters", error: inspect(reason))
         error
     end
   end

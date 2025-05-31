@@ -4,9 +4,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   """
   use WandererNotifier.Api.ApiPipeline
   use WandererNotifier.Api.Controllers.ControllerHelpers
-  import WandererNotifier.Api.Helpers
 
-  alias WandererNotifier.Web.Server, as: WebServer
+  alias WandererNotifier.Web.Server
 
   # Health check endpoint - simple status
   get "/" do
@@ -24,7 +23,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
 
   # Detailed health check with system information
   get "/details" do
-    web_server_status = WebServer.running?()
+    web_server_status = Server.running?()
 
     # Get memory information
     memory_info = :erlang.memory()

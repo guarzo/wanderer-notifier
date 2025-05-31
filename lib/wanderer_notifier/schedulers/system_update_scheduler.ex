@@ -27,4 +27,10 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   @impl true
   def log_label, do: "System cache"
+
+  @impl true
+  def interval_key, do: :system_update_scheduler_interval
+
+  @impl true
+  def stats_type, do: :systems
 end

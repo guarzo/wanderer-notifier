@@ -27,4 +27,10 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
   @impl true
   def log_label, do: "Character cache"
+
+  @impl true
+  def interval_key, do: :character_update_scheduler_interval
+
+  @impl true
+  def stats_type, do: :characters
 end

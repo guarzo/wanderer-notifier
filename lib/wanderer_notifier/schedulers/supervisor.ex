@@ -25,11 +25,11 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       ]
 
       Logger.info("Starting scheduler children: #{inspect(children)}")
-      {:ok, _} = Supervisor.init(children, strategy: :one_for_one)
+      Supervisor.init(children, strategy: :one_for_one)
     else
       # Return empty children list if schedulers are disabled
       Logger.info("Schedulers disabled, starting with empty children list")
-      {:ok, _} = Supervisor.init([], strategy: :one_for_one)
+      Supervisor.init([], strategy: :one_for_one)
     end
   end
 

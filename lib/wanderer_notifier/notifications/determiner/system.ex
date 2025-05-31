@@ -5,6 +5,7 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   """
 
   require Logger
+  alias Cachex
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Notifications.Deduplication
@@ -49,7 +50,7 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     cache_key = CacheKeys.system(system_id)
 
     case Cachex.get(cache_name, cache_key) do
-      {:ok, old_data} when not is_nil(old_data) ->
+      {:ok, old_data} when old_data != nil ->
         old_data != new_data
 
       _ ->

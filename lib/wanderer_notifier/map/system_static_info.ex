@@ -164,25 +164,23 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     - {:ok, system} on failure but returns the original system
   """
   def enrich_system(system) do
-    try do
-      with true <- valid_system_id?(system),
-           {:ok, static_info} <- get_system_static_info(system["solar_system_id"]),
-           data_to_merge <- extract_data_from_static_info(static_info),
-           enhanced_system <- update_system_with_static_info(system, data_to_merge) do
-        {:ok, enhanced_system}
-      else
-        false ->
-          log_invalid_system_id(system)
-          {:ok, system}
+    with true <- valid_system_id?(system),
+         system_id <- get_system_id(system),
+         {:ok, static_info} <- get_system_static_info(system_id),
+         data_to_merge <- extract_data_from_static_info(static_info),
+         enhanced_system <- update_system_with_static_info(system, data_to_merge) do
+      {:ok, enhanced_system}
+    else
+      false ->
+        log_invalid_system_id(system)
+        {:ok, system}
 
-        {:error, reason} ->
-          log_enrichment_failure(system, reason)
-          {:ok, system}
-      end
-    rescue
-      e ->
-        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
-        log_enrichment_exception(system, e, stacktrace)
+      {:error, reason} ->
+        log_enrichment_failure(system, reason)
+        {:ok, system}
+
+      error ->
+        log_enrichment_exception(system, error)
         {:ok, system}
     end
   end
@@ -286,13 +284,12 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     )
   end
 
-  defp log_enrichment_exception(system, exception, stacktrace) do
+  defp log_enrichment_exception(system, error) do
     log_message =
       [
         "[SystemStaticInfo] Exception during system enrichment:",
-        "Error: #{Exception.message(exception)}",
-        "System: #{inspect(system, pretty: true, limit: 1000)}",
-        "Stacktrace:\n#{stacktrace}"
+        "Error: #{inspect(error)}",
+        "System: #{inspect(system, pretty: true, limit: 1000)}"
       ]
       |> Enum.join("\n")
 
@@ -349,4 +346,9 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
         {:error, reason}
     end
   end
+
+  # Helper function to get system_id from both MapSystem structs and maps with string keys
+  defp get_system_id(%MapSystem{solar_system_id: id}), do: id
+  defp get_system_id(%{"solar_system_id" => id}), do: id
+  defp get_system_id(system), do: Map.get(system, :solar_system_id)
 end

@@ -1,5 +1,5 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch ui.dev server-status
+.PHONY: compile clean test test.% format shell run deps.get deps.update dev watch ui.dev server-status
 
 # ============================
 # BUILD TASKS
@@ -64,8 +64,8 @@ docker: docker.build docker.test
 # ============================
 # SHORTCUTS
 # ============================
-# Alias for watch with initial clean+compile and npm build
-s: clean compile build.npm
+# Alias for watch with initial clean+compile
+s: clean compile
 	iex -S mix
 
 # ============================

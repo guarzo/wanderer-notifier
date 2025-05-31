@@ -3,6 +3,7 @@ defmodule WandererNotifier.Cache.KeyGenerator do
   Provides macros for generating cache key functions.
   """
 
+  # The _opts parameter is reserved for future options and extensibility
   defmacro defkey(name, prefix, entity, _opts \\ []) do
     quote do
       @doc "Key for #{unquote(entity)}"

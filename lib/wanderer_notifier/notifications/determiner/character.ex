@@ -74,7 +74,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
     cache_key = CacheKeys.character(character_id)
 
     case Cachex.get(cache_name, cache_key) do
-      {:ok, old_data} when not is_nil(old_data) ->
+      {:ok, old_data} when old_data != nil ->
         old_data != new_data
 
       _ ->

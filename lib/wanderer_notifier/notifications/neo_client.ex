@@ -4,11 +4,13 @@ defmodule WandererNotifier.Notifications.NeoClient do
   """
   require Logger
 
+  alias Nostrum.Api.Message
+
   def send_embed(embed, channel_id) do
     case validate_inputs(embed, channel_id) do
       :ok ->
         try do
-          case Nostrum.Api.Message.create(channel_id, embed: embed) do
+          case Message.create(channel_id, embed: embed) do
             {:ok, _response} ->
               :ok
 

@@ -6,7 +6,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
   @impl true
-  def check(type, id) do
+  def check(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     cache_key = cache_key(type, id)
     ttl = Application.get_env(:wanderer_notifier, :deduplication_ttl, 3600)
@@ -22,7 +22,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   end
 
   @impl true
-  def clear_key(type, id) do
+  def clear_key(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     cache_key = cache_key(type, id)
     Cachex.del(cache_name, cache_key)
