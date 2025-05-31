@@ -31,6 +31,9 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
     |> stub(:get_universe_type, fn _type_id, _opts ->
       {:ok, %{"name" => "Test Ship"}}
     end)
+    |> stub(:get_type_info, fn _type_id, _opts ->
+      {:ok, %{"name" => "Test Ship"}}
+    end)
     |> stub(:get_system, fn _id, _opts ->
       {:ok,
        %{

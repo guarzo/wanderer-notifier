@@ -14,6 +14,7 @@ defmodule WandererNotifier.HttpClient.Behaviour do
   @callback get(url :: url, headers :: headers) :: response
   @callback get(url :: url, headers :: headers, opts :: opts) :: response
   @callback post(url :: url, body :: body, headers :: headers) :: response
+  @callback post(url :: url, body :: body, headers :: headers, opts :: opts) :: response
   @callback post_json(url :: url, body :: body, headers :: headers, opts :: opts) :: response
   @callback request(method :: method, url :: url, headers :: headers, body :: body, opts :: opts) ::
               response

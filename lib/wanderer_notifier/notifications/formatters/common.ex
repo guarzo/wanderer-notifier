@@ -6,7 +6,6 @@ defmodule WandererNotifier.Notifications.Formatters.Common do
 
   alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Notifications.Formatters.System, as: SystemFormatter
 
   # Color constants for Discord notifications
   @default_color 0x3498DB
@@ -62,7 +61,7 @@ defmodule WandererNotifier.Notifications.Formatters.Common do
   Creates a standard formatted system notification from a MapSystem struct.
   """
   def format_system_notification(%MapSystem{} = system) do
-    SystemFormatter.format_system_notification(system)
+    WandererNotifier.Notifications.Formatters.System.format_system_notification(system)
   end
 
   @doc """

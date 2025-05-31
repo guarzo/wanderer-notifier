@@ -21,19 +21,19 @@ defmodule WandererNotifier.Killmail.ContextTest do
   end
 
   test "creates a context with custom source in options" do
-    context = Context.new("456", "Bob", %{source: :zkill_websocket, baz: :qux})
+    context = Context.new("456", "Bob", %{source: :zkill_redisq, baz: :qux})
 
     assert context.killmail_id == "456"
     assert context.system_name == "Bob"
-    assert context.options == %{source: :zkill_websocket, baz: :qux}
+    assert context.options == %{source: :zkill_redisq, baz: :qux}
   end
 
   test "creates a context with default source in options" do
-    context = Context.new("456", "Bob", %{source: :zkill_websocket})
+    context = Context.new("456", "Bob", %{source: :zkill_redisq})
 
     assert context.killmail_id == "456"
     assert context.system_name == "Bob"
-    assert context.options == %{source: :zkill_websocket}
+    assert context.options == %{source: :zkill_redisq}
   end
 
   test "Access behavior implementation" do

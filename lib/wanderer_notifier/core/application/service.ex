@@ -1,31 +1,29 @@
 # lib/wanderer_notifier/core/application/service.ex
 defmodule WandererNotifier.Core.Application.Service do
   @moduledoc """
-  Coordinates the websocket connection, kill processing, and periodic updates.
+  Coordinates the RedisQ connection, kill processing, and periodic updates.
   """
 
   use GenServer
 
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Config
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
-  alias WandererNotifier.Schedulers.{CharacterUpdateScheduler, SystemUpdateScheduler}
-  alias WandererNotifier.Killmail.Websocket
+  alias WandererNotifier.Killmail.RedisQClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Cache.Keys
 
   @default_interval 30_000
 
   @typedoc "Internal state for the Service GenServer"
   @type state :: %__MODULE__.State{
-          ws_pid: pid() | nil,
+          redisq_pid: pid() | nil,
           service_start_time: integer()
         }
 
   defmodule State do
     @moduledoc false
     defstruct [
-      :ws_pid,
+      :redisq_pid,
       service_start_time: nil
     ]
   end
@@ -42,85 +40,264 @@ defmodule WandererNotifier.Core.Application.Service do
   @doc "Get the list of recent kills (for API)"
   defdelegate get_recent_kills(), to: KillmailProcessor
 
-  ## GenServer callbacks
+  @doc """
+  Checks if a service is running.
+  """
+  def running?(service_name) do
+    case Process.whereis(service_name) do
+      nil -> false
+      pid when is_pid(pid) -> Process.alive?(pid)
+    end
+  end
+
+  @doc """
+  Gets the current environment.
+  """
+  def env, do: Application.get_env(:wanderer_notifier, :env)
+
+  @doc """
+  Gets the current version.
+  """
+  def version, do: Application.spec(:wanderer_notifier)[:vsn]
+
+  @doc """
+  Gets the current license status.
+  """
+  def license_status, do: :ok
+
+  @doc """
+  Gets the current license key.
+  """
+  def license_key, do: Config.license_key()
+
+  @doc """
+  Gets the current license manager API URL.
+  """
+  def license_manager_api_url, do: Config.license_manager_api_url()
+
+  @doc """
+  Gets the current license manager API key.
+  """
+  def license_manager_api_key, do: Config.license_manager_api_key()
+
+  @doc """
+  Gets the current API token.
+  """
+  def api_token, do: Config.api_token()
+
+  @doc """
+  Gets the current API key.
+  """
+  def api_key, do: Config.api_key()
+
+  @doc """
+  Gets the current API base URL.
+  """
+  def api_base_url, do: Config.api_base_url()
+
+  @doc """
+  Gets the current notifier API token.
+  """
+  def notifier_api_token, do: Config.api_token()
+
+  @doc """
+  Gets the current test mode status.
+  """
+  def test_mode_enabled?, do: Config.test_mode_enabled?()
+
+  @doc """
+  Gets the current character update scheduler interval.
+  """
+  def character_update_scheduler_interval, do: Config.character_update_scheduler_interval()
+
+  @doc """
+  Gets the current system update scheduler interval.
+  """
+  def system_update_scheduler_interval, do: Config.system_update_scheduler_interval()
+
+  @doc """
+  Gets the current schedulers enabled status.
+  """
+  def schedulers_enabled?, do: true
+
+  @doc """
+  Gets the current feature flags enabled status.
+  """
+  def feature_flags_enabled?, do: Config.feature_flags_enabled?()
+
+  @doc """
+  Gets the current character exclude list.
+  """
+  def character_exclude_list, do: Config.character_exclude_list()
+
+  @doc """
+  Gets the current features.
+  """
+  def features, do: Config.features()
+
+  @doc """
+  Gets the current feature enabled status.
+  """
+  def feature_enabled?(flag), do: Config.feature_enabled?(flag)
+
+  @doc """
+  Gets the current notifications enabled status.
+  """
+  def notifications_enabled?, do: Config.notifications_enabled?()
+
+  @doc """
+  Gets the current kill notifications enabled status.
+  """
+  def kill_notifications_enabled?, do: Config.kill_notifications_enabled?()
+
+  @doc """
+  Gets the current system notifications enabled status.
+  """
+  def system_notifications_enabled?, do: Config.system_notifications_enabled?()
+
+  @doc """
+  Gets the current character notifications enabled status.
+  """
+  def character_notifications_enabled?, do: Config.character_notifications_enabled?()
+
+  @doc """
+  Gets the current status messages enabled status.
+  """
+  def status_messages_enabled?, do: Config.status_messages_enabled?()
+
+  @doc """
+  Gets the current track kspace status.
+  """
+  def track_kspace?, do: Config.track_kspace?()
+
+  @doc """
+  Gets the current tracked systems notifications enabled status.
+  """
+  def tracked_systems_notifications_enabled?,
+    do: Config.tracked_systems_notifications_enabled?()
+
+  @doc """
+  Gets the current tracked characters notifications enabled status.
+  """
+  def tracked_characters_notifications_enabled?,
+    do: Config.tracked_characters_notifications_enabled?()
+
+  @doc """
+  Gets the current character tracking enabled status.
+  """
+  def character_tracking_enabled?, do: Config.character_tracking_enabled?()
+
+  @doc """
+  Gets the current system tracking enabled status.
+  """
+  def system_tracking_enabled?, do: Config.system_tracking_enabled?()
+
+  @doc """
+  Gets the current status messages disabled status.
+  """
+  def status_messages_disabled?, do: Config.status_messages_disabled?()
+
+  @doc """
+  Gets the current track kspace systems status.
+  """
+  def track_kspace_systems?, do: Config.track_kspace_systems?()
+
+  @doc """
+  Gets the current cache directory.
+  """
+  def cache_dir, do: Config.cache_dir()
+
+  @doc """
+  Gets the current cache name.
+  """
+  def cache_name, do: Config.cache_name()
+
+  @doc """
+  Gets the current port.
+  """
+  def port, do: Config.port()
+
+  @doc """
+  Gets the current host.
+  """
+  def host, do: Config.host()
+
+  @doc """
+  Gets the current scheme.
+  """
+  def scheme, do: Config.scheme()
+
+  @doc """
+  Gets the current public URL.
+  """
+  def public_url, do: Config.public_url()
+
+  @doc """
+  Gets the current environment variable.
+  """
+  def get_env(key, default \\ nil), do: Config.get_env(key, default)
+
+  @doc """
+  Gets all limits.
+  """
+  def get_all_limits, do: Config.get_all_limits()
+
+  ## Server Implementation
 
   @impl true
   def init(_opts) do
-    AppLogger.startup_debug("Initializing WandererNotifier Service")
-    Process.flag(:trap_exit, true)
+    # Initialize state
+    state = %State{
+      service_start_time: System.system_time(:second)
+    }
 
-    now = System.system_time(:second)
-    KillmailProcessor.init()
+    # Start the RedisQ client
+    state = start_redisq(state)
 
-    state =
-      %State{service_start_time: now}
-      |> connect_websocket()
-      |> schedule_startup_notice()
-      |> schedule_maintenance(@default_interval)
-      |> schedule_websocket_health_check()
+    # Schedule maintenance
+    state = schedule_maintenance(state, @default_interval)
 
-    # Schedule killmail stats logging
-    KillmailProcessor.schedule_tasks()
-
-    # Schedule the very first systems/characters update
-    Process.send_after(self(), :update_tracked_data, 10_000)
+    # Schedule startup notification
+    state = schedule_startup_notice(state)
 
     {:ok, state}
   end
 
   @impl true
+  def terminate(_reason, state) do
+    # Stop the RedisQ client if it exists
+    if state.redisq_pid && Process.alive?(state.redisq_pid) do
+      GenServer.stop(state.redisq_pid, :normal)
+    end
+
+    :ok
+  end
+
+  @impl true
   def handle_cast({:mark_as_processed, kill_id}, state) do
-    ttl = Config.kill_dedup_ttl()
-    key = Keys.killmail(kill_id, "processed")
+    # Store in cache for deduplication
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    key = "killmail:#{kill_id}:processed"
+    Cachex.put(cache_name, key, true, ttl: 3600)
+    {:noreply, state}
+  end
 
-    case CacheRepo.set(key, true, ttl) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        AppLogger.processor_warn("Failed to cache processed kill",
-          id: kill_id,
-          reason: inspect(reason)
-        )
+  @impl true
+  def handle_info(:send_startup_notification, state) do
+    try do
+      AppLogger.startup_info("Service started", uptime: 0)
+    rescue
+      e ->
+        AppLogger.startup_error("Startup notification failed", error: Exception.message(e))
     end
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(:update_tracked_data, state) do
-    SystemUpdateScheduler.run()
-    CharacterUpdateScheduler.run()
-    {:noreply, state}
-  rescue
-    e ->
-      AppLogger.startup_error("Initial data update failed", error: Exception.message(e))
-      Process.send_after(self(), :update_tracked_data, 5_000)
-      {:noreply, state}
-  end
-
-  @impl true
-  def handle_info(:send_startup_notification, state) do
-    uptime = System.system_time(:second) - state.service_start_time
-    AppLogger.startup_info("Service started", uptime: uptime)
-
-    WandererNotifier.Notifiers.StatusNotifier.send_status_message(
-      "WandererNotifier Service Status",
-      "The service has started and is now operational."
-    )
-
-    {:noreply, state}
-  rescue
-    e ->
-      AppLogger.startup_error("Startup notification failed", error: Exception.message(e))
-      {:noreply, state}
-  end
-
-  @impl true
   def handle_info(:run_maintenance, state) do
     try do
       run_maintenance()
-      # Log maintenance execution
     rescue
       e ->
         AppLogger.scheduler_error("Maintenance error", error: Exception.message(e))
@@ -132,259 +309,146 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   @impl true
-  def handle_info({:zkill_message, raw_msg}, state) do
-    # Save a backup of the current state in process dictionary
-    # This helps recover if something goes wrong during processing
-    Process.put(:backup_state, state)
+  def handle_info(:test_alive, state) do
+    AppLogger.processor_info("[TRACE] Service is alive and responding to messages")
+    {:noreply, state}
+  end
 
-    # Process the message but discard the result since it's not a state object
-    case Jason.decode(raw_msg) do
-      {:ok, kill_data} ->
-        # Process through the consolidated API
-        case KillmailProcessor.process_killmail(kill_data, source: :zkill_websocket, state: state) do
-          {:ok, _result} ->
-            # Successfully processed
-            {:noreply, state}
+  @impl true
+  def handle_info({:zkill_message, data}, state) do
+    try do
+      # Track that we received a killmail from RedisQ
+      Stats.track_killmail_received()
 
-          {:error, reason} ->
-            # Error occurred, log it but don't crash the process
-            AppLogger.websocket_error("Error processing zkill message", error: inspect(reason))
-            {:noreply, state}
+      # Transform the data into the expected format
+      killmail_data = transform_zkill_data(data)
 
-          unexpected ->
-            # Unexpected return value, log for debugging
-            AppLogger.websocket_error("Unexpected return from process_killmail",
-              return_value: inspect(unexpected)
-            )
+      # Check if we've already processed this killmail
+      case check_killmail_processed(data["killID"]) do
+        :already_processed ->
+          {:noreply, state}
 
-            {:noreply, state}
-        end
+        :not_processed ->
+          process_killmail_async(killmail_data, data["killID"], state)
+          {:noreply, state}
 
-      {:error, reason} ->
-        # JSON decode failed
-        AppLogger.websocket_error("Failed to decode zkill message",
-          error: inspect(reason),
-          snippet: String.slice(raw_msg, 0, 100)
-        )
-
+        {:error, reason} ->
+          log_cache_error(reason, data["killID"])
+          {:noreply, state}
+      end
+    rescue
+      e ->
+        stacktrace = __STACKTRACE__
+        log_processing_exception(e, data["killID"], stacktrace)
         {:noreply, state}
     end
   end
 
-  @impl true
-  def handle_info(:attempt_connection, state) do
-    case start_websocket(Config.websocket_config().url, state) do
-      {:ok, new_state} ->
-        {:noreply, new_state}
+  defp transform_zkill_data(data) do
+    %{
+      "killmail_id" => data["killID"],
+      "killmail" => data["killmail"],
+      "zkb" => data["zkb"],
+      "solar_system_id" => get_in(data, ["killmail", "solar_system_id"]),
+      "victim" => get_in(data, ["killmail", "victim"]),
+      "attackers" => get_in(data, ["killmail", "attackers"])
+    }
+  end
 
-      {:error, reason} ->
-        AppLogger.websocket_error("Failed to start websocket", %{error: reason})
-        Process.send_after(self(), :attempt_connection, 100)
-        {:noreply, state}
+  defp check_killmail_processed(kill_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    key = "killmail:#{kill_id}:processed"
+
+    case Cachex.get(cache_name, key) do
+      {:ok, true} -> :already_processed
+      {:ok, nil} -> :not_processed
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  @impl true
-  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
-    # Handle both websocket DOWN messages and other process DOWN messages
-    if state.ws_pid == pid do
-      AppLogger.websocket_warn("Websocket DOWN (pid: #{inspect(pid)}); scheduling reconnect",
-        reason: inspect(reason)
-      )
+  defp process_killmail_async(killmail_data, kill_id, state) do
+    Task.start(fn ->
+      case KillmailProcessor.process_killmail(killmail_data,
+             source: :zkill_redisq,
+             state: state
+           ) do
+        {:ok, _result} ->
+          mark_killmail_as_processed(kill_id)
 
-      # Update Stats to show process crash
-      WandererNotifier.Core.Stats.update_websocket(%{
-        connected: false,
-        connecting: true,
-        last_disconnect: DateTime.utc_now()
-      })
+        {:error, reason} ->
+          log_killmail_processing_error(reason, kill_id)
 
-      # Use a shorter delay for faster recovery
-      reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
-      AppLogger.websocket_info("Will attempt reconnect in #{reconnect_delay}ms")
-
-      Process.send_after(self(), :reconnect_ws, reconnect_delay)
-      {:noreply, %{state | ws_pid: nil}}
-    else
-      AppLogger.processor_debug("Unhandled DOWN message",
-        ref: inspect(ref),
-        pid: inspect(pid),
-        reason: inspect(reason)
-      )
-
-      {:noreply, state}
-    end
+        unexpected ->
+          log_unexpected_processing_result(unexpected, kill_id)
+      end
+    end)
   end
 
-  @impl true
-  def handle_info(:reconnect_ws, state) do
-    # Log the reconnection attempt
-    AppLogger.websocket_info("Attempting to reconnect websocket")
-
-    # Make sure we properly monitor the new connection
-    new_state = connect_websocket(state)
-
-    # If reconnection failed, schedule another attempt
-    if new_state.ws_pid == nil do
-      AppLogger.websocket_warn("Reconnection failed, scheduling another attempt")
-      Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
-    else
-      AppLogger.websocket_info("Websocket reconnected successfully",
-        pid: inspect(new_state.ws_pid)
-      )
-    end
-
-    {:noreply, new_state}
+  defp mark_killmail_as_processed(kill_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    key = "killmail:#{kill_id}:processed"
+    Cachex.put(cache_name, key, true, ttl: 3600)
   end
 
-  @impl true
-  def handle_info(:check_websocket_health, state) do
-    # Ensure state is a proper State struct, if not recreate it to prevent crashes
-    state = ensure_valid_state(state)
-
-    # Schedule the next check
-    state = schedule_websocket_health_check(state)
-
-    # Get the current stats
-    stats = WandererNotifier.Core.Stats.get_stats()
-    ws_status = stats.websocket
-
-    AppLogger.websocket_debug("Checking websocket health",
-      connected: ws_status.connected,
-      connecting: ws_status.connecting,
-      ws_pid: if(state.ws_pid, do: inspect(state.ws_pid), else: "nil"),
-      last_message:
-        if(ws_status.last_message, do: DateTime.to_string(ws_status.last_message), else: "never"),
-      reconnects: ws_status.reconnects
-    )
-
-    # Check if we need to force a reconnect
-    if websocket_needs_reconnect?(state, ws_status) do
-      # Send a reconnect message
-      AppLogger.websocket_info("Health check initiating websocket reconnect")
-      self() |> send(:reconnect_ws)
-    end
-
-    {:noreply, state}
-  rescue
-    e ->
-      # If an error occurs during websocket health check, log it and ensure we have a valid state
-      AppLogger.websocket_error("Error in websocket health check",
-        error: Exception.message(e),
-        state_type: inspect(state)
-      )
-
-      # Create a fresh state to avoid further errors
-      fresh_state = %State{service_start_time: System.system_time(:second)}
-      Process.send_after(self(), :reconnect_ws, 5_000)
-
-      # Make sure we schedule another health check in the future
-      schedule_websocket_health_check(fresh_state)
-
-      {:noreply, fresh_state}
+  defp log_cache_error(reason, kill_id) do
+    AppLogger.processor_error("Error checking cache", %{
+      error: inspect(reason),
+      kill_id: kill_id
+    })
   end
 
-  @impl true
-  def handle_info({:websocket_terminated, pid, reason}, %{ws_pid: current_pid} = state) do
-    # Only handle if this is our current websocket
-    if pid == current_pid do
-      AppLogger.websocket_info("Received websocket termination notification",
-        pid: inspect(pid),
-        reason: inspect(reason)
-      )
-
-      # Mark the process as nil
-      new_state = %{state | ws_pid: nil}
-
-      # Schedule reconnection
-      reconnect_delay = min(Config.websocket_reconnect_delay(), 3_000)
-      Process.send_after(self(), :reconnect_ws, reconnect_delay)
-
-      {:noreply, new_state}
-    else
-      # This is a termination for an old websocket we don't care about
-      AppLogger.websocket_debug("Ignoring termination for old websocket",
-        terminated_pid: inspect(pid),
-        current_pid: inspect(current_pid)
-      )
-
-      {:noreply, state}
-    end
+  defp log_killmail_processing_error(reason, kill_id) do
+    AppLogger.processor_error("Error processing zkill message", %{
+      error: inspect(reason),
+      kill_id: kill_id
+    })
   end
 
-  @impl true
-  # Catch-all to make unhandled messages visible in logs
-  def handle_info(other, state) do
-    AppLogger.processor_debug("Unhandled message in Service", msg: inspect(other))
-    {:noreply, state}
+  defp log_unexpected_processing_result(unexpected, kill_id) do
+    AppLogger.processor_error("Unexpected return from process_killmail", %{
+      result: inspect(unexpected),
+      kill_id: kill_id
+    })
+  end
+
+  defp log_processing_exception(e, kill_id, stacktrace) do
+    AppLogger.processor_error("Exception in handle_info for :zkill_message", %{
+      error: Exception.message(e),
+      stacktrace: Exception.format_stacktrace(stacktrace),
+      kill_id: kill_id
+    })
   end
 
   ## Internal helpers
 
-  defp check_pid_and_connect(pid, state) do
-    if Process.alive?(pid) do
-      state
+  # Start the RedisQ client
+  defp start_redisq(state) do
+    if Config.redisq_enabled?() do
+      AppLogger.processor_debug("Starting RedisQ client")
+
+      # Stop any existing RedisQ client
+      if state.redisq_pid && Process.alive?(state.redisq_pid) do
+        AppLogger.processor_debug("Stopping existing RedisQ client")
+        GenServer.stop(state.redisq_pid, :normal)
+      end
+
+      case RedisQClient.start_link(
+             queue_id: "wanderer_notifier_#{:rand.uniform(1_000_000)}",
+             parent: self(),
+             poll_interval: Config.redisq_poll_interval(),
+             url: Config.redisq_url()
+           ) do
+        {:ok, pid} ->
+          AppLogger.processor_debug("RedisQ client started", pid: inspect(pid))
+          %{state | redisq_pid: pid}
+
+        {:error, reason} ->
+          AppLogger.processor_error("Failed to start RedisQ client", error: inspect(reason))
+          state
+      end
     else
-      # PID exists but process is dead, clear it and reconnect
-      AppLogger.websocket_debug("Websocket PID exists but process is dead", pid: inspect(pid))
-      connect_websocket(%{state | ws_pid: nil})
-    end
-  end
-
-  # (Re)establish the Killmail Websocket, if enabled
-  defp connect_websocket(%State{ws_pid: pid} = state) when is_pid(pid),
-    do: check_pid_and_connect(pid, state)
-
-  defp connect_websocket(state) do
-    if Config.websocket_enabled?() do
-      AppLogger.websocket_debug("Starting Killmail Websocket")
-      state = clear_previous_connection(state)
-      state = update_websocket_stats(state)
-      attempt_websocket_connection(state)
-    else
-      AppLogger.websocket_info("Websocket disabled by configuration")
+      AppLogger.processor_info("RedisQ client disabled by configuration")
       state
-    end
-  end
-
-  defp clear_previous_connection(state) do
-    if state.ws_pid != nil do
-      AppLogger.websocket_debug("Clearing previous websocket PID",
-        old_pid: inspect(state.ws_pid)
-      )
-    end
-
-    %{state | ws_pid: nil}
-  end
-
-  defp update_websocket_stats(state) do
-    WandererNotifier.Core.Stats.update_websocket(%{connecting: true})
-    state
-  end
-
-  defp attempt_websocket_connection(state) do
-    # Schedule connection attempt after a short delay
-    Process.send_after(self(), :attempt_connection, 100)
-    state
-  end
-
-  defp start_websocket(url, state) do
-    case Websocket.start_link(url: url, parent: self()) do
-      {:ok, ws_pid} ->
-        monitor_ref = Process.monitor(ws_pid)
-
-        AppLogger.websocket_info("Successfully started websocket",
-          pid: inspect(ws_pid),
-          monitor_ref: inspect(monitor_ref)
-        )
-
-        {:ok, %{state | ws_pid: ws_pid}}
-
-      {:error, reason} ->
-        AppLogger.websocket_error("Websocket start failed", error: inspect(reason))
-        reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
-        Process.send_after(self(), :reconnect_ws, reconnect_delay)
-        {:error, reason}
     end
   end
 
@@ -401,88 +465,10 @@ defmodule WandererNotifier.Core.Application.Service do
     state
   end
 
-  # Schedule a periodic websocket health check
-  defp schedule_websocket_health_check(state) do
-    # Check every 10 seconds
-    Process.send_after(self(), :check_websocket_health, 10_000)
-    state
-  end
-
   # What runs on each maintenance tick
   defp run_maintenance do
-    SystemUpdateScheduler.run()
-    CharacterUpdateScheduler.run()
+    # Let the scheduler supervisor handle running the schedulers
     KillmailProcessor.schedule_tasks()
     :ok
-  end
-
-  # Helper to ensure we have a valid State struct
-  defp ensure_valid_state(state) do
-    cond do
-      # Valid State struct with ws_pid field
-      is_map(state) and is_map_key(state, :ws_pid) and is_map_key(state, :service_start_time) ->
-        state
-
-      # Process dictionary has state backup
-      Process.get(:backup_state) ->
-        AppLogger.websocket_info("Restored state from backup")
-        Process.get(:backup_state)
-
-      # Create new state as fallback
-      true ->
-        AppLogger.websocket_warn("Created new State struct due to invalid state",
-          received: inspect(state)
-        )
-
-        %State{service_start_time: System.system_time(:second)}
-    end
-  end
-
-  # Helper function to determine if websocket needs reconnection
-  defp websocket_needs_reconnect?(state, ws_status) do
-    cond do
-      # No process ID for websocket
-      state.ws_pid == nil ->
-        AppLogger.websocket_warn("Health check found nil websocket PID")
-        true
-
-      # PID exists but process is dead
-      not Process.alive?(state.ws_pid) ->
-        AppLogger.websocket_warn("Health check found dead websocket process",
-          pid: inspect(state.ws_pid)
-        )
-
-        true
-
-      # Everything looks connected in stats
-      ws_status.connected ->
-        false
-
-      # We're already in connecting state
-      ws_status.connecting ->
-        stalled_reconnect?(ws_status.last_disconnect)
-
-      # Not connected or connecting - force reconnect
-      true ->
-        AppLogger.websocket_warn("Health check found disconnected websocket")
-        true
-    end
-  end
-
-  # Helper to determine if a reconnect attempt has stalled
-  defp stalled_reconnect?(nil), do: false
-
-  defp stalled_reconnect?(timestamp) do
-    diff = DateTime.diff(DateTime.utc_now(), timestamp, :second)
-
-    if diff > 30 do
-      AppLogger.websocket_warn("Health check found stalled reconnect",
-        seconds_since_disconnect: diff
-      )
-
-      true
-    else
-      false
-    end
   end
 end

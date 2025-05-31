@@ -5,12 +5,7 @@ defmodule WandererNotifier.Web.Router do
   use Plug.Router
   import Plug.Conn
 
-  alias WandererNotifier.Api.Controllers.{
-    HealthController,
-    KillController,
-    NotificationController,
-    WebController
-  }
+  alias WandererNotifier.Api.Controllers.HealthController
 
   # Basic request logging
   plug(Plug.Logger)
@@ -43,21 +38,9 @@ defmodule WandererNotifier.Web.Router do
   plug(:match)
   plug(:dispatch)
 
-  # Health check endpoint
+  # Health check endpoints
   forward("/health", to: HealthController)
-
-  # API Routes
   forward("/api/health", to: HealthController)
-  forward("/api/notifications", to: NotificationController)
-  forward("/api/debug", to: WebController)
-
-  # Add kill routes
-  forward("/api/kill", to: KillController)
-
-  # Return 404 for /api/web/schedulers
-  get "/api/web/schedulers" do
-    send_resp(conn, 404, "Not found")
-  end
 
   # React app routes
   get "/schedulers" do

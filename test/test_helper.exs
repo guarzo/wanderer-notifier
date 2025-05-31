@@ -2,8 +2,8 @@
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 
-# Start ExUnit with global mode disabled
-ExUnit.start(capture_log: true)
+# Start ExUnit
+ExUnit.start()
 
 # Configure Mox
 Application.ensure_all_started(:mox)
@@ -161,16 +161,19 @@ Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
 Application.put_env(:wanderer_notifier, :schedulers_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_supervisor_enabled, false)
 
+# Disable RedisQ client in tests to prevent HTTP calls
+Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
+
 # Configure cache implementation
-Application.put_env(:wanderer_notifier, :cache_impl, WandererNotifier.ETSCache)
+Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
 # Load shared test mocks
 Code.require_file("support/test_mocks.ex", __DIR__)
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")
-System.put_env("MAP_TOKEN", "test_map_token")
 System.put_env("MAP_NAME", "test_map")
+System.put_env("MAP_API_KEY", "test_map_api_key")
 System.put_env("NOTIFIER_API_TOKEN", "test_notifier_token")
 System.put_env("LICENSE_KEY", "test_license_key")
 System.put_env("LICENSE_MANAGER_API_URL", "http://test.license.url")

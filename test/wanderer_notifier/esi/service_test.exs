@@ -55,7 +55,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   # Stub the Client module
   setup do
     # Set the cache mock as the implementation
-    Application.put_env(:wanderer_notifier, :cache_repository, CacheMock)
+    Application.put_env(:wanderer_notifier, :cache_repo, CacheMock)
     CacheMock.clear()
 
     # Set the ESI client mock as the implementation

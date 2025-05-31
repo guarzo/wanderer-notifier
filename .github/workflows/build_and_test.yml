@@ -27,16 +27,17 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
-      WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
-      WANDERER_DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-      WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
-      WANDERER_MAP_URL: "http://example.com/map?name=testmap"
-      WANDERER_MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
-      WANDERER_DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-      WANDERER_LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
-      WANDERER_LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
-      WANDERER_ENV: test
-      WANDERER_FEATURE_DISABLE_WEBSOCKET: true
+      NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
+      DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+      CACHE_DIR: "/tmp/wanderer_notifier_cache"
+      MAP_URL: "http://example.com"
+      MAP_NAME: "testmap"
+      MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
+      ENV: test
+      DISABLE_WEBSOCKET: true
     steps:
       - uses: actions/checkout@v4
 
@@ -78,11 +79,12 @@ jobs:
     needs: test
     env:
       MIX_ENV: dev
-      WANDERER_MAP_URL: "http://example.com/map?name=testmap"
-      WANDERER_MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
-      WANDERER_DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-      WANDERER_LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
-      WANDERER_LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
+      MAP_URL: "http://example.com"
+      MAP_NAME: "testmap"
+      MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -149,19 +151,6 @@ jobs:
           elixir-version: "1.18"
           otp-version: "27"
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
@@ -172,15 +161,16 @@ jobs:
           build-args: |
             APP_VERSION=0.0.0-ci-test
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
 
       - name: Full Docker validation with web server
         env:
           DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-          MAP_URL_WITH_NAME: "http://example.com/map?name=testmap"
-          MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+          MAP_URL: "http://example.com"
+          MAP_NAME: "testmap"
+          MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
         run: |
@@ -190,14 +180,15 @@ jobs:
             -i guarzo/wanderer-notifier \
             -t sha-${{ steps.sha.outputs.short_sha }} \
             -d "${{ secrets.FAKE_DISCORD_TOKEN }}" \
-            -e "WANDERER_MAP_URL=http://example.com/map?name=testmap" \
-            -e "WANDERER_MAP_TOKEN=${{ secrets.MAP_TOKEN }}" \
-            -e "WANDERER_DISCORD_CHANNEL_ID=${{ secrets.DISCORD_CHANNEL_ID }}" \
-            -e "WANDERER_LICENSE_KEY=${{ secrets.LICENSE_KEY }}" \
-            -e "WANDERER_LICENSE_MANAGER_URL=${{ secrets.LICENSE_MANAGER_URL }}" \
-            -e "WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
-            -e "WANDERER_ENV=test" \
-            -e "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+            -e "MAP_URL=http://example.com" \
+            -e "MAP_NAME=testmap" \
+            -e "MAP_API_KEY=${{ secrets.MAP_API_KEY }}" \
+            -e "DISCORD_CHANNEL_ID=${{ secrets.DISCORD_CHANNEL_ID }}" \
+            -e "LICENSE_KEY=${{ secrets.LICENSE_KEY }}" \
+            -e "LICENSE_MANAGER_URL=${{ secrets.LICENSE_MANAGER_URL }}" \
+            -e "NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
+            -e "ENV=test" \
+            -e "DISABLE_WEBSOCKET=true"
           echo "Docker image validation successful!"
 
   release:
@@ -276,19 +267,6 @@ jobs:
           workflow: docs.yml
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         id: build_release
@@ -300,7 +278,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
 
@@ -324,7 +302,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
           docker_username: guarzo
@@ -362,19 +340,6 @@ jobs:
           mode: adhoc
           branch: ${{ github.event.inputs.branch }}
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build Docker image (SHA & adhoc tag)
         uses: ./.github/actions/common-docker-build
         with:
@@ -387,7 +352,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
           docker_username: guarzo
@@ -408,19 +373,6 @@ jobs:
         with:
           mode: automatic
 
-      - name: Common Node.js Setup
-        uses: ./.github/actions/common-node-setup
-        with:
-          node_version: "20"
-          cache_dependency_path: "renderer/package-lock.json"
-
-      - name: Install frontend dependencies and build
-        run: |
-          cd renderer
-          npm ci
-          npm run build
-          cd ..
-
       - name: Build & Push Docker image (SHA & latest)
         uses: ./.github/actions/common-docker-build
         with:
@@ -433,7 +385,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
           docker_username: guarzo

@@ -132,7 +132,7 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_character_exclude_list do
-    case System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") do
+    case System.get_env("CHARACTER_EXCLUDE_LIST") do
       nil ->
         []
 
@@ -164,26 +164,26 @@ defmodule WandererNotifier.ConfigProvider do
     put_in(
       config,
       [:wanderer_notifier, :discord_channel_id],
-      System.get_env("WANDERER_DISCORD_CHANNEL_ID")
+      System.get_env("DISCORD_CHANNEL_ID")
     )
   end
 
   defp add_map_config(config) do
     config
-    |> put_in([:wanderer_notifier, :map_token], System.get_env("WANDERER_MAP_TOKEN"))
-    |> put_in([:wanderer_notifier, :map_url_with_name], System.get_env("WANDERER_MAP_URL"))
+    |> put_in([:wanderer_notifier, :map_token], System.get_env("MAP_API_KEY"))
+    |> put_in([:wanderer_notifier, :map_url_with_name], System.get_env("MAP_URL_WITH_NAME"))
   end
 
   defp add_api_config(config) do
     put_in(
       config,
       [:wanderer_notifier, :api_token],
-      System.get_env("WANDERER_NOTIFIER_API_TOKEN")
+      System.get_env("NOTIFIER_API_TOKEN")
     )
   end
 
   defp add_license_config(config) do
-    put_in(config, [:wanderer_notifier, :license_key], System.get_env("WANDERER_LICENSE_KEY"))
+    put_in(config, [:wanderer_notifier, :license_key], System.get_env("LICENSE_KEY"))
   end
 
   defp add_port_config(config) do
@@ -194,13 +194,12 @@ defmodule WandererNotifier.ConfigProvider do
     put_in(
       config,
       [:wanderer_notifier, :features],
-      notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
-      kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
-      system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
-      character_notifications_enabled:
-        parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
-      status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
-      track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
+      notifications_enabled: parse_bool("NOTIFICATIONS_ENABLED", true),
+      kill_notifications_enabled: parse_bool("KILL_NOTIFICATIONS_ENABLED", true),
+      system_notifications_enabled: parse_bool("SYSTEM_NOTIFICATIONS_ENABLED", true),
+      character_notifications_enabled: parse_bool("CHARACTER_NOTIFICATIONS_ENABLED", true),
+      status_messages_enabled: parse_bool("ENABLE_STATUS_MESSAGES", true),
+      track_kspace: parse_bool("TRACK_KSPACE_ENABLED", true)
     )
   end
 

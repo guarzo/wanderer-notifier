@@ -4,8 +4,9 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   Provides rich formatting for system tracking events.
   """
   require Logger
+  alias WandererNotifier.Killmail.Enrichment
+  alias WandererNotifier.Logger.Logger
   alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Color and icon constants (can be refactored to a shared place if needed)
   @default_color 0x3498DB
@@ -63,7 +64,8 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         "[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
       )
 
-      AppLogger.processor_error("[SystemFormatter] Error formatting system notification",
+      WandererNotifier.Logger.Logger.processor_error(
+        "[SystemFormatter] Error formatting system notification",
         system: system.name,
         error: Exception.message(e),
         stacktrace: Exception.format_stacktrace(__STACKTRACE__)
@@ -228,7 +230,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       # Get kill information from enrichment module
       try do
         # The response should now be safe strings we can directly use
-        case WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3) do
+        case Enrichment.recent_kills_for_system(system_id_int, 3) do
           kills when is_binary(kills) and kills != "" ->
             # Add as a field if we have kill data
             fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
@@ -240,7 +242,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       rescue
         e ->
           # Log but don't crash
-          AppLogger.processor_warn("Error adding kills field",
+          WandererNotifier.Logger.Logger.processor_warn("Error adding kills field",
             error: Exception.message(e),
             system_id: system_id
           )

@@ -56,8 +56,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     rescue
       e ->
         AppLogger.api_error("Error getting Discord channel ID",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          error: Exception.message(e)
         )
 
         nil
@@ -105,56 +104,100 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   end
 
   # Send embed to the specified channel
-  defp send_embed_to_channel(embed, nil) do
-    # Try to get a default channel ID as a last resort
-    default_channel_id = try_get_default_channel_id()
+  defp send_embed_to_channel(embed, target_channel) do
+    # Validate channel ID
+    case target_channel do
+      nil ->
+        AppLogger.api_error("Failed to send embed: nil channel ID",
+          embed_type: typeof(embed),
+          embed_title:
+            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
+        )
 
-    if default_channel_id do
-      AppLogger.api_warn("Using default channel ID as fallback",
-        default_channel_id: default_channel_id
-      )
+        {:error, :nil_channel_id}
 
-      send_embed_to_channel(embed, default_channel_id)
-    else
-      AppLogger.api_error("Failed to send embed: missing channel ID and no fallback available",
-        embed_type: typeof(embed),
-        embed_title:
-          if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
-      )
+      channel_id when is_binary(channel_id) and channel_id != "" ->
+        # Channel ID is already a non-empty string
+        send_embed_to_valid_channel(embed, channel_id)
 
-      {:error, :missing_channel_id}
+      channel_id when is_integer(channel_id) ->
+        # Convert integer channel ID to string
+        send_embed_to_valid_channel(embed, to_string(channel_id))
+
+      _ ->
+        AppLogger.api_error("Failed to send embed: invalid channel ID",
+          channel_id: target_channel,
+          embed_type: typeof(embed),
+          embed_title:
+            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
+        )
+
+        {:error, :invalid_channel_id}
     end
   end
 
-  defp send_embed_to_channel(embed, target_channel) do
+  # Helper function to send embed to a validated channel ID
+  defp send_embed_to_valid_channel(embed, channel_id) do
     # Convert to Nostrum.Struct.Embed
     discord_embed = convert_to_nostrum_embed(embed)
+
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
-    case Message.create(target_channel, embeds: [discord_embed]) do
+    try do
+      channel_id
+      |> String.to_integer()
+      |> send_discord_message(discord_embed)
+    rescue
+      e ->
+        handle_exception(e, channel_id)
+    end
+  end
+
+  # Send message to Discord and handle the response
+  defp send_discord_message(channel_id_int, discord_embed) do
+    case Message.create(channel_id_int, embeds: [discord_embed]) do
       {:ok, _message} ->
         :ok
 
-      {:error, %{status_code: 429, response: response}} ->
-        retry_after = get_retry_after(response)
-        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
-        {:error, {:rate_limited, retry_after}}
-
-      {:error, error} ->
-        AppLogger.api_error("Failed to send embed via Nostrum", error: inspect(error))
-        {:error, error}
+      {:error, response} ->
+        handle_discord_error(response, channel_id_int)
     end
   end
 
-  # Try to get a default channel ID from various config options
-  defp try_get_default_channel_id do
-    # Try various channel ID config options in order of preference
-    cond do
-      id = Config.discord_channel_id() -> normalize_channel_id(id)
-      id = Config.discord_kill_channel_id() -> normalize_channel_id(id)
-      id = Config.discord_system_channel_id() -> normalize_channel_id(id)
-      id = Config.discord_character_channel_id() -> normalize_channel_id(id)
-      true -> nil
-    end
+  # Handle different types of Discord API errors
+  defp handle_discord_error(%{status_code: 429, response: response}, _channel_id) do
+    retry_after = get_retry_after(response)
+    AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+    {:error, {:rate_limited, retry_after}}
+  end
+
+  defp handle_discord_error(%{status_code: status_code, response: response}, channel_id) do
+    AppLogger.api_error("Discord API error",
+      status_code: status_code,
+      response: inspect(response),
+      channel_id: channel_id
+    )
+
+    {:error, {:api_error, status_code, response}}
+  end
+
+  defp handle_discord_error(error, channel_id) do
+    AppLogger.api_error("Failed to send embed via Nostrum",
+      error: inspect(error),
+      channel_id: channel_id,
+      error_type: typeof(error)
+    )
+
+    {:error, error}
+  end
+
+  # Handle exceptions during message sending
+  defp handle_exception(e, channel_id) do
+    AppLogger.api_error("Exception in send_embed_to_channel",
+      error: Exception.message(e),
+      channel_id: channel_id
+    )
+
+    {:error, {:exception, Exception.message(e)}}
   end
 
   @doc """
@@ -205,7 +248,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     )
 
     case Message.create(target_channel,
-           embeds: [discord_embed],
+           embed: discord_embed,
            components: discord_components
          ) do
       {:ok, _message} ->
@@ -263,8 +306,11 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
       message_length: String.length(message)
     )
 
-    case Message.create(target_channel, content: message) do
-      {:ok, _message} ->
+    # Convert channel ID to string if it's not already
+    channel_id = if is_binary(target_channel), do: target_channel, else: to_string(target_channel)
+
+    case Message.create(channel_id, content: message) do
+      {:ok, _response} ->
         :ok
 
       {:error, %{status_code: 429, response: response}} ->
@@ -410,8 +456,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     rescue
       e ->
         AppLogger.api_error("Error normalizing channel ID",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          error: Exception.message(e)
         )
 
         nil
@@ -456,7 +501,9 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
           parsed: int_id
         )
 
-        int_id
+        # Discord channel IDs are too large for regular integers
+        # We need to keep them as strings
+        channel_id
 
       :error ->
         AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
@@ -481,36 +528,62 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
   defp typeof(_), do: "unknown"
 
-  defp convert_to_nostrum_embed(embed) when is_map(embed) do
-    %Embed{
-      title: get_field_with_fallback(embed, :title, "title"),
-      description: get_field_with_fallback(embed, :description, "description"),
-      url: get_field_with_fallback(embed, :url, "url"),
-      timestamp: get_field_with_fallback(embed, :timestamp, "timestamp"),
-      color: get_field_with_fallback(embed, :color, "color"),
-      footer: extract_footer(embed),
-      image: extract_image(embed),
-      thumbnail: get_thumbnail_with_fallback(embed),
-      author: extract_author(embed),
-      fields: extract_fields(embed)
-    }
+  @doc """
+  Converts any embed format to Nostrum.Struct.Embed.
+  """
+  def convert_to_nostrum_embed(embed) when is_struct(embed, Embed) do
+    # Already a Nostrum embed
+    embed
   end
 
-  # Extract fields from the embed
-  defp extract_fields(embed) do
-    Map.get(embed, "fields", [])
-    |> Enum.map(fn field ->
-      %Embed.Field{
-        name: Map.get(field, "name", ""),
-        value: Map.get(field, "value", ""),
-        inline: Map.get(field, "inline", false)
-      }
-    end)
+  def convert_to_nostrum_embed(embed) do
+    require Logger
+
+    # Convert struct to map if needed
+    embed_map =
+      if is_struct(embed) do
+        Map.from_struct(embed)
+      else
+        embed
+      end
+
+    # Extract fields safely
+    fields =
+      cond do
+        Map.has_key?(embed_map, :fields) -> Map.get(embed_map, :fields)
+        Map.has_key?(embed_map, "fields") -> Map.get(embed_map, "fields")
+        true -> []
+      end
+
+    # Create the Nostrum embed
+    discord_embed = %Embed{
+      title: get_field_with_fallback(embed_map, :title, "title"),
+      description: get_field_with_fallback(embed_map, :description, "description"),
+      url: get_field_with_fallback(embed_map, :url, "url"),
+      timestamp: get_field_with_fallback(embed_map, :timestamp, "timestamp"),
+      color: get_field_with_fallback(embed_map, :color, "color"),
+      footer: extract_footer(embed_map),
+      image: extract_image(embed_map),
+      thumbnail: extract_thumbnail(embed_map),
+      author: extract_author(embed_map),
+      fields:
+        Enum.map(fields, fn field ->
+          %Embed.Field{
+            name: get_field_with_fallback(field, :name, "name", ""),
+            value: get_field_with_fallback(field, :value, "value", ""),
+            inline: get_field_with_fallback(field, :inline, "inline", false)
+          }
+        end)
+    }
+
+    discord_embed
   end
 
   # Extract footer from the embed
   defp extract_footer(embed) do
-    case get_field_with_fallback(embed, :footer, "footer") do
+    footer = get_field_with_fallback(embed, :footer, "footer")
+
+    case footer do
       nil -> nil
       footer_map when is_map(footer_map) -> build_footer(footer_map)
     end
@@ -526,7 +599,9 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   # Extract author from the embed
   defp extract_author(embed) do
-    case Map.get(embed, "author") do
+    author = get_field_with_fallback(embed, :author, "author")
+
+    case author do
       nil -> nil
       author_map when is_map(author_map) -> build_author(author_map)
     end
@@ -543,27 +618,19 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   # Get a field with fallback from atom or string keys
   defp get_field_with_fallback(map, atom_key, string_key, default \\ nil) do
-    cond do
-      Map.has_key?(map, atom_key) -> Map.get(map, atom_key)
-      Map.has_key?(map, string_key) -> Map.get(map, string_key)
-      true -> default
-    end
-  end
+    value =
+      cond do
+        Map.has_key?(map, atom_key) -> Map.get(map, atom_key)
+        Map.has_key?(map, string_key) -> Map.get(map, string_key)
+        true -> default
+      end
 
-  # Apply system notification thumbnail fallback if needed
-  defp get_thumbnail_with_fallback(embed) do
-    thumbnail = extract_thumbnail(embed)
-    # If this is a sun type notification with no thumbnail, use a hardcoded URL
-    if is_nil(thumbnail) && Map.get(embed, "title", "") =~ "System Notification" do
-      %Embed.Thumbnail{url: "https://images.evetech.net/types/45_041/icon?size=64"}
-    else
-      thumbnail
-    end
+    value
   end
 
   # Extract thumbnail from the embed
   defp extract_thumbnail(embed) do
-    thumbnail = Map.get(embed, "thumbnail")
+    thumbnail = get_field_with_fallback(embed, :thumbnail, "thumbnail")
     # Try different formats in order of likelihood
     cond do
       valid_thumbnail = extract_thumbnail_from_map(thumbnail) ->

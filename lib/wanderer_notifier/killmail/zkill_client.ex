@@ -112,7 +112,11 @@ defmodule WandererNotifier.Killmail.ZKillClient do
       {"Cache-Control", "no-cache"}
     ]
 
-    opts = [recv_timeout: 5_000, timeout: 5_000, follow_redirect: true]
+    opts = [
+      recv_timeout: 10_000,
+      timeout: 10_000,
+      follow_redirect: true
+    ]
 
     client =
       Application.get_env(
@@ -131,8 +135,12 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, error: error_info})
         {:error, {:http_error, status}}
 
+      {:error, %{reason: :timeout}} ->
+        AppLogger.api_error("ZKill timeout", %{url: url, timeout: 10_000})
+        {:error, :timeout}
+
       {:error, reason} ->
-        Logger.error("ZKill HTTP client error: #{inspect(reason)}")
+        AppLogger.api_error("ZKill HTTP client error", %{url: url, error: inspect(reason)})
         {:error, reason}
     end
   end
@@ -183,7 +191,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
     Logger.info("Formatting kill #{kill_id} hash=#{hash}")
 
-    details = get_kill_details(kill_id, hash)
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    details = get_kill_details(kill_id, hash, cache_name)
     {ship_id, victim_id} = extract_ids(details)
 
     ship = get_name(ship_id, &ESIService.get_ship_type_name/2, "Unknown Ship")
@@ -197,10 +206,10 @@ defmodule WandererNotifier.Killmail.ZKillClient do
       "Unknown kill"
   end
 
-  defp get_kill_details(_id, nil), do: nil
+  defp get_kill_details(_id, nil, _cache_name), do: nil
 
-  defp get_kill_details(id, hash) do
-    case ESIService.get_killmail(id, hash) do
+  defp get_kill_details(id, hash, cache_name) do
+    case ESIService.get_killmail(id, hash, cache_name: cache_name) do
       {:ok, resp} -> resp
       {:error, _} -> nil
     end
@@ -217,8 +226,29 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   defp get_name(id, fun, default) do
     case fun.(id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> default
+      {:ok, %{"name" => name}} ->
+        name
+
+      {:error, :esi_data_missing} ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} returned missing data. Using fallback: #{inspect(default)}"
+        )
+
+        default
+
+      {:error, reason} ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} failed with reason: #{inspect(reason)}. Using fallback: #{inspect(default)}"
+        )
+
+        default
+
+      other ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} returned unexpected result: #{inspect(other)}. Using fallback: #{inspect(default)}"
+        )
+
+        default
     end
   end
 

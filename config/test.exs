@@ -5,7 +5,6 @@ config :wanderer_notifier,
   test_env: true,
   env: :test,
   disable_status_messages: true,
-  cache_name: :test_cache,
   chart_service_dir: System.get_env("CHART_SERVICE_DIR", "/workspace/chart-service")
 
 # Test mode configuration
@@ -18,7 +17,8 @@ config :wanderer_notifier,
     channel_id: "123456789"
   },
   map_url: "https://example.com",
-  map_token: "test_map_token",
+  map_name: "testmap",
+  map_token: "test_map_api_key",
   test_mode: true,
   minimal_test: System.get_env("MINIMAL_TEST") == "true",
   features: %{
@@ -32,8 +32,7 @@ config :wanderer_notifier,
     tracked_characters_notifications_enabled: true,
     status_messages_disabled: true,
     track_kspace_systems: true
-  },
-  cache_repository: WandererNotifier.Cache.CachexImpl
+  }
 
 # Configure the test environment
 config :wanderer_notifier,
@@ -49,7 +48,7 @@ config :logger, :console,
 
 # Configure the cache
 config :wanderer_notifier, :cache,
-  backend: WandererNotifier.Cache.CachexImpl,
+  backend: Cachex,
   ttl: 60
 
 # Configure the ESI service
@@ -64,3 +63,7 @@ config :wanderer_notifier, :kill_determiner,
 
 # Configure Mox
 config :mox, :global, true
+
+# Configure the cache for testing
+config :wanderer_notifier,
+  cache_name: :wanderer_test_cache

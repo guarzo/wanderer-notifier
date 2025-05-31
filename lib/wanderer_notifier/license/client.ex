@@ -95,7 +95,7 @@ defmodule WandererNotifier.License.Client do
 
   # Log the validation result based on validity
   defp log_validation_result(true, _message) do
-    AppLogger.api_info("License and bot validation successful", license_valid: true)
+    AppLogger.api_debug("License and bot validation successful", license_valid: true)
   end
 
   defp log_validation_result(false, message) do
@@ -221,7 +221,7 @@ defmodule WandererNotifier.License.Client do
 
   # Log license_valid format results
   defp log_license_valid_result(true, _) do
-    AppLogger.api_info("License validation successful", license_valid: true)
+    AppLogger.api_debug("License validation successful", license_valid: true)
   end
 
   defp log_license_valid_result(false, message) do
@@ -231,7 +231,7 @@ defmodule WandererNotifier.License.Client do
 
   # Log valid format results
   defp log_valid_format_result(true, true, _) do
-    AppLogger.api_info("License validation successful", license_valid: true, bot_assigned: true)
+    AppLogger.api_debug("License validation successful", license_valid: true, bot_assigned: true)
   end
 
   defp log_valid_format_result(true, false, _) do

@@ -1,89 +1,36 @@
 defmodule WandererNotifier.Schedulers.Supervisor do
   @moduledoc """
-  Supervisor for all scheduler modules. Dynamically starts all discovered schedulers.
+  Supervisor for all scheduler modules.
   """
 
   use Supervisor
-  alias WandererNotifier.Schedulers.Registry
+  require Logger
 
   def start_link(_opts \\ []) do
+    Logger.info("Starting scheduler supervisor")
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
   def init(_) do
     # Only start schedulers if enabled
-    if Application.get_env(:wanderer_notifier, :schedulers_enabled, false) do
-      children =
-        Registry.all_schedulers()
-        |> Enum.map(&scheduler_child_spec/1)
+    schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
+    Logger.info("Schedulers enabled: #{schedulers_enabled}")
 
+    if schedulers_enabled do
+      children = [
+        {WandererNotifier.Schedulers.SystemUpdateScheduler, []},
+        {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
+        {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
+      ]
+
+      Logger.info("Starting scheduler children: #{inspect(children)}")
       Supervisor.init(children, strategy: :one_for_one)
     else
       # Return empty children list if schedulers are disabled
+      Logger.info("Schedulers disabled, starting with empty children list")
       Supervisor.init([], strategy: :one_for_one)
     end
-  end
-
-  defp scheduler_child_spec(mod) do
-    %{
-      id: mod,
-      start: {Task, :start_link, [fn -> start_scheduler(mod) end]},
-      restart: :permanent
-    }
-  end
-
-  def start_scheduler(mod) do
-    # Only start if schedulers are enabled
-    if Application.get_env(:wanderer_notifier, :schedulers_enabled, false) do
-      %{type: type, spec: spec} = mod.config()
-
-      case type do
-        :interval ->
-          :timer.send_interval(spec, {:run, mod})
-          loop(mod)
-      end
-    end
-  end
-
-  defp loop(mod) do
-    receive do
-      {:run, ^mod} ->
-        execute(mod)
-        loop(mod)
-    end
-  end
-
-  defp execute(mod) do
-    start = System.monotonic_time()
-
-    case mod.run() do
-      :ok ->
-        :telemetry.execute([:wanderer_notifier, :scheduler, :success], %{}, %{module: mod})
-
-      {:error, reason} ->
-        :telemetry.execute(
-          [
-            :wanderer_notifier,
-            :scheduler,
-            :failure
-          ],
-          %{},
-          %{module: mod, error: inspect(reason)}
-        )
-    end
-
-    duration = System.monotonic_time() - start
-
-    :telemetry.execute(
-      [
-        :wanderer_notifier,
-        :scheduler,
-        :duration
-      ],
-      %{duration: duration},
-      %{module: mod}
-    )
   end
 
   def child_spec(opts) do

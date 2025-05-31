@@ -31,16 +31,16 @@ defmodule WandererNotifier.Map.MapCharacter do
   @behaviour Access
   @behaviour WandererNotifier.Map.CharacterBehaviour
 
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Cache.Keys
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
           character_id: String.t(),
           name: String.t(),
-          corporation_id: integer() | nil,
+          corporation_id: integer(),
+          alliance_id: integer(),
+          eve_id: String.t() | integer(),
           corporation_ticker: String.t() | nil,
-          alliance_id: integer() | nil,
           alliance_ticker: String.t() | nil,
           tracked: boolean()
         }
@@ -49,10 +49,11 @@ defmodule WandererNotifier.Map.MapCharacter do
     :character_id,
     :name,
     :corporation_id,
-    :corporation_ticker,
     :alliance_id,
+    :eve_id,
+    :corporation_ticker,
     :alliance_ticker,
-    :tracked
+    tracked: false
   ]
 
   @impl true
@@ -62,7 +63,9 @@ defmodule WandererNotifier.Map.MapCharacter do
   end
 
   def is_tracked?(character_id_str) when is_binary(character_id_str) do
-    case CacheRepo.get(CacheKeys.character_list()) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, Keys.character_list()) do
       {:ok, characters} when is_list(characters) ->
         Enum.any?(characters, fn char ->
           id = Map.get(char, :character_id) || Map.get(char, "character_id")
@@ -153,10 +156,11 @@ defmodule WandererNotifier.Map.MapCharacter do
       character_id: attrs["character_id"],
       name: name,
       corporation_id: corp_id,
-      corporation_ticker: attrs["corporation_ticker"],
       alliance_id: alliance_id,
+      eve_id: attrs["eve_id"],
+      corporation_ticker: attrs["corporation_ticker"],
       alliance_ticker: attrs["alliance_ticker"],
-      tracked: Map.get(attrs, "tracked", true)
+      tracked: attrs["tracked"] || false
     }
   end
 
@@ -175,9 +179,39 @@ defmodule WandererNotifier.Map.MapCharacter do
 
   @doc "Checks if the character has both corporation ID and ticker"
   @spec has_corporation?(t()) :: boolean()
-  def has_corporation?(%__MODULE__{corporation_id: corp_id, corporation_ticker: corp_ticker}) do
-    not is_nil(corp_id) and not is_nil(corp_ticker)
+  def has_corporation?(%__MODULE__{corporation_id: corp_id, corporation_ticker: ticker}) do
+    not is_nil(corp_id) and not is_nil(ticker)
   end
 
   def has_corporation?(_), do: false
+
+  @doc """
+  Gets a character by ID from the cache.
+  """
+  def get_character(character_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, Keys.character_list()) do
+      {:ok, characters} when is_list(characters) ->
+        Enum.find(characters, &(&1["id"] == character_id))
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Gets a character by name from the cache.
+  """
+  def get_character_by_name(character_name) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, Keys.character_list()) do
+      {:ok, characters} when is_list(characters) ->
+        Enum.find(characters, &(&1["name"] == character_name))
+
+      _ ->
+        nil
+    end
+  end
 end

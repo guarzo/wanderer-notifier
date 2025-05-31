@@ -31,26 +31,25 @@ defmodule WandererNotifier.Application do
     # Log all environment variables to help diagnose config issues
     log_environment_variables()
 
+    # Log scheduler configuration
+    schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
+    AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
+
     children = [
       {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []}
+      {WandererNotifier.Web.Server, []},
+      # Add scheduler supervisor last to ensure all dependencies are started
+      {WandererNotifier.Schedulers.Supervisor, []}
     ]
 
-    # Conditionally add scheduler supervisor if enabled
-    children =
-      children ++
-        if Application.get_env(:wanderer_notifier, :scheduler_supervisor_enabled, false) do
-          [WandererNotifier.Schedulers.Supervisor]
-        else
-          []
-        end
+    AppLogger.startup_info("Starting children: #{inspect(children)}")
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    Supervisor.start_link(children, opts)
+    {:ok, _} = Supervisor.start_link(children, opts)
   end
 
   # Ensures critical configuration exists to prevent startup failures
@@ -68,6 +67,11 @@ defmodule WandererNotifier.Application do
     # Ensure cache name is set
     if Application.get_env(:wanderer_notifier, :cache_name) == nil do
       Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    end
+
+    # Ensure schedulers are enabled
+    if Application.get_env(:wanderer_notifier, :schedulers_enabled) == nil do
+      Application.put_env(:wanderer_notifier, :schedulers_enabled, true)
     end
   end
 
@@ -112,7 +116,8 @@ defmodule WandererNotifier.Application do
       {:features, Application.get_env(:wanderer_notifier, :features)},
       {:discord_channel_id, Application.get_env(:wanderer_notifier, :discord_channel_id)},
       {:config_module, Application.get_env(:wanderer_notifier, :config)},
-      {:env, Application.get_env(:wanderer_notifier, :env)}
+      {:env, Application.get_env(:wanderer_notifier, :env)},
+      {:schedulers_enabled, Application.get_env(:wanderer_notifier, :schedulers_enabled)}
     ]
     |> Enum.each(fn {key, value} ->
       AppLogger.startup_info("  #{key}: #{inspect(value)}")

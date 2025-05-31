@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Api.Helpers do
   @moduledoc """
-  Common helpers for API controllers: JSON rendering, error handling, and request parsing.
+  Common helpers for API controllers: JSON rendering and error handling.
   """
   import Plug.Conn
 
@@ -49,27 +49,4 @@ defmodule WandererNotifier.Api.Helpers do
   """
   def send_error(conn, status, message),
     do: send_json_response(conn, status, %{@error_key => message})
-
-  @doc """
-  Parses the JSON body from the connection.
-  Checks if body_params has been populated by Plug.Parsers middleware,
-  and returns the parsed body or an error tuple if the body hasn't been parsed.
-  Returns an error tuple if the body is empty.
-  """
-  def parse_body(conn) do
-    case Map.get(conn, :body_params) do
-      %Plug.Conn.Unfetched{aspect: :body_params} ->
-        {:error, :unparsed_body}
-
-      nil ->
-        {:error, :no_body_params}
-
-      params when is_map(params) ->
-        if map_size(params) > 0 do
-          {:ok, params}
-        else
-          {:error, :empty_body}
-        end
-    end
-  end
 end

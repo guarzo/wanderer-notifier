@@ -5,6 +5,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.Killmail.{Pipeline, Context}
   alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
 
   # Define MockConfig for testing
   defmodule MockConfig do
@@ -17,10 +18,10 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   defmodule MockCache do
     def get(key) do
       cond do
-        key == WandererNotifier.Cache.Keys.system_list() ->
+        key == CacheKeys.system_list() ->
           {:ok, []}
 
-        key == WandererNotifier.Cache.Keys.character_list() ->
+        key == CacheKeys.character_list() ->
           {:ok, [character_id: "100", name: "Victim"]}
 
         String.starts_with?(key, "tracked_character:") ->

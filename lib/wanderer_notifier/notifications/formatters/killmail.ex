@@ -3,6 +3,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   Killmail notification formatting utilities for Discord notifications.
   Provides rich formatting for killmail events.
   """
+  require Logger
 
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -14,8 +15,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   Returns data in a generic format that can be converted to platform-specific format.
   """
   def format_kill_notification(%Killmail{} = killmail) do
-    log_killmail_data(killmail)
-
     kill_id = killmail.killmail_id
     kill_time = Map.get(killmail.esi_data || %{}, "killmail_time")
     victim_info = extract_victim_info(killmail)
@@ -23,14 +22,30 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     final_blow_details = get_final_blow_details(killmail)
     fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
 
-    build_kill_notification(
-      kill_id,
-      kill_time,
-      victim_info,
-      kill_context,
-      final_blow_details,
-      fields
-    )
+    notification =
+      build_kill_notification(
+        kill_id,
+        kill_time,
+        victim_info,
+        kill_context,
+        final_blow_details,
+        fields
+      )
+
+    notification
+  rescue
+    e ->
+      Logger.error(
+        "[KillmailFormatter] Exception formatting kill notification: #{Exception.message(e)}\nStruct: #{inspect(killmail)}\nFields: #{inspect(Map.from_struct(killmail))}"
+      )
+
+      AppLogger.processor_error("[KillmailFormatter] Error formatting kill notification",
+        kill_id: killmail.killmail_id,
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      reraise e, __STACKTRACE__
   end
 
   @doc """
@@ -43,12 +58,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       color: 0xFF0000,
       fields: format_fields(killmail)
     }
-  end
-
-  defp log_killmail_data(killmail) do
-    AppLogger.processor_debug(
-      "[KillmailFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}"
-    )
   end
 
   defp extract_victim_info(killmail) do
@@ -72,7 +81,8 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       corp_ticker: victim_corp_ticker,
       alliance: victim_alliance,
       ship_type_id: victim_ship_type_id,
-      character_id: victim_character_id
+      character_id: victim_character_id,
+      raw_victim_data: victim
     }
   end
 
@@ -122,136 +132,136 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   defp format_security_status(_), do: "Unknown"
 
   defp get_final_blow_details(killmail) do
-    # Prefer enriched attackers if available
-    attackers = killmail.attackers || Map.get(killmail.esi_data || %{}, "attackers", [])
-    zkb = killmail.zkb || %{}
-
+    # Get the final blow attacker or fall back to first attacker
     final_blow_attacker =
-      Enum.find(attackers, fn attacker ->
+      Enum.find(killmail.attackers, fn attacker ->
         get_attacker_value(attacker, :final_blow) in [true, "true"]
-      end)
+      end) || List.first(killmail.attackers)
 
-    is_npc_kill = Map.get(zkb, "npc", false) == true
-    extract_final_blow_details(final_blow_attacker, is_npc_kill)
-  end
+    # Extract enriched attacker data
+    enriched_attacker = enrich_attacker_data(final_blow_attacker, killmail)
 
-  defp extract_final_blow_details(nil, true), do: %{text: "NPC", icon_url: nil}
-  defp extract_final_blow_details(nil, _), do: %{text: "Unknown", icon_url: nil}
+    # Check if this is an NPC kill
+    is_npc_kill = Map.get(killmail.zkb || %{}, "npc", false)
 
-  defp extract_final_blow_details(attacker, _) do
-    base_details = build_base_attacker_details(attacker)
-    details_with_corp = add_corp_details(base_details, attacker)
-    details_with_alliance = add_alliance_details(details_with_corp, attacker)
-    add_character_link(details_with_alliance, attacker)
-  end
-
-  defp build_base_attacker_details(attacker) do
-    character_id = get_attacker_value(attacker, :character_id)
-    character_name = get_attacker_value(attacker, :character_name) || "Unknown"
-
-    ship_name =
-      get_attacker_value(attacker, :ship_name) || get_attacker_value(attacker, :ship_type_name) ||
-        "Unknown Ship"
-
+    # Build the final blow details
     %{
-      text: "#{character_name} (#{ship_name})",
-      icon_url:
-        if(character_id,
-          do: "https://imageserver.eveonline.com/Character/#{character_id}_64.jpg",
-          else: nil
-        ),
-      name: character_name,
-      ship: ship_name,
-      character_id: character_id
+      character: enriched_attacker.character,
+      character_id: enriched_attacker.character_id,
+      ship: enriched_attacker.ship,
+      ship_id: enriched_attacker.ship_id,
+      corp: enriched_attacker.corp,
+      corp_id: enriched_attacker.corp_id,
+      alliance: enriched_attacker.alliance,
+      alliance_id: enriched_attacker.alliance_id,
+      corp_ticker: enriched_attacker.corp_ticker,
+      alliance_ticker: enriched_attacker.alliance_ticker,
+      icon_url: enriched_attacker.icon_url,
+      text: build_final_blow_text(enriched_attacker, is_npc_kill)
     }
   end
 
-  defp get_attacker_value(attacker, key) do
-    Map.get(attacker, key) || Map.get(attacker, to_string(key))
-  end
+  defp enrich_attacker_data(attacker, _killmail) do
+    # Get character info
+    character = get_attacker_value(attacker, :character_name)
+    character_id = get_attacker_value(attacker, :character_id)
 
-  defp add_corp_details(details, attacker) do
+    # Get ship info
+    ship = get_attacker_value(attacker, :ship_name)
+    ship_id = get_attacker_value(attacker, :ship_type_id)
+
+    # Get corp info
     corp = get_attacker_value(attacker, :corporation_name)
     corp_id = get_attacker_value(attacker, :corporation_id)
-    corp_ticker = get_attacker_value(attacker, :corporation_ticker)
 
-    details
-    |> add_corp_ticker(corp_ticker, corp_id)
-    |> add_corp_name(corp)
-    |> add_corp_id(corp_id)
-  end
-
-  defp add_corp_ticker(details, ticker, corp_id)
-       when not is_nil(ticker) and not is_nil(corp_id) do
-    Map.put(details, :corp_ticker, "[#{ticker}](https://zkillboard.com/corporation/#{corp_id}/)")
-  end
-
-  defp add_corp_ticker(details, _, _), do: details
-
-  defp add_corp_name(details, corp) when not is_nil(corp), do: Map.put(details, :corp, corp)
-  defp add_corp_name(details, _), do: details
-
-  defp add_corp_id(details, corp_id) when not is_nil(corp_id),
-    do: Map.put(details, :corp_id, corp_id)
-
-  defp add_corp_id(details, _), do: details
-
-  defp add_alliance_details(details, attacker) do
+    # Get alliance info
     alliance = get_attacker_value(attacker, :alliance_name)
     alliance_id = get_attacker_value(attacker, :alliance_id)
+
+    # Get tickers
+    corp_ticker = get_attacker_value(attacker, :corporation_ticker)
     alliance_ticker = get_attacker_value(attacker, :alliance_ticker)
 
-    details
-    |> add_alliance_ticker(alliance_ticker, alliance_id)
-    |> add_alliance_name(alliance)
-    |> add_alliance_id(alliance_id)
+    # Build icon URL
+    icon_url = build_attacker_icon_url(character_id, corp_id, alliance_id)
+
+    %{
+      character: character,
+      character_id: character_id,
+      ship: ship,
+      ship_id: ship_id,
+      corp: corp,
+      corp_id: corp_id,
+      alliance: alliance,
+      alliance_id: alliance_id,
+      corp_ticker: corp_ticker,
+      alliance_ticker: alliance_ticker,
+      icon_url: icon_url
+    }
   end
 
-  defp add_alliance_ticker(details, ticker, alliance_id)
-       when not is_nil(ticker) and not is_nil(alliance_id) do
-    Map.put(
-      details,
-      :alliance_ticker,
-      "[#{ticker}](https://zkillboard.com/alliance/#{alliance_id}/)"
-    )
+  defp build_final_blow_text(attacker, is_npc_kill) do
+    cond do
+      is_npc_kill ->
+        "NPC"
+
+      attacker.character && attacker.ship ->
+        "#{attacker.character} in #{attacker.ship}"
+
+      attacker.character ->
+        attacker.character
+
+      attacker.ship ->
+        attacker.ship
+
+      true ->
+        "Unknown"
+    end
   end
 
-  defp add_alliance_ticker(details, _, _), do: details
+  defp build_attacker_icon_url(character_id, corp_id, alliance_id) do
+    cond do
+      character_id && character_id > 0 ->
+        "https://images.evetech.net/characters/#{character_id}/portrait?size=64"
 
-  defp add_alliance_name(details, alliance) when not is_nil(alliance),
-    do: Map.put(details, :alliance, alliance)
+      corp_id && corp_id > 0 ->
+        "https://images.evetech.net/corporations/#{corp_id}/logo?size=64"
 
-  defp add_alliance_name(details, _), do: details
+      alliance_id && alliance_id > 0 ->
+        "https://images.evetech.net/alliances/#{alliance_id}/logo?size=64"
 
-  defp add_alliance_id(details, alliance_id) when not is_nil(alliance_id),
-    do: Map.put(details, :alliance_id, alliance_id)
+      true ->
+        nil
+    end
+  end
 
-  defp add_alliance_id(details, _), do: details
+  defp get_attacker_value(attacker, key) do
+    cond do
+      is_map(attacker) && Map.has_key?(attacker, key) ->
+        Map.get(attacker, key)
 
-  defp add_character_link(details, attacker) do
-    if details.character_id do
-      char_link = "[#{details.name}](https://zkillboard.com/character/#{details.character_id}/)"
+      is_map(attacker) && Map.has_key?(attacker, to_string(key)) ->
+        Map.get(attacker, to_string(key))
 
-      ship_type_id =
-        get_attacker_value(attacker, :ship_id) || get_attacker_value(attacker, :ship_type_id)
-
-      ship_link =
-        "[#{details.ship}](https://zkillboard.com/ship/#{ship_type_id}/)"
-
-      %{details | text: "#{char_link} (#{ship_link})"}
-    else
-      details
+      true ->
+        nil
     end
   end
 
   defp build_kill_notification_fields(_victim_info, kill_context, final_blow_details) do
-    base_fields = build_base_fields(kill_context, final_blow_details)
+    # Build base fields (value, attackers, final blow)
+    fields = build_base_fields(kill_context, final_blow_details)
+
+    # Add attacker corp field if available
     corp_field = build_corp_field(final_blow_details)
     alliance_field = build_alliance_field(final_blow_details)
+    security_field = build_security_field(kill_context)
 
-    fields = base_fields
+    # Combine all fields
     fields = if corp_field, do: fields ++ [corp_field], else: fields
     fields = if alliance_field, do: fields ++ [alliance_field], else: fields
+    fields = if security_field, do: fields ++ [security_field], else: fields
+
     fields
   end
 
@@ -259,19 +269,35 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     [
       %{name: "Value", value: kill_context.formatted_value, inline: true},
       %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
-      %{name: "Final Blow", value: final_blow_details.text, inline: true}
+      %{name: "Final Blow", value: format_final_blow(final_blow_details), inline: true}
     ]
   end
 
-  defp build_corp_field(%{corp_ticker: ticker}) when not is_nil(ticker) do
-    %{name: "Attacker Corp", value: ticker, inline: true}
+  defp format_final_blow(%{character: character, character_id: character_id, ship: ship})
+       when not is_nil(character) and not is_nil(character_id) and not is_nil(ship) do
+    "[#{character}](#{build_zkillboard_url(:character, character_id)})/#{ship}"
   end
+
+  defp format_final_blow(%{character: character, character_id: character_id})
+       when not is_nil(character) and not is_nil(character_id) do
+    "[#{character}](#{build_zkillboard_url(:character, character_id)})"
+  end
+
+  defp format_final_blow(%{character: character}) when not is_nil(character) do
+    character
+  end
+
+  defp format_final_blow(_), do: "Unknown"
+
+  defp build_zkillboard_url(:character, id), do: "https://zkillboard.com/character/#{id}/"
+  defp build_zkillboard_url(:corporation, id), do: "https://zkillboard.com/corporation/#{id}/"
+  defp build_zkillboard_url(:alliance, id), do: "https://zkillboard.com/alliance/#{id}/"
 
   defp build_corp_field(%{corp: corp, corp_id: corp_id})
        when not is_nil(corp) and not is_nil(corp_id) do
     %{
       name: "Attacker Corp",
-      value: "[#{corp}](https://zkillboard.com/corporation/#{corp_id}/)",
+      value: "[#{corp}](#{build_zkillboard_url(:corporation, corp_id)})",
       inline: true
     }
   end
@@ -282,15 +308,11 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp build_corp_field(_), do: nil
 
-  defp build_alliance_field(%{alliance_ticker: ticker}) when not is_nil(ticker) do
-    %{name: "Attacker Alliance", value: ticker, inline: true}
-  end
-
   defp build_alliance_field(%{alliance: alliance, alliance_id: alliance_id})
        when not is_nil(alliance) and not is_nil(alliance_id) do
     %{
       name: "Attacker Alliance",
-      value: "[#{alliance}](https://zkillboard.com/alliance/#{alliance_id}/)",
+      value: "[#{alliance}](#{build_zkillboard_url(:alliance, alliance_id)})",
       inline: true
     }
   end
@@ -301,19 +323,24 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp build_alliance_field(_), do: nil
 
+  defp build_security_field(%{security_formatted: security}) when not is_nil(security) do
+    %{name: "Security", value: security, inline: true}
+  end
+
+  defp build_security_field(_), do: nil
+
   defp build_kill_notification(
          kill_id,
          kill_time,
          victim_info,
          kill_context,
          final_blow_details,
-         fields
+         _fields
        ) do
-    title = "Kill Notification: #{victim_info.name}"
+    title = "Ship destroyed in #{kill_context.system_name}"
     author_info = build_author_info(victim_info, kill_context)
-    system_with_link = build_system_link(kill_context)
-    description = build_description(victim_info, system_with_link)
-    updated_fields = update_final_blow_field(fields, final_blow_details)
+    description = build_prose_description(victim_info, kill_context, final_blow_details)
+    minimal_fields = build_minimal_fields(kill_context)
 
     %{
       type: :kill_notification,
@@ -323,14 +350,198 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       url: "https://zkillboard.com/kill/#{kill_id}/",
       timestamp: kill_time,
       footer: %{
-        text: "Kill ID: #{kill_id}"
+        text: "Value: #{kill_context.formatted_value} ISK"
       },
       thumbnail: %{
         url: build_thumbnail_url(victim_info)
       },
       author: author_info,
-      fields: updated_fields
+      fields: minimal_fields,
+      image: nil,
+      victim: victim_info,
+      kill_context: kill_context,
+      final_blow: final_blow_details,
+      kill_id: kill_id,
+      kill_time: kill_time,
+      system: %{
+        name: kill_context.system_name,
+        id: kill_context.system_id,
+        security: kill_context.security_formatted
+      },
+      value: kill_context.formatted_value,
+      attackers_count: kill_context.attackers_count,
+      is_npc_kill: kill_context.is_npc_kill
     }
+  end
+
+  defp build_prose_description(victim_info, kill_context, final_blow_details) do
+    victim_part = build_victim_description_part(victim_info)
+    attacker_part = build_attacker_description_part(final_blow_details, kill_context)
+    system_link = build_system_link(kill_context)
+
+    base_description =
+      "#{victim_part} lost their #{victim_info.ship} to #{attacker_part} in #{system_link}."
+
+    notable_items = extract_notable_items(victim_info)
+
+    if Enum.any?(notable_items) do
+      items_text = format_notable_items(notable_items)
+      "#{base_description}\n\n**Notable Items:**\n#{items_text}"
+    else
+      base_description
+    end
+  end
+
+  defp build_victim_description_part(victim_info) do
+    corp_display = format_corp_display(victim_info.corp, victim_info.corp_ticker)
+
+    if victim_info.character_id do
+      "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/)(#{corp_display})"
+    else
+      "#{victim_info.name}(#{corp_display})"
+    end
+  end
+
+  defp build_attacker_description_part(final_blow_details, kill_context) do
+    cond do
+      kill_context.is_npc_kill ->
+        "NPCs"
+
+      final_blow_details.character && final_blow_details.corp ->
+        attacker_name_part = build_attacker_name_part(final_blow_details)
+        corp_part = build_attacker_corp_part(final_blow_details)
+        ship_part = build_attacker_ship_part(final_blow_details, kill_context)
+
+        "#{attacker_name_part}#{corp_part}#{ship_part}"
+
+      final_blow_details.character ->
+        if final_blow_details.character_id do
+          "[#{final_blow_details.character}](https://zkillboard.com/character/#{final_blow_details.character_id}/)"
+        else
+          final_blow_details.character
+        end
+
+      true ->
+        "Unknown attacker"
+    end
+  end
+
+  defp build_attacker_name_part(final_blow_details) do
+    if final_blow_details.character_id do
+      "[#{final_blow_details.character}](https://zkillboard.com/character/#{final_blow_details.character_id}/)"
+    else
+      final_blow_details.character
+    end
+  end
+
+  defp build_attacker_corp_part(final_blow_details) do
+    corp_display =
+      format_corp_display_with_link(
+        final_blow_details.corp,
+        final_blow_details.corp_ticker,
+        final_blow_details.corp_id
+      )
+
+    alliance_display =
+      format_alliance_display_with_link(
+        final_blow_details.alliance,
+        final_blow_details.alliance_ticker,
+        final_blow_details.alliance_id
+      )
+
+    if alliance_display do
+      "(#{corp_display} / #{alliance_display})"
+    else
+      "(#{corp_display})"
+    end
+  end
+
+  defp build_attacker_ship_part(final_blow_details, kill_context) do
+    ship_text =
+      if final_blow_details.ship, do: " flying in a #{final_blow_details.ship}", else: ""
+
+    attacker_count_text =
+      case kill_context.attackers_count do
+        1 -> " solo"
+        count when count > 1 -> " (#{count} attackers)"
+        _ -> ""
+      end
+
+    "#{ship_text}#{attacker_count_text}"
+  end
+
+  defp format_corp_display_with_link(corp, corp_ticker, corp_id) do
+    display_name = get_corp_display_name(corp, corp_ticker)
+
+    if corp_id && corp_id > 0 do
+      "[#{display_name}](#{build_zkillboard_url(:corporation, corp_id)})"
+    else
+      display_name
+    end
+  end
+
+  defp format_alliance_display_with_link(alliance, alliance_ticker, alliance_id) do
+    if valid_alliance?(alliance) do
+      display_name = get_alliance_display_name(alliance, alliance_ticker)
+      format_alliance_link(display_name, alliance_id)
+    else
+      nil
+    end
+  end
+
+  # Helper functions to reduce complexity
+  defp get_corp_display_name(corp, corp_ticker) do
+    cond do
+      valid_ticker?(corp_ticker) -> corp_ticker
+      valid_corp?(corp) -> corp
+      true -> "Unknown Corp"
+    end
+  end
+
+  defp get_alliance_display_name(alliance, alliance_ticker) do
+    if valid_ticker?(alliance_ticker) do
+      alliance_ticker
+    else
+      alliance
+    end
+  end
+
+  defp valid_alliance?(alliance) do
+    alliance && alliance != "" && alliance != "Unknown" && alliance != "Unknown Alliance"
+  end
+
+  defp valid_ticker?(ticker) do
+    ticker && ticker != "" && ticker != "Unknown"
+  end
+
+  defp valid_corp?(corp) do
+    corp && corp != "" && corp != "Unknown Corp"
+  end
+
+  defp format_alliance_link(display_name, alliance_id) do
+    if alliance_id && alliance_id > 0 do
+      "[#{display_name}](#{build_zkillboard_url(:alliance, alliance_id)})"
+    else
+      display_name
+    end
+  end
+
+  defp format_corp_display(corp, corp_ticker) do
+    cond do
+      corp_ticker && corp_ticker != "" && corp_ticker != "Unknown" ->
+        corp_ticker
+
+      corp && corp != "" && corp != "Unknown Corp" ->
+        corp
+
+      true ->
+        "Unknown Corp"
+    end
+  end
+
+  defp build_minimal_fields(_kill_context) do
+    # Return empty fields array to use prose description instead
+    []
   end
 
   defp build_author_info(victim_info, kill_context) do
@@ -380,33 +591,12 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     end
   end
 
-  defp build_description(victim_info, system_with_link) do
-    "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/) lost a #{victim_info.ship} in #{system_with_link}"
-  end
-
   defp build_thumbnail_url(victim_info) do
     if victim_info.ship_type_id do
       "https://images.evetech.net/types/#{victim_info.ship_type_id}/render"
     else
       nil
     end
-  end
-
-  defp update_final_blow_field(fields, final_blow_details) do
-    Enum.map(fields, fn
-      %{name: "Final Blow"} = field ->
-        if final_blow_details[:character_id] do
-          char_link =
-            "[#{final_blow_details[:name]}](https://zkillboard.com/character/#{final_blow_details[:character_id]}/)"
-
-          %{field | value: "#{char_link} (#{final_blow_details[:ship]})"}
-        else
-          field
-        end
-
-      other ->
-        other
-    end)
   end
 
   defp format_isk_value(value) when is_number(value) do
@@ -462,5 +652,120 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       _ ->
         "Unknown"
     end
+  end
+
+  defp extract_notable_items(victim_info) do
+    # Get items from victim data if available
+    victim_data = victim_info[:raw_victim_data] || %{}
+    items = Map.get(victim_data, "items", [])
+
+    items
+    |> Enum.map(&enrich_item_data/1)
+    |> Enum.filter(& &1.is_notable)
+    # Limit to 10 notable items to keep message manageable
+    |> Enum.take(10)
+  end
+
+  defp enrich_item_data(item) do
+    type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
+    quantity = Map.get(item, "quantity_destroyed", 0) + Map.get(item, "quantity_dropped", 0)
+
+    # Get item info from ESI with error handling
+    item_info = get_item_info_safe(type_id)
+    item_name = Map.get(item_info, "name", "Unknown Item")
+
+    # Check for special item types
+    is_abyssal =
+      item_name
+      |> String.downcase()
+      |> String.contains?("abyssal")
+
+    # Check if item is likely worth 50M+ ISK
+    is_high_value = expensive_item?(type_id, item_name)
+
+    # Notable if abyssal OR high value
+    is_notable = is_abyssal or is_high_value
+
+    %{
+      type_id: type_id,
+      name: item_name,
+      quantity: quantity,
+      is_notable: is_notable,
+      is_abyssal: is_abyssal,
+      is_high_value: is_high_value,
+      category: get_item_category_simple(is_abyssal, is_high_value, item_name)
+    }
+  end
+
+  defp get_item_info_safe(type_id) do
+    case esi_service().get_type_info(type_id, []) do
+      {:ok, info} when is_map(info) -> info
+      _ -> %{"name" => "Unknown Item"}
+    end
+  rescue
+    _ -> %{"name" => "Unknown Item"}
+  end
+
+  # Heuristic to identify items likely worth 50M+ ISK
+  defp expensive_item?(type_id, item_name) when is_integer(type_id) do
+    item_name_lower = String.downcase(item_name)
+
+    # Check by item name patterns (high-value item types)
+    name_indicators = [
+      "deadspace",
+      "officer",
+      "x-type",
+      "a-type",
+      "b-type",
+      "c-type",
+      "shadow serpentis",
+      "true sansha",
+      "dark blood",
+      "dread guristas",
+      "domination",
+      "republic fleet",
+      "imperial navy",
+      "caldari navy",
+      "federation navy"
+    ]
+
+    has_valuable_name =
+      Enum.any?(name_indicators, fn indicator ->
+        String.contains?(item_name_lower, indicator)
+      end)
+
+    has_valuable_name
+  end
+
+  defp expensive_item?(_, _), do: false
+
+  defp get_item_category_simple(is_abyssal, is_high_value, item_name) do
+    item_name_lower = String.downcase(item_name)
+
+    cond do
+      is_abyssal -> "Abyssal"
+      String.contains?(item_name_lower, "officer") -> "Officer"
+      String.contains?(item_name_lower, "deadspace") -> "Deadspace"
+      is_high_value -> "High-Value"
+      true -> "Notable"
+    end
+  end
+
+  defp format_notable_items(notable_items) do
+    notable_items
+    |> Enum.map(&format_notable_item/1)
+    |> Enum.join("\n")
+  end
+
+  defp format_notable_item(item) do
+    quantity_text = if item.quantity > 1, do: " x#{item.quantity}", else: ""
+    category_text = if item.category != "Notable", do: " [#{item.category}]", else: ""
+
+    "• #{item.name}#{quantity_text}#{category_text}"
+  end
+
+  # ESI service configuration
+  defp esi_service do
+    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
   end
 end

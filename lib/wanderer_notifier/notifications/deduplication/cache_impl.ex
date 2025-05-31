@@ -1,48 +1,36 @@
 defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @moduledoc """
-  Default implementation of the Deduplication behaviour using Cachex for storage.
+  Cache implementation for notification deduplication.
   """
 
   @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Config
-
   @impl true
-  def check(type, id)
-      when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
-    cache_key = dedup_key(type, id)
+  def check(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_key = cache_key(type, id)
+    ttl = Application.get_env(:wanderer_notifier, :deduplication_ttl, 3600)
 
-    try do
-      case CacheRepo.get(cache_key) do
-        {:ok, _} ->
-          {:ok, :duplicate}
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, true} ->
+        {:ok, :duplicate}
 
-        _ ->
-          # Use centralized config for TTL
-          ttl = Config.notification_dedup_ttl()
-          # Mark as seen in the cache with appropriate TTL
-          CacheRepo.set(cache_key, true, ttl)
-          {:ok, :new}
-      end
-    rescue
-      e ->
-        {:error, Exception.message(e)}
+      _ ->
+        Cachex.put(cache_name, cache_key, true, ttl: ttl)
+        {:ok, :new}
     end
   end
 
-  @doc """
-  Clears a deduplication key from the cache (for testing or manual reset).
-  """
   @impl true
-  def clear_key(type, id)
-      when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
-    cache_key = dedup_key(type, id)
-    CacheRepo.delete(cache_key)
+  def clear_key(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_key = cache_key(type, id)
+    Cachex.del(cache_name, cache_key)
   end
 
-  defp dedup_key(:system, id), do: CacheKeys.dedup_system(id)
-  defp dedup_key(:character, id), do: CacheKeys.dedup_character(id)
-  defp dedup_key(:kill, id), do: CacheKeys.dedup_kill(id)
+  # Private functions
+
+  defp cache_key(type, id) do
+    "deduplication:#{type}:#{id}"
+  end
 end

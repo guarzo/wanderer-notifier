@@ -465,7 +465,7 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp log_validation_parameters(license_key, notifier_api_token, license_manager_url) do
-    AppLogger.config_info("License validation parameters",
+    AppLogger.config_debug("License validation parameters",
       license_key_present: is_binary(license_key) && license_key != "",
       api_token_present: is_binary(notifier_api_token) && notifier_api_token != "",
       license_url: license_manager_url,
@@ -480,7 +480,7 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp create_dev_mode_state(state) do
-    AppLogger.config_info("Using development mode license validation")
+    AppLogger.config_debug("Using development mode license validation")
 
     dev_state = %{
       valid: true,
@@ -492,16 +492,16 @@ defmodule WandererNotifier.License.Service do
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
 
-    AppLogger.config_info("Development license state", state: inspect(dev_state))
+    AppLogger.config_info("🧑‍💻 Development license active", state: inspect(dev_state))
     dev_state
   end
 
   defp validate_with_api(state, notifier_api_token, license_key) do
-    AppLogger.config_info("Performing license validation with API")
+    AppLogger.config_debug("Performing license validation with API")
 
     # Validate the license with the license manager
     api_result = LicenseClient.validate_bot(notifier_api_token, license_key)
-    AppLogger.config_info("License API result", result: inspect(api_result))
+    AppLogger.config_debug("License API result", result: inspect(api_result))
 
     process_api_result(api_result, state)
   end
@@ -536,7 +536,7 @@ defmodule WandererNotifier.License.Service do
       notification_counts: state.notification_counts
     }
 
-    AppLogger.config_info("Rate limited license state", state: inspect(rate_limited_state))
+    AppLogger.config_info("🚦 Rate limited license state", state: inspect(rate_limited_state))
     rate_limited_state
   end
 
@@ -554,7 +554,7 @@ defmodule WandererNotifier.License.Service do
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
 
-    AppLogger.config_info("Error license state", state: inspect(error_state))
+    AppLogger.config_info("⚠️ Error license state", state: inspect(error_state))
     error_state
   end
 
@@ -569,7 +569,7 @@ defmodule WandererNotifier.License.Service do
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
 
-    AppLogger.config_info("Valid license state", state: inspect(valid_state))
+    AppLogger.config_info("✅ Valid license state", state: inspect(valid_state))
     valid_state
   end
 
@@ -588,7 +588,7 @@ defmodule WandererNotifier.License.Service do
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
 
-    AppLogger.config_info("Invalid license state", state: inspect(invalid_state))
+    AppLogger.config_info("❌ Invalid license state", state: inspect(invalid_state))
     invalid_state
   end
 

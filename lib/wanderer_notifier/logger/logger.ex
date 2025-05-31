@@ -74,16 +74,18 @@ defmodule WandererNotifier.Logger.Logger do
   require Logger
 
   # Category constants
-  @category_api :api
-  @category_websocket :websocket
-  @category_kill :kill
-  @category_cache :cache
-  @category_startup :startup
-  @category_config :config
-  @category_maintenance :maintenance
-  @category_scheduler :scheduler
   @category_processor :processor
+  @category_scheduler :scheduler
+  @category_config :config
+  @category_startup :startup
+  @category_kill :kill
+  @category_character :character
+  @category_system :system
   @category_notification :notification
+  @category_api :api
+  @category_cache :cache
+  @category_websocket :websocket
+  @category_maintenance :maintenance
 
   # Level constants
   @level_debug :debug
@@ -112,8 +114,7 @@ defmodule WandererNotifier.Logger.Logger do
   def error(message, metadata), do: Logger.error(message, metadata)
 
   def api_error(message, metadata \\ [])
-  def api_error(message, metadata), do: Logger.error("[API] #{message}", metadata)
-  def api_info(message, metadata \\ []), do: log(@level_info, @category_api, message, metadata)
+  def api_error(message, metadata), do: log(@level_error, @category_api, message, metadata)
 
   def processor_debug(message, metadata \\ [])
 
@@ -135,6 +136,8 @@ defmodule WandererNotifier.Logger.Logger do
   def processor_error(message, metadata),
     do: log(@level_error, @category_processor, message, metadata)
 
+  def processor_kv(message, value), do: info_kv(@category_processor, message, value)
+
   def notification_debug(message, metadata \\ [])
 
   def notification_debug(message, metadata),
@@ -154,6 +157,8 @@ defmodule WandererNotifier.Logger.Logger do
 
   def notification_error(message, metadata),
     do: log(@level_error, @category_notification, message, metadata)
+
+  def notification_kv(message, value), do: info_kv(@category_notification, message, value)
 
   def log(level, category, message, metadata \\ []) do
     # Process and prepare metadata
@@ -396,114 +401,123 @@ defmodule WandererNotifier.Logger.Logger do
   defp safe_to_atom(key), do: String.to_atom("metadata_#{inspect(key)}")
 
   # API category helpers
-  def api_debug(message, metadata \\ []), do: log(@level_debug, @category_api, message, metadata)
+  def api_debug(message, metadata \\ [])
+  def api_debug(message, metadata), do: log(@level_debug, @category_api, message, metadata)
 
-  def api_warn(message, metadata \\ []), do: log(@level_warn, @category_api, message, metadata)
+  def api_info(message, metadata \\ [])
+  def api_info(message, metadata), do: log(@level_info, @category_api, message, metadata)
 
-  # WebSocket category helpers
-  def websocket_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_websocket, message, metadata)
+  def api_warn(message, metadata \\ [])
+  def api_warn(message, metadata), do: log(@level_warn, @category_api, message, metadata)
 
-  def websocket_info(message, metadata \\ []),
-    do: log(@level_info, @category_websocket, message, metadata)
-
-  def websocket_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_websocket, message, metadata)
-
-  def websocket_error(message, metadata \\ []),
-    do: log(@level_error, @category_websocket, message, metadata)
-
-  # Kill processing category helpers
-  def kill_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_kill, message, metadata)
-
-  def kill_info(message, metadata \\ []),
-    do: log(@level_info, @category_kill, message, metadata)
-
-  def kill_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_kill, message, metadata)
-
-  def kill_error(message, metadata \\ []),
-    do: log(@level_error, @category_kill, message, metadata)
+  def api_kv(message, value), do: info_kv(@category_api, message, value)
 
   # Cache category helpers
-  def cache_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_cache, message, metadata)
+  def cache_debug(message, metadata \\ [])
+  def cache_debug(message, metadata), do: log(@level_debug, @category_cache, message, metadata)
 
-  def cache_info(message, metadata \\ []),
-    do: log(@level_info, @category_cache, message, metadata)
+  def cache_info(message, metadata \\ [])
+  def cache_info(message, metadata), do: log(@level_info, @category_cache, message, metadata)
 
-  def cache_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_cache, message, metadata)
+  def cache_warn(message, metadata \\ [])
+  def cache_warn(message, metadata), do: log(@level_warn, @category_cache, message, metadata)
 
-  def cache_error(message, metadata \\ []),
-    do: log(@level_error, @category_cache, message, metadata)
+  def cache_error(message, metadata \\ [])
+  def cache_error(message, metadata), do: log(@level_error, @category_cache, message, metadata)
+
+  def cache_kv(message, value), do: info_kv(@category_cache, message, value)
 
   # Startup/Config helpers
-  def startup_info(message, metadata \\ []),
-    do: log(@level_info, @category_startup, message, metadata)
+  def startup_info(message, metadata \\ [])
+  def startup_info(message, metadata), do: log(@level_info, @category_startup, message, metadata)
 
-  def startup_debug(message, metadata \\ []),
+  def startup_debug(message, metadata \\ [])
+
+  def startup_debug(message, metadata),
     do: log(@level_debug, @category_startup, message, metadata)
 
-  def startup_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_startup, message, metadata)
+  def startup_warn(message, metadata \\ [])
+  def startup_warn(message, metadata), do: log(@level_warn, @category_startup, message, metadata)
 
-  def startup_error(message, metadata \\ []),
+  def startup_error(message, metadata \\ [])
+
+  def startup_error(message, metadata),
     do: log(@level_error, @category_startup, message, metadata)
 
-  def config_info(message, metadata \\ []),
-    do: log(@level_info, @category_config, message, metadata)
+  def startup_kv(message, value), do: info_kv(@category_startup, message, value)
 
-  def config_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_config, message, metadata)
+  # Kill processing category helpers
+  def kill_debug(message, metadata \\ [])
+  def kill_debug(message, metadata), do: log(@level_debug, @category_kill, message, metadata)
 
-  def config_error(message, metadata \\ []),
-    do: log(@level_error, @category_config, message, metadata)
+  def kill_info(message, metadata \\ [])
+  def kill_info(message, metadata), do: log(@level_info, @category_kill, message, metadata)
 
-  def config_debug(message, metadata \\ []) do
-    if should_log_debug?() do
-      log(:debug, "CONFIG", message, metadata)
-    end
-  end
+  def kill_warn(message, metadata \\ [])
+  def kill_warn(message, metadata), do: log(@level_warn, @category_kill, message, metadata)
 
-  # Maintenance category helpers
-  def maintenance_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_maintenance, message, metadata)
+  def kill_error(message, metadata \\ [])
+  def kill_error(message, metadata), do: log(@level_error, @category_kill, message, metadata)
 
-  def maintenance_info(message, metadata \\ []),
-    do: log(@level_info, @category_maintenance, message, metadata)
+  def kill_kv(message, value), do: info_kv(@category_kill, message, value)
 
-  def maintenance_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_maintenance, message, metadata)
+  # Character category helpers
+  def character_debug(message, metadata \\ [])
 
-  def maintenance_error(message, metadata \\ []),
-    do: log(@level_error, @category_maintenance, message, metadata)
+  def character_debug(message, metadata),
+    do: log(@level_debug, @category_character, message, metadata)
 
-  # Scheduler category helpers
-  def scheduler_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_scheduler, message, metadata)
+  def character_info(message, metadata \\ [])
 
-  def scheduler_info(message, metadata \\ []),
-    do: log(@level_info, @category_scheduler, message, metadata)
+  def character_info(message, metadata),
+    do: log(@level_info, @category_character, message, metadata)
 
-  def scheduler_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_scheduler, message, metadata)
+  def character_warn(message, metadata \\ [])
 
-  def scheduler_error(message, metadata \\ []),
-    do: log(@level_error, @category_scheduler, message, metadata)
+  def character_warn(message, metadata),
+    do: log(@level_warn, @category_character, message, metadata)
 
-  def scheduler_log(level, message, metadata \\ [])
-      when level in [:debug, :info, :warning, :warn, :error] do
-    # Normalize :warning to :warn for consistency
-    normalized_level = if level == :warning, do: :warn, else: level
-    log(normalized_level, @category_scheduler, message, metadata)
-  end
+  def character_error(message, metadata \\ [])
+
+  def character_error(message, metadata),
+    do: log(@level_error, @category_character, message, metadata)
+
+  def character_kv(message, value), do: info_kv(@category_character, message, value)
+
+  # System category helpers
+  def system_debug(message, metadata \\ [])
+  def system_debug(message, metadata), do: log(@level_debug, @category_system, message, metadata)
+
+  def system_info(message, metadata \\ [])
+  def system_info(message, metadata), do: log(@level_info, @category_system, message, metadata)
+
+  def system_warn(message, metadata \\ [])
+  def system_warn(message, metadata), do: log(@level_warn, @category_system, message, metadata)
+
+  def system_error(message, metadata \\ [])
+  def system_error(message, metadata), do: log(@level_error, @category_system, message, metadata)
+
+  def system_kv(message, value), do: info_kv(@category_system, message, value)
+
+  # Config category helpers
+  def config_debug(message, metadata \\ [])
+  def config_debug(message, metadata), do: log(@level_debug, @category_config, message, metadata)
+
+  def config_info(message, metadata \\ [])
+  def config_info(message, metadata), do: log(@level_info, @category_config, message, metadata)
+
+  def config_warn(message, metadata \\ [])
+  def config_warn(message, metadata), do: log(@level_warn, @category_config, message, metadata)
+
+  def config_error(message, metadata \\ [])
+  def config_error(message, metadata), do: log(@level_error, @category_config, message, metadata)
+
+  def config_kv(message, value), do: info_kv(@category_config, message, value)
 
   # Kill processing category
   # Use kill_warn consistently instead of kill_warning
-  def kill_warning(message, metadata \\ []),
-    do: kill_warn(message, metadata)
+  def kill_warning(message, metadata \\ [])
+  def kill_warning(message, metadata), do: kill_warn(message, metadata)
 
   def set_context(metadata) do
     # Convert to keyword list and normalize
@@ -584,15 +598,7 @@ defmodule WandererNotifier.Logger.Logger do
 
   def error_kv(category, message, value), do: log_kv(@level_error, category, message, value)
 
-  def config_kv(message, value), do: info_kv(@category_config, message, value)
-
-  def startup_kv(message, value), do: info_kv(@category_startup, message, value)
-
-  def cache_kv(message, value), do: info_kv(@category_cache, message, value)
-
   def websocket_kv(message, value), do: info_kv(@category_websocket, message, value)
-
-  def api_kv(message, value), do: info_kv(@category_api, message, value)
 
   def maintenance_kv(message, value), do: info_kv(@category_maintenance, message, value)
 
@@ -679,10 +685,6 @@ defmodule WandererNotifier.Logger.Logger do
     :ok
   end
 
-  defp should_log_debug? do
-    WandererNotifier.Config.debug_logging_enabled?()
-  end
-
   def log_with_timing(level, category, metadata \\ [], fun) do
     start_time = :os.system_time(:microsecond)
     result = fun.()
@@ -698,4 +700,48 @@ defmodule WandererNotifier.Logger.Logger do
 
     result
   end
+
+  # Scheduler category helpers
+  def scheduler_debug(message, metadata \\ [])
+
+  def scheduler_debug(message, metadata),
+    do: log(@level_debug, @category_scheduler, message, metadata)
+
+  def scheduler_info(message, metadata \\ [])
+
+  def scheduler_info(message, metadata),
+    do: log(@level_info, @category_scheduler, message, metadata)
+
+  def scheduler_warn(message, metadata \\ [])
+
+  def scheduler_warn(message, metadata),
+    do: log(@level_warn, @category_scheduler, message, metadata)
+
+  def scheduler_error(message, metadata \\ [])
+
+  def scheduler_error(message, metadata),
+    do: log(@level_error, @category_scheduler, message, metadata)
+
+  def scheduler_kv(message, value), do: info_kv(@category_scheduler, message, value)
+
+  # Maintenance category helpers
+  def maintenance_debug(message, metadata \\ [])
+
+  def maintenance_debug(message, metadata),
+    do: log(@level_debug, @category_maintenance, message, metadata)
+
+  def maintenance_info(message, metadata \\ [])
+
+  def maintenance_info(message, metadata),
+    do: log(@level_info, @category_maintenance, message, metadata)
+
+  def maintenance_warn(message, metadata \\ [])
+
+  def maintenance_warn(message, metadata),
+    do: log(@level_warn, @category_maintenance, message, metadata)
+
+  def maintenance_error(message, metadata \\ [])
+
+  def maintenance_error(message, metadata),
+    do: log(@level_error, @category_maintenance, message, metadata)
 end

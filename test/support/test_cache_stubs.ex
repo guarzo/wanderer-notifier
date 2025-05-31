@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Test.Support.TestCacheStubs do
   @moduledoc """
-  Test stubs for cache behavior.
+  Test stubs for cache behaviour.
   """
 
   @behaviour WandererNotifier.Cache.Behaviour

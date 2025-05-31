@@ -6,11 +6,31 @@ config :wanderer_notifier, env: config_env()
 # Enable schedulers by default
 config :wanderer_notifier,
   schedulers_enabled: true,
-  scheduler_supervisor_enabled: true
+  # 30 seconds
+  system_update_scheduler_interval: 30_000,
+  # 30 seconds
+  character_update_scheduler_interval: 30_000,
+  features: [
+    system_tracking_enabled: true,
+    character_tracking_enabled: true,
+    notifications_enabled: true,
+    kill_notifications_enabled: true,
+    system_notifications_enabled: true,
+    character_notifications_enabled: true
+  ]
 
 # Configure HTTP client
 config :wanderer_notifier,
   http_client: WandererNotifier.HttpClient.Httpoison
+
+# Configure RedisQ client timeouts
+config :wanderer_notifier,
+  # Additional timeout buffer for RedisQ long-polling in milliseconds
+  redisq_timeout_buffer: 5000,
+  # Connection timeout for RedisQ requests in milliseconds
+  redisq_connect_timeout: 15_000,
+  # Pool timeout for RedisQ connection pool in milliseconds
+  redisq_pool_timeout: 5000
 
 # Configure MIME types
 config :mime, :types, %{
@@ -27,15 +47,6 @@ config :mime, :types, %{
 # Configure MIME extensions preferences
 config :mime, :extensions, %{
   "mjs" => "text/javascript"
-}
-
-# Configure websocket defaults
-config :wanderer_notifier, :websocket, %{
-  enabled: true,
-  url: "wss://zkillboard.com/websocket/",
-  reconnect_delay: 5000,
-  max_reconnects: 20,
-  reconnect_window: 3600
 }
 
 # Configure the logger
@@ -81,7 +92,10 @@ config :logger, :module_levels, %{
 # Nostrum compile-time configuration
 config :nostrum,
   token: "intentionally invalid for runtime config only",
-  gateway_intents: [],
+  gateway_intents: [
+    :guilds,
+    :guild_messages
+  ],
   cache_guilds: false,
   cache_users: false,
   cache_channels: false,
@@ -92,19 +106,18 @@ config :nostrum,
 # Add backoff configuration to help with rate limiting
 config :nostrum, :gateway,
   backoff: [
-    initial: 1000,
-    max: 120_000
+    initial: 5000,
+    max: 300_000
   ]
 
 # Configure cache
-config :wanderer_notifier, cache_name: :wanderer_cache
+config :wanderer_notifier,
+  cache_name: :wanderer_cache
 
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
   http_client: WandererNotifier.HttpClient.Httpoison,
   zkill_client: WandererNotifier.Killmail.ZKillClient,
-  cache_repo: WandererNotifier.Cache.CachexImpl,
-  cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
   deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,

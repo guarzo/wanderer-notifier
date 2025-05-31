@@ -1,342 +1,120 @@
 defmodule WandererNotifier.Map.Clients.CharactersClient do
   @moduledoc """
-  Client for retrieving and processing character data from the map API.
+  Client for fetching and caching character data from the EVE Online Map API.
   """
 
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.{Config, Cache}
-  alias Cache.{Keys, CachexImpl}
-  alias WandererNotifier.Logger.Logger
-  alias WandererNotifier.Map.MapCharacter
-  alias WandererNotifier.Notifications.Determiner.Character, as: CharDeterminer
-  alias WandererNotifier.Notifications.Dispatcher
+  use WandererNotifier.Map.Clients.BaseMapClient
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
+  alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
 
-  @type reason :: term()
-  @type character :: map()
-  @type update_result :: {:ok, [character()]} | {:error, reason()}
+  @impl true
+  def endpoint, do: "user-characters"
 
-  @doc """
-  Fetches user characters from the map API, processes and caches them,
-  and notifies about any genuinely new characters.
-
-  Options:
-    - `suppress_notifications`: When set to `true`, no notifications will be sent (default: `false`)
-
-  Returns:
-    - `{:ok, characters}` on success (whether new or cached)
-    - `{:error, reason}` on total failure
-  """
-  @spec update_tracked_characters([character()], Keyword.t()) :: update_result()
-  def update_tracked_characters(cached \\ [], opts \\ []) do
-    url = characters_url()
-    headers = auth_header()
-
-    result = fetch_and_process_characters(url, headers, cached, opts)
-
-    case result do
-      {:ok, _} = ok -> ok
-      {:error, reason} -> fallback(cached, reason)
-    end
-  end
-
-  defp fetch_and_process_characters(url, headers, cached, opts) do
-    with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
-         {:ok, decoded} <- decode_body(body),
-         chars when is_list(chars) <- extract_characters(decoded) do
-      Logger.api_debug("API responded with #{length(chars)} characters")
-      process_and_cache(chars, cached, opts)
-    else
-      {:ok, %{status_code: status, body: body}} -> handle_http_error(status, body)
-      {:error, reason} -> handle_request_error(reason)
-      other -> handle_unexpected_result(other)
-    end
-  end
-
-  @doc """
-  Fetches character activity for `slug` (or default) over `days`.
-  """
-  @spec get_character_activity(String.t() | nil, pos_integer()) ::
-          {:ok, map()} | {:error, reason()}
-  def get_character_activity(slug \\ nil, days \\ 1) do
-    url = activity_url(slug, days)
-    headers = auth_header()
-
-    Logger.api_debug("CharactersClient: fetching activity", url: url, days: days)
-
-    with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
-         {:ok, decoded} <- decode_body(body) do
-      {:ok, decoded}
-    else
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.api_error("CharactersClient activity HTTP error",
-          status: status,
-          body_preview: slice(body)
-        )
-
-        {:error, {:http_error, status}}
-
-      {:error, reason} ->
-        Logger.api_error("CharactersClient activity failed", error: inspect(reason))
-        {:error, reason}
-    end
-  end
-
-  # ——————— Helpers ——————— #
-
-  # Build URLs & headers
-  defp characters_url,
-    do: "#{Config.base_map_url()}/api/map/user_characters?slug=#{Config.map_slug()}"
-
-  defp activity_url(nil, days),
-    do: "#{Config.base_map_url()}/map/characters/activity?days=#{days}"
-
-  defp activity_url(slug, days),
-    do: "#{Config.base_map_url()}/map/characters/#{slug}/activity?days=#{days}"
-
-  defp auth_header,
-    do: [{"Authorization", "Bearer #{Config.map_token()}"}]
-
-  # Decode JSON or pass through map
-  defp decode_body(body) when is_binary(body) do
-    case Jason.decode(body) do
-      {:ok, data} -> {:ok, data}
-      _ -> {:error, :json_decode_failed}
-    end
-  end
-
-  defp decode_body(map) when is_map(map), do: {:ok, map}
-  defp decode_body(_), do: {:error, :invalid_body}
-
-  # Pull out the list of character maps
-  defp extract_characters(%{"data" => groups}) when is_list(groups) do
-    Logger.api_info("Extracting characters from API response with #{length(groups)} groups")
-
-    processed_groups =
-      groups
-      |> Enum.filter(&is_list(&1["characters"]))
-
-    # Wrap verbose debug logging in dev_mode? check
-    if Config.dev_mode?() do
-      Logger.api_debug("Found #{length(processed_groups)} groups with character lists")
-
-      # Log group structure for debugging
-      if length(processed_groups) > 0 do
-        sample_group = List.first(processed_groups)
-        group_keys = Map.keys(sample_group)
-        Logger.api_debug("Group structure keys", keys: inspect(group_keys))
-
-        char_count = length(sample_group["characters"])
-        Logger.api_debug("First group has #{char_count} characters")
-      end
-    end
-
-    characters = processed_groups |> Enum.flat_map(& &1["characters"])
-
-    characters
-  end
-
-  defp extract_characters(other) do
-    Logger.api_error("Failed to extract characters - unexpected API response format",
-      response_type: inspect(other)
-    )
-
-    []
-  end
-
-  # Main processing pipeline: detect new, cache, notify
-  defp process_and_cache(chars, cached, opts) do
-    # Log a sample of the data for debugging - only in dev mode
-    if Config.dev_mode?() && length(chars) > 0 do
-      sample_char = List.first(chars)
-      # Use only a few key fields to avoid logging sensitive data
-      sample_fields = Map.take(sample_char, ["character_id", "corporation_id", "eve_id", "name"])
-      Logger.api_debug("Sample character data structure", sample: inspect(sample_fields))
-    end
-
-    new_chars = detect_new(chars, cached)
-    Logger.api_debug("New characters detected: #{length(new_chars)}")
-
-    safe_cache(chars)
-    maybe_notify_new(new_chars, cached, opts)
-    {:ok, chars}
-  rescue
-    e ->
-      Logger.api_error("CharactersClient processing failed",
-        error: Exception.message(e)
-      )
-
-      {:error, :processing_error}
-  end
-
-  # Compare against cached eve_ids
-  defp detect_new(chars, cached) do
-    seen = create_seen_set(cached)
-    log_detection_stats(chars, seen)
-    log_sample_ids(chars, seen)
-    find_new_characters(chars, seen)
-  end
-
-  defp create_seen_set(cached) do
-    MapSet.new(cached, & &1["eve_id"])
-  end
-
-  defp log_detection_stats(chars, seen) do
-    Logger.api_debug(
-      "Detecting new characters - API count: #{length(chars)}, cached IDs count: #{MapSet.size(seen)}"
-    )
-  end
-
-  defp log_sample_ids(chars, seen) do
-    if Config.dev_mode?() do
-      log_api_sample_ids(chars)
-      log_cached_sample_ids(seen)
-    end
-  end
-
-  defp log_api_sample_ids(chars) do
-    if length(chars) > 0 do
-      sample_api_ids = chars |> Enum.take(3) |> Enum.map(& &1["eve_id"])
-      Logger.api_debug("Sample API eve_ids", ids: inspect(sample_api_ids))
-    end
-  end
-
-  defp log_cached_sample_ids(seen) do
-    if MapSet.size(seen) > 0 do
-      sample_cached_ids = MapSet.to_list(seen) |> Enum.take(3)
-      Logger.api_debug("Sample cached eve_ids", ids: inspect(sample_cached_ids))
-    end
-  end
-
-  defp find_new_characters(chars, seen) do
-    new_chars = Enum.reject(chars, &(&1["eve_id"] in seen))
-    log_new_characters(new_chars)
-    new_chars
-  end
-
-  defp log_new_characters(new_chars) do
-    if length(new_chars) > 0 do
-      Logger.api_info("Found #{length(new_chars)} new characters not in cache")
-
-      if Config.dev_mode?() do
-        new_sample = new_chars |> Enum.take(2) |> Enum.map(&Map.take(&1, ["eve_id", "name"]))
-        Logger.api_debug("Sample new characters", sample: inspect(new_sample))
-      end
-    end
-  end
-
-  # Write to cache with TTL
-  defp safe_cache(chars) do
-    ttl = Config.characters_cache_ttl()
-    key = Keys.character_list()
-
-    Logger.api_debug(
-      "Caching #{length(chars)} characters with TTL: #{ttl}s, key: #{inspect(key)}"
-    )
-
-    case CachexImpl.set(key, chars, ttl) do
-      :ok ->
-        if Config.dev_mode?() do
-          Logger.api_debug("Characters successfully cached")
+  @impl true
+  def extract_data(%{"data" => data}) when is_list(data) do
+    # Extract characters from each group
+    characters =
+      Enum.flat_map(data, fn group ->
+        case group do
+          %{"characters" => chars} when is_list(chars) -> chars
+          _ -> []
         end
+      end)
 
-      {:error, reason} ->
-        Logger.api_error("Failed to cache characters", reason: inspect(reason))
-    end
-  rescue
-    e ->
-      Logger.api_error("CharactersClient cache error",
-        error: Exception.message(e)
-      )
+    {:ok, characters}
   end
 
-  # Send notifications for each truly new character, but only if cached is not empty
-  # and suppress_notifications is not set
-  defp maybe_notify_new([], _cached, _opts), do: :ok
+  def extract_data(data) do
+    AppLogger.api_error("Invalid characters data format",
+      data: inspect(data, pretty: true)
+    )
 
-  defp maybe_notify_new(_new_chars, [], _opts) do
-    # Don't notify on empty cache (first run or error recovery)
-    Logger.api_info("CharactersClient: skipping notifications on initial/empty cache load")
-    :ok
+    {:error, :invalid_data_format}
   end
 
-  defp maybe_notify_new(new_chars, _cached, opts) do
-    # Check if notifications should be suppressed
-    if Keyword.get(opts, :suppress_notifications, false) do
-      Logger.api_info("CharactersClient: notifications suppressed by options")
+  @impl true
+  def validate_data(characters) when is_list(characters) do
+    if Enum.all?(characters, &valid_character?/1) do
       :ok
     else
-      notify_new(new_chars)
+      AppLogger.api_error("Characters data validation failed",
+        count: length(characters)
+      )
+
+      {:error, :invalid_data}
     end
   end
 
-  # Send notifications for each truly new character
-  defp notify_new(new_chars) do
-    Enum.each(new_chars, fn char_map ->
-      char = MapCharacter.new(char_map)
-      # ← use `character_id`, not `eve_id`
-      if CharDeterminer.should_notify?(char.character_id, char) do
-        Dispatcher.run(:send_new_tracked_character_notification, [char])
-      end
-    end)
-  rescue
-    e ->
-      Logger.api_error("CharactersClient notify error",
-        error: Exception.message(e)
-      )
-  end
-
-  # If anything blows up, fall back to cache if available
-  defp fallback(cached, reason) when is_list(cached) and cached != [] do
-    Logger.api_info(
-      "CharactersClient using #{length(cached)} cached characters as fallback",
-      reason: inspect(reason)
+  def validate_data(other) do
+    AppLogger.api_error("Invalid characters data type",
+      type: inspect(other)
     )
 
-    {:ok, cached}
+    {:error, :invalid_data}
   end
 
-  defp fallback([], reason) do
-    Logger.api_error("CharactersClient fallback with empty cache", reason: inspect(reason))
-    {:error, reason}
-  end
-
-  defp fallback(nil, reason) do
-    Logger.api_error("CharactersClient fallback with nil cache", reason: inspect(reason))
-    {:error, reason}
-  end
-
-  defp fallback(other, reason) do
-    Logger.api_error("CharactersClient fallback with invalid cache type",
-      cache_type: inspect(other),
-      reason: inspect(reason)
+  @impl true
+  def process_data(new_characters, _cached_characters, _opts) do
+    # For now, just return the new characters
+    # In the future, we could implement diffing or other processing here
+    AppLogger.api_info("Processing characters data",
+      count: length(new_characters)
     )
 
-    {:error, reason}
+    {:ok, new_characters}
   end
 
-  # Preview for logging
-  defp slice(body) when is_binary(body), do: String.slice(body, 0, 200)
-  defp slice(_), do: ""
+  @impl true
+  def cache_key, do: CacheKeys.character_list()
 
-  # Error handling functions
-  defp handle_http_error(status, body) do
-    error_preview = if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
+  @impl true
+  def cache_ttl, do: 300
 
-    Logger.api_error("Character API HTTP error",
-      status: status,
-      body_preview: error_preview
-    )
-
-    {:error, {:http_error, status}}
+  @impl true
+  def should_notify?(character_id, character) do
+    CharacterDeterminer.should_notify?(character_id, character)
   end
 
-  defp handle_request_error(reason) do
-    Logger.api_error("Character API request failed", error: inspect(reason))
-    {:error, reason}
+  @impl true
+  def send_notification(character) do
+    DiscordNotifier.send_new_tracked_character_notification(character)
   end
 
-  defp handle_unexpected_result(result) do
-    Logger.api_error("Unexpected result from character API", result: inspect(result))
-    {:error, :unexpected_result}
+  @impl true
+  def enrich_item(character) do
+    # For now, just return the character as is
+    # In the future, we could add character-specific enrichment
+    character
+  end
+
+  defp valid_character?(character) do
+    is_map(character) and
+      valid_character_required_fields?(character) and
+      valid_character_optional_fields?(character)
+  end
+
+  defp valid_character_required_fields?(character) do
+    is_binary(character["name"]) and
+      valid_eve_id?(character["eve_id"]) and
+      is_binary(character["corporation_ticker"]) and
+      valid_corporation_id?(character["corporation_id"])
+  end
+
+  defp valid_character_optional_fields?(character) do
+    valid_alliance_id?(character["alliance_id"])
+  end
+
+  defp valid_eve_id?(eve_id) do
+    is_binary(eve_id) or is_integer(eve_id)
+  end
+
+  defp valid_corporation_id?(corp_id) do
+    is_binary(corp_id) or is_integer(corp_id)
+  end
+
+  defp valid_alliance_id?(alliance_id) do
+    is_binary(alliance_id) or is_integer(alliance_id) or is_nil(alliance_id)
   end
 end

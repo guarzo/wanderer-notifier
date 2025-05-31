@@ -22,21 +22,9 @@ defmodule WandererNotifier.Killmail.Notification do
       # Send the notification through the dispatcher
       case dispatcher_module().send_message(notification) do
         {:ok, :sent} ->
-          logger_module().notification_info("Kill notification sent successfully", %{
-            kill_id: kill_id,
-            victim: killmail.victim_name
-          })
-
           {:ok, notification}
 
         {:error, :notifications_disabled} ->
-          logger_module().notification_info(
-            "Kill notification skipped - notifications disabled",
-            %{
-              kill_id: kill_id
-            }
-          )
-
           {:ok, :disabled}
 
         {:error, reason} = error ->
