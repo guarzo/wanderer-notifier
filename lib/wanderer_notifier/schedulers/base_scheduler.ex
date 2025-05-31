@@ -109,11 +109,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       @impl GenServer
       def handle_continue(:schedule, state) do
-        # Get the feature flag value from the application config
-        feature_enabled =
-          Application.get_env(:wanderer_notifier, :features)
-          # Default to true if not set
-          |> Map.get(feature_flag(), true)
+        # Use the Config module's feature_enabled? function which handles both maps and keyword lists
+        feature_enabled = WandererNotifier.Config.feature_enabled?(feature_flag())
 
         if feature_enabled do
           AppLogger.scheduler_info("Scheduling update",
