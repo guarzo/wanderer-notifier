@@ -50,8 +50,8 @@ The application provides several types of Discord notifications:
 
 The notifier supports configurable kill notifications based on tracked systems and tracked characters. Notifications can be sent to separate channels:
 
-- **System kill notifications**: Sent to `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID` when a kill happens in a tracked system
-- **Character kill notifications**: Sent to `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID` when tracked characters are involved in a kill
+- **System kill notifications**: Sent to `DISCORD_SYSTEM_KILL_CHANNEL_ID` when a kill happens in a tracked system
+- **Character kill notifications**: Sent to `DISCORD_CHARACTER_KILL_CHANNEL_ID` when tracked characters are involved in a kill
   - Green color: When tracked characters are attackers (successful kills)
   - Red color: When tracked characters are victims (losses)
 
@@ -133,55 +133,61 @@ All configuration is managed through environment variables in the `.env` file. A
 
 On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them.
 
-### Standardized Environment Variables
+### Simplified Environment Variables
 
-All environment variables now use a standardized `WANDERER_` prefix.
+Environment variables now use simplified naming without redundant prefixes for cleaner configuration.
 
 ### Key Configuration Options
 
 1. **Discord Configuration**
 
-   - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
-   - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
-   - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
-   - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
+   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
+   - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
+   - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
+   - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
+   - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
 
 2. **License Configuration**
 
-   - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
+   - `LICENSE_KEY`: Your license key for accessing premium features
 
 3. **Map API Configuration**
 
-   - `WANDERER_MAP_URL`: URL for the wanderer map
-   - `WANDERER_MAP_TOKEN`: Authentication token for map API
+   - `MAP_URL`: URL for the wanderer map
+   - `MAP_TOKEN`: Authentication token for map API
 
 4. **Web Server Configuration**
 
    - `PORT`: Port for the web server (default: 4000)
-   - `WANDERER_HOST`: Host for the web server (default: localhost)
-   - `WANDERER_SCHEME`: HTTP scheme to use (default: http)
-   - `WANDERER_PUBLIC_URL`: Public URL for the web interface
+   - `HOST`: Host for the web server (default: localhost)
+   - `SCHEME`: HTTP scheme to use (default: http)
+   - `PUBLIC_URL`: Public URL for the web interface
 
 5. **Feature Flags**
 
-   - `WANDERER_NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
-   - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
-   - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
-   - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
-   - `WANDERER_ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: true)
-   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
-
-   > **Note:** The following variables have been deprecated and removed:
-   >
-   > - `WANDERER_CHARACTER_TRACKING_ENABLED` (use `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED` instead)
-   > - `WANDERER_SYSTEM_TRACKING_ENABLED` (use `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED` instead)
+   - `NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
+   - `KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
+   - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
+   - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
+   - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
+   - `SYSTEM_TRACKING_ENABLED`: Enable system data tracking scheduler (default: true)
+   - `CHARACTER_TRACKING_ENABLED`: Enable character data tracking scheduler (default: true)
 
 6. **Character Configuration**
 
-   - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
+   - `CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
 
+7. **Cache and RedisQ Configuration**
+
+   - `CACHE_DIR`: Directory for cache files (default: /app/data/cache)
+   - `REDISQ_URL`: ZKillboard RedisQ URL (default: https://zkillredisq.stream/listen.php)
+   - `REDISQ_POLL_INTERVAL_MS`: RedisQ polling interval in milliseconds (default: 1000)
+
+8. **License Manager Configuration**
+
+   - `LICENSE_MANAGER_URL`: License manager API URL (default: https://lm.wanderer.ltd)
 
 ## Development
 
@@ -229,7 +235,7 @@ If you encounter issues or have questions, please open an issue on the project r
  mix archive.install hex bunt
 
  docker buildx build . \
-  --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
+  --build-arg API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \
   -t notifier:local
 
