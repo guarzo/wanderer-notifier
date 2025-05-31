@@ -39,16 +39,26 @@ defmodule WandererNotifier.Killmail.Pipeline do
     context = %{context | system_id: system_id}
     kill_id = get_in(zkb_data, ["killmail_id"])
 
-    # First check if we should notify without ESI
-    case should_notify_without_esi?(zkb_data) do
-      {:ok, %{should_notify: false, reason: reason}} ->
-        handle_notification_skipped(kill_id, system_id, reason)
+    # Check for duplicates first
+    case check_deduplication(kill_id) do
+      {:ok, :duplicate} ->
+        handle_duplicate_killmail(kill_id, system_id)
 
-      {:ok, %{should_notify: true}} ->
-        process_tracked_killmail_pipeline(zkb_data, context, kill_id, system_id)
+      {:ok, :new} ->
+        # First check if we should notify without ESI
+        case should_notify_without_esi?(zkb_data) do
+          {:ok, %{should_notify: false, reason: reason}} ->
+            handle_notification_skipped(kill_id, system_id, reason)
+
+          {:ok, %{should_notify: true}} ->
+            process_tracked_killmail_pipeline(zkb_data, context, kill_id, system_id)
+
+          {:error, reason} ->
+            handle_notification_error(zkb_data, context, reason, kill_id, system_id)
+        end
 
       {:error, reason} ->
-        handle_notification_error(zkb_data, context, reason, kill_id, system_id)
+        handle_deduplication_error(zkb_data, context, reason, kill_id, system_id)
     end
   end
 
@@ -123,6 +133,35 @@ defmodule WandererNotifier.Killmail.Pipeline do
     handle_error(zkb_data, context, reason)
   end
 
+  defp check_deduplication(kill_id) do
+    case deduplication_module().check(:kill, kill_id) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+      result -> {:error, {:invalid_deduplication_response, result}}
+    end
+  end
+
+  defp handle_duplicate_killmail(kill_id, system_id) do
+    Stats.track_processing_complete({:ok, :skipped})
+    system_name = get_system_name(system_id)
+
+    AppLogger.kill_info("💀 🔄 ##{kill_id} | #{system_name} | Duplicate killmail")
+
+    {:ok, :skipped}
+  end
+
+  defp handle_deduplication_error(zkb_data, context, reason, kill_id, system_id) do
+    system_name = get_system_name(system_id)
+
+    AppLogger.kill_error("Error checking deduplication",
+      kill_id: kill_id,
+      system: system_name,
+      error: inspect(reason)
+    )
+
+    handle_error(zkb_data, context, reason)
+  end
+
   # Extract killmail_id from the data structure
   defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, to_string(id)}
 
@@ -140,16 +179,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
     _killmail_id = get_in(zkb_data, ["killmail_id"])
     _system_id = get_in(zkb_data, ["solar_system_id"])
 
-    case should_notify_without_esi?(zkb_data) do
-      {:ok, %{should_notify: false, reason: reason}} ->
-        {:error, reason}
-
-      {:ok, %{should_notify: true}} ->
-        process_tracked_killmail(zkb_data, ctx)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    # We already checked should_notify_without_esi? in the main pipeline
+    # so we can directly process the tracked killmail
+    process_tracked_killmail(zkb_data, ctx)
   end
 
   # Process a killmail that has tracked entities
@@ -169,9 +201,11 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # Check if notification should be sent for an enriched killmail
   defp check_notification_requirements(killmail, character_id) do
-    config = WandererNotifier.Config.get_config()
+    config = config_module().get_config()
 
-    if config.notifications_enabled do
+    notifications_enabled = get_in(config, [:notifications, :enabled])
+
+    if notifications_enabled do
       check_specific_notification_type(killmail, character_id, config)
     else
       {:error, :notifications_disabled}
@@ -192,7 +226,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp check_system_notification_enabled(killmail, config) do
-    if config.system_notifications_enabled do
+    system_notifications_enabled = get_in(config, [:notifications, :kill, :system, :enabled])
+
+    if system_notifications_enabled do
       {:ok, killmail}
     else
       {:error, :system_notifications_disabled}
@@ -200,7 +236,10 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp check_character_notification_enabled(killmail, config) do
-    if config.character_notifications_enabled do
+    character_notifications_enabled =
+      get_in(config, [:notifications, :kill, :character, :enabled])
+
+    if character_notifications_enabled do
       {:ok, killmail}
     else
       {:error, :character_notifications_disabled}
@@ -208,7 +247,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp check_kill_notification_enabled(killmail, config) do
-    if config.kill_notifications_enabled do
+    kill_notifications_enabled = get_in(config, [:notifications, :kill, :enabled])
+
+    if kill_notifications_enabled do
       {:ok, killmail}
     else
       {:error, :kill_notifications_disabled}
@@ -524,7 +565,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp get_system_name(nil), do: "unknown"
 
   defp get_system_name(system_id) do
-    case esi_service().get_system_info(system_id) do
+    case esi_service().get_system_info(system_id, []) do
       {:ok, data} ->
         case data do
           %{"name" => name} -> name
@@ -534,6 +575,14 @@ defmodule WandererNotifier.Killmail.Pipeline do
       _error ->
         "System #{system_id}"
     end
+  end
+
+  defp config_module do
+    Application.get_env(:wanderer_notifier, :config_module, WandererNotifier.Config)
+  end
+
+  defp deduplication_module do
+    Application.get_env(:wanderer_notifier, :deduplication_module)
   end
 
   @doc """

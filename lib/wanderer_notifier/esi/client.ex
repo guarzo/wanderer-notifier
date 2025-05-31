@@ -100,26 +100,8 @@ defmodule WandererNotifier.ESI.Client do
       method: "search_inventory_type"
     })
 
-    case http_client().get(url, headers) do
-      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        {:ok, body}
-
-      {:ok, %{status_code: status}} ->
-        AppLogger.api_error("ESI search error response", %{
-          query: query,
-          status: status
-        })
-
-        {:error, {:http_error, status}}
-
-      {:error, reason} ->
-        AppLogger.api_error("ESI search failed", %{
-          query: query,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
-    end
+    http_client().get(url, headers)
+    |> handle_response("search", %{query: query})
   end
 
   @impl true
@@ -164,26 +146,8 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
-    case http_client().get(url, headers) do
-      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        {:ok, body}
-
-      {:ok, %{status_code: status}} ->
-        AppLogger.api_error("ESI system kills error response", %{
-          system_id: system_id,
-          status: status
-        })
-
-        {:error, {:http_error, status}}
-
-      {:error, reason} ->
-        AppLogger.api_error("ESI system kills failed", %{
-          system_id: system_id,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
-    end
+    http_client().get(url, headers)
+    |> handle_response("system_kills", %{system_id: system_id})
   end
 
   # Private helper functions
@@ -243,13 +207,16 @@ defmodule WandererNotifier.ESI.Client do
       {:ok, response} ->
         {:ok, response}
 
-      {:error, reason} ->
+      {:error, reason} when is_map(reason) ->
         {:error,
          Map.put_new(
            reason,
            :duration_ms,
            System.convert_time_unit(duration, :native, :millisecond)
          )}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end

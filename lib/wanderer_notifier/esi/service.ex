@@ -416,7 +416,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   defp esi_client do
-    WandererNotifier.ESI.Client
+    Application.get_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.Client)
   end
 
   # Fallback module that returns safe defaults to prevent crashes

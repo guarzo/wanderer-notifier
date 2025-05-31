@@ -45,6 +45,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
+
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
@@ -81,6 +85,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         }
       }
 
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
+
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
 
@@ -115,6 +123,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
           "character_id" => 93_345_033
         }
       }
+
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
@@ -152,6 +164,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         },
         "zkb" => %{"hash" => "hash12345"}
       }
+
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
 
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> true end)
@@ -192,6 +208,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
+
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
 
@@ -230,6 +250,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         },
         "zkb" => %{"hash" => "hash12345"}
       }
+
+      # Add deduplication mock
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
 
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)

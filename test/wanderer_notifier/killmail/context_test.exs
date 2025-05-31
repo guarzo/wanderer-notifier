@@ -23,16 +23,16 @@ defmodule WandererNotifier.Killmail.ContextTest do
   test "creates a context with custom source in options" do
     context = Context.new("456", "Bob", %{source: :zkill_redisq, baz: :qux})
 
-    assert context.kill_id == "456"
-    assert context.kill_hash == "Bob"
+    assert context.killmail_id == "456"
+    assert context.system_name == "Bob"
     assert context.options == %{source: :zkill_redisq, baz: :qux}
   end
 
   test "creates a context with default source in options" do
     context = Context.new("456", "Bob", %{source: :zkill_redisq})
 
-    assert context.kill_id == "456"
-    assert context.kill_hash == "Bob"
+    assert context.killmail_id == "456"
+    assert context.system_name == "Bob"
     assert context.options == %{source: :zkill_redisq}
   end
 

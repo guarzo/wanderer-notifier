@@ -18,8 +18,8 @@ defmodule WandererNotifier.ESI.ClientTest do
 
   describe "get_killmail/3" do
     test "returns {:ok, body} on 2xx response" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/killmails/123/abc/", _headers ->
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, 3, fn
+        "https://esi.evetech.net/latest/killmails/123/abc/", _headers, _opts ->
           {:ok, %{status_code: 200, body: %{foo: "bar"}}}
       end)
 
@@ -27,15 +27,15 @@ defmodule WandererNotifier.ESI.ClientTest do
     end
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers ->
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, 3, fn _url, _headers, _opts ->
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_killmail(123, "abc")
+      assert {:error, :not_found} = Client.get_killmail(123, "abc")
     end
 
     test "returns {:error, reason} on network error" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers ->
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, 3, fn _url, _headers, _opts ->
         {:error, :timeout}
       end)
 
@@ -58,7 +58,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_character_info(123)
+      assert {:error, :not_found} = Client.get_character_info(123)
     end
 
     test "returns {:error, reason} on network error" do
@@ -85,7 +85,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_corporation_info(789)
+      assert {:error, :not_found} = Client.get_corporation_info(789)
     end
 
     test "returns {:error, reason} on network error" do
@@ -112,7 +112,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_alliance_info(345)
+      assert {:error, :not_found} = Client.get_alliance_info(345)
     end
 
     test "returns {:error, reason} on network error" do
@@ -139,7 +139,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_universe_type(999)
+      assert {:error, :not_found} = Client.get_universe_type(999)
     end
 
     test "returns {:error, reason} on network error" do
@@ -167,7 +167,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.search_inventory_type("test")
+      assert {:error, :not_found} = Client.search_inventory_type("test")
     end
 
     test "returns {:error, reason} on network error" do
@@ -182,7 +182,7 @@ defmodule WandererNotifier.ESI.ClientTest do
   describe "get_system/2" do
     test "returns {:ok, body} on 2xx response" do
       Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/universe/systems/42/",
+        "https://esi.evetech.net/latest/universe/systems/42/?datasource=tranquility",
         [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
           {:ok, %{status_code: 200, body: %{system_name: "Test System"}}}
       end)
@@ -192,7 +192,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:system_not_found, system_id}} on 404 response" do
       Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/universe/systems/42/",
+        "https://esi.evetech.net/latest/universe/systems/42/?datasource=tranquility",
         [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
           {:ok, %{status_code: 404, body: "Not Found"}}
       end)
@@ -202,7 +202,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on other non-2xx responses" do
       Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/universe/systems/42/",
+        "https://esi.evetech.net/latest/universe/systems/42/?datasource=tranquility",
         [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
           {:ok, %{status_code: 500, body: "Internal Server Error"}}
       end)
@@ -212,7 +212,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, reason} on network error" do
       Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/universe/systems/42/",
+        "https://esi.evetech.net/latest/universe/systems/42/?datasource=tranquility",
         [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
           {:error, :timeout}
       end)
@@ -236,7 +236,7 @@ defmodule WandererNotifier.ESI.ClientTest do
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_system_kills(42)
+      assert {:error, :not_found} = Client.get_system_kills(42)
     end
 
     test "returns {:error, reason} on network error" do
