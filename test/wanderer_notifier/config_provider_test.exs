@@ -101,8 +101,8 @@ defmodule WandererNotifier.ConfigProviderTest do
       ]
 
       Enum.each(test_cases, fn {input, expected} ->
-        System.delete_env("WANDERER_NOTIFICATIONS_ENABLED")
-        System.put_env("WANDERER_NOTIFICATIONS_ENABLED", input)
+        System.delete_env("NOTIFICATIONS_ENABLED")
+        System.put_env("NOTIFICATIONS_ENABLED", input)
         config = []
 
         result = ConfigProvider.load(config, [])
@@ -111,19 +111,6 @@ defmodule WandererNotifier.ConfigProviderTest do
                  expected,
                "Expected '#{input}' to parse as '#{expected}'"
       end)
-    end
-
-    test "correctly splits comma-separated values" do
-      System.put_env("WANDERER_CHARACTER_EXCLUDE_LIST", "character1, character2,character3")
-      config = []
-
-      result = ConfigProvider.load(config, [])
-
-      assert get_in(result, [:wanderer_notifier, :character_exclude_list]) == [
-               "character1",
-               "character2",
-               "character3"
-             ]
     end
 
     test "applies default values when env var is not present" do

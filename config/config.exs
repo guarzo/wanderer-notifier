@@ -23,6 +23,15 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   http_client: WandererNotifier.HttpClient.Httpoison
 
+# Configure RedisQ client timeouts
+config :wanderer_notifier,
+  # Additional timeout buffer for RedisQ long-polling in milliseconds
+  redisq_timeout_buffer: 5000,
+  # Connection timeout for RedisQ requests in milliseconds
+  redisq_connect_timeout: 15_000,
+  # Pool timeout for RedisQ connection pool in milliseconds
+  redisq_pool_timeout: 5000
+
 # Configure MIME types
 config :mime, :types, %{
   "text/html" => ["html", "htm"],

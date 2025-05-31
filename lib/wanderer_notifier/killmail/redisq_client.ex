@@ -21,7 +21,11 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       :ttw,
       :retry_count,
       :last_error,
-      :backoff_timer
+      :backoff_timer,
+      # Track consecutive timeouts
+      :consecutive_timeouts,
+      # Track when we last got data successfully
+      :last_successful_poll
     ]
   end
 
@@ -30,6 +34,8 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   @base_backoff 2000
   # Maximum backoff of 30 seconds
   @max_backoff 30_000
+  # If we have more than this many consecutive timeouts, extend TTW
+  @timeout_threshold 5
 
   # Add jitter to prevent thundering herd
   defp calculate_backoff(retry_count) do
@@ -53,6 +59,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     * `:poll_interval` — time between polls in milliseconds (default: 5000)
     * `:url` — RedisQ endpoint URL (default: https://zkillredisq.stream/listen.php)
     * `:ttw` — time to wait for new killmails in seconds (default: 3, min: 1, max: 10)
+    * `:timeout_buffer` — additional timeout buffer in milliseconds (default: 5000)
   """
   def start_link(opts) when is_list(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -79,7 +86,9 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       ttw: ttw,
       retry_count: 0,
       last_error: nil,
-      backoff_timer: nil
+      backoff_timer: nil,
+      consecutive_timeouts: 0,
+      last_successful_poll: DateTime.utc_now()
     }
 
     # Update connection stats
@@ -149,8 +158,14 @@ defmodule WandererNotifier.Killmail.RedisQClient do
 
   # Handle successful killmail fetch
   defp handle_successful_fetch(state, data) do
-    # Reset retry count on success
-    new_state = %{state | retry_count: 0, last_error: nil}
+    # Reset retry count and timeout counters on success
+    new_state = %{
+      state
+      | retry_count: 0,
+        last_error: nil,
+        consecutive_timeouts: 0,
+        last_successful_poll: DateTime.utc_now()
+    }
 
     # Update connection stats
     Stats.update_redisq(%{
@@ -179,8 +194,15 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       connecting: false
     })
 
-    # Reset retry count on successful connection (even if no killmail)
-    new_state = %{state | retry_count: 0, last_error: nil}
+    # Reset retry count and timeout counters on successful connection (even if no killmail)
+    new_state = %{
+      state
+      | retry_count: 0,
+        last_error: nil,
+        consecutive_timeouts: 0,
+        last_successful_poll: DateTime.utc_now()
+    }
+
     # Regular polling interval when no activity
     AppLogger.api_debug("No killmail available, polling again in #{state.poll_interval}ms")
     schedule_next_poll(new_state)
@@ -263,18 +285,19 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     # Calculate timeouts based on the TTW parameter
     # RedisQ endpoint holds connection open for up to TTW seconds
     # We need generous buffers to account for network latency and server processing
-    buffer_time = 3000
-    total_timeout = state.ttw * 1000 + buffer_time
+    # Get configurable timeout buffer or use default
+    timeout_buffer = Application.get_env(:wanderer_notifier, :redisq_timeout_buffer, 5000)
+    total_timeout = state.ttw * 1000 + timeout_buffer
 
     [
-      # Timeout for the entire request (TTW + 3s buffer)
+      # Timeout for the entire request (TTW + configurable buffer)
       timeout: total_timeout,
       # Timeout for receiving data once connected (same as total)
       recv_timeout: total_timeout,
-      # Connection timeout - keep fast to detect network issues quickly
-      connect_timeout: 10_000,
+      # Connection timeout - keep reasonable to detect network issues
+      connect_timeout: Application.get_env(:wanderer_notifier, :redisq_connect_timeout, 15_000),
       # Pool timeout to prevent connection pool exhaustion
-      pool_timeout: 3000
+      pool_timeout: Application.get_env(:wanderer_notifier, :redisq_pool_timeout, 5000)
     ]
   end
 
@@ -303,11 +326,29 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   end
 
   defp handle_http_response({:error, :timeout}, state, start_time) do
-    duration = System.monotonic_time() - start_time
+    duration_ms =
+      System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
 
-    AppLogger.api_error(
-      "RedisQ Client: Request timed out after #{duration}μs for queue_id=#{state.queue_id}"
-    )
+    expected_duration = state.ttw * 1000
+
+    # Log timeouts as warnings instead of errors since they're somewhat expected
+    # with long-polling endpoints like RedisQ, but include helpful context
+    log_level = if state.consecutive_timeouts > @timeout_threshold, do: :debug, else: :warn
+
+    case log_level do
+      :debug ->
+        AppLogger.api_debug(
+          "RedisQ timeout (frequent pattern) after #{duration_ms}ms, expected ~#{expected_duration}ms",
+          queue_id: state.queue_id,
+          consecutive_timeouts: state.consecutive_timeouts
+        )
+
+      :warn ->
+        AppLogger.api_warn(
+          "RedisQ timeout after #{duration_ms}ms, expected ~#{expected_duration}ms (#{state.consecutive_timeouts + 1} consecutive)",
+          queue_id: state.queue_id
+        )
+    end
 
     {:error, :timeout}
   end
@@ -315,8 +356,9 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp handle_http_response({:error, :connect_timeout}, state, start_time) do
     duration = System.monotonic_time() - start_time
 
+    # Connection timeouts are more concerning than request timeouts
     AppLogger.api_error(
-      "RedisQ Client: Connection timed out after #{duration}μs for queue_id=#{state.queue_id}"
+      "RedisQ Client: Connection timed out after #{System.convert_time_unit(duration, :native, :millisecond)}ms for queue_id=#{state.queue_id}"
     )
 
     {:error, :connect_timeout}
@@ -365,12 +407,25 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   # Handle timeout errors with retry logic
   defp handle_timeout_error(state) do
     new_retry_count = state.retry_count + 1
-    new_state = %{state | retry_count: new_retry_count, last_error: :timeout}
+    new_consecutive_timeouts = state.consecutive_timeouts + 1
 
-    if new_retry_count <= @max_retries do
-      handle_retry_attempt(new_state, new_retry_count)
+    new_state = %{
+      state
+      | retry_count: new_retry_count,
+        last_error: :timeout,
+        consecutive_timeouts: new_consecutive_timeouts
+    }
+
+    # If we've had many consecutive timeouts, treat this as normal behavior
+    # and don't increment retry count as aggressively
+    if new_consecutive_timeouts > @timeout_threshold do
+      handle_frequent_timeouts(new_state)
     else
-      handle_max_retries_exceeded(new_state)
+      if new_retry_count <= @max_retries do
+        handle_retry_attempt(new_state, new_retry_count)
+      else
+        handle_max_retries_exceeded(new_state)
+      end
     end
   end
 
@@ -417,5 +472,29 @@ defmodule WandererNotifier.Killmail.RedisQClient do
         "RedisQ request timed out, retrying in #{backoff}ms (attempt #{retry_count}/#{@max_retries})"
       )
     end
+  end
+
+  # Handle frequent timeout scenario - treat as normal long-polling behavior
+  defp handle_frequent_timeouts(state) do
+    AppLogger.api_debug(
+      "Frequent timeouts detected (#{state.consecutive_timeouts} consecutive), " <>
+        "treating as normal long-polling behavior",
+      queue_id: state.queue_id
+    )
+
+    # Update connection stats but don't mark as error
+    Stats.update_redisq(%{
+      # Still consider connected since timeouts are expected
+      connected: true,
+      connecting: false,
+      # Don't treat frequent timeouts as errors
+      last_error: nil
+    })
+
+    # Reset retry count since frequent timeouts are expected behavior
+    new_state = %{state | retry_count: 0}
+
+    # Use regular polling interval instead of backoff
+    schedule_next_poll(new_state)
   end
 end
