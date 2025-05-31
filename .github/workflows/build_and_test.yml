@@ -27,16 +27,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
-      WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
-      WANDERER_DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-      WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
-      WANDERER_MAP_URL: "http://example.com/map?name=testmap"
-      WANDERER_MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
-      WANDERER_DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-      WANDERER_LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
-      WANDERER_LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
-      WANDERER_ENV: test
-      WANDERER_FEATURE_DISABLE_WEBSOCKET: true
+      API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
+      DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+      CACHE_DIR: "/tmp/wanderer_notifier_cache"
+      MAP_URL: "http://example.com/map?name=testmap"
+      MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
+      ENV: test
+      DISABLE_WEBSOCKET: true
     steps:
       - uses: actions/checkout@v4
 
@@ -78,11 +78,11 @@ jobs:
     needs: test
     env:
       MIX_ENV: dev
-      WANDERER_MAP_URL: "http://example.com/map?name=testmap"
-      WANDERER_MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
-      WANDERER_DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-      WANDERER_LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
-      WANDERER_LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
+      MAP_URL: "http://example.com/map?name=testmap"
+      MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -172,7 +172,7 @@ jobs:
           build-args: |
             APP_VERSION=0.0.0-ci-test
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
 
@@ -190,14 +190,14 @@ jobs:
             -i guarzo/wanderer-notifier \
             -t sha-${{ steps.sha.outputs.short_sha }} \
             -d "${{ secrets.FAKE_DISCORD_TOKEN }}" \
-            -e "WANDERER_MAP_URL=http://example.com/map?name=testmap" \
-            -e "WANDERER_MAP_TOKEN=${{ secrets.MAP_TOKEN }}" \
-            -e "WANDERER_DISCORD_CHANNEL_ID=${{ secrets.DISCORD_CHANNEL_ID }}" \
-            -e "WANDERER_LICENSE_KEY=${{ secrets.LICENSE_KEY }}" \
-            -e "WANDERER_LICENSE_MANAGER_URL=${{ secrets.LICENSE_MANAGER_URL }}" \
-            -e "WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
-            -e "WANDERER_ENV=test" \
-            -e "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+            -e "MAP_URL=http://example.com/map?name=testmap" \
+            -e "MAP_TOKEN=${{ secrets.MAP_TOKEN }}" \
+            -e "DISCORD_CHANNEL_ID=${{ secrets.DISCORD_CHANNEL_ID }}" \
+            -e "LICENSE_KEY=${{ secrets.LICENSE_KEY }}" \
+            -e "LICENSE_MANAGER_URL=${{ secrets.LICENSE_MANAGER_URL }}" \
+            -e "API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}" \
+            -e "ENV=test" \
+            -e "DISABLE_WEBSOCKET=true"
           echo "Docker image validation successful!"
 
   release:
@@ -300,7 +300,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
 
@@ -324,7 +324,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
           docker_username: guarzo
@@ -387,7 +387,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
           docker_username: guarzo
@@ -433,7 +433,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             VCS_REF=${{ github.sha }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
           docker_username: guarzo

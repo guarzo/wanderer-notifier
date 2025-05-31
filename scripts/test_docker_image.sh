@@ -14,7 +14,7 @@ Usage: $0 [-i image] [-t tag] [-b] [-d token] [-e VAR=VAL] [-h]
   -i IMAGE   Docker image name (default: $IMAGE)
   -t TAG     Docker image tag (default: $TAG)
   -b         Run only basic checks (skip HTTP endpoint test)
-  -d TOKEN   Set WANDERER_DISCORD_BOT_TOKEN for tests
+  -d TOKEN   Set DISCORD_BOT_TOKEN for tests
   -e VAR=VAL Add extra environment variable (can be specified multiple times)
   -h         Show this help message
 EOF
@@ -41,8 +41,8 @@ trap 'rm -f "$ENV_FILE"' EXIT
 
 # Base test env
 cat > "$ENV_FILE" <<EOF
-WANDERER_ENV=test
-WANDERER_DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token}
+ENV=test
+DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token}
 EOF
 
 # Append any extras
