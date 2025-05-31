@@ -44,20 +44,7 @@ RUN bash -c 'set -o pipefail \
   && apt-get install -y --no-install-recommends \
        curl \
        ca-certificates \
-  && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-  && apt-get update \
-  && apt-get install -y nodejs \
-  && npm install -g npm@latest \
   && rm -rf /var/lib/apt/lists/*'
-
-# 2a. Frontend: cache npm install
-WORKDIR /app/renderer
-COPY renderer/package.json renderer/package-lock.json ./
-RUN npm ci
-
-# 2b. Frontend: build assets
-COPY renderer/. ./
-RUN npm run build && npm run postbuild
 
 # 2c. Compile & release **without** bundling ERTS
 WORKDIR /app
