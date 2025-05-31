@@ -165,24 +165,31 @@ defmodule WandererNotifier.Config do
       name
     else
       # Fallback to parsing from URL path for backward compatibility
-      url = map_url_with_name()
+      extract_slug_from_url()
+    end
+  end
 
-      if nil_or_empty?(url) do
-        # Return empty string for missing URL
-        ""
-      else
-        uri = URI.parse(url)
+  # Helper function to extract slug from URL (reduces nesting in map_slug)
+  defp extract_slug_from_url do
+    url = map_url_with_name()
 
-        # Check if URI has a path
-        if uri.path != nil and uri.path != "" do
-          uri.path |> String.trim("/") |> String.split("/") |> List.last()
-        else
-          # Log warning and return empty string for missing path
-          require Logger
-          Logger.warning("No path in map URL: #{url}")
-          ""
-        end
-      end
+    if nil_or_empty?(url) do
+      ""
+    else
+      uri = URI.parse(url)
+      extract_path_slug(uri)
+    end
+  end
+
+  # Helper function to extract slug from URI path
+  defp extract_path_slug(uri) do
+    if uri.path != nil and uri.path != "" do
+      uri.path |> String.trim("/") |> String.split("/") |> List.last()
+    else
+      # Log warning and return empty string for missing path
+      require Logger
+      Logger.warning("No path in map URL: #{map_url_with_name()}")
+      ""
     end
   end
 
