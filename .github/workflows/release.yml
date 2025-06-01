@@ -154,6 +154,7 @@ jobs:
           context: .
           push: false
           load: true
+          platforms: linux/amd64,linux/arm64
           tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
@@ -179,6 +180,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: guarzo/wanderer-notifier:latest,guarzo/wanderer-notifier:${{ steps.major_version.outputs.value }},guarzo/wanderer-notifier:v${{ steps.version.outputs.version }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
