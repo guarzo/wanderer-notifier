@@ -367,7 +367,7 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   defp process_killmail_async(killmail_data, kill_id, state) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
       case KillmailProcessor.process_killmail(killmail_data,
              source: :zkill_redisq,
              state: state

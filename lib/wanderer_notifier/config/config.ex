@@ -15,27 +15,13 @@ defmodule WandererNotifier.Config do
     - API
   """
   @behaviour WandererNotifier.Config.ConfigBehaviour
+
+  alias WandererNotifier.Config.Utils
+
   # --- General ENV helpers ---
   def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
   def fetch(key, default \\ nil), do: System.get_env(key) || default
-  def fetch_int(key, default), do: fetch(key) |> parse_int(default)
-  defp parse_int(nil, default), do: default
-
-  defp parse_int(str, default) do
-    case Integer.parse(str) do
-      {i, _} ->
-        i
-
-      :error ->
-        require Logger
-
-        Logger.warning(
-          "Unable to parse integer from ENV value #{inspect(str)} – falling back to #{default}"
-        )
-
-        default
-    end
-  end
+  def fetch_int(key, default), do: fetch(key) |> Utils.parse_int(default)
 
   # --- General Application config ---
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
@@ -71,10 +57,7 @@ defmodule WandererNotifier.Config do
         Application.get_env(:wanderer_notifier, :dedup_ttl, 3600)
 
       ttl ->
-        case Integer.parse(ttl) do
-          {seconds, _} -> seconds
-          :error -> 3600
-        end
+        Utils.parse_int(ttl, 3600)
     end
   end
 
@@ -124,7 +107,7 @@ defmodule WandererNotifier.Config do
       explicit_name
     else
       # Fall back to parsing from map_url_with_name for backward compatibility
-      parse_map_name_from_url()
+      Utils.parse_map_name_from_url(map_url_with_name())
     end
   end
 
@@ -136,27 +119,6 @@ defmodule WandererNotifier.Config do
   def map_url_with_name, do: get(:map_url_with_name)
   def map_csrf_token, do: get(:map_csrf_token)
 
-  # Helper function to parse map name from legacy URL format
-  defp parse_map_name_from_url do
-    url = map_url_with_name()
-
-    if nil_or_empty?(url) do
-      ""
-    else
-      uri = URI.parse(url)
-
-      # Try to get name from query parameter
-      case uri.query do
-        nil ->
-          ""
-
-        query_string ->
-          URI.decode_query(query_string)
-          |> Map.get("name", "")
-      end
-    end
-  end
-
   def map_slug do
     # First try the explicit MAP_NAME, which is now the preferred approach
     name = map_name()
@@ -165,31 +127,7 @@ defmodule WandererNotifier.Config do
       name
     else
       # Fallback to parsing from URL path for backward compatibility
-      extract_slug_from_url()
-    end
-  end
-
-  # Helper function to extract slug from URL (reduces nesting in map_slug)
-  defp extract_slug_from_url do
-    url = map_url_with_name()
-
-    if nil_or_empty?(url) do
-      ""
-    else
-      uri = URI.parse(url)
-      extract_path_slug(uri)
-    end
-  end
-
-  # Helper function to extract slug from URI path
-  defp extract_path_slug(uri) do
-    if uri.path != nil and uri.path != "" do
-      uri.path |> String.trim("/") |> String.split("/") |> List.last()
-    else
-      # Log warning and return empty string for missing path
-      require Logger
-      Logger.warning("No path in map URL: #{map_url_with_name()}")
-      ""
+      Utils.extract_slug_from_url(map_url_with_name())
     end
   end
 
@@ -261,20 +199,14 @@ defmodule WandererNotifier.Config do
   end
 
   def character_exclude_list do
-    get(:character_exclude_list, "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+    get(:character_exclude_list, "") |> Utils.parse_comma_list()
   end
 
   # --- Features ---
   def features do
     # Always return a valid keyword list with at least basic features
     features_from_config = get(:features, [])
-
-    if Keyword.keyword?(features_from_config) do
-      features_from_config
-    else
-      # Default empty keyword list if not configured
-      []
-    end
+    Utils.normalize_features(features_from_config)
   end
 
   def feature_enabled?(flag), do: Keyword.get(features(), flag, false)
@@ -330,22 +262,7 @@ defmodule WandererNotifier.Config do
   def license_manager_api_key, do: get(:license_manager_api_key)
 
   # --- Web/server ---
-  def port do
-    case get(:port, 4000) do
-      port when is_integer(port) ->
-        port
-
-      port when is_binary(port) ->
-        case Integer.parse(port) do
-          {int_port, _} -> int_port
-          :error -> 4000
-        end
-
-      _ ->
-        4000
-    end
-  end
-
+  def port, do: get(:port, 4000) |> Utils.parse_port()
   def host, do: get(:host, "localhost")
   def scheme, do: get(:scheme, "http")
   def public_url, do: get(:public_url)
@@ -423,20 +340,20 @@ defmodule WandererNotifier.Config do
 
     %{
       map_url_with_name: url,
-      map_url_with_name_present: !nil_or_empty?(url),
+      map_url_with_name_present: !Utils.nil_or_empty?(url),
       map_url: base_url,
-      map_url_present: !nil_or_empty?(base_url),
-      map_url_explicit: !nil_or_empty?(get(:map_url)),
+      map_url_present: !Utils.nil_or_empty?(base_url),
+      map_url_explicit: !Utils.nil_or_empty?(get(:map_url)),
       map_name: name,
-      map_name_present: !nil_or_empty?(name),
-      map_name_explicit: !nil_or_empty?(get(:map_name)),
+      map_name_present: !Utils.nil_or_empty?(name),
+      map_name_explicit: !Utils.nil_or_empty?(get(:map_name)),
       map_token: token,
-      map_token_present: !nil_or_empty?(token),
+      map_token_present: !Utils.nil_or_empty?(token),
       map_token_length: if(token, do: String.length(token), else: 0),
       map_slug: map_slug(),
-      map_slug_present: !nil_or_empty?(map_slug()),
+      map_slug_present: !Utils.nil_or_empty?(map_slug()),
       base_map_url: base_map_url(),
-      base_map_url_present: !nil_or_empty?(base_map_url()),
+      base_map_url_present: !Utils.nil_or_empty?(base_map_url()),
       system_tracking_enabled: system_tracking_enabled?(),
       track_kspace_systems: track_kspace_systems?()
     }
@@ -471,56 +388,6 @@ defmodule WandererNotifier.Config do
 
   # Add a function to return the base URL portion of map_url_with_name
   def base_map_url do
-    url = map_url_with_name()
-
-    # Return early for nil or empty URL
-    if nil_or_empty?(url) do
-      log_invalid_url("Missing map URL")
-      return_empty_string()
-    else
-      build_base_url(url)
-    end
-  end
-
-  # Helper to check for nil or empty string
-  defp nil_or_empty?(str), do: is_nil(str) or str == ""
-
-  # Helper to log invalid URL warning
-  defp log_invalid_url(message) do
-    require Logger
-    Logger.warning(message)
-  end
-
-  # Return empty string for invalid URLs
-  defp return_empty_string, do: ""
-
-  # Build base URL from full URL
-  defp build_base_url(url) do
-    uri = URI.parse(url)
-
-    if has_valid_scheme_and_host?(uri) do
-      build_url_from_components(uri)
-    else
-      log_invalid_url("Invalid map URL format: #{url}")
-      return_empty_string()
-    end
-  end
-
-  # Check if URI has valid scheme and host
-  defp has_valid_scheme_and_host?(uri) do
-    uri.scheme != nil and uri.host != nil
-  end
-
-  # Build URL string from URI components
-  defp build_url_from_components(uri) do
-    port_part =
-      case {uri.scheme, uri.port} do
-        {"http", 80} -> ""
-        {"https", 443} -> ""
-        {_, nil} -> ""
-        {_, port} -> ":#{port}"
-      end
-
-    "#{uri.scheme}://#{uri.host}#{port_part}"
+    Utils.build_base_url(map_url_with_name())
   end
 end

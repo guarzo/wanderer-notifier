@@ -52,18 +52,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: true
         }
       end)
 
@@ -99,18 +91,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
                Kill.should_notify?(%{
                  killmail: killmail,
                  config: %{
-                   notifications: %{
-                     enabled: false,
-                     kill: %{
-                       enabled: true,
-                       system: %{
-                         enabled: true
-                       },
-                       character: %{
-                         enabled: true
-                       }
-                     }
-                   }
+                   notifications_enabled: false,
+                   kill_notifications_enabled: true,
+                   system_notifications_enabled: true,
+                   character_notifications_enabled: true
                  }
                })
     end
@@ -138,18 +122,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
                Kill.should_notify?(%{
                  killmail: killmail,
                  config: %{
-                   notifications: %{
-                     enabled: true,
-                     kill: %{
-                       enabled: false,
-                       system: %{
-                         enabled: true
-                       },
-                       character: %{
-                         enabled: true
-                       }
-                     }
-                   }
+                   notifications_enabled: true,
+                   kill_notifications_enabled: false,
+                   system_notifications_enabled: true,
+                   character_notifications_enabled: true
                  }
                })
     end
@@ -178,18 +154,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: false
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: false,
+          character_notifications_enabled: true
         }
       end)
 
@@ -221,18 +189,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: false
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: false
         }
       end)
 
@@ -264,18 +224,10 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: true
         }
       end)
 

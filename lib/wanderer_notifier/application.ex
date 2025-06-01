@@ -38,6 +38,8 @@ defmodule WandererNotifier.Application do
     children = [
       {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
+      # Add Task.Supervisor for supervised background tasks
+      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},

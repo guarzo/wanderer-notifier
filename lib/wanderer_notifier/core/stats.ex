@@ -8,6 +8,90 @@ defmodule WandererNotifier.Core.Stats do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   require Logger
 
+  # State struct for the Stats GenServer
+  defmodule State do
+    @moduledoc """
+    State structure for the Stats GenServer.
+
+    Maintains all application statistics including RedisQ status,
+    notification counts, processing metrics, and first notification flags.
+    """
+
+    @type redisq_status :: %{
+            connected: boolean(),
+            connecting: boolean(),
+            last_message: DateTime.t() | nil,
+            startup_time: DateTime.t() | nil,
+            reconnects: non_neg_integer(),
+            url: String.t() | nil,
+            last_disconnect: DateTime.t() | nil
+          }
+
+    @type notifications :: %{
+            total: non_neg_integer(),
+            kills: non_neg_integer(),
+            systems: non_neg_integer(),
+            characters: non_neg_integer()
+          }
+
+    @type processing :: %{
+            kills_processed: non_neg_integer(),
+            kills_notified: non_neg_integer()
+          }
+
+    @type first_notifications :: %{
+            kill: boolean(),
+            character: boolean(),
+            system: boolean()
+          }
+
+    @type t :: %__MODULE__{
+            redisq: redisq_status(),
+            notifications: notifications(),
+            processing: processing(),
+            first_notifications: first_notifications(),
+            metrics: map(),
+            killmails_received: non_neg_integer(),
+            systems_count: non_neg_integer(),
+            characters_count: non_neg_integer()
+          }
+
+    defstruct redisq: %{
+                connected: false,
+                connecting: false,
+                last_message: nil,
+                startup_time: nil,
+                reconnects: 0,
+                url: nil,
+                last_disconnect: nil
+              },
+              notifications: %{
+                total: 0,
+                kills: 0,
+                systems: 0,
+                characters: 0
+              },
+              processing: %{
+                kills_processed: 0,
+                kills_notified: 0
+              },
+              first_notifications: %{
+                kill: true,
+                character: true,
+                system: true
+              },
+              metrics: %{},
+              killmails_received: 0,
+              systems_count: 0,
+              characters_count: 0
+
+    @doc """
+    Creates a new Stats state with default values.
+    """
+    @spec new() :: t()
+    def new, do: %__MODULE__{}
+  end
+
   # Client API
 
   @doc """
@@ -184,38 +268,7 @@ defmodule WandererNotifier.Core.Stats do
   @impl true
   def init(_opts) do
     AppLogger.startup_debug("Initializing stats tracking service...")
-    # Initialize the state with default values
-    {:ok,
-     %{
-       redisq: %{
-         connected: false,
-         connecting: false,
-         last_message: nil,
-         startup_time: nil,
-         reconnects: 0,
-         url: nil,
-         last_disconnect: nil
-       },
-       notifications: %{
-         total: 0,
-         kills: 0,
-         systems: 0,
-         characters: 0
-       },
-       processing: %{
-         kills_processed: 0,
-         kills_notified: 0
-       },
-       first_notifications: %{
-         kill: true,
-         character: true,
-         system: true
-       },
-       # Added for killmail metrics
-       metrics: %{},
-       # Track killmails received from RedisQ
-       killmails_received: 0
-     }}
+    {:ok, State.new()}
   end
 
   defp handle_kill_processed(state) do

@@ -27,14 +27,10 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     MockConfig
     |> stub(:get_config, fn ->
       %{
-        notifications: %{
-          enabled: true,
-          kill: %{
-            enabled: true,
-            system: %{enabled: true},
-            character: %{enabled: true}
-          }
-        }
+        notifications_enabled: true,
+        kill_notifications_enabled: true,
+        system_notifications_enabled: true,
+        character_notifications_enabled: true
       }
     end)
 

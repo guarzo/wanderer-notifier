@@ -106,15 +106,15 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     valid_alliance_id?(character["alliance_id"])
   end
 
-  defp valid_eve_id?(eve_id) do
-    is_binary(eve_id) or is_integer(eve_id)
-  end
+  defp valid_eve_id?(eve_id) when is_binary(eve_id) or is_integer(eve_id), do: true
+  defp valid_eve_id?(_), do: false
 
-  defp valid_corporation_id?(corp_id) do
-    is_binary(corp_id) or is_integer(corp_id)
-  end
+  defp valid_corporation_id?(corp_id) when is_binary(corp_id) or is_integer(corp_id), do: true
+  defp valid_corporation_id?(_), do: false
 
-  defp valid_alliance_id?(alliance_id) do
-    is_binary(alliance_id) or is_integer(alliance_id) or is_nil(alliance_id)
-  end
+  defp valid_alliance_id?(alliance_id)
+       when is_binary(alliance_id) or is_integer(alliance_id) or is_nil(alliance_id),
+       do: true
+
+  defp valid_alliance_id?(_), do: false
 end

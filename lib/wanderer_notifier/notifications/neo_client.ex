@@ -31,24 +31,17 @@ defmodule WandererNotifier.Notifications.NeoClient do
     end
   end
 
-  defp validate_inputs(embed, channel_id) do
-    cond do
-      is_nil(embed) ->
-        {:error, "Embed cannot be nil"}
+  defp validate_inputs(nil, _channel_id), do: {:error, "Embed cannot be nil"}
+  defp validate_inputs(_embed, nil), do: {:error, "Channel ID cannot be nil"}
 
-      is_nil(channel_id) ->
-        {:error, "Channel ID cannot be nil"}
+  defp validate_inputs(embed, _channel_id) when not is_map(embed),
+    do: {:error, "Embed must be a map, got: #{inspect(embed)}"}
 
-      not is_map(embed) ->
-        {:error, "Embed must be a map, got: #{inspect(embed)}"}
+  defp validate_inputs(_embed, channel_id)
+       when not is_integer(channel_id) and not is_binary(channel_id),
+       do: {:error, "Channel ID must be an integer or string, got: #{inspect(channel_id)}"}
 
-      not is_integer(channel_id) and not is_binary(channel_id) ->
-        {:error, "Channel ID must be an integer or string, got: #{inspect(channel_id)}"}
-
-      true ->
-        :ok
-    end
-  end
+  defp validate_inputs(_embed, _channel_id), do: :ok
 
   defp format_error(error) do
     case error do

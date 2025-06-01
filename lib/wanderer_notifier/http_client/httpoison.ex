@@ -5,102 +5,23 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   @behaviour WandererNotifier.HttpClient.Behaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
+  alias WandererNotifier.Utils.Retry
 
   @default_headers [{"Content-Type", "application/json"}]
 
-  # Default timeout settings
-  # 10 seconds
-  @default_timeout 10_000
-  # 10 seconds
-  @default_recv_timeout 10_000
-  # 5 seconds
-  @default_connect_timeout 5_000
-  # 5 seconds
-  @default_pool_timeout 5_000
-
-  # Retry settings
-  @max_retries 3
-  # 1 second
-  @base_backoff 1_000
-  # 30 seconds
-  @max_backoff 30_000
-
   defp default_opts do
     [
-      timeout: @default_timeout,
-      recv_timeout: @default_recv_timeout,
-      connect_timeout: @default_connect_timeout,
-      pool_timeout: @default_pool_timeout,
+      timeout: Constants.default_timeout(),
+      recv_timeout: Constants.default_recv_timeout(),
+      connect_timeout: Constants.default_connect_timeout(),
+      pool_timeout: Constants.default_pool_timeout(),
       hackney: [pool: :default]
     ]
   end
 
   defp merge_opts(opts) do
     Keyword.merge(default_opts(), opts)
-  end
-
-  defp calculate_backoff(retry_count) do
-    base = @base_backoff * :math.pow(2, retry_count - 1)
-    # Add up to 20% jitter
-    jitter = :rand.uniform() * 0.2 * base
-    # Cap at max backoff
-    min(base + jitter, @max_backoff) |> round()
-  end
-
-  defp retry_request(fun, retry_count \\ 0) do
-    case fun.() do
-      {:ok, response} ->
-        {:ok, response}
-
-      {:error, :timeout} when retry_count < @max_retries ->
-        handle_timeout_retry(fun, retry_count)
-
-      {:error, :connect_timeout} when retry_count < @max_retries ->
-        handle_connect_timeout_retry(fun, retry_count)
-
-      error ->
-        error
-    end
-  end
-
-  defp handle_timeout_retry(fun, retry_count) do
-    backoff = calculate_backoff(retry_count + 1)
-    attempt_number = retry_count + 1
-
-    log_timeout_retry(attempt_number, backoff)
-    Process.sleep(backoff)
-    retry_request(fun, retry_count + 1)
-  end
-
-  defp handle_connect_timeout_retry(fun, retry_count) do
-    backoff = calculate_backoff(retry_count + 1)
-    attempt_number = retry_count + 1
-
-    log_connect_timeout_retry(attempt_number, backoff)
-    Process.sleep(backoff)
-    retry_request(fun, retry_count + 1)
-  end
-
-  defp log_timeout_retry(attempt_number, backoff) do
-    message =
-      "HTTP request timed out, retrying in #{backoff}ms (attempt #{attempt_number}/#{@max_retries})"
-
-    if attempt_number < @max_retries do
-      AppLogger.api_debug(message)
-    else
-      AppLogger.api_warn(message)
-    end
-  end
-
-  defp log_connect_timeout_retry(attempt_number, backoff) do
-    message =
-      "HTTP connection timed out, retrying in #{backoff}ms (attempt #{attempt_number}/#{@max_retries})"
-
-    if attempt_number < @max_retries do
-      AppLogger.api_debug(message)
-    else
-      AppLogger.api_warn(message)
-    end
   end
 
   @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
@@ -113,7 +34,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   @impl true
   def get(url, headers, options) do
-    retry_request(fn ->
+    Retry.http_retry(fn ->
       url
       |> HTTPoison.get(headers, merge_opts(options))
       |> handle_response_with_context(url, "GET")
@@ -127,7 +48,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   @impl true
   def post(url, body, headers, options) do
-    retry_request(fn ->
+    Retry.http_retry(fn ->
       url
       |> HTTPoison.post(body, headers, merge_opts(options))
       |> handle_response_with_context(url, "POST")
@@ -148,7 +69,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
       )
     end
 
-    retry_request(fn ->
+    Retry.http_retry(fn ->
       url
       |> HTTPoison.post(encoded_body, headers, merge_opts(options))
       |> handle_response_with_context(url, "POST")
@@ -167,7 +88,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
         body -> body
       end
 
-    retry_request(fn ->
+    Retry.http_retry(fn ->
       url
       |> HTTPoison.request(method, payload, headers, merge_opts(opts))
       |> handle_response_with_context(url, method)

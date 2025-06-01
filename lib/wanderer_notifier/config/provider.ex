@@ -86,29 +86,23 @@ defmodule WandererNotifier.ConfigProvider do
   # Private helper functions
 
   defp parse_port do
-    case System.get_env("PORT") do
-      nil ->
-        4000
-
-      port_str ->
-        case Integer.parse(port_str) do
-          {port, _} -> port
-          :error -> 4000
-        end
+    with port_str when is_binary(port_str) <- System.get_env("PORT"),
+         {port, _} <- Integer.parse(port_str) do
+      port
+    else
+      nil -> 4000
+      :error -> 4000
+      _ -> 4000
     end
   end
 
   defp parse_bool(key, default) do
-    System.get_env(key)
-    |> case do
-      nil ->
-        default
-
-      value ->
-        value
-        |> String.downcase()
-        |> String.trim()
-        |> parse_bool_value(default)
+    with value when is_binary(value) <- System.get_env(key),
+         normalized <- value |> String.downcase() |> String.trim() do
+      parse_bool_value(normalized, default)
+    else
+      nil -> default
+      _ -> default
     end
   end
 

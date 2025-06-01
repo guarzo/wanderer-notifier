@@ -180,21 +180,14 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
     system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
 
-    # Determine which channel to use based on the kill type
+    # Determine which channel to use based on the kill type using pattern matching
     channel_id =
-      cond do
-        # Check for tracked character first, but only if character notifications are enabled
-        has_tracked_character && character_notifications_enabled ->
-          Config.discord_character_kill_channel_id()
-
-        # Then check for tracked system, but only if system notifications are enabled
-        has_tracked_system && system_notifications_enabled ->
-          Config.discord_system_kill_channel_id()
-
-        # Default fallback
-        true ->
-          Config.discord_channel_id()
-      end
+      determine_kill_channel_id(
+        has_tracked_character,
+        has_tracked_system,
+        character_notifications_enabled,
+        system_notifications_enabled
+      )
 
     # Send to the appropriate channel
     if channel_id do
@@ -204,6 +197,29 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     end
 
     {:ok, :sent}
+  end
+
+  # Use pattern matching with guards instead of cond for channel determination
+  defp determine_kill_channel_id(true, _has_tracked_system, true, _system_notifications_enabled) do
+    Config.discord_character_kill_channel_id()
+  end
+
+  defp determine_kill_channel_id(
+         _has_tracked_character,
+         true,
+         _character_notifications_enabled,
+         true
+       ) do
+    Config.discord_system_kill_channel_id()
+  end
+
+  defp determine_kill_channel_id(
+         _has_tracked_character,
+         _has_tracked_system,
+         _character_notifications_enabled,
+         _system_notifications_enabled
+       ) do
+    Config.discord_channel_id()
   end
 
   defp dispatch_kill_notification(notifier, kill) do

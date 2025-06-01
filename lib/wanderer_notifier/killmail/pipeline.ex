@@ -39,50 +39,63 @@ defmodule WandererNotifier.Killmail.Pipeline do
     context = %{context | system_id: system_id}
     kill_id = get_in(zkb_data, ["killmail_id"])
 
-    # Check for duplicates first
-    case check_deduplication(kill_id) do
+    # Use with block to flatten nested conditionals
+    with {:ok, dedup_result} <- check_deduplication(kill_id),
+         {:ok, :new} <- {:ok, dedup_result},
+         {:ok, %{should_notify: true}} <- should_notify_without_esi?(zkb_data),
+         {:ok, _killmail_id} <- extract_killmail_id(zkb_data),
+         {:ok, killmail} <- process_new_killmail(zkb_data, context) do
+      handle_notification_sent(killmail, context)
+    else
       {:ok, :duplicate} ->
         handle_duplicate_killmail(kill_id, system_id)
 
-      {:ok, :new} ->
-        # First check if we should notify without ESI
-        case should_notify_without_esi?(zkb_data) do
-          {:ok, %{should_notify: false, reason: reason}} ->
-            handle_notification_skipped(kill_id, system_id, reason)
-
-          {:ok, %{should_notify: true}} ->
-            process_tracked_killmail_pipeline(zkb_data, context, kill_id, system_id)
-
-          {:error, reason} ->
-            handle_notification_error(zkb_data, context, reason, kill_id, system_id)
-        end
-
-      {:error, reason} ->
-        handle_deduplication_error(zkb_data, context, reason, kill_id, system_id)
-    end
-  end
-
-  defp process_tracked_killmail_pipeline(zkb_data, context, kill_id, system_id) do
-    case extract_killmail_id(zkb_data) do
-      {:ok, killmail_id} ->
-        process_valid_killmail(zkb_data, context, killmail_id, system_id)
+      {:ok, %{should_notify: false, reason: reason}} ->
+        handle_notification_skipped(kill_id, system_id, reason)
 
       {:error, :invalid_killmail_id} ->
         handle_invalid_killmail_id(kill_id, system_id)
 
+      {:error, reason} when reason in [:dedup_error, :notification_error, :processing_error] ->
+        handle_error(zkb_data, context, reason)
+
+      {:error, reason} ->
+        handle_general_error(zkb_data, context, reason, kill_id, system_id)
+
       error ->
-        handle_killmail_id_extraction_error(kill_id, system_id, error)
+        handle_unexpected_error(zkb_data, context, error, kill_id, system_id)
     end
   end
 
-  defp process_valid_killmail(zkb_data, context, killmail_id, system_id) do
-    case process_new_killmail(zkb_data, context) do
-      {:ok, killmail} ->
-        handle_notification_sent(killmail, context)
+  # Simplified helper functions for error handling
+  defp handle_general_error(zkb_data, context, reason, kill_id, system_id) do
+    case reason do
+      :invalid_killmail_id ->
+        handle_invalid_killmail_id(kill_id, system_id)
 
-      error ->
-        handle_killmail_processing_error(killmail_id, system_id, error)
+      _ ->
+        system_name = get_system_name(system_id)
+
+        AppLogger.kill_error("Error in killmail pipeline",
+          kill_id: kill_id,
+          system: system_name,
+          error: inspect(reason)
+        )
+
+        handle_error(zkb_data, context, reason)
     end
+  end
+
+  defp handle_unexpected_error(zkb_data, context, error, kill_id, system_id) do
+    system_name = get_system_name(system_id)
+
+    AppLogger.kill_error("Unexpected error in killmail pipeline",
+      kill_id: kill_id,
+      system: system_name,
+      error: inspect(error)
+    )
+
+    handle_error(zkb_data, context, {:unexpected_error, error})
   end
 
   defp handle_invalid_killmail_id(kill_id, system_id) do
@@ -95,71 +108,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
     )
 
     {:error, :invalid_killmail_id}
-  end
-
-  defp handle_killmail_id_extraction_error(kill_id, system_id, error) do
-    system_name = get_system_name(system_id)
-
-    AppLogger.kill_error("Error extracting killmail ID",
-      kill_id: kill_id,
-      system: system_name,
-      error: inspect(error)
-    )
-
-    {:error, error}
-  end
-
-  defp handle_killmail_processing_error(killmail_id, system_id, error) do
-    system_name = get_system_name(system_id)
-
-    AppLogger.kill_error("Killmail processing failed",
-      kill_id: killmail_id,
-      system: system_name,
-      error: inspect(error)
-    )
-
-    error
-  end
-
-  defp handle_notification_error(zkb_data, context, reason, kill_id, system_id) do
-    system_name = get_system_name(system_id)
-
-    AppLogger.kill_error("Error checking notification requirements",
-      kill_id: kill_id,
-      system: system_name,
-      error: inspect(reason)
-    )
-
-    handle_error(zkb_data, context, reason)
-  end
-
-  defp check_deduplication(kill_id) do
-    case deduplication_module().check(:kill, kill_id) do
-      {:ok, result} -> {:ok, result}
-      {:error, reason} -> {:error, reason}
-      result -> {:error, {:invalid_deduplication_response, result}}
-    end
-  end
-
-  defp handle_duplicate_killmail(kill_id, system_id) do
-    Stats.track_processing_complete({:ok, :skipped})
-    system_name = get_system_name(system_id)
-
-    AppLogger.kill_info("💀 🔄 ##{kill_id} | #{system_name} | Duplicate killmail")
-
-    {:ok, :skipped}
-  end
-
-  defp handle_deduplication_error(zkb_data, context, reason, kill_id, system_id) do
-    system_name = get_system_name(system_id)
-
-    AppLogger.kill_error("Error checking deduplication",
-      kill_id: kill_id,
-      system: system_name,
-      error: inspect(reason)
-    )
-
-    handle_error(zkb_data, context, reason)
   end
 
   # Extract killmail_id from the data structure
@@ -199,62 +147,55 @@ defmodule WandererNotifier.Killmail.Pipeline do
     end
   end
 
-  # Check if notification should be sent for an enriched killmail
-  defp check_notification_requirements(killmail, character_id) do
+  # Check if notification should be sent for an enriched killmail using pattern matching with guards
+  defp check_notification_requirements(killmail, character_id) when is_map(killmail) do
     config = config_module().get_config()
 
-    notifications_enabled = get_in(config, [:notifications, :enabled])
-
-    if notifications_enabled do
-      check_specific_notification_type(killmail, character_id, config)
-    else
-      {:error, :notifications_disabled}
-    end
-  end
-
-  defp check_specific_notification_type(killmail, character_id, config) do
-    case killmail do
-      %{system_id: system_id} when not is_nil(system_id) ->
-        check_system_notification_enabled(killmail, config)
-
-      %{victim: %{character_id: ^character_id}} ->
-        check_character_notification_enabled(killmail, config)
-
-      _ ->
-        check_kill_notification_enabled(killmail, config)
-    end
-  end
-
-  defp check_system_notification_enabled(killmail, config) do
-    system_notifications_enabled = get_in(config, [:notifications, :kill, :system, :enabled])
-
-    if system_notifications_enabled do
+    with {:ok, :enabled} <- validate_notifications_enabled(config),
+         {:ok, killmail} <- check_specific_notification_type(killmail, character_id, config) do
       {:ok, killmail}
-    else
-      {:error, :system_notifications_disabled}
     end
   end
 
-  defp check_character_notification_enabled(killmail, config) do
-    character_notifications_enabled =
-      get_in(config, [:notifications, :kill, :character, :enabled])
+  # Use pattern matching with guards instead of if statements
+  defp validate_notifications_enabled(%{notifications_enabled: true}), do: {:ok, :enabled}
+  defp validate_notifications_enabled(_config), do: {:error, :notifications_disabled}
 
-    if character_notifications_enabled do
-      {:ok, killmail}
-    else
-      {:error, :character_notifications_disabled}
-    end
+  defp check_specific_notification_type(%{system_id: system_id} = killmail, _character_id, config)
+       when not is_nil(system_id) do
+    check_system_notification_enabled(killmail, config)
   end
 
-  defp check_kill_notification_enabled(killmail, config) do
-    kill_notifications_enabled = get_in(config, [:notifications, :kill, :enabled])
-
-    if kill_notifications_enabled do
-      {:ok, killmail}
-    else
-      {:error, :kill_notifications_disabled}
-    end
+  defp check_specific_notification_type(
+         %{victim: %{character_id: character_id}} = killmail,
+         character_id,
+         config
+       ) do
+    check_character_notification_enabled(killmail, config)
   end
+
+  defp check_specific_notification_type(killmail, _character_id, config) do
+    check_kill_notification_enabled(killmail, config)
+  end
+
+  # Use pattern matching with guards for notification type checks
+  defp check_system_notification_enabled(killmail, %{system_notifications_enabled: true}),
+    do: {:ok, killmail}
+
+  defp check_system_notification_enabled(_killmail, _config),
+    do: {:error, :system_notifications_disabled}
+
+  defp check_character_notification_enabled(killmail, %{character_notifications_enabled: true}),
+    do: {:ok, killmail}
+
+  defp check_character_notification_enabled(_killmail, _config),
+    do: {:error, :character_notifications_disabled}
+
+  defp check_kill_notification_enabled(killmail, %{kill_notifications_enabled: true}),
+    do: {:ok, killmail}
+
+  defp check_kill_notification_enabled(_killmail, _config),
+    do: {:error, :kill_notifications_disabled}
 
   # Checks if we should notify using just zkill data
   defp should_notify_without_esi?(zkb_data) do
@@ -595,5 +536,22 @@ defmodule WandererNotifier.Killmail.Pipeline do
       :killmail_pipeline,
       WandererNotifier.Killmail.Pipeline
     )
+  end
+
+  defp check_deduplication(kill_id) do
+    case deduplication_module().check(:kill, kill_id) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+      result -> {:error, {:invalid_deduplication_response, result}}
+    end
+  end
+
+  defp handle_duplicate_killmail(kill_id, system_id) do
+    Stats.track_processing_complete({:ok, :skipped})
+    system_name = get_system_name(system_id)
+
+    AppLogger.kill_info("💀 🔄 ##{kill_id} | #{system_name} | Duplicate killmail")
+
+    {:ok, :skipped}
   end
 end

@@ -13,6 +13,50 @@ defmodule WandererNotifier.License.Service do
   @callback validate() :: boolean()
   @callback status() :: map()
 
+  # State struct for the License Service GenServer
+  defmodule State do
+    @moduledoc """
+    State structure for the License Service GenServer.
+
+    Maintains license validation status, bot assignment status,
+    error information, and notification counts.
+    """
+
+    @type notification_counts :: %{
+            system: non_neg_integer(),
+            character: non_neg_integer(),
+            killmail: non_neg_integer()
+          }
+
+    @type t :: %__MODULE__{
+            valid: boolean(),
+            bot_assigned: boolean(),
+            details: map() | nil,
+            error: atom() | nil,
+            error_message: String.t() | nil,
+            last_validated: integer(),
+            notification_counts: notification_counts()
+          }
+
+    defstruct valid: false,
+              bot_assigned: false,
+              details: nil,
+              error: nil,
+              error_message: nil,
+              last_validated: nil,
+              notification_counts: %{system: 0, character: 0, killmail: 0}
+
+    @doc """
+    Creates a new License state with default values.
+    """
+    @spec new() :: t()
+    def new do
+      %__MODULE__{
+        last_validated: :os.system_time(:second)
+      }
+    end
+  end
+
   # Client API
 
   @doc """
@@ -202,18 +246,7 @@ defmodule WandererNotifier.License.Service do
     schedule_refresh()
     AppLogger.config_info("License Service starting up")
 
-    # Initialize state with all necessary keys to avoid KeyError
-    initial_state = %{
-      valid: false,
-      bot_assigned: false,
-      details: nil,
-      error: nil,
-      error_message: nil,
-      last_validated: :os.system_time(:second),
-      notification_counts: %{system: 0, character: 0, killmail: 0}
-    }
-
-    {:ok, initial_state, {:continue, :initial_validation}}
+    {:ok, State.new(), {:continue, :initial_validation}}
   end
 
   @impl true
@@ -255,15 +288,14 @@ defmodule WandererNotifier.License.Service do
       )
 
       # Return invalid license state but don't crash
-      invalid_state = %{
+      invalid_state = %State{
         valid: false,
         bot_assigned: false,
         details: nil,
         error: :exception,
         error_message: "License validation error: #{inspect(e)}",
         last_validated: :os.system_time(:second),
-        notification_counts:
-          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+        notification_counts: state.notification_counts
       }
 
       {:noreply, invalid_state}
@@ -300,14 +332,14 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp create_new_state({valid, bot_assigned, details, error, error_message}, state) do
-    %{
+    %State{
       valid: valid,
       bot_assigned: bot_assigned,
       details: details,
       error: error,
       error_message: error_message,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
   end
 
@@ -318,14 +350,14 @@ defmodule WandererNotifier.License.Service do
   defp handle_validation_error(type, reason, state) do
     AppLogger.config_error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
 
-    error_state = %{
+    error_state = %State{
       valid: false,
       bot_assigned: false,
       error: reason,
       error_message: "License validation error: #{inspect(reason)}",
       details: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
 
     {:reply, error_state, error_state}
@@ -390,16 +422,16 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call({:increment_notification_count, type}, _from, state) do
-    counts = Map.get(state, :notification_counts, %{})
+    counts = state.notification_counts
     new_count = Map.get(counts, type, 0) + 1
     new_counts = Map.put(counts, type, new_count)
-    new_state = Map.put(state, :notification_counts, new_counts)
+    new_state = %{state | notification_counts: new_counts}
     {:reply, new_count, new_state}
   end
 
   @impl true
   def handle_call({:get_notification_count, type}, _from, state) do
-    counts = Map.get(state, :notification_counts, %{})
+    counts = state.notification_counts
     {:reply, Map.get(counts, type, 0), state}
   end
 

@@ -121,14 +121,9 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp get_system_security_status(_), do: 0.0
 
-  defp format_security_status(security_status) when is_float(security_status) do
-    cond do
-      security_status >= 0.5 -> "High Sec"
-      security_status > 0.0 -> "Low Sec"
-      true -> "Null Sec"
-    end
-  end
-
+  defp format_security_status(security_status) when is_float(security_status) and security_status >= 0.5, do: "High Sec"
+  defp format_security_status(security_status) when is_float(security_status) and security_status > 0.0, do: "Low Sec"
+  defp format_security_status(security_status) when is_float(security_status), do: "Null Sec"
   defp format_security_status(_), do: "Unknown"
 
   defp get_final_blow_details(killmail) do
@@ -200,53 +195,51 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     }
   end
 
-  defp build_final_blow_text(attacker, is_npc_kill) do
-    cond do
-      is_npc_kill ->
-        "NPC"
+  defp build_final_blow_text(_attacker, true), do: "NPC"
 
-      attacker.character && attacker.ship ->
-        "#{attacker.character} in #{attacker.ship}"
+  defp build_final_blow_text(%{character: character, ship: ship}, false)
+       when not is_nil(character) and not is_nil(ship) do
+    "#{character} in #{ship}"
+  end
 
-      attacker.character ->
-        attacker.character
+  defp build_final_blow_text(%{character: character}, false)
+       when not is_nil(character) do
+    character
+  end
 
-      attacker.ship ->
-        attacker.ship
+  defp build_final_blow_text(%{ship: ship}, false)
+       when not is_nil(ship) do
+    ship
+  end
 
-      true ->
-        "Unknown"
+  defp build_final_blow_text(_attacker, _is_npc_kill), do: "Unknown"
+
+  defp build_attacker_icon_url(character_id, _corp_id, _alliance_id)
+       when is_integer(character_id) and character_id > 0 do
+    "https://images.evetech.net/characters/#{character_id}/portrait?size=64"
+  end
+
+  defp build_attacker_icon_url(_character_id, corp_id, _alliance_id)
+       when is_integer(corp_id) and corp_id > 0 do
+    "https://images.evetech.net/corporations/#{corp_id}/logo?size=64"
+  end
+
+  defp build_attacker_icon_url(_character_id, _corp_id, alliance_id)
+       when is_integer(alliance_id) and alliance_id > 0 do
+    "https://images.evetech.net/alliances/#{alliance_id}/logo?size=64"
+  end
+
+  defp build_attacker_icon_url(_character_id, _corp_id, _alliance_id), do: nil
+
+  defp get_attacker_value(attacker, key) when is_map(attacker) do
+    case {Map.has_key?(attacker, key), Map.has_key?(attacker, to_string(key))} do
+      {true, _} -> Map.get(attacker, key)
+      {false, true} -> Map.get(attacker, to_string(key))
+      {false, false} -> nil
     end
   end
 
-  defp build_attacker_icon_url(character_id, corp_id, alliance_id) do
-    cond do
-      character_id && character_id > 0 ->
-        "https://images.evetech.net/characters/#{character_id}/portrait?size=64"
-
-      corp_id && corp_id > 0 ->
-        "https://images.evetech.net/corporations/#{corp_id}/logo?size=64"
-
-      alliance_id && alliance_id > 0 ->
-        "https://images.evetech.net/alliances/#{alliance_id}/logo?size=64"
-
-      true ->
-        nil
-    end
-  end
-
-  defp get_attacker_value(attacker, key) do
-    cond do
-      is_map(attacker) && Map.has_key?(attacker, key) ->
-        Map.get(attacker, key)
-
-      is_map(attacker) && Map.has_key?(attacker, to_string(key)) ->
-        Map.get(attacker, to_string(key))
-
-      true ->
-        nil
-    end
-  end
+  defp get_attacker_value(_attacker, _key), do: nil
 
   defp build_kill_notification_fields(_victim_info, kill_context, final_blow_details) do
     # Build base fields (value, attackers, final blow)
@@ -402,29 +395,28 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     end
   end
 
-  defp build_attacker_description_part(final_blow_details, kill_context) do
-    cond do
-      kill_context.is_npc_kill ->
-        "NPCs"
+  defp build_attacker_description_part(_final_blow_details, %{is_npc_kill: true}), do: "NPCs"
 
-      final_blow_details.character && final_blow_details.corp ->
-        attacker_name_part = build_attacker_name_part(final_blow_details)
-        corp_part = build_attacker_corp_part(final_blow_details)
-        ship_part = build_attacker_ship_part(final_blow_details, kill_context)
+  defp build_attacker_description_part(%{character: character, corp: corp} = final_blow_details, kill_context)
+       when not is_nil(character) and not is_nil(corp) do
+    attacker_name_part = build_attacker_name_part(final_blow_details)
+    corp_part = build_attacker_corp_part(final_blow_details)
+    ship_part = build_attacker_ship_part(final_blow_details, kill_context)
 
-        "#{attacker_name_part}#{corp_part}#{ship_part}"
-
-      final_blow_details.character ->
-        if final_blow_details.character_id do
-          "[#{final_blow_details.character}](https://zkillboard.com/character/#{final_blow_details.character_id}/)"
-        else
-          final_blow_details.character
-        end
-
-      true ->
-        "Unknown attacker"
-    end
+    "#{attacker_name_part}#{corp_part}#{ship_part}"
   end
+
+  defp build_attacker_description_part(%{character: character, character_id: character_id}, _kill_context)
+       when not is_nil(character) and not is_nil(character_id) do
+    "[#{character}](https://zkillboard.com/character/#{character_id}/)"
+  end
+
+  defp build_attacker_description_part(%{character: character}, _kill_context)
+       when not is_nil(character) do
+    character
+  end
+
+  defp build_attacker_description_part(_final_blow_details, _kill_context), do: "Unknown attacker"
 
   defp build_attacker_name_part(final_blow_details) do
     if final_blow_details.character_id do
@@ -490,13 +482,17 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   # Helper functions to reduce complexity
-  defp get_corp_display_name(corp, corp_ticker) do
-    cond do
-      valid_ticker?(corp_ticker) -> corp_ticker
-      valid_corp?(corp) -> corp
-      true -> "Unknown Corp"
-    end
+  defp get_corp_display_name(_corp, corp_ticker)
+       when is_binary(corp_ticker) and corp_ticker != "" and corp_ticker != "Unknown" do
+    corp_ticker
   end
+
+  defp get_corp_display_name(corp, _corp_ticker)
+       when is_binary(corp) and corp != "" and corp != "Unknown Corp" do
+    corp
+  end
+
+  defp get_corp_display_name(_corp, _corp_ticker), do: "Unknown Corp"
 
   defp get_alliance_display_name(alliance, alliance_ticker) do
     if valid_ticker?(alliance_ticker) do
@@ -514,10 +510,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     ticker && ticker != "" && ticker != "Unknown"
   end
 
-  defp valid_corp?(corp) do
-    corp && corp != "" && corp != "Unknown Corp"
-  end
-
   defp format_alliance_link(display_name, alliance_id) do
     if alliance_id && alliance_id > 0 do
       "[#{display_name}](#{build_zkillboard_url(:alliance, alliance_id)})"
@@ -526,18 +518,17 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     end
   end
 
-  defp format_corp_display(corp, corp_ticker) do
-    cond do
-      corp_ticker && corp_ticker != "" && corp_ticker != "Unknown" ->
-        corp_ticker
-
-      corp && corp != "" && corp != "Unknown Corp" ->
-        corp
-
-      true ->
-        "Unknown Corp"
-    end
+  defp format_corp_display(_corp, corp_ticker)
+       when is_binary(corp_ticker) and corp_ticker != "" and corp_ticker != "Unknown" do
+    corp_ticker
   end
+
+  defp format_corp_display(corp, _corp_ticker)
+       when is_binary(corp) and corp != "" and corp != "Unknown Corp" do
+    corp
+  end
+
+  defp format_corp_display(_corp, _corp_ticker), do: "Unknown Corp"
 
   defp build_minimal_fields(_kill_context) do
     # Return empty fields array to use prose description instead
@@ -599,13 +590,20 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     end
   end
 
+  defp format_isk_value(value) when is_number(value) and value >= 1_000_000_000 do
+    "#{Float.round(value / 1_000_000_000, 1)}B"
+  end
+
+  defp format_isk_value(value) when is_number(value) and value >= 1_000_000 do
+    "#{Float.round(value / 1_000_000, 1)}M"
+  end
+
+  defp format_isk_value(value) when is_number(value) and value >= 1_000 do
+    "#{Float.round(value / 1_000, 1)}K"
+  end
+
   defp format_isk_value(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
-      true -> "#{Float.round(value, 0)}"
-    end
+    "#{Float.round(value, 0)}"
   end
 
   def format_description(killmail) do

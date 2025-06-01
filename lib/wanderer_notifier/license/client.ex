@@ -174,18 +174,17 @@ defmodule WandererNotifier.License.Client do
     end
   end
 
-  # Process decoded license data based on its format
+  # Process decoded license data based on its format using pattern matching
+  defp process_decoded_license_data(%{"license_valid" => _} = decoded) do
+    process_license_valid_format(decoded)
+  end
+
+  defp process_decoded_license_data(%{"valid" => _} = decoded) do
+    process_valid_format(decoded)
+  end
+
   defp process_decoded_license_data(decoded) do
-    cond do
-      Map.has_key?(decoded, "license_valid") ->
-        process_license_valid_format(decoded)
-
-      Map.has_key?(decoded, "valid") ->
-        process_valid_format(decoded)
-
-      true ->
-        process_unknown_format(decoded)
-    end
+    process_unknown_format(decoded)
   end
 
   # Handle the license_valid format (from validate_bot endpoint)
