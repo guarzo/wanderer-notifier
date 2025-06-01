@@ -744,4 +744,32 @@ defmodule WandererNotifier.Logger.Logger do
 
   def maintenance_error(message, metadata),
     do: log(@level_error, @category_maintenance, message, metadata)
+
+  @doc """
+  Logs a telemetry debug message with structured metadata.
+  """
+  def telemetry_debug(message, metadata \\ %{}) do
+    log(@level_debug, @category_api, message, metadata)
+  end
+
+  @doc """
+  Logs a telemetry info message with structured metadata.
+  """
+  def telemetry_info(message, metadata \\ %{}) do
+    log(@level_info, @category_api, message, metadata)
+  end
+
+  @doc """
+  Logs a telemetry warning message with structured metadata.
+  """
+  def telemetry_warning(message, metadata \\ %{}) do
+    log(@level_warn, @category_api, message, metadata)
+  end
+
+  @doc """
+  Logs a telemetry error message with structured metadata.
+  """
+  def telemetry_error(message, metadata \\ %{}) do
+    log(@level_error, @category_api, message, metadata)
+  end
 end

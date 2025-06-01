@@ -7,6 +7,12 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
+  @scheduler_modules [
+    WandererNotifier.Schedulers.SystemUpdateScheduler,
+    WandererNotifier.Schedulers.CharacterUpdateScheduler,
+    WandererNotifier.Schedulers.ServiceStatusScheduler
+  ]
+
   def start_link(_opts \\ []) do
     AppLogger.scheduler_info("Starting scheduler supervisor")
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -19,11 +25,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     AppLogger.scheduler_info("Schedulers enabled: #{schedulers_enabled}")
 
     if schedulers_enabled do
-      children = [
-        {WandererNotifier.Schedulers.SystemUpdateScheduler, []},
-        {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
-        {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
-      ]
+      children = @scheduler_modules
 
       AppLogger.scheduler_info("Starting scheduler children",
         children: inspect(children)
@@ -55,18 +57,10 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   Returns a list of all running schedulers.
   """
   def running_schedulers do
-    for {pid, _} <- Process.list() do
-      case Process.info(pid, :registered_name) do
-        {:registered_name, name} when is_atom(name) ->
-          if String.contains?(to_string(name), "Scheduler") do
-            name
-          end
-
-        _ ->
-          nil
-      end
-    end
-    |> Enum.reject(&is_nil/1)
+    @scheduler_modules
+    |> Enum.map(&{&1, running?(&1)})
+    |> Enum.filter(fn {_module, running} -> running end)
+    |> Enum.map(fn {module, _} -> module end)
   end
 
   @doc """
@@ -75,11 +69,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   def scheduler_status do
     running = running_schedulers()
 
-    for scheduler <- [
-          WandererNotifier.Schedulers.SystemUpdateScheduler,
-          WandererNotifier.Schedulers.CharacterUpdateScheduler,
-          WandererNotifier.Schedulers.ServiceStatusScheduler
-        ] do
+    for scheduler <- @scheduler_modules do
       status =
         if scheduler in running do
           :running
@@ -88,6 +78,13 @@ defmodule WandererNotifier.Schedulers.Supervisor do
         end
 
       {scheduler, status}
+    end
+  end
+
+  defp running?(module) do
+    case Process.whereis(module) do
+      nil -> false
+      pid when is_pid(pid) -> Process.alive?(pid)
     end
   end
 end

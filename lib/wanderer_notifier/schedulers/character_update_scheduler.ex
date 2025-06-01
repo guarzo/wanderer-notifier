@@ -3,7 +3,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   Scheduler for updating character data.
   """
 
-  use WandererNotifier.Schedulers.BaseMapScheduler
+  use WandererNotifier.Schedulers.BaseScheduler
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Map.Clients.Client

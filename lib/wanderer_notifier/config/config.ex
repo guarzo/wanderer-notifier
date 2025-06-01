@@ -327,38 +327,6 @@ defmodule WandererNotifier.Config do
     }
   end
 
-  # --- Map Config Diagnostics ---
-  @doc """
-  Returns a diagnostic map of all map-related configuration.
-  Useful for troubleshooting map API issues.
-  """
-  def map_config_diagnostics do
-    url = map_url_with_name()
-    token = map_token()
-    base_url = map_url()
-    name = map_name()
-
-    %{
-      map_url_with_name: url,
-      map_url_with_name_present: !Utils.nil_or_empty?(url),
-      map_url: base_url,
-      map_url_present: !Utils.nil_or_empty?(base_url),
-      map_url_explicit: !Utils.nil_or_empty?(get(:map_url)),
-      map_name: name,
-      map_name_present: !Utils.nil_or_empty?(name),
-      map_name_explicit: !Utils.nil_or_empty?(get(:map_name)),
-      map_token: token,
-      map_token_present: !Utils.nil_or_empty?(token),
-      map_token_length: if(token, do: String.length(token), else: 0),
-      map_slug: map_slug(),
-      map_slug_present: !Utils.nil_or_empty?(map_slug()),
-      base_map_url: base_map_url(),
-      base_map_url_present: !Utils.nil_or_empty?(base_map_url()),
-      system_tracking_enabled: system_tracking_enabled?(),
-      track_kspace_systems: track_kspace_systems?()
-    }
-  end
-
   # --- API Base URL ---
   @doc "Returns the API base URL."
   def get_api_base_url do

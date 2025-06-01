@@ -4,6 +4,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   """
 
   alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Telemetry
 
   alias WandererNotifier.Killmail.{
     Context,
@@ -33,20 +34,30 @@ defmodule WandererNotifier.Killmail.Pipeline do
   def process_killmail(zkb_data, context) do
     require Logger
 
+    # Track processing start with both modules
     Stats.increment(:kill_processed)
+    Telemetry.emit(:killmail_processing_start, %{}, %{context: context})
+
     context = ensure_context(context)
     system_id = get_in(zkb_data, ["solar_system_id"])
     context = %{context | system_id: system_id}
     kill_id = get_in(zkb_data, ["killmail_id"])
 
-    # Use with block to flatten nested conditionals
-    with {:ok, dedup_result} <- check_deduplication(kill_id),
-         {:ok, :new} <- {:ok, dedup_result},
-         {:ok, %{should_notify: true}} <- should_notify_without_esi?(zkb_data),
-         {:ok, _killmail_id} <- extract_killmail_id(zkb_data),
-         {:ok, killmail} <- process_new_killmail(zkb_data, context) do
+    process_killmail_with_context(zkb_data, context, kill_id, system_id)
+  end
+
+  defp process_killmail_with_context(zkb_data, context, kill_id, system_id) do
+    with {:ok, :new} <- check_deduplication_result(kill_id),
+         {:ok, %{should_notify: true}} <- check_notification_requirements(zkb_data),
+         {:ok, killmail} <- process_killmail_data(zkb_data, context) do
       handle_notification_sent(killmail, context)
     else
+      error -> handle_pipeline_error(error, zkb_data, context, kill_id, system_id)
+    end
+  end
+
+  defp handle_pipeline_error(error, zkb_data, context, kill_id, system_id) do
+    case error do
       {:ok, :duplicate} ->
         handle_duplicate_killmail(kill_id, system_id)
 
@@ -62,8 +73,50 @@ defmodule WandererNotifier.Killmail.Pipeline do
       {:error, reason} ->
         handle_general_error(zkb_data, context, reason, kill_id, system_id)
 
-      error ->
+      _ ->
         handle_unexpected_error(zkb_data, context, error, kill_id, system_id)
+    end
+  end
+
+  defp check_deduplication_result(kill_id) do
+    case check_deduplication(kill_id) do
+      {:ok, result} -> {:ok, result}
+      error -> error
+    end
+  end
+
+  defp process_killmail_data(zkb_data, context) do
+    with {:ok, _killmail_id} <- extract_killmail_id(zkb_data),
+         {:ok, killmail} <- process_new_killmail(zkb_data, context) do
+      {:ok, killmail}
+    end
+  end
+
+  defp check_notification_requirements(zkb_data) do
+    system_id = get_in(zkb_data, ["solar_system_id"])
+    victim = get_in(zkb_data, ["victim"])
+    killmail_id = get_in(zkb_data, ["killmail_id"])
+
+    with {:ok, system_tracked} <- check_system_tracking(system_id),
+         {:ok, character_tracked} <- check_character_tracking(victim) do
+      result =
+        if system_tracked or character_tracked do
+          {:ok, %{should_notify: true}}
+        else
+          {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+        end
+
+      result
+    else
+      error ->
+        AppLogger.kill_error("Error checking notification requirements",
+          error: inspect(error),
+          kill_id: killmail_id,
+          system: get_system_name(system_id),
+          module: __MODULE__
+        )
+
+        error
     end
   end
 
@@ -197,35 +250,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp check_kill_notification_enabled(_killmail, _config),
     do: {:error, :kill_notifications_disabled}
 
-  # Checks if we should notify using just zkill data
-  defp should_notify_without_esi?(zkb_data) do
-    system_id = get_in(zkb_data, ["solar_system_id"])
-    victim = get_in(zkb_data, ["victim"])
-    killmail_id = get_in(zkb_data, ["killmail_id"])
-
-    with {:ok, system_tracked} <- check_system_tracking(system_id),
-         {:ok, character_tracked} <- check_character_tracking(victim) do
-      result =
-        if system_tracked or character_tracked do
-          {:ok, %{should_notify: true}}
-        else
-          {:ok, %{should_notify: false, reason: :no_tracked_entities}}
-        end
-
-      result
-    else
-      error ->
-        AppLogger.kill_error("Error checking notification requirements",
-          error: inspect(error),
-          kill_id: killmail_id,
-          system: get_system_name(system_id),
-          module: __MODULE__
-        )
-
-        error
-    end
-  end
-
   defp check_system_tracking(nil), do: {:ok, false}
 
   defp check_system_tracking(system_id) do
@@ -265,19 +289,34 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp handle_notification_sent(enriched, ctx) do
-    case Notification.send_kill_notification(enriched, enriched.killmail_id) do
-      {:ok, _} ->
-        Stats.track_notification_sent()
-        log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
-        {:ok, enriched.killmail_id}
+    Telemetry.measure_duration(:notification_send_duration, fn ->
+      case Notification.send_kill_notification(enriched, enriched.killmail_id) do
+        {:ok, _} ->
+          Stats.track_notification_sent()
 
-      {:error, reason} ->
-        handle_error(enriched, ctx, reason)
-    end
+          Telemetry.emit(:notification_sent, %{}, %{
+            killmail_id: enriched.killmail_id,
+            system_id: enriched.system_id
+          })
+
+          log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
+          {:ok, enriched.killmail_id}
+
+        {:error, reason} ->
+          handle_error(enriched, ctx, reason)
+      end
+    end)
   end
 
   defp handle_notification_skipped(kill_id, system_id, reason) do
     Stats.track_processing_complete({:ok, :skipped})
+
+    Telemetry.emit(:killmail_processing_skipped, %{}, %{
+      killmail_id: kill_id,
+      system_id: system_id,
+      reason: reason
+    })
+
     system_name = get_system_name(system_id)
 
     reason_emoji = get_reason_emoji(reason)
@@ -290,6 +329,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp handle_error(data, ctx, reason) do
     Stats.track_processing_error()
+
+    Telemetry.emit(:killmail_processing_error, %{}, %{
+      killmail_id: data["killmail_id"],
+      system_id: ctx.system_id,
+      reason: reason
+    })
+
     log_error(data, ctx, reason)
     {:error, reason}
   end

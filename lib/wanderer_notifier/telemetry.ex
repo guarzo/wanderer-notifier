@@ -73,7 +73,7 @@ defmodule WandererNotifier.Telemetry do
     :telemetry.execute([:wanderer_notifier, event_name], measurements, metadata)
 
     # Update stats if this is a counter-type event
-    if is_counter_event?(event_name) do
+    if counter_event?(event_name) do
       Stats.increment(event_name)
     end
 
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Telemetry do
 
   # Private helper functions
 
-  defp is_counter_event?(event_name) do
+  defp counter_event?(event_name) do
     # List of events that should increment counters in Stats
     event_name in [
       :killmail_processing_start,

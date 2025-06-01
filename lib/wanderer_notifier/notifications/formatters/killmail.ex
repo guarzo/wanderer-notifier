@@ -121,8 +121,14 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp get_system_security_status(_), do: 0.0
 
-  defp format_security_status(security_status) when is_float(security_status) and security_status >= 0.5, do: "High Sec"
-  defp format_security_status(security_status) when is_float(security_status) and security_status > 0.0, do: "Low Sec"
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status >= 0.5,
+       do: "High Sec"
+
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status > 0.0,
+       do: "Low Sec"
+
   defp format_security_status(security_status) when is_float(security_status), do: "Null Sec"
   defp format_security_status(_), do: "Unknown"
 
@@ -397,7 +403,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp build_attacker_description_part(_final_blow_details, %{is_npc_kill: true}), do: "NPCs"
 
-  defp build_attacker_description_part(%{character: character, corp: corp} = final_blow_details, kill_context)
+  defp build_attacker_description_part(
+         %{character: character, corp: corp} = final_blow_details,
+         kill_context
+       )
        when not is_nil(character) and not is_nil(corp) do
     attacker_name_part = build_attacker_name_part(final_blow_details)
     corp_part = build_attacker_corp_part(final_blow_details)
@@ -406,7 +415,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     "#{attacker_name_part}#{corp_part}#{ship_part}"
   end
 
-  defp build_attacker_description_part(%{character: character, character_id: character_id}, _kill_context)
+  defp build_attacker_description_part(
+         %{character: character, character_id: character_id},
+         _kill_context
+       )
        when not is_nil(character) and not is_nil(character_id) do
     "[#{character}](https://zkillboard.com/character/#{character_id}/)"
   end

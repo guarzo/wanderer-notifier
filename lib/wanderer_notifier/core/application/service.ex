@@ -11,6 +11,7 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Killmail.RedisQClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Telemetry
 
   @default_interval 30_000
 
@@ -317,31 +318,66 @@ defmodule WandererNotifier.Core.Application.Service do
   @impl true
   def handle_info({:zkill_message, data}, state) do
     try do
-      # Track that we received a killmail from RedisQ
-      Stats.track_killmail_received()
-
-      # Transform the data into the expected format
-      killmail_data = transform_zkill_data(data)
-
-      # Check if we've already processed this killmail
-      case check_killmail_processed(data["killID"]) do
-        :already_processed ->
-          {:noreply, state}
-
-        :not_processed ->
-          process_killmail_async(killmail_data, data["killID"], state)
-          {:noreply, state}
-
-        {:error, reason} ->
-          log_cache_error(reason, data["killID"])
-          {:noreply, state}
-      end
+      process_zkill_message(data, state)
     rescue
       e ->
         stacktrace = __STACKTRACE__
         log_processing_exception(e, data["killID"], stacktrace)
+
+        Telemetry.emit(:killmail_processing_error, %{}, %{
+          killmail_id: data["killID"],
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(stacktrace)
+        })
+
         {:noreply, state}
     end
+  end
+
+  defp process_zkill_message(data, state) do
+    # Track that we received a killmail from RedisQ
+    Stats.track_killmail_received()
+    Telemetry.emit(:killmail_received, %{}, %{data: data})
+
+    # Transform the data into the expected format
+    killmail_data = transform_zkill_data(data)
+
+    # Check if we've already processed this killmail
+    case check_killmail_processed(data["killID"]) do
+      :already_processed ->
+        handle_already_processed(data["killID"], state)
+
+      :not_processed ->
+        handle_new_killmail(killmail_data, data["killID"], state)
+
+      {:error, reason} ->
+        handle_killmail_error(reason, data["killID"], state)
+    end
+  end
+
+  defp handle_already_processed(kill_id, state) do
+    Telemetry.emit(:killmail_processing_skipped, %{}, %{
+      killmail_id: kill_id,
+      reason: :already_processed
+    })
+
+    {:noreply, state}
+  end
+
+  defp handle_new_killmail(killmail_data, kill_id, state) do
+    process_killmail_async(killmail_data, kill_id, state)
+    {:noreply, state}
+  end
+
+  defp handle_killmail_error(reason, kill_id, state) do
+    log_cache_error(reason, kill_id)
+
+    Telemetry.emit(:killmail_processing_error, %{}, %{
+      killmail_id: kill_id,
+      reason: reason
+    })
+
+    {:noreply, state}
   end
 
   defp transform_zkill_data(data) do

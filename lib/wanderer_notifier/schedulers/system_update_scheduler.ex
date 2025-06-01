@@ -3,7 +3,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   Scheduler for updating system data.
   """
 
-  use WandererNotifier.Schedulers.BaseMapScheduler
+  use WandererNotifier.Schedulers.BaseScheduler
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Map.Clients.Client

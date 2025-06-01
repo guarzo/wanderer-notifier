@@ -1,7 +1,6 @@
-defmodule WandererNotifier.Schedulers.BaseMapScheduler do
+defmodule WandererNotifier.Schedulers.BaseScheduler do
   @moduledoc """
-  Base scheduler module that provides common functionality for map-related schedulers.
-  These schedulers handle periodic updates of data from the map API.
+  Base scheduler module that provides common functionality for all schedulers.
   """
 
   use GenServer
@@ -10,6 +9,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Constants
+  alias WandererNotifier.Telemetry
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -27,7 +27,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour WandererNotifier.Schedulers.BaseMapScheduler
+      @behaviour WandererNotifier.Schedulers.BaseScheduler
       use GenServer
       require Logger
 
@@ -145,20 +145,22 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       @impl GenServer
       def handle_info(:update, state) do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        start_time = System.monotonic_time()
 
-        case update_data(state.cached_data) do
-          {:ok, new_data} ->
-            handle_update_success(new_data, state, cache_name, start_time)
+        Telemetry.emit(:scheduler_update_start, %{}, %{module: __MODULE__})
 
-          {:error, reason} ->
-            handle_update_error(reason, state, start_time)
-        end
+        Telemetry.measure_duration(:scheduler_update_duration, fn ->
+          case update_data(state.cached_data) do
+            {:ok, new_data} ->
+              handle_update_success(new_data, state, cache_name)
+
+            {:error, reason} ->
+              handle_update_error(reason, state)
+          end
+        end)
       end
 
       # Handle successful data update
-      defp handle_update_success(new_data, state, cache_name, start_time) do
-        duration = System.monotonic_time() - start_time
+      defp handle_update_success(new_data, state, cache_name) do
         Cachex.put(cache_name, primed_key(), true)
         Cachex.put(cache_name, cache_key(), new_data)
         log_update(__MODULE__, new_data, state.cached_data)
@@ -175,36 +177,56 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
               consecutive_errors: 0
           })
 
-        # Log telemetry
-        AppLogger.scheduler_info("Update completed successfully",
-          module: __MODULE__,
-          duration_ms: System.convert_time_unit(duration, :native, :millisecond),
-          items_count: length(new_data)
+        # Emit telemetry event
+        Telemetry.emit(
+          :scheduler_update_complete,
+          %{
+            items_count: length(new_data),
+            items_changed: length(new_data) - length(state.cached_data)
+          },
+          %{
+            module: __MODULE__,
+            cache_key: cache_key()
+          }
         )
 
         {:noreply, new_state}
       end
 
       # Handle update error
-      defp handle_update_error(reason, state, start_time) do
-        duration = System.monotonic_time() - start_time
+      defp handle_update_error(reason, state) do
         error_type = get_error_type(reason)
         consecutive_errors = state.consecutive_errors + 1
 
+        # Emit telemetry event
+        Telemetry.emit(
+          :scheduler_update_error,
+          %{
+            consecutive_errors: consecutive_errors
+          },
+          %{
+            module: __MODULE__,
+            error: inspect(reason),
+            error_type: error_type
+          }
+        )
+
+        # Log the error
         AppLogger.scheduler_error("Update failed",
           module: __MODULE__,
           error: inspect(reason),
           error_type: error_type,
-          consecutive_errors: consecutive_errors,
-          duration_ms: System.convert_time_unit(duration, :native, :millisecond)
+          consecutive_errors: consecutive_errors
         )
 
-        # Calculate backoff based on consecutive errors
-        backoff = calculate_backoff(consecutive_errors)
+        # Schedule next update with error backoff
+        new_state =
+          schedule_update(%{
+            state
+            | consecutive_errors: consecutive_errors
+          })
 
-        # Reschedule after error with backoff
-        new_state = schedule_update_with_backoff(state, backoff)
-        {:noreply, %{new_state | consecutive_errors: consecutive_errors}}
+        {:noreply, new_state}
       end
 
       defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error

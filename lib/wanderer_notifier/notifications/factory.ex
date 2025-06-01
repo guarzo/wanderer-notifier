@@ -232,7 +232,6 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     Config.discord_channel_id()
   end
 
-
   @doc """
   Sends a system activity notification.
 

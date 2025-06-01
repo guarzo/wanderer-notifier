@@ -157,10 +157,12 @@
 
 ## Telemetry & Metrics
 
-- [ ] **Extract common telemetry or metrics instrumentation (e.g., killmail‐processed counters) into a shared `WandererApp.Telemetry` module so that every place emitting an event does so via a single helper function.**
-  - **Current state**: Stats tracking in `WandererNotifier.Core.Stats` module
-  - **Files to review**: `lib/wanderer_notifier/core/stats.ex`
-  - **Details**: Already has some centralization but could be expanded
+- [x] **Extract common telemetry or metrics instrumentation (e.g., killmail‐processed counters) into a shared `WandererApp.Telemetry` module so that every place emitting an event does so via a single helper function.**
+  - **Status**: COMPLETED ✅
+  - **Work done**: Created `WandererNotifier.Telemetry` module that provides a standardized interface for emitting events and tracking metrics. The module integrates with the built-in Telemetry library and the existing Stats module. Added support for different metric types (counters, gauges, histograms) and duration measurements. Updated the base scheduler to use the new telemetry module.
+  - **Files created**: `lib/wanderer_notifier/telemetry.ex`
+  - **Files modified**: `lib/wanderer_notifier/schedulers/base_scheduler.ex`
+  - **Details**: The new telemetry module provides a consistent way to emit events and track metrics across the application, with proper integration with both the Telemetry library and the existing Stats module.
 
 ## Functional Programming Improvements
 
