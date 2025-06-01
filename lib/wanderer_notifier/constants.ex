@@ -22,6 +22,28 @@ defmodule WandererNotifier.Constants do
   @doc "ESI service timeout in milliseconds"
   def esi_timeout, do: 30_000
 
+  # ── HTTP Client Settings ────────────────────────────────────────────────────
+
+  @doc "Default HTTP headers for JSON requests"
+  def default_headers, do: [{"Content-Type", "application/json"}]
+
+  @doc "Default HTTP client options"
+  def default_http_opts do
+    [
+      timeout: default_timeout(),
+      recv_timeout: default_recv_timeout(),
+      connect_timeout: default_connect_timeout(),
+      pool_timeout: default_pool_timeout(),
+      hackney: [pool: :default]
+    ]
+  end
+
+  @doc "HTTP status codes for successful responses"
+  def success_status_codes, do: 200..299
+
+  @doc "HTTP status code for rate limiting"
+  def rate_limit_status_code, do: 429
+
   # ── Retry Policies ──────────────────────────────────────────────────────────
 
   @doc "Maximum number of retries for HTTP requests"
@@ -57,6 +79,15 @@ defmodule WandererNotifier.Constants do
 
   @doc "Batch log interval in milliseconds"
   def batch_log_interval, do: 5_000
+
+  @doc "Service status report interval in milliseconds"
+  def service_status_interval, do: 3_600_000
+
+  @doc "Character update scheduler interval in milliseconds"
+  def character_update_interval, do: 30_000
+
+  @doc "System update scheduler interval in milliseconds"
+  def system_update_interval, do: 30_000
 
   # ── Discord Colors ──────────────────────────────────────────────────────────
 

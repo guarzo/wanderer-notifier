@@ -46,13 +46,6 @@ defmodule WandererNotifier.Utils.Retry do
         context: "fetch external data"
       )
 
-      # With custom retry callback
-      Retry.run(
-        fn -> api_call() end,
-        on_retry: fn attempt, error, delay ->
-          Logger.warn("Retry attempt #{attempt} after error: #{inspect(error)}, waiting #{delay}ms")
-        end
-      )
   """
   @spec run(function(), retry_options()) :: retry_result(term())
   def run(fun, opts \\ []) when is_function(fun, 0) and is_list(opts) do

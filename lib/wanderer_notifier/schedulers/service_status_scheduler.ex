@@ -4,16 +4,17 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   """
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
   @impl true
-  # 1 hour
-  def config, do: %{type: :interval, spec: 3_600_000}
+  def config, do: %{type: :interval, spec: Constants.service_status_interval()}
 
   @impl true
   def run do
-    generate_service_status_report()
+    start_time = System.monotonic_time()
+    generate_service_status_report(start_time)
     :ok
   end
 
@@ -35,22 +36,37 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   def init(opts) do
     AppLogger.scheduler_info("ServiceStatusScheduler starting", opts: opts)
     schedule_next_run()
-    {:ok, %{}}
+    {:ok, %{last_run: nil, consecutive_errors: 0}}
   end
 
   @impl GenServer
   def handle_info(:run_status_report, state) do
-    try do
-      run()
-    rescue
-      e ->
-        AppLogger.scheduler_error("Error in scheduled status report",
-          error: Exception.message(e)
-        )
-    end
+    start_time = System.monotonic_time()
 
-    schedule_next_run()
-    {:noreply, state}
+    case generate_service_status_report(start_time) do
+      :ok ->
+        new_state = %{
+          state
+          | last_run: DateTime.utc_now(),
+            consecutive_errors: 0
+        }
+
+        schedule_next_run()
+        {:noreply, new_state}
+
+      {:error, reason} ->
+        consecutive_errors = state.consecutive_errors + 1
+        backoff = calculate_backoff(consecutive_errors)
+
+        AppLogger.scheduler_error("Status report failed",
+          error: inspect(reason),
+          consecutive_errors: consecutive_errors,
+          backoff_ms: backoff
+        )
+
+        schedule_next_run_with_backoff(backoff)
+        {:noreply, %{state | consecutive_errors: consecutive_errors}}
+    end
   end
 
   @impl GenServer
@@ -63,12 +79,24 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     Process.send_after(self(), :run_status_report, interval)
   end
 
-  defp generate_service_status_report do
+  defp schedule_next_run_with_backoff(backoff) do
+    Process.send_after(self(), :run_status_report, backoff)
+  end
+
+  defp calculate_backoff(consecutive_errors) do
+    base = Constants.base_backoff()
+    max = Constants.max_backoff()
+    calculated = base * :math.pow(2, consecutive_errors - 1)
+    min(trunc(calculated), max)
+  end
+
+  defp generate_service_status_report(start_time) do
     alias WandererNotifier.Notifications.Deduplication
 
     # First check if status messages are disabled
     if WandererNotifier.Config.status_messages_disabled?() do
       AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
+      :ok
     else
       uptime_seconds = calculate_uptime()
       days = div(uptime_seconds, 86_400)
@@ -81,22 +109,40 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
       case Deduplication.check(:system, dedup_key) do
         {:ok, :new} ->
-          AppLogger.maintenance_info("📊 Status report sent | #{formatted_uptime} uptime")
+          duration = System.monotonic_time() - start_time
+
+          AppLogger.maintenance_info("📊 Status report sent",
+            uptime: formatted_uptime,
+            duration_ms: System.convert_time_unit(duration, :native, :millisecond)
+          )
 
           WandererNotifier.Notifiers.StatusNotifier.send_status_message(
             "WandererNotifier Service Status",
             "Automated periodic status report."
           )
 
+          :ok
+
         {:ok, :duplicate} ->
           AppLogger.maintenance_info("📊 Status report skipped - duplicate")
+          :ok
+
+        {:error, reason} ->
+          AppLogger.maintenance_error("📊 Status report failed - deduplication error",
+            error: inspect(reason)
+          )
+
+          {:error, reason}
       end
     end
   rescue
     e ->
       AppLogger.maintenance_error("📊 Status report failed",
-        error: Exception.message(e)
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       )
+
+      {:error, e}
   end
 
   defp calculate_uptime do

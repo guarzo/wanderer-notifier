@@ -9,6 +9,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -31,6 +32,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       require Logger
 
       alias WandererNotifier.Logger.Logger, as: AppLogger
+      alias WandererNotifier.Constants
 
       def start_link(opts) do
         GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -51,7 +53,9 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           interval: interval,
           timer: nil,
           primed: primed?,
-          cached_data: cached_data
+          cached_data: cached_data,
+          last_update: nil,
+          consecutive_errors: 0
         }
 
         AppLogger.scheduler_info("Scheduler initialized",
@@ -68,7 +72,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       # Get the interval configuration for different scheduler types
       defp get_scheduler_interval(opts) do
         # Get the default interval from opts
-        default_interval = Keyword.get(opts, :interval, 30_000)
+        default_interval = Keyword.get(opts, :interval, Constants.default_service_interval())
 
         # Get the config key from the callback
         config_key = interval_key()
@@ -127,7 +131,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           )
 
           # Even if feature is disabled, we should still schedule the next check
-          timer = Process.send_after(self(), :check_feature, 30_000)
+          timer = Process.send_after(self(), :check_feature, Constants.default_service_interval())
           {:noreply, %{state | timer: timer}}
         end
       end
@@ -141,18 +145,20 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       @impl GenServer
       def handle_info(:update, state) do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+        start_time = System.monotonic_time()
 
         case update_data(state.cached_data) do
           {:ok, new_data} ->
-            handle_update_success(new_data, state, cache_name)
+            handle_update_success(new_data, state, cache_name, start_time)
 
           {:error, reason} ->
-            handle_update_error(reason, state)
+            handle_update_error(reason, state, start_time)
         end
       end
 
       # Handle successful data update
-      defp handle_update_success(new_data, state, cache_name) do
+      defp handle_update_success(new_data, state, cache_name, start_time) do
+        duration = System.monotonic_time() - start_time
         Cachex.put(cache_name, primed_key(), true)
         Cachex.put(cache_name, cache_key(), new_data)
         log_update(__MODULE__, new_data, state.cached_data)
@@ -161,23 +167,44 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
         update_stats_count(__MODULE__, length(new_data))
 
         # Schedule next update and update state
-        new_state = schedule_update(%{state | cached_data: new_data})
+        new_state =
+          schedule_update(%{
+            state
+            | cached_data: new_data,
+              last_update: DateTime.utc_now(),
+              consecutive_errors: 0
+          })
+
+        # Log telemetry
+        AppLogger.scheduler_info("Update completed successfully",
+          module: __MODULE__,
+          duration_ms: System.convert_time_unit(duration, :native, :millisecond),
+          items_count: length(new_data)
+        )
+
         {:noreply, new_state}
       end
 
       # Handle update error
-      defp handle_update_error(reason, state) do
+      defp handle_update_error(reason, state, start_time) do
+        duration = System.monotonic_time() - start_time
         error_type = get_error_type(reason)
+        consecutive_errors = state.consecutive_errors + 1
 
         AppLogger.scheduler_error("Update failed",
           module: __MODULE__,
           error: inspect(reason),
-          error_type: error_type
+          error_type: error_type,
+          consecutive_errors: consecutive_errors,
+          duration_ms: System.convert_time_unit(duration, :native, :millisecond)
         )
 
-        # Reschedule after error with a shorter delay
-        new_state = schedule_update(state)
-        {:noreply, new_state}
+        # Calculate backoff based on consecutive errors
+        backoff = calculate_backoff(consecutive_errors)
+
+        # Reschedule after error with backoff
+        new_state = schedule_update_with_backoff(state, backoff)
+        {:noreply, %{new_state | consecutive_errors: consecutive_errors}}
       end
 
       defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error
@@ -186,12 +213,23 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       defp get_error_type({:unexpected_result, _}), do: :unexpected_result
       defp get_error_type(_), do: :unknown_error
 
+      defp calculate_backoff(consecutive_errors) do
+        base = Constants.base_backoff()
+        max = Constants.max_backoff()
+        calculated = base * :math.pow(2, consecutive_errors - 1)
+        min(trunc(calculated), max)
+      end
+
       defp schedule_update(state) do
+        schedule_update_with_backoff(state, state.interval)
+      end
+
+      defp schedule_update_with_backoff(state, backoff) do
         # Cancel any existing timer
         if state.timer, do: Process.cancel_timer(state.timer)
 
         # Schedule next update
-        timer = Process.send_after(self(), :update, state.interval)
+        timer = Process.send_after(self(), :update, backoff)
         %{state | timer: timer}
       end
 
@@ -201,13 +239,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       def run do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
         cached_data = get_cached_data_for_run(cache_name)
+        start_time = System.monotonic_time()
 
         case update_data(cached_data) do
           {:ok, new_data} ->
-            handle_successful_run(new_data, cache_name)
+            handle_successful_run(new_data, cache_name, start_time)
 
           {:error, reason} ->
-            handle_failed_run(reason)
+            handle_failed_run(reason, start_time)
         end
       end
 
@@ -238,15 +277,29 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       # Handle successful manual run
-      defp handle_successful_run(new_data, cache_name) do
+      defp handle_successful_run(new_data, cache_name, start_time) do
+        duration = System.monotonic_time() - start_time
         Cachex.put(cache_name, cache_key(), new_data)
+
+        AppLogger.scheduler_info("Manual update completed successfully",
+          module: __MODULE__,
+          duration_ms: System.convert_time_unit(duration, :native, :millisecond),
+          items_count: length(new_data)
+        )
+
         {:ok, new_data}
       end
 
       # Handle failed manual run
-      defp handle_failed_run(reason) do
+      defp handle_failed_run(reason, start_time) do
+        duration = System.monotonic_time() - start_time
+        error_type = get_error_type(reason)
+
         AppLogger.scheduler_error("Manual update failed",
-          error: inspect(reason)
+          module: __MODULE__,
+          error: inspect(reason),
+          error_type: error_type,
+          duration_ms: System.convert_time_unit(duration, :native, :millisecond)
         )
 
         {:error, reason}

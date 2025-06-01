@@ -19,39 +19,73 @@ defmodule WandererNotifier.Application do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
+  # Required environment variables
+  @required_env_vars [
+    "NOTIFIER_API_TOKEN",
+    "LICENSE_KEY",
+    "MAP_URL",
+    "MAP_NAME",
+    "DISCORD_CHANNEL_ID",
+    "MAP_API_KEY"
+  ]
+
   @doc """
   Starts the WandererNotifier application.
   """
   def start(_type, _args) do
-    # Ensure critical configuration exists to prevent startup failures
-    ensure_critical_configuration()
+    # Validate required environment variables
+    case validate_required_env_vars() do
+      :ok ->
+        # Ensure critical configuration exists to prevent startup failures
+        ensure_critical_configuration()
 
-    AppLogger.startup_info("Starting WandererNotifier")
+        AppLogger.startup_info("Starting WandererNotifier")
 
-    # Log all environment variables to help diagnose config issues
-    log_environment_variables()
+        # Log all environment variables to help diagnose config issues
+        log_environment_variables()
 
-    # Log scheduler configuration
-    schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
-    AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
+        # Log scheduler configuration
+        schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
+        AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
 
-    children = [
-      {WandererNotifier.NoopConsumer, []},
-      create_cache_child_spec(),
-      # Add Task.Supervisor for supervised background tasks
-      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
-      {WandererNotifier.Core.Stats, []},
-      {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []},
-      # Add scheduler supervisor last to ensure all dependencies are started
-      {WandererNotifier.Schedulers.Supervisor, []}
-    ]
+        children = [
+          {WandererNotifier.NoopConsumer, []},
+          create_cache_child_spec(),
+          # Add Task.Supervisor for supervised background tasks
+          {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
+          {WandererNotifier.Core.Stats, []},
+          {WandererNotifier.License.Service, []},
+          {WandererNotifier.Core.Application.Service, []},
+          {WandererNotifier.Web.Server, []},
+          # Add scheduler supervisor last to ensure all dependencies are started
+          {WandererNotifier.Schedulers.Supervisor, []}
+        ]
 
-    AppLogger.startup_info("Starting children: #{inspect(children)}")
+        AppLogger.startup_info("Starting children: #{inspect(children)}")
 
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    {:ok, _} = Supervisor.start_link(children, opts)
+        opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
+        {:ok, _} = Supervisor.start_link(children, opts)
+
+      {:error, missing_vars} ->
+        AppLogger.startup_error(
+          "Missing required environment variables: #{Enum.join(missing_vars, ", ")}"
+        )
+
+        {:error, :missing_required_env_vars}
+    end
+  end
+
+  # Validates that all required environment variables are present
+  defp validate_required_env_vars do
+    missing_vars =
+      @required_env_vars
+      |> Enum.filter(fn var -> is_nil(System.get_env(var)) or System.get_env(var) == "" end)
+
+    if Enum.empty?(missing_vars) do
+      :ok
+    else
+      {:error, missing_vars}
+    end
   end
 
   # Ensures critical configuration exists to prevent startup failures

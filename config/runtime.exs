@@ -42,8 +42,6 @@ config :nostrum,
     :guild_messages
   ]
 
-# Load feature-specific environment variables (no longer using WANDERER_FEATURE_ prefix)
-# Look for any environment variables ending with _ENABLED or common feature flag patterns
 feature_env_vars =
   System.get_env()
   |> Enum.filter(fn {key, _} ->

@@ -8,27 +8,12 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   alias WandererNotifier.Constants
   alias WandererNotifier.Utils.Retry
 
-  @default_headers [{"Content-Type", "application/json"}]
-
-  defp default_opts do
-    [
-      timeout: Constants.default_timeout(),
-      recv_timeout: Constants.default_recv_timeout(),
-      connect_timeout: Constants.default_connect_timeout(),
-      pool_timeout: Constants.default_pool_timeout(),
-      hackney: [pool: :default]
-    ]
-  end
-
-  defp merge_opts(opts) do
-    Keyword.merge(default_opts(), opts)
-  end
-
-  @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
-              {:ok, map()} | {:error, any()}
+  # Define compile-time constants for guard clauses
+  @success_status_range 200..299
+  @rate_limit_status 429
 
   @impl true
-  def get(url, headers \\ @default_headers) do
+  def get(url, headers \\ Constants.default_headers()) do
     get(url, headers, [])
   end
 
@@ -42,7 +27,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   end
 
   @impl true
-  def post(url, body, headers \\ @default_headers) do
+  def post(url, body, headers \\ Constants.default_headers()) do
     post(url, body, headers, [])
   end
 
@@ -56,7 +41,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   end
 
   @impl true
-  def post_json(url, body, headers \\ @default_headers, options \\ []) do
+  def post_json(url, body, headers \\ Constants.default_headers(), options \\ []) do
     encoded_body = Jason.encode!(body)
 
     # Add detailed debug logging for license validation requests
@@ -99,10 +84,10 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   defp handle_response_with_context(response, url, method) do
     case response do
       {:ok, %HTTPoison.Response{status_code: status, body: _body, headers: _headers}}
-      when status in 200..299 ->
+      when status in @success_status_range ->
         handle_response(response)
 
-      {:ok, %HTTPoison.Response{status_code: 429, body: _body, headers: _headers}} ->
+      {:ok, %HTTPoison.Response{status_code: @rate_limit_status, body: _body, headers: _headers}} ->
         handle_rate_limit_response(url, method)
 
       {:ok, %HTTPoison.Response{status_code: status, body: body, headers: _headers}} ->
@@ -152,7 +137,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   def handle_response(
         {:ok, %HTTPoison.Response{status_code: status, body: body, headers: _headers}}
       )
-      when status in 200..299 do
+      when status in @success_status_range do
     if String.trim(body) == "" do
       AppLogger.api_debug("Empty response body from HTTP request")
 
@@ -214,5 +199,10 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     )
 
     {:error, {:unexpected_response, other}}
+  end
+
+  # Private helper to merge options with defaults
+  defp merge_opts(opts) do
+    Keyword.merge(Constants.default_http_opts(), opts)
   end
 end

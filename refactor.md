@@ -114,11 +114,6 @@
   - **Files modified**: `lib/wanderer_notifier/api/helpers.ex`
   - **Details**: Consolidated JSON operations with comprehensive error handling, safe encoding/decoding methods, HTTP response parsing utilities, and debugging helpers. Added proper type specifications and consistent error handling patterns.
 
-- [ ] **Group CSV parsing code (e.g., `invTypes.csv`) into a `WandererApp.CSVLoader` module that uses `NimbleCSV` instead of ad hoc `String.split` logic, then update all CSV‐reading functions to call `CSVLoader.parse/1`.**
-  - **Current state**: No CSV parsing code found in current codebase
-  - **Files to create**: New CSV loader module if CSV functionality is added
-  - **Details**: This may be for future CSV processing needs
-
 ## HTTP Client Consolidation
 
 - [ ] **Consolidate repeated HTTP‐client implementations (e.g., `HttpClient.Httpoison`, `HttpClient.Behaviour`) into a single `WandererApp.HTTP` module that handles timeouts, headers, JSON decoding, and retry logic in one place.**

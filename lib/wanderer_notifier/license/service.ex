@@ -405,7 +405,7 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:valid, _from, state) do
-    {:reply, state.validated, state}
+    {:reply, state.valid, state}
   end
 
   @impl true
@@ -417,7 +417,7 @@ defmodule WandererNotifier.License.Service do
   @impl true
   def handle_call({:set_status, status}, _from, state) do
     # Update license status
-    {:reply, :ok, Map.put(state, :validated, status)}
+    {:reply, :ok, Map.put(state, :valid, status)}
   end
 
   @impl true
@@ -514,14 +514,14 @@ defmodule WandererNotifier.License.Service do
   defp create_dev_mode_state(state) do
     AppLogger.config_debug("Using development mode license validation")
 
-    dev_state = %{
+    dev_state = %State{
       valid: true,
       bot_assigned: true,
       details: %{"license_valid" => true, "valid" => true, "message" => "Development mode"},
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
 
     AppLogger.config_info("🧑‍💻 Development license active", state: inspect(dev_state))
@@ -556,7 +556,7 @@ defmodule WandererNotifier.License.Service do
     AppLogger.config_error("License validation rate limited: #{error_message}")
 
     # When rate limited, use the previous state but update error info
-    rate_limited_state = %{
+    rate_limited_state = %State{
       # Keep previous validation status
       valid: state.valid,
       bot_assigned: state.bot_assigned,
@@ -576,14 +576,14 @@ defmodule WandererNotifier.License.Service do
     error_message = error_reason_to_message(reason)
     AppLogger.config_error("License/bot validation failed: #{error_message}")
 
-    error_state = %{
+    error_state = %State{
       valid: false,
       bot_assigned: false,
       error: reason,
       error_message: error_message,
       details: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
 
     AppLogger.config_info("⚠️ Error license state", state: inspect(error_state))
@@ -591,14 +591,14 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp create_valid_license_state(response, state) do
-    valid_state = %{
+    valid_state = %State{
       valid: true,
       bot_assigned: true,
       details: response,
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
 
     AppLogger.config_info("✅ Valid license state", state: inspect(valid_state))
@@ -610,14 +610,14 @@ defmodule WandererNotifier.License.Service do
     error_msg = message || "License is not valid"
     AppLogger.config_error("License validation failed - #{error_msg}")
 
-    invalid_state = %{
+    invalid_state = %State{
       valid: false,
       bot_assigned: false,
       details: response,
       error: :invalid_license,
       error_message: error_msg,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts
     }
 
     AppLogger.config_info("❌ Invalid license state", state: inspect(invalid_state))
@@ -631,13 +631,14 @@ defmodule WandererNotifier.License.Service do
 
   # Helper to ensure the state has all required fields
   defp ensure_complete_state(state) do
-    defaults = %{
+    defaults = %State{
       valid: false,
       bot_assigned: false,
       details: nil,
       error: nil,
       error_message: nil,
-      last_validated: :os.system_time(:second)
+      last_validated: :os.system_time(:second),
+      notification_counts: %{system: 0, character: 0, killmail: 0}
     }
 
     # Merge defaults with existing state, but ensure we have all keys
