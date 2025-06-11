@@ -23,7 +23,7 @@ Mox.defmock(WandererNotifier.MockDispatcher,
   for: WandererNotifier.Notifications.DispatcherBehaviour
 )
 
-Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
+Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.Behaviour)
 Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.ESI.ClientMock, for: WandererNotifier.ESI.ClientBehaviour)
 
@@ -40,7 +40,7 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.ClientMock)
-Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.HttpoisonMock)
+Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
 # Set up default stubs for cache mock
 Mox.stub(WandererNotifier.MockCache, :get, fn _key -> {:ok, %{}} end)
@@ -104,7 +104,7 @@ Mox.stub(WandererNotifier.MockDispatcher, :send_message, fn _ -> {:ok, :sent} en
 Mox.stub(WandererNotifier.MockNotifierFactory, :send_message, fn _ -> {:ok, :sent} end)
 
 # Set up default stubs for HTTP client mock
-Mox.stub(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers, _opts ->
+Mox.stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
   {:ok, %{status_code: 200, body: "{}"}}
 end)
 

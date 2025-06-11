@@ -4,7 +4,6 @@ defmodule WandererNotifier.License.Client do
   Provides functions for validating licenses and bots.
   """
   require Logger
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -46,11 +45,7 @@ defmodule WandererNotifier.License.Client do
 
   # Make the actual API request for validation
   defp make_validation_request(url, body, headers) do
-    case HttpClient.post_json(url, body, headers,
-           label: "LicenseManager.validate_bot",
-           debug: true,
-           timeout: 5000
-         ) do
+    case WandererNotifier.HTTP.post_json(url, body, headers) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_successful_validation(decoded)
 
@@ -82,7 +77,7 @@ defmodule WandererNotifier.License.Client do
 
   # Handle case when response is not a map
   defp process_successful_validation(decoded) do
-    AppLogger.api_error("Invalid license validation response format", response: inspect(decoded))
+    AppLogger.config_error("License validation failed - Invalid response format: #{inspect(decoded)}")
 
     # Return a standardized error response
     {:ok,
@@ -149,14 +144,7 @@ defmodule WandererNotifier.License.Client do
 
   # Make the actual HTTP request for license validation
   defp make_license_validation_request(url, body, headers) do
-    request_options = [
-      label: "LicenseManager.validate_license",
-      timeout: 2500,
-      max_retries: 1,
-      debug: true
-    ]
-
-    case HttpClient.post_json(url, body, headers, request_options) do
+    case WandererNotifier.HTTP.post_json(url, body, headers) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_decoded_license_data(decoded)
 

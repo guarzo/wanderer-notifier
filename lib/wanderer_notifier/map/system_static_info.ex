@@ -1,8 +1,7 @@
 defmodule WandererNotifier.Map.SystemStaticInfo do
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Config
-  alias WandererNotifier.HttpClient
-  alias WandererNotifier.AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @moduledoc """
   Client for fetching static information about EVE systems from the map API.
@@ -71,9 +70,6 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   }
   """
 
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
   @doc """
   Fetches static information for a specific solar system.
   Uses a more robust approach with proper validation and timeouts.
@@ -122,7 +118,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
-    case HttpClient.get(url, headers) do
+    case WandererNotifier.HTTP.get(url, headers) do
       {:ok, %{status_code: 200, body: body}} -> handle_successful_response(body)
       {:ok, %{status_code: status}} -> handle_http_error(status)
       {:error, reason} -> handle_request_error(reason)
@@ -321,15 +317,15 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     base_url = Config.map_url_with_name()
     url = "#{base_url}/systems/#{system_id}/static"
 
-    case Req.get(url, headers: headers) do
-      {:ok, %{status: 200, body: body}} ->
+    case WandererNotifier.HTTP.get(url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 
-      {:ok, %{status: 404}} ->
+      {:ok, %{status_code: 404}} ->
         AppLogger.api_debug("[SystemStaticInfo] System not found", system_id: system_id)
         {:error, :not_found}
 
-      {:ok, %{status: status}} ->
+      {:ok, %{status_code: status}} ->
         AppLogger.api_error("[SystemStaticInfo] API request failed",
           system_id: system_id,
           status: status

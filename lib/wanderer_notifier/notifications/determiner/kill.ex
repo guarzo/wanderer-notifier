@@ -99,44 +99,29 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   @spec check_notifications_enabled(keyword()) :: :ok | {:error, :notifications_disabled}
-  defp check_notifications_enabled(config) when config[:notifications_enabled] == true do
-    :ok
-  end
-
-  defp check_notifications_enabled(_config) do
-    {:error, :notifications_disabled}
-  end
+  defp check_notifications_enabled(%{notifications_enabled: true}), do: :ok
+  defp check_notifications_enabled(_), do: {:error, :notifications_disabled}
 
   @spec check_kill_notifications_enabled(keyword()) ::
           :ok | {:error, :kill_notifications_disabled}
-  defp check_kill_notifications_enabled(config)
-       when config[:kill_notifications_enabled] == true do
-    :ok
-  end
-
-  defp check_kill_notifications_enabled(_config) do
-    {:error, :kill_notifications_disabled}
-  end
+  defp check_kill_notifications_enabled(%{kill_notifications_enabled: true}), do: :ok
+  defp check_kill_notifications_enabled(_config), do: {:error, :kill_notifications_disabled}
 
   @spec check_tracking_status(boolean(), boolean(), keyword()) :: notification_result()
-  defp check_tracking_status(true, _, config)
-       when config[:system_notifications_enabled] == true do
-    {:ok, %{should_notify: true}}
+  defp check_tracking_status(true, _, config) do
+    if config[:system_notifications_enabled] == true do
+      {:ok, %{should_notify: true}}
+    else
+      {:ok, %{should_notify: false, reason: "System notifications disabled"}}
+    end
   end
 
-  defp check_tracking_status(_, true, config)
-       when config[:character_notifications_enabled] == true do
-    {:ok, %{should_notify: true}}
-  end
-
-  defp check_tracking_status(_, _, config)
-       when config[:system_notifications_enabled] != true do
-    {:ok, %{should_notify: false, reason: "System notifications disabled"}}
-  end
-
-  defp check_tracking_status(_, _, config)
-       when config[:character_notifications_enabled] != true do
-    {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
+  defp check_tracking_status(_, true, config) do
+    if config[:character_notifications_enabled] == true do
+      {:ok, %{should_notify: true}}
+    else
+      {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
+    end
   end
 
   defp check_tracking_status(_, _, _config) do

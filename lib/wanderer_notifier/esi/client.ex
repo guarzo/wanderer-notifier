@@ -4,6 +4,7 @@ defmodule WandererNotifier.ESI.Client do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.HTTP
   @behaviour WandererNotifier.ESI.ClientBehaviour
 
   @base_url "https://esi.evetech.net/latest"
@@ -11,8 +12,8 @@ defmodule WandererNotifier.ESI.Client do
   @default_timeout 15_000
   @default_recv_timeout 15_000
 
-  defp http_client do
-    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
+  defp get_http_client do
+    HTTP
   end
 
   defp default_opts do
@@ -31,7 +32,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
 
     with_timing(fn ->
-      http_client().get(url, default_headers(), Keyword.merge(default_opts(), opts))
+      get_http_client().get(url, default_headers(), Keyword.merge(default_opts(), opts))
     end)
     |> handle_response("killmail", %{kill_id: kill_id})
   end
@@ -43,7 +44,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_character_info(character_id, _opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
 
-    http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers())
     |> handle_response("character", %{character_id: character_id})
   end
 
@@ -54,7 +55,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
 
-    http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers())
     |> handle_response("corporation", %{corporation_id: corporation_id})
   end
 
@@ -65,7 +66,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_alliance_info(alliance_id, _opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
 
-    http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers())
     |> handle_response("alliance", %{alliance_id: alliance_id})
   end
 
@@ -76,7 +77,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_universe_type(type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{type_id}/"
 
-    http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers())
     |> handle_response("type", %{type_id: type_id})
   end
 
@@ -100,7 +101,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "search_inventory_type"
     })
 
-    http_client().get(url, headers)
+    get_http_client().get(url, headers)
     |> handle_response("search", %{query: query})
   end
 
@@ -112,8 +113,9 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/systems/#{system_id}/?datasource=tranquility"
     headers = default_headers()
 
-    case http_client().get(url, headers) do
+    case get_http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
+        # HTTP client already decodes JSON responses
         {:ok, body}
 
       {:ok, %{status_code: status, body: _body}} when status == 404 ->
@@ -146,7 +148,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
-    http_client().get(url, headers)
+    get_http_client().get(url, headers)
     |> handle_response("system_kills", %{system_id: system_id})
   end
 
@@ -162,6 +164,7 @@ defmodule WandererNotifier.ESI.Client do
   # Helper function to handle common HTTP response patterns
   defp handle_response({:ok, %{status_code: status, body: body}}, _resource_type, _context)
        when status in 200..299 do
+    # HTTP client already decodes JSON responses
     {:ok, body}
   end
 

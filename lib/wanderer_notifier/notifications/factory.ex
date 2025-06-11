@@ -199,6 +199,16 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     {:ok, :sent}
   end
 
+  defp dispatch_kill_notification(notifier, kill) do
+    # TestNotifier or other - use generic notification
+    AppLogger.kill_info(
+      "Using generic notification for kill",
+      %{notifier: inspect(notifier)}
+    )
+
+    run(:send_discord_embed, [kill])
+  end
+
   # Use pattern matching with guards instead of cond for channel determination
   defp determine_kill_channel_id(true, _has_tracked_system, true, _system_notifications_enabled) do
     Config.discord_character_kill_channel_id()
@@ -220,16 +230,6 @@ defmodule WandererNotifier.Notifications.Dispatcher do
          _system_notifications_enabled
        ) do
     Config.discord_channel_id()
-  end
-
-  defp dispatch_kill_notification(notifier, kill) do
-    # TestNotifier or other - use generic notification
-    AppLogger.kill_info(
-      "Using generic notification for kill",
-      %{notifier: inspect(notifier)}
-    )
-
-    run(:send_discord_embed, [kill])
   end
 
   @doc """

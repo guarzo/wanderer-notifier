@@ -4,12 +4,12 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   """
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
   @impl true
-  # 1 hour
-  def config, do: %{type: :interval, spec: 3_600_000}
+  def config, do: %{type: :interval, spec: Constants.service_status_interval()}
 
   @impl true
   def run do

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Utils.Retry do
+defmodule WandererNotifier.HttpClient.Utils.Retry do
   @moduledoc """
   Unified retry utility for WandererNotifier.
 
@@ -32,27 +32,6 @@ defmodule WandererNotifier.Utils.Retry do
     * `:on_retry` - Callback function called on each retry attempt
     * `:retryable_errors` - List of atoms representing retryable error types
     * `:context` - Context string for logging (default: "operation")
-
-  ## Examples
-      # Simple retry with defaults
-      Retry.run(fn -> HTTPClient.get("https://api.example.com") end)
-
-      # Retry with custom options
-      Retry.run(
-        fn -> fetch_data() end,
-        max_attempts: 5,
-        base_backoff: 1000,
-        retryable_errors: [:timeout, :connect_timeout],
-        context: "fetch external data"
-      )
-
-      # With custom retry callback
-      Retry.run(
-        fn -> api_call() end,
-        on_retry: fn attempt, error, delay ->
-          Logger.warn("Retry attempt #{attempt} after error: #{inspect(error)}, waiting #{delay}ms")
-        end
-      )
   """
   @spec run(function(), retry_options()) :: retry_result(term())
   def run(fun, opts \\ []) when is_function(fun, 0) and is_list(opts) do

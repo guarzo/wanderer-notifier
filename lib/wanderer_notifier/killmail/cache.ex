@@ -8,7 +8,7 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Config
+  alias WandererNotifier.Constants
 
   # System name cache - process dictionary for performance
   @system_names_cache_key :system_names_cache
@@ -36,7 +36,7 @@ defmodule WandererNotifier.Killmail.Cache do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
     Cachex.put(cache_name, individual_key, killmail,
-      ttl: :timer.seconds(Config.static_info_ttl())
+      ttl: :timer.seconds(Constants.static_info_ttl())
     )
 
     # Update the recent kills list
@@ -121,31 +121,28 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   def get_latest_killmails do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
     # Get the list of cached kill IDs
-    kill_ids =
-      case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
-        {:ok, ids} -> ids
-        _ -> []
-      end
+    kill_ids = get_cached_kill_ids(cache_name)
 
     # Map through and get each kill
     kill_ids
-    |> Enum.map(fn id ->
-      key = CacheKeys.zkill_recent_kill(id)
-
-      kill =
-        case Cachex.get(cache_name, key) do
-          {:ok, data} -> data
-          _ -> nil
-        end
-
-      if kill do
-        Map.put(kill, "id", id)
-      else
-        nil
-      end
-    end)
+    |> Enum.map(&get_kill_by_id(cache_name, &1))
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp get_cached_kill_ids(cache_name) do
+    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      {:ok, ids} -> ids
+      _ -> []
+    end
+  end
+
+  defp get_kill_by_id(cache_name, id) do
+    case Cachex.get(cache_name, CacheKeys.zkill_recent_kill(id)) do
+      {:ok, data} when not is_nil(data) -> Map.put(data, "id", id)
+      _ -> nil
+    end
   end
 
   @doc """
@@ -186,7 +183,7 @@ defmodule WandererNotifier.Killmail.Cache do
 
     # Store the updated list
     Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), updated_ids,
-      ttl: :timer.seconds(Config.static_info_ttl())
+      ttl: :timer.seconds(Constants.static_info_ttl())
     )
   end
 end

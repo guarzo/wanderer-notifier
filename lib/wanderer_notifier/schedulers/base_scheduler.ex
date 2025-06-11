@@ -9,6 +9,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -68,7 +69,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       # Get the interval configuration for different scheduler types
       defp get_scheduler_interval(opts) do
         # Get the default interval from opts
-        default_interval = Keyword.get(opts, :interval, 30_000)
+        default_interval = Keyword.get(opts, :interval, Constants.default_service_interval())
 
         # Get the config key from the callback
         config_key = interval_key()
@@ -127,7 +128,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           )
 
           # Even if feature is disabled, we should still schedule the next check
-          timer = Process.send_after(self(), :check_feature, 30_000)
+          timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
           {:noreply, %{state | timer: timer}}
         end
       end

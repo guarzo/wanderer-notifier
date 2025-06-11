@@ -6,10 +6,6 @@ config :wanderer_notifier, env: config_env()
 # Enable schedulers by default
 config :wanderer_notifier,
   schedulers_enabled: true,
-  # 30 seconds
-  system_update_scheduler_interval: 30_000,
-  # 30 seconds
-  character_update_scheduler_interval: 30_000,
   features: [
     system_tracking_enabled: true,
     character_tracking_enabled: true,
@@ -21,7 +17,11 @@ config :wanderer_notifier,
 
 # Configure HTTP client
 config :wanderer_notifier,
-  http_client: WandererNotifier.HttpClient.Httpoison
+  http_client: WandererNotifier.HTTP,
+  default_timeout: 15_000,
+  default_recv_timeout: 15_000,
+  default_connect_timeout: 5_000,
+  default_pool_timeout: 5_000
 
 # Configure RedisQ client timeouts
 config :wanderer_notifier,
@@ -116,7 +116,6 @@ config :wanderer_notifier,
 
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
-  http_client: WandererNotifier.HttpClient.Httpoison,
   zkill_client: WandererNotifier.Killmail.ZKillClient,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,

@@ -222,33 +222,29 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp add_effect_field(fields, _, _), do: fields
 
   defp add_zkill_system_kills(fields, system_id) do
-    system_id_int = parse_system_id(system_id)
+    case parse_system_id(system_id) do
+      nil -> fields
+      system_id_int -> add_kills_field(fields, system_id_int)
+    end
+  end
 
-    if is_nil(system_id_int) do
-      fields
-    else
-      # Get kill information from enrichment module
-      try do
-        # The response should now be safe strings we can directly use
-        case Enrichment.recent_kills_for_system(system_id_int, 3) do
-          kills when is_binary(kills) and kills != "" ->
-            # Add as a field if we have kill data
-            fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
+  defp add_kills_field(fields, system_id) do
+    try do
+      case Enrichment.recent_kills_for_system(system_id, 3) do
+        kills when is_binary(kills) and kills != "" ->
+          fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
 
-          _ ->
-            # No kill data
-            fields
-        end
-      rescue
-        e ->
-          # Log but don't crash
-          WandererNotifier.Logger.Logger.processor_warn("Error adding kills field",
-            error: Exception.message(e),
-            system_id: system_id
-          )
-
+        _ ->
           fields
       end
+    rescue
+      e ->
+        WandererNotifier.Logger.Logger.processor_warn("Error adding kills field",
+          error: Exception.message(e),
+          system_id: system_id
+        )
+
+        fields
     end
   end
 

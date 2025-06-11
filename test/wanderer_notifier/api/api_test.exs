@@ -1,7 +1,9 @@
-defmodule WandererNotifier.ApiTest do
-  use ExUnit.Case
+defmodule WandererNotifier.API.APITest do
+  use ExUnit.Case, async: true
   import Mox
   alias WandererNotifier.Test.Fixtures.ApiResponses
+  alias WandererNotifier.HTTPMock, as: HttpClientMock
+  alias WandererNotifier.API
 
   setup :verify_on_exit!
 

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(make:*)",
+      "Bash(diff:*)",
+      "Bash(rm:*)",
+      "Bash(mix test:*)",
+      "Bash(mix compile)",
+      "Bash(env)"
+    ],
+    "deny": []
+  }
+}

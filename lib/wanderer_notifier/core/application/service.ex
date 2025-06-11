@@ -11,8 +11,9 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Killmail.RedisQClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
-  @default_interval 30_000
+  @default_interval Constants.default_service_interval()
 
   @typedoc "Internal state for the Service GenServer"
   @type state :: %__MODULE__.State{
@@ -278,7 +279,7 @@ defmodule WandererNotifier.Core.Application.Service do
     # Store in cache for deduplication
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     key = "killmail:#{kill_id}:processed"
-    Cachex.put(cache_name, key, true, ttl: 3600)
+    Cachex.put(cache_name, key, true, ttl: Constants.dedup_ttl())
     {:noreply, state}
   end
 
@@ -387,7 +388,7 @@ defmodule WandererNotifier.Core.Application.Service do
   defp mark_killmail_as_processed(kill_id) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     key = "killmail:#{kill_id}:processed"
-    Cachex.put(cache_name, key, true, ttl: 3600)
+    Cachex.put(cache_name, key, true, ttl: Constants.dedup_ttl())
   end
 
   defp log_cache_error(reason, kill_id) do
@@ -454,7 +455,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
   # Schedule the startup notification
   defp schedule_startup_notice(state) do
-    Process.send_after(self(), :send_startup_notification, 2_000)
+    Process.send_after(self(), :send_startup_notification, Constants.startup_notification_delay())
     state
   end
 

@@ -12,6 +12,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     Notification
   }
 
+  alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
@@ -89,7 +90,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp handle_unexpected_error(zkb_data, context, error, kill_id, system_id) do
     system_name = get_system_name(system_id)
 
-    AppLogger.kill_error("Unexpected error in killmail pipeline",
+    ErrorLogger.log_kill_error("Unexpected error in killmail pipeline",
       kill_id: kill_id,
       system: system_name,
       error: inspect(error)
@@ -101,7 +102,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp handle_invalid_killmail_id(kill_id, system_id) do
     system_name = get_system_name(system_id)
 
-    AppLogger.kill_error("Invalid killmail ID",
+    ErrorLogger.log_kill_error("Invalid killmail ID",
       kill_id: kill_id,
       system: system_name,
       error: "invalid_killmail_id"
@@ -114,7 +115,8 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, to_string(id)}
 
   defp extract_killmail_id(data) do
-    AppLogger.kill_error("Failed to extract killmail_id - expected integer killmail_id field",
+    ErrorLogger.log_kill_error(
+      "Failed to extract killmail_id - expected integer killmail_id field",
       data: inspect(data, pretty: true),
       module: __MODULE__
     )
@@ -491,7 +493,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     context_id = if ctx, do: ctx.killmail_id, else: nil
     system_name = get_system_name(get_in(data, ["solar_system_id"]))
 
-    AppLogger.kill_error("Pipeline error processing killmail",
+    ErrorLogger.log_kill_error("Pipeline error processing killmail",
       kill_id: kill_id,
       context_id: context_id,
       system: system_name,

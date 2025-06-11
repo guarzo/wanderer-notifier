@@ -5,6 +5,7 @@ defmodule WandererNotifier.Notifications.NotificationService do
 
   alias WandererNotifier.Notifications.Types.Notification
   alias WandererNotifier.Notifications.Dispatcher
+  alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -31,18 +32,20 @@ defmodule WandererNotifier.Notifications.NotificationService do
           {:ok, notification}
 
         {:error, reason} = error ->
-          AppLogger.kill_error(
+          ErrorLogger.log_notification_error(
             "Failed to dispatch notification",
-            %{type: notification.type, reason: inspect(reason)}
+            type: notification.type,
+            reason: inspect(reason)
           )
 
           error
       end
     rescue
       e ->
-        AppLogger.kill_error(
+        ErrorLogger.log_exception(
           "Exception in NotificationService.send",
-          %{error: Exception.message(e), stacktrace: Exception.format_stacktrace(__STACKTRACE__)}
+          e,
+          type: notification.type
         )
 
         {:error, :notification_service_error}
@@ -56,7 +59,6 @@ defmodule WandererNotifier.Notifications.NotificationService do
   defp standardize_notification_type("test"), do: :kill_notification
   defp standardize_notification_type("system"), do: :system_notification
   defp standardize_notification_type("character"), do: :character_notification
-  defp standardize_notification_type("status"), do: :status_notification
   defp standardize_notification_type(type) when is_atom(type), do: type
   defp standardize_notification_type(_), do: :unknown
 end

@@ -34,7 +34,7 @@ defmodule WandererNotifier.Constants do
   def max_backoff, do: 30_000
 
   @doc "RedisQ specific base backoff in milliseconds"
-  def redisq_base_backoff, do: 2_000
+  def redisq_base_backoff, do: 1000
 
   @doc "ZKill retry backoff in milliseconds"
   def zkill_retry_backoff, do: 2_000
@@ -50,6 +50,9 @@ defmodule WandererNotifier.Constants do
   @doc "Deduplication TTL in seconds"
   def dedup_ttl, do: 3_600
 
+  @doc "Killmail processing cache TTL in seconds"
+  def killmail_cache_ttl, do: 3_600
+
   # ── Scheduler Intervals ─────────────────────────────────────────────────────
 
   @doc "Default application service interval in milliseconds"
@@ -57,6 +60,41 @@ defmodule WandererNotifier.Constants do
 
   @doc "Batch log interval in milliseconds"
   def batch_log_interval, do: 5_000
+
+  @doc "Character update scheduler interval in milliseconds"
+  def character_update_interval, do: 30_000
+
+  @doc "System update scheduler interval in milliseconds"
+  def system_update_interval, do: 30_000
+
+  @doc "License validation refresh interval in milliseconds"
+  def license_refresh_interval, do: 1_200_000
+
+  @doc "Feature flag check interval in milliseconds"
+  def feature_check_interval, do: 30_000
+
+  @doc "Service status report interval in milliseconds"
+  def service_status_interval, do: 3_600_000
+
+  @doc "Web server heartbeat check interval in milliseconds"
+  def web_server_heartbeat_interval, do: 30_000
+
+  @doc "Signature check interval in milliseconds"
+  def signature_check_interval, do: 300_000
+
+  # ── Sleep & Delay Intervals ─────────────────────────────────────────────────
+
+  @doc "RedisQ poll interval in milliseconds"
+  def redisq_poll_interval, do: 1_000
+
+  @doc "Sleep interval for rate limiting in milliseconds"
+  def rate_limit_sleep, do: 1_000
+
+  @doc "Startup notification delay in milliseconds"
+  def startup_notification_delay, do: 2_000
+
+  @doc "Test sleep interval in milliseconds (for tests)"
+  def test_sleep_interval, do: 100
 
   # ── Discord Colors ──────────────────────────────────────────────────────────
 
@@ -141,9 +179,9 @@ defmodule WandererNotifier.Constants do
   Calculates exponential backoff delay based on retry count.
   Uses the formula: base_backoff * 2^(retry_count - 1)
   """
-  @spec calculate_backoff(non_neg_integer(), non_neg_integer()) :: non_neg_integer()
-  def calculate_backoff(retry_count, base_backoff \\ nil) do
-    base = base_backoff || base_backoff()
+  @spec calculate_backoff(non_neg_integer(), non_neg_integer() | nil) :: non_neg_integer()
+  def calculate_backoff(retry_count, base_backoff_value \\ nil) do
+    base = base_backoff_value || base_backoff()
     calculated = base * :math.pow(2, retry_count - 1)
     min(trunc(calculated), max_backoff())
   end
@@ -163,4 +201,19 @@ defmodule WandererNotifier.Constants do
   def security_icon(security) when security >= 0.5, do: highsec_icon()
   def security_icon(security) when security > 0.0, do: lowsec_icon()
   def security_icon(_), do: nullsec_icon()
+
+  @doc """
+  Returns the retry policy for RedisQ requests.
+  """
+  def redisq_retry_policy do
+    %{
+      # 1 second
+      base_backoff: 1000,
+      # 30 seconds
+      max_backoff: 30_000,
+      # 10% jitter
+      jitter: 0.1
+    }
+  end
+
 end

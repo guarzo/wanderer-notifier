@@ -6,6 +6,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.ESI.Service, as: ESIService
+  alias WandererNotifier.Constants
+  alias WandererNotifier.HttpClient.Utils.RateLimiter
+  alias WandererNotifier.HTTP
   require Logger
 
   # -- Configuration --
@@ -21,7 +24,6 @@ defmodule WandererNotifier.Killmail.ZKillClient do
                 "WandererNotifier/1.0"
               )
   @max_retries Application.compile_env(:wanderer_notifier, :zkill_max_retries, 3)
-  @retry_backoff_ms Application.compile_env(:wanderer_notifier, :zkill_retry_backoff_ms, 2_000)
 
   @type date_range :: %{start: DateTime.t(), end: DateTime.t()}
 
@@ -54,6 +56,22 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
     url = build_character_url(character_id, date_range)
     handle_list_request(url, limit, :get_character_kills)
+  end
+
+  @doc """
+  Fetches killmail data from zKillboard's API.
+  Returns `{:ok, data}` on success or `{:error, reason}` on failure.
+  """
+  def fetch_killmail(killmail_id, hash) do
+    url = build_url(killmail_id, hash)
+
+    RateLimiter.run(
+      fn -> HTTP.get(url, http_headers(), http_options()) end,
+      context: "ZKill request",
+      max_retries: 3,
+      base_backoff: Constants.zkill_retry_backoff()
+    )
+    |> handle_response()
   end
 
   # -- Internal Request Handlers --
@@ -96,7 +114,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       {:error, reason} ->
         Logger.warning("ZKill request error: #{inspect(reason)}, retry ##{attempt + 1}")
-        :timer.sleep(@retry_backoff_ms * (attempt + 1))
+        :timer.sleep(Constants.zkill_retry_backoff() * (attempt + 1))
         retry(fun, attempt + 1)
     end
   end
@@ -106,33 +124,13 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   # -- Raw HTTP Request (via configured HTTP client) --
 
   defp make_http_request(url) do
-    headers = [
-      {"Accept", "application/json"},
-      {"User-Agent", @user_agent},
-      {"Cache-Control", "no-cache"}
-    ]
-
-    opts = [
-      recv_timeout: 10_000,
-      timeout: 10_000,
-      follow_redirect: true
-    ]
-
-    client =
-      Application.get_env(
-        :wanderer_notifier,
-        :http_client,
-        WandererNotifier.HttpClient.Httpoison
-      )
-
-    case client.get(url, headers, opts) do
+    case HTTP.get(url, http_headers(), http_options()) do
       {:ok, %{status_code: 200, body: body}} ->
         AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
         {:ok, body}
 
       {:ok, %{status_code: status, body: body}} ->
-        error_info = try_parse_error_body(body)
-        AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, error: error_info})
+        AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, body: body})
         {:error, {:http_error, status}}
 
       {:error, %{reason: :timeout}} ->
@@ -143,6 +141,22 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         AppLogger.api_error("ZKill HTTP client error", %{url: url, error: inspect(reason)})
         {:error, reason}
     end
+  end
+
+  defp http_headers do
+    [
+      {"Accept", "application/json"},
+      {"User-Agent", @user_agent},
+      {"Cache-Control", "no-cache"}
+    ]
+  end
+
+  defp http_options do
+    [
+      recv_timeout: 10_000,
+      timeout: 10_000,
+      follow_redirect: true
+    ]
   end
 
   # -- Decode JSON or pass through maps/lists --
@@ -179,9 +193,15 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     "#{@base_url}/characterID/#{id}/startTime/#{start_iso}/endTime/#{end_iso}/"
   end
 
-  # -- Formatting Kills into Strings --
+  defp build_url(killmail_id, hash) do
+    "#{@base_url}/killID/#{killmail_id}/#{hash}/"
+  end
 
-  defp format_kills(kills), do: Enum.map(kills, &format_kill/1)
+  # -- Response Formatting --
+
+  defp format_kills(kills) do
+    Enum.map(kills, &format_kill/1)
+  end
 
   defp format_kill(kill) do
     kill_id = Map.get(kill, "killmail_id", "Unknown")
@@ -284,17 +304,38 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   defp format_isk(_), do: "0 ISK"
 
-  # -- Utilities --
+  # -- Logging Helpers --
 
-  defp sample(body) when is_binary(body), do: String.slice(body, 0, 200)
-  defp sample(_), do: ""
+  defp log_api(method, metadata) do
+    AppLogger.api_debug("ZKill API request", Map.merge(%{method: method}, Map.new(metadata)))
+  end
 
-  defp try_parse_error_body(body) when is_binary(body) do
+  defp sample(body) when is_binary(body) do
+    String.slice(body, 0, 100)
+  end
+
+  defp sample(_), do: nil
+
+
+  # Add handle_response function
+  defp handle_response({:ok, %{status_code: 200, body: body}}) do
     case Jason.decode(body) do
-      {:ok, json} -> json
-      _ -> nil
+      {:ok, data} when is_map(data) ->
+        {:ok, data}
+
+      {:ok, _} ->
+        {:error, :invalid_response_format}
+
+      {:error, reason} ->
+        {:error, {:json_decode_error, reason}}
     end
   end
 
-  defp log_api(method, meta), do: AppLogger.api_info("ZKill #{method}", meta)
+  defp handle_response({:ok, %{status_code: status}}) do
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_response({:error, reason}) do
+    {:error, reason}
+  end
 end

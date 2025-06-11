@@ -1,6 +1,9 @@
-defmodule WandererNotifier.HttpTest do
-  use ExUnit.Case
+defmodule WandererNotifier.HTTPTest do
+  use ExUnit.Case, async: true
   import Mox
+
+  alias WandererNotifier.HTTPMock, as: HttpClientMock
+  alias WandererNotifier.HTTP
 
   setup :verify_on_exit!
 

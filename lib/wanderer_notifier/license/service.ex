@@ -521,7 +521,7 @@ defmodule WandererNotifier.License.Service do
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
 
     AppLogger.config_info("🧑‍💻 Development license active", state: inspect(dev_state))
@@ -583,7 +583,7 @@ defmodule WandererNotifier.License.Service do
       error_message: error_message,
       details: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
 
     AppLogger.config_info("⚠️ Error license state", state: inspect(error_state))
@@ -598,7 +598,7 @@ defmodule WandererNotifier.License.Service do
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
 
     AppLogger.config_info("✅ Valid license state", state: inspect(valid_state))
@@ -617,7 +617,7 @@ defmodule WandererNotifier.License.Service do
       error: :invalid_license,
       error_message: error_msg,
       last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
 
     AppLogger.config_info("❌ Invalid license state", state: inspect(invalid_state))

@@ -49,8 +49,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
 
   @impl true
   def process_data(new_systems, _cached_systems, _opts) do
-    # For now, just return the new systems
-    # In the future, we could implement diffing or other processing here
     AppLogger.api_info("Processing systems data",
       count: length(new_systems)
     )
