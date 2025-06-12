@@ -8,6 +8,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Config, as: CacheConfig
+  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type cache_key_type :: atom()
