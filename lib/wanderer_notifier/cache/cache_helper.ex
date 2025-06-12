@@ -199,7 +199,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     cache_name = get_cache_name(opts)
     cache_key = apply(CacheKeys, cache_type, [id])
 
-    case Cachex.del(cache_name, cache_key) do
+    case Adapter.del(cache_name, cache_key) do
       {:ok, _} -> :ok
       error -> error
     end
@@ -212,7 +212,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   end
 
   defp get_from_cache(cache_name, cache_key) do
-    Cachex.get(cache_name, cache_key)
+    Adapter.get(cache_name, cache_key)
   end
 
   defp validate_cached_data(data, nil) do
