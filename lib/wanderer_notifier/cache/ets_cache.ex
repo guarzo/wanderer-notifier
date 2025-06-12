@@ -41,7 +41,9 @@ defmodule WandererNotifier.Cache.ETSCache do
     table_name = Keyword.get(opts, :name, @table_name)
 
     # Start a GenServer to own the ETS table
-    GenServer.start_link(__MODULE__, table_name, name: :"#{table_name}_server")
+    # Use via tuple with Registry instead of dynamic atom names
+    name = {:via, Registry, {WandererNotifier.Cache.Registry, {__MODULE__, table_name}}}
+    GenServer.start_link(__MODULE__, table_name, name: name)
   end
 
   # GenServer callbacks

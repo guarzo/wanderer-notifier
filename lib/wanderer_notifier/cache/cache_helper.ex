@@ -234,7 +234,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
       {:ok, data} = success ->
         # Cache the successful result with appropriate TTL
         # Extract cache type from log_name (e.g., "character" -> :character)
-        cache_type = String.to_atom(log_name)
+        cache_type = log_name_to_cache_type(log_name)
         ttl = CacheConfig.ttl_for(cache_type) |> :timer.seconds()
         Adapter.set(cache_name, cache_key, data, ttl)
         success
@@ -244,7 +244,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     end
   end
 
-  defp fetch_and_cache_custom(cache_name, cache_key, fetch_fn, log_context) do
+  defp fetch_and_cache_custom(cache_name, cache_key, fetch_fn, log_context, ttl \\ :timer.hours(1)) do
     AppLogger.cache_debug(
       "Cache miss, fetching fresh data",
       Map.merge(log_context, %{cache_key: cache_key})
@@ -252,12 +252,27 @@ defmodule WandererNotifier.Cache.CacheHelper do
 
     case fetch_fn.() do
       {:ok, data} = success ->
-        # Cache the successful result
-        Adapter.put(cache_name, cache_key, data)
+        # Cache the successful result with TTL
+        Adapter.set(cache_name, cache_key, data, ttl)
         success
 
       error ->
         error
     end
   end
+
+  # Helper function to safely convert log names to cache type atoms
+  defp log_name_to_cache_type(log_name) when is_binary(log_name) do
+    case log_name do
+      "character" -> :character
+      "corporation" -> :corporation
+      "alliance" -> :alliance
+      "system" -> :system
+      "killmail" -> :killmail
+      "notification" -> :notification
+      _ -> :default
+    end
+  end
+
+  defp log_name_to_cache_type(_), do: :default
 end

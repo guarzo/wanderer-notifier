@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @behaviour WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
 
   alias WandererNotifier.Config
+  alias WandererNotifier.Cache.Adapter
 
   @impl true
   def check(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
@@ -13,12 +14,12 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
     cache_key = cache_key(type, id)
     ttl = Config.deduplication_ttl()
 
-    case Cachex.get(cache_name, cache_key) do
+    case Adapter.get(cache_name, cache_key) do
       {:ok, true} ->
         {:ok, :duplicate}
 
       _ ->
-        case Cachex.put(cache_name, cache_key, true, ttl: ttl) do
+        case Adapter.set(cache_name, cache_key, true, ttl) do
           {:ok, _} -> {:ok, :new}
           {:error, reason} -> {:error, reason}
         end
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   def clear_key(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
     cache_name = Config.cache_name()
     cache_key = cache_key(type, id)
-    Cachex.del(cache_name, cache_key)
+    Adapter.del(cache_name, cache_key)
   end
 
   # Private functions
