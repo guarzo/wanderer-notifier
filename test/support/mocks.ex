@@ -390,6 +390,10 @@ defmodule WandererNotifier.Mocks do
   Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
     for: WandererNotifier.Notifications.Determiner.KillBehaviour
   )
+
+  Mox.defmock(WandererNotifier.Config.EnvProviderMock,
+    for: WandererNotifier.Config.EnvProvider
+  )
 end
 
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,

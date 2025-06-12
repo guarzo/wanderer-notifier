@@ -66,4 +66,6 @@ config :mox, :global, true
 
 # Configure the cache for testing
 config :wanderer_notifier,
-  cache_name: :wanderer_test_cache
+  cache_name: :wanderer_test_cache,
+  env_provider: WandererNotifier.Config.EnvProviderMock,
+  cache_adapter: WandererNotifier.Cache.ETSCache

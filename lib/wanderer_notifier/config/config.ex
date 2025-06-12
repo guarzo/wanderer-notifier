@@ -18,9 +18,14 @@ defmodule WandererNotifier.Config do
 
   alias WandererNotifier.Config.Utils
 
+  # Get the env provider from application config, defaulting to SystemEnvProvider
+  defp env_provider do
+    Application.get_env(:wanderer_notifier, :env_provider, WandererNotifier.Config.SystemEnvProvider)
+  end
+
   # --- General ENV helpers ---
-  def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
-  def fetch(key, default \\ nil), do: System.get_env(key) || default
+  def fetch!(key), do: env_provider().fetch_env!(key)
+  def fetch(key, default \\ nil), do: env_provider().get_env(key, default)
   def fetch_int(key, default), do: fetch(key) |> Utils.parse_int(default)
 
   # --- General Application config ---
@@ -52,7 +57,7 @@ defmodule WandererNotifier.Config do
   """
   def notification_dedup_ttl do
     # Get from environment variable first, then fall back to application config
-    case System.get_env("NOTIFICATION_DEDUP_TTL") do
+    case env_provider().get_env("NOTIFICATION_DEDUP_TTL") do
       nil ->
         Application.get_env(:wanderer_notifier, :dedup_ttl, 3600)
 
@@ -205,37 +210,60 @@ defmodule WandererNotifier.Config do
   end
 
   # --- Features ---
+  @default_features [
+    notifications_enabled: true,
+    kill_notifications_enabled: true,
+    system_notifications_enabled: true,
+    character_notifications_enabled: true,
+    status_messages_enabled: false,
+    track_kspace: false,
+    tracked_systems_notifications_enabled: false,
+    tracked_characters_notifications_enabled: false,
+    character_tracking_enabled: false,
+    system_tracking_enabled: false,
+    status_messages_disabled: false,
+    track_kspace_systems: false,
+    test_mode_enabled: false,
+    should_load_tracking_data: false
+  ]
+
   def features do
-    # Always return a valid keyword list with at least basic features
-    features_from_config = get(:features, [])
-    Utils.normalize_features(features_from_config)
+    # Get features from config and normalize to keyword list
+    features_from_config = get(:features, %{})
+    normalized = Utils.normalize_features(features_from_config)
+    
+    # Merge with defaults, config values take precedence
+    Keyword.merge(@default_features, normalized)
   end
 
-  def feature_enabled?(flag), do: Keyword.get(features(), flag, false)
+  @doc """
+  Checks if a feature flag is enabled.
+  
+  This is the primary interface for checking feature flags.
+  All feature checks should go through this function.
+  
+  ## Examples
+      iex> feature_enabled?(:notifications_enabled)
+      true
+      
+      iex> feature_enabled?(:unknown_feature)
+      false
+  """
+  def feature_enabled?(flag) do
+    Keyword.get(features(), flag, false)
+  end
 
   @impl true
-  def notifications_enabled? do
-    features = get(:features, %{})
-    Map.get(features, :notifications_enabled, true)
-  end
+  def notifications_enabled?, do: feature_enabled?(:notifications_enabled)
 
   @impl true
-  def kill_notifications_enabled? do
-    features = get(:features, %{})
-    Map.get(features, :kill_notifications_enabled, true)
-  end
+  def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
 
   @impl true
-  def system_notifications_enabled? do
-    features = get(:features, %{})
-    Map.get(features, :system_notifications_enabled, true)
-  end
+  def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
 
   @impl true
-  def character_notifications_enabled? do
-    features = get(:features, %{})
-    Map.get(features, :character_notifications_enabled, true)
-  end
+  def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
   def track_kspace?, do: feature_enabled?(:track_kspace)

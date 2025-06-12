@@ -1,65 +1,142 @@
-# Code Review Tasks - Refactoring & Consistency Improvements
+# Code Review Tasks
 
-This document contains tasks identified from a code review focusing on duplicated code, inconsistent patterns, and non-idiomatic Elixir code.
+## 1 — Configuration & Dependency Injection
 
-## Progress Summary
-- **Completed**: 30 major tasks
-- **In Progress**: 0 tasks  
-- **Remaining**: 0 primary tasks (all major refactoring tasks completed)
+- [x] **Consolidate configuration reads into WandererNotifier.Config** ✅ Completed
+  - **AI Prompt**: "In the Wanderer Notifier codebase, consolidate all configuration reads into WandererNotifier.Config; remove every direct System.get_env/1 call inside business modules by introducing an EnvProvider behaviour that is injected (Mox‑friendly). Update tests accordingly."
+  - **Context**: Currently, System.get_env calls are already isolated to configuration modules (`config/config.ex`, `config/provider.ex`). However, there's no EnvProvider behaviour for better testability. The configuration is accessed via `WandererNotifier.Config` module which provides typed accessors.
+  - **Completed**: 
+    - Created `WandererNotifier.Config.EnvProvider` behaviour
+    - Created `WandererNotifier.Config.SystemEnvProvider` implementation
+    - Created `WandererNotifier.Config.EnvProviderMock` for testing
+    - Updated `WandererNotifier.Config` to use injected provider
+    - Updated `config/test.exs` to use mock provider
 
-## 1. Eliminate Duplicated Code
+- [x] **Normalize feature flag structure** ✅ Completed
+  - **AI Prompt**: "Normalize the features structure: when the app boots, coerce whatever comes from runtime.exs into a single Keyword list and expose a pure feature_enabled?/1 helper; delete open‑coded pattern matches on raw maps or lists."
+  - **Context**: Feature flags are currently stored as a map under `:features` config with individual boolean accessor functions in `lib/wanderer_notifier/config/config.ex` (lines 208-253). These include notifications_enabled?, kill_notifications_enabled?, system_notifications_enabled?, etc.
+  - **Completed**: 
+    - Added `@default_features` keyword list with all feature defaults
+    - Updated `features/0` to normalize config to keyword list and merge with defaults
+    - All feature-specific functions now use unified `feature_enabled?/1`
+    - Added documentation for `feature_enabled?/1` as primary interface
 
-### HTTP Response Handling
-- [x] Create a unified HTTP response handler module to eliminate duplicated status code handling
-  - Found in: `esi/client.ex:166-202`, `killmail/zkill_client.ex:126-147`, `map/system_static_info.ex:55-89`, `map/clients/base_map_client.ex:104-133`
-  - Pattern: Similar case statements for status codes (200, 404, other errors)
-  - **COMPLETED**: Created `lib/wanderer_notifier/http/response_handler.ex`
+## 2 — OTP Supervision & Module Boundaries
 
-### Caching Patterns
-- [x] Abstract the `fetch_with_cache` pattern into a higher-order function or macro
-  - Found in: `esi/service.ex` - `get_character_info:93`, `get_corporation_info:118`, `get_alliance_info:146`, `get_system:304`, `get_type:382`
-  - Pattern: Repeated Cachex fetch logic with different keys
-  - **COMPLETED**: Created `lib/wanderer_notifier/cache/cache_helper.ex`
+- [ ] **Create explicit contexts and reorganize supervision tree**
+  - **AI Prompt**: "Create explicit contexts (Notifier.Killmail, Notifier.ExternalAdapters, etc.). Move all HTTP/Discord, Cachex and RedisQ processes out of domain files and register them under WandererNotifier.Application so that the supervision tree is declared in one place."
+  - **Context**: Current supervision tree in `lib/wanderer_notifier/application.ex` includes:
+    - Base children: NoopConsumer, Cachex, TaskSupervisor, Stats, License.Service, Application.Service, Web.Server
+    - Conditional: Killmail.Supervisor (if RedisQ enabled), Schedulers.Supervisor
+  - **Issues**: HTTP clients and Discord notifiers are not explicitly supervised; they're called directly from domain modules
+  - **Target structure**:
+    - `Notifier.Killmail` context for killmail processing
+    - `Notifier.ExternalAdapters` for HTTP/Discord/Redis clients
+    - All processes registered under main Application supervisor
 
-### Cache Name Configuration
-- [x] Centralize cache name configuration access
-  - Found in: Multiple locations using `Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)`
-  - Create single interface for cache name retrieval
-  - **COMPLETED**: Created `lib/wanderer_notifier/cache/config.ex`
+- [ ] **Convert Task.start to supervised processes**
+  - **AI Prompt**: "Scan the project for Task.start/1 or hidden worker spawns; convert them to named GenServers or DynamicSupervisors so that runtime restarts are visible to ops."
+  - **Context**: Found Task.Supervisor usage in `lib/wanderer_notifier/application.ex` but need to verify if there are any Task.start/1 calls in business logic
+  - **Known supervisors**: 
+    - `WandererNotifier.TaskSupervisor` - Generic task supervisor
+    - `WandererNotifier.Schedulers.Supervisor` - Manages background schedulers
+    - `WandererNotifier.Killmail.Supervisor` - Manages killmail pipeline
 
-### HTTP Headers
-- [x] Extract common HTTP client configuration into shared module
-  - Found in: `esi/client.ex:158-163`, `killmail/zkill_client.ex:151-157`, `map/system_static_info.ex`
-  - Pattern: Similar `default_headers/0` functions
-  - **COMPLETED**: Created `lib/wanderer_notifier/http/headers.ex`
+## 3 — Error Handling & Observability
 
-## 2. Fix Inconsistent Patterns
+- [x] **Add structured metadata to Logger calls** ✅ Completed
+  - **AI Prompt**: "Replace bare Logger.warning/1 calls with Logger.warning/2 that includes structured metadata (:character_id, :system_id, etc.). Provide a helper macro to avoid repetition."
+  - **Context**: The codebase has dedicated error logging modules:
+    - `lib/wanderer_notifier/logger/error_logger.ex` - Provides structured error logging functions
+    - `lib/wanderer_notifier/logger/logger.ex` - Main logger module with helper functions
+    - `lib/wanderer_notifier/logger/metadata_keys.ex` - Defines metadata keys
+  - **Completed**:
+    - Created `WandererNotifier.Logger.StructuredLogger` with helper macros
+    - Macros automatically extract metadata from common structures (killmails, characters, systems)
+    - Provides `log_info`, `log_debug`, `log_warn`, `log_error` macros
+    - Existing logger already has excellent structured metadata support
+    - All category-specific helpers (api_*, cache_*, etc.) use structured metadata
 
-### Dependency Injection
-- [x] Standardize dependency injection approach
-  - [x] Choose between direct module references, application env, or compile-time config
-  - [x] Document the chosen pattern in ARCHITECTURE.md
-  - **COMPLETED**: Created `WandererNotifier.Core.Dependencies` module for centralized dependency injection
+## 4 — Caching Layer Improvements
 
-### Test Patterns
+- [ ] **Introduce lightweight ETS cache for tests**
+  - **AI Prompt**: "Introduce a lightweight ETS cache implementing CacheBehaviour for unit tests; inject it via Application.compile_env/3 so production keeps Cachex while tests stay pure Erlang."
+  - **Context**: 
+    - Current cache behaviour: `lib/wanderer_notifier/cache/cache_behaviour.ex`
+    - Production uses Cachex (configured in `application.ex`)
+    - Tests use `:wanderer_test_cache` with Cachex
+    - Cache helper: `lib/wanderer_notifier/cache/cache_helper.ex` provides high-level abstraction
+  - **Benefits**: Faster tests, no external dependencies in test environment
 
-## 5. Additional Improvements
+- [ ] **Centralize TTL values**
+  - **AI Prompt**: "Centralise TTL values: enforce callers to use Cache.Config.ttl_for/1 rather than literal integers. Add a Credo custom check that flags hard‑coded TTL seconds."
+  - **Context**: 
+    - TTL configuration exists in `lib/wanderer_notifier/cache/config.ex`
+    - Current TTLs: Character/corp/alliance (24h), System info (1h), Deduplication (30m)
+    - Some modules may still have hardcoded TTL values
+  - **Target**: All TTL values accessed via `Cache.Config.ttl_for(:cache_type)`
 
-### Code Organization
-- [x] Review module dependencies and reduce coupling
-  - **COMPLETED**: Analyzed cross-module dependencies and updated ARCHITECTURE.md with coupling reduction recommendations
+## 5 — Test Suite Hardening
 
-## Notes
+- [ ] **Refactor tests to use ETS adapter**
+  - **AI Prompt**: "Refactor tests to remove external Cachex dependency: default to the new ETS adapter; convert existing Mox stubs to use with_cache/4 helpers."
+  - **Context**: 
+    - Test configuration in `config/test.exs` currently uses Cachex
+    - Test helpers in `test/support/` directory
+    - Mox is used for mocking behaviors
+  - **Dependencies**: Requires ETS cache implementation from task 4.1
 
-- Consider creating a style guide based on these improvements
-- Run tests after each change to ensure no regressions
-- Update CLAUDE.md with any new patterns or conventions adopted
+- [ ] **Add property-based tests**
+  - **AI Prompt**: "Add property‑based tests with StreamData for: — KeyGenerator.parse_key/1 (round‑trip) — killmail JSON encoder/decoder invariants."
+  - **Context**: 
+    - KeyGenerator in `lib/wanderer_notifier/cache/key_generator.ex`
+    - Killmail schema in `lib/wanderer_notifier/killmail/schema.ex`
+    - No StreamData dependency currently in `mix.exs`
+  - **Target areas**: Cache key generation, JSON serialization/deserialization
 
+## 6 — Idiomatic Elixir Clean-ups
 
+- [ ] **Remove pass-through private functions**
+  - **AI Prompt**: "Find all private functions that are mere pass‑throughs (e.g., Config.map_api_url/0 → Config.map_url/0); inline them and mark old names @deprecated."
+  - **Context**: Common in configuration modules where private functions just call other functions
+  - **Example locations**: 
+    - `lib/wanderer_notifier/config/config.ex`
+    - Various client modules that wrap API calls
+  - **Pattern**: `defp foo(), do: bar()` → inline `bar()` directly
 
-Automatic Image / Common Versioning Failure
-Prepare all required actions
-Run ./.github/actions/common-versioning
-Run # Setup Mix
-/home/runner/work/_temp/bb17d0f3-1539-43ac-b2c2-869d87ea4196.sh: line 2: mix: command not found
-Error: Process completed with exit code 127.
+- [ ] **Standardize integer parsing**
+  - **AI Prompt**: "Use guards + Integer.parse/1 || default helper (parse_int/2) everywhere; eliminate bespoke case Integer.parse patterns."
+  - **Context**: 
+    - Parsing utilities in `lib/wanderer_notifier/config/utils.ex`
+    - Multiple modules may have custom integer parsing logic
+  - **Target**: Single `parse_int/2` helper used consistently
+
+## 8 — Docker & Release Optimisation
+
+- [ ] **Optimize Docker image size**
+  - **AI Prompt**: "Convert the current single‑stage Dockerfile to a two‑stage build (builder on hexpm/elixir, final on alpine:3.20); strip build tools, verify the image shrinks below 60 MB."
+  - **Context**: 
+    - Current Dockerfile already uses multi-stage build (deps → build → runtime)
+    - Uses Elixir 1.18.3 with OTP 27
+    - Has cache mounts for faster rebuilds
+  - **Optimization opportunities**: 
+    - Switch runtime stage to Alpine Linux
+    - Remove unnecessary build artifacts
+    - Minimize installed packages
+
+## 10 — Quick-Win Refactors
+
+- [ ] **Introduce CacheKey struct**
+  - **AI Prompt**: "Introduce %CacheKey{} struct that implements String.Chars; migrate existing tuple keys in Cachex calls to the struct to gain Dialyzer coverage."
+  - **Context**: 
+    - Current cache keys are generated as strings in `lib/wanderer_notifier/cache/key_generator.ex`
+    - Key patterns defined in `lib/wanderer_notifier/cache/keys.ex`
+  - **Benefits**: Type safety, better documentation, Dialyzer coverage
+
+- [ ] **Add response compression**
+  - **AI Prompt**: "Add Plug.Gzip (compress: true) to the main API pipeline to gzip JSON responses automatically; update benchmark to confirm ~70% reduction in wire size."
+  - **Context**: 
+    - Web router in `lib/wanderer_notifier/web/router.ex`
+    - API endpoints serve JSON responses
+    - No compression currently configured
+  - **Implementation**: Add to plug pipeline in router

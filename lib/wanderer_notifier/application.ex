@@ -143,7 +143,16 @@ defmodule WandererNotifier.Application do
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
     cache_name = WandererNotifier.Cache.Config.cache_name()
-    {Cachex, name: cache_name}
+    cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
+    
+    case cache_adapter do
+      Cachex ->
+        {Cachex, name: cache_name}
+      WandererNotifier.Cache.ETSCache ->
+        {WandererNotifier.Cache.ETSCache, name: cache_name}
+      other ->
+        raise "Unknown cache adapter: #{inspect(other)}"
+    end
   end
 
   @doc """
