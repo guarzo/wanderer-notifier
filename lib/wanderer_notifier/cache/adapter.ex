@@ -36,7 +36,7 @@ defmodule WandererNotifier.Cache.Adapter do
   def set(cache_name, key, value, ttl \\ :timer.seconds(300)) do
     case adapter() do
       Cachex ->
-        Cachex.set(cache_name, key, value, ttl: ttl)
+        Cachex.put(cache_name, key, value, ttl: ttl)
       
       WandererNotifier.Cache.ETSCache ->
         WandererNotifier.Cache.ETSCache.set(key, value, div(ttl, 1000))

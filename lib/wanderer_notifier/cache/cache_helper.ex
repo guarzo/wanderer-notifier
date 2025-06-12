@@ -233,7 +233,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     case fetch_fn.(id, opts) do
       {:ok, data} = success ->
         # Cache the successful result
-        Cachex.put(cache_name, cache_key, data)
+        Adapter.put(cache_name, cache_key, data)
         success
 
       error ->
@@ -250,7 +250,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     case fetch_fn.() do
       {:ok, data} = success ->
         # Cache the successful result
-        Cachex.put(cache_name, cache_key, data)
+        Adapter.put(cache_name, cache_key, data)
         success
 
       error ->
