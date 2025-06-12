@@ -20,7 +20,11 @@ defmodule WandererNotifier.Config do
 
   # Get the env provider from application config, defaulting to SystemEnvProvider
   defp env_provider do
-    Application.get_env(:wanderer_notifier, :env_provider, WandererNotifier.Config.SystemEnvProvider)
+    Application.get_env(
+      :wanderer_notifier,
+      :env_provider,
+      WandererNotifier.Config.SystemEnvProvider
+    )
   end
 
   # --- General ENV helpers ---
@@ -231,17 +235,17 @@ defmodule WandererNotifier.Config do
     # Get features from config and normalize to keyword list
     features_from_config = get(:features, %{})
     normalized = Utils.normalize_features(features_from_config)
-    
+
     # Merge with defaults, config values take precedence
     Keyword.merge(@default_features, normalized)
   end
 
   @doc """
   Checks if a feature flag is enabled.
-  
+
   This is the primary interface for checking feature flags.
   All feature checks should go through this function.
-  
+
   ## Examples
       iex> feature_enabled?(:notifications_enabled)
       true
