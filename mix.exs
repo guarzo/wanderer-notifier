@@ -66,7 +66,7 @@ defmodule WandererNotifier.MixProject do
       {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4.3", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},
       {:bunt, "~> 1.0"},
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},

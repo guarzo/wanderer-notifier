@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Elixir
+        id: beam
         uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.18.4"
@@ -49,18 +50,32 @@ jobs:
       - name: Check formatting
         run: mix format --check-formatted
 
-      - name: Run Credo
-        run: mix credo
-        continue-on-error: false
-
-      - name: Run Dialyzer
-        run: mix dialyzer
-        continue-on-error: false
-
       - name: Compile (with special handling for Mox warnings)
         run: |
           mix compile 2>&1 | (grep -v "redefining module" || true)
           [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+
+      - name: Restore PLT cache
+        uses: actions/cache@v3
+        id: plt_cache
+        with:
+          key: ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          path: |
+            priv/plts
+
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+
+      - name: Run Dialyzer
+        run: mix dialyzer --format github
+        continue-on-error: false
+
+      - name: Run Credo
+        run: mix credo
+        continue-on-error: false
 
       - name: Run tests
         run: mix test

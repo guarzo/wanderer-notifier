@@ -72,13 +72,16 @@ defmodule WandererNotifier.Http.Utils.Retry do
   """
   @spec calculate_backoff(pos_integer(), pos_integer(), pos_integer(), boolean()) :: pos_integer()
   def calculate_backoff(attempt, base_backoff, max_backoff, jitter \\ true) do
-    # Calculate exponential backoff: base * 2^(attempt - 1)
-    exponential = base_backoff * :math.pow(2, attempt - 1)
+    # Calculate exponential backoff using bit shifting: base * 2^(attempt - 1)
+    # Use bit shifting for integer math to avoid floating point issues
+    exponential = base_backoff * :erlang.bsl(1, attempt - 1)
 
     # Apply jitter if requested (up to 20% of the delay)
     with_jitter =
       if jitter do
-        jitter_amount = exponential * 0.2 * :rand.uniform()
+        # Calculate jitter as integer (0-20% of exponential)
+        max_jitter = div(exponential, 5)  # 20% = 1/5
+        jitter_amount = :rand.uniform(max_jitter + 1) - 1
         exponential + jitter_amount
       else
         exponential
@@ -86,7 +89,6 @@ defmodule WandererNotifier.Http.Utils.Retry do
 
     # Cap at maximum backoff
     min(with_jitter, max_backoff)
-    |> round()
   end
 
   # Private implementation

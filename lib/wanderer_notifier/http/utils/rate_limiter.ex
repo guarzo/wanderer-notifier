@@ -93,10 +93,19 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
   def fixed_interval(fun, interval_ms, opts \\ [])
       when is_function(fun, 0) and is_integer(interval_ms) do
     context = Keyword.get(opts, :context, "fixed interval operation")
+    async = Keyword.get(opts, :async, false)
 
     try do
       result = fun.()
-      :timer.sleep(interval_ms)
+      
+      if async do
+        # Non-blocking: spawn a task to handle the delay
+        Task.start(fn -> :timer.sleep(interval_ms) end)
+      else
+        # Blocking: maintain existing behavior for backward compatibility
+        :timer.sleep(interval_ms)
+      end
+      
       {:ok, result}
     rescue
       e ->

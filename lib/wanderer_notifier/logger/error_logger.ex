@@ -64,15 +64,22 @@ defmodule WandererNotifier.Logger.ErrorLogger do
 
   @doc """
   Logs an exception with its stacktrace.
+  
+  ## Parameters
+    - message: The log message
+    - exception: The exception that was raised
+    - stacktrace: The stacktrace from the exception (optional, defaults to current process stacktrace)
+    - metadata: Additional metadata to include in the log (optional)
   """
-  def log_exception(message, exception, metadata \\ []) do
+  def log_exception(message, exception, stacktrace \\ nil, metadata \\ []) do
+    trace = stacktrace || Process.info(self(), :current_stacktrace) |> elem(1)
+    
     try do
       AppLogger.error(
         message,
         Keyword.merge(metadata,
           error: Exception.message(exception),
-          stacktrace:
-            Exception.format_stacktrace(Process.info(self(), :current_stacktrace) |> elem(1))
+          stacktrace: Exception.format_stacktrace(trace)
         )
       )
     rescue

@@ -14,6 +14,9 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Notifications.NotificationService
   alias WandererNotifier.Config
 
+  # Cache the cache name at compile time to avoid repeated lookups
+  @cache_name Config.cache_name()
+
   @doc """
   Creates a notification from a killmail.
 
@@ -108,7 +111,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Gets the latest killmails for notification.
   """
   def get_latest_killmails do
-    cache_name = Config.cache_name()
+    cache_name = @cache_name
 
     case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, kill_ids} when is_list(kill_ids) ->
@@ -122,7 +125,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Private helper functions
 
   defp get_recent_kill do
-    cache_name = Config.cache_name()
+    cache_name = @cache_name
 
     case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
@@ -333,7 +336,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   defp get_kills_by_ids(kill_ids) do
-    cache_name = Config.cache_name()
+    cache_name = @cache_name
     keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
 
     results =

@@ -12,7 +12,7 @@ defmodule WandererNotifier.Config.SystemEnvProvider do
 
   @impl true
   def get_env(key, default) do
-    System.get_env(key, default)
+    System.get_env(key) || default
   end
 
   @impl true

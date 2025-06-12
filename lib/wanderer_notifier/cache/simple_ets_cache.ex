@@ -2,6 +2,11 @@ defmodule WandererNotifier.Cache.SimpleETSCache do
   @moduledoc """
   Simple ETS-based cache implementation for testing.
   Uses a single table name from application config.
+  
+  ⚠️ WARNING: This cache implementation is intended for TEST ENVIRONMENTS ONLY.
+  It has potential race conditions in get_and_update operations and lacks the
+  robustness required for production use. Use Cachex or another production-ready
+  cache implementation for production environments.
   """
   use GenServer
 

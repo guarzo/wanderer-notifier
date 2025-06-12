@@ -7,6 +7,7 @@ defmodule WandererNotifier.Cache.Adapter do
   and ETSCache (testing) transparently.
   """
 
+
   @doc """
   Gets the configured cache adapter.
   """

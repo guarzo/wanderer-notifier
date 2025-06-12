@@ -61,7 +61,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
     system_name_with_link = create_system_name_link(system, display_name)
 
-    {title, description, _color, icon_url} =
+    {title, description, color, icon_url} =
       generate_notification_elements(system, is_wormhole, display_name)
 
     fields =
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
        type: :system_notification,
        title: title,
        description: description,
-       color: determine_system_color_from_security(system),
+       color: color,
        timestamp: TimeUtils.log_timestamp(),
        thumbnail: %{url: icon_url},
        fields: fields,
@@ -273,6 +273,4 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
-
-  defp determine_system_color_from_security(_), do: @default_color
 end

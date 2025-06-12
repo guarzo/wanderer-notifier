@@ -11,12 +11,13 @@ defmodule WandererNotifier.Killmail.Supervisor do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  def start_link(opts \\ []) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(init_arg \\ []) do
+    opts = [name: __MODULE__]
+    Supervisor.start_link(__MODULE__, init_arg, opts)
   end
 
   @impl true
-  def init(_opts) do
+  def init(_init_arg) do
     AppLogger.processor_info("Starting Killmail Supervisor")
 
     children = [

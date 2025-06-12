@@ -64,6 +64,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
          {:ok, %{should_notify: true}} <- check_requirements(killmail, ctx) do
       send_notification(killmail, ctx)
     else
+      {:ok, :duplicate} ->
+        {:ok, :duplicate}
+
       {:ok, %{should_notify: false, reason: r}} ->
         handle_notification_skipped(kill_id, system_id, r)
 

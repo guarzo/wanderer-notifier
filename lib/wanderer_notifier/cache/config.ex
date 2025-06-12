@@ -149,7 +149,8 @@ defmodule WandererNotifier.Cache.Config do
   @spec ttl_for(atom()) :: non_neg_integer() | :infinity
   def ttl_for(type) do
     ttls = Application.get_env(:wanderer_notifier, :cache_ttls, default_ttls())
-    Map.get(ttls, type, default_ttl())
+    # First check the configured TTLs, then type-specific defaults, then global default
+    Map.get(ttls, type) || Map.get(default_ttls(), type, default_ttl())
   end
 
   # Private functions

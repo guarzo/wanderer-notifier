@@ -18,8 +18,10 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
         {:ok, :duplicate}
 
       _ ->
-        Cachex.put(cache_name, cache_key, true, ttl: ttl)
-        {:ok, :new}
+        case Cachex.put(cache_name, cache_key, true, ttl: ttl) do
+          {:ok, _} -> {:ok, :new}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

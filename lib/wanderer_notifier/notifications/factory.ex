@@ -177,8 +177,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
     # Get config module and retrieve settings once
     config = Config.get_config()
-    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
-    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+    character_notifications_enabled = Map.get(config, :character_notifications_enabled) || Map.get(config, "character_notifications_enabled", false)
+    system_notifications_enabled = Map.get(config, :system_notifications_enabled) || Map.get(config, "system_notifications_enabled", false)
 
     # Determine which channel to use based on the kill type using pattern matching
     channel_id =

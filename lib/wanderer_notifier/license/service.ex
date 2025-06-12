@@ -394,7 +394,7 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:valid, _from, state) do
-    {:reply, state.validated, state}
+    {:reply, state.valid, state}
   end
 
   @impl true
@@ -406,7 +406,7 @@ defmodule WandererNotifier.License.Service do
   @impl true
   def handle_call({:set_status, status}, _from, state) do
     # Update license status
-    {:reply, :ok, Map.put(state, :validated, status)}
+    {:reply, :ok, Map.put(state, :valid, status)}
   end
 
   @impl true

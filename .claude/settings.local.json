@@ -25,7 +25,11 @@
       "Bash(yamllint:*)",
       "Bash(mix credo:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(MIX_ENV=test mix deps.get)",
+      "Bash(MIX_ENV=test mix dialyzer --format github)",
+      "Bash(MIX_ENV=test mix help dialyzer)",
+      "Bash(iex:*)"
     ],
     "deny": []
   }

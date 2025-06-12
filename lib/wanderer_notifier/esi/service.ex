@@ -92,7 +92,7 @@ defmodule WandererNotifier.ESI.Service do
       :character,
       character_id,
       opts,
-      &esi_client().get_character_info/2,
+      fn id, fetch_opts -> esi_client().get_character_info(id, fetch_opts) end,
       "character"
     )
   end
@@ -120,7 +120,7 @@ defmodule WandererNotifier.ESI.Service do
       :corporation,
       corporation_id,
       opts,
-      &esi_client().get_corporation_info/2,
+      fn id, fetch_opts -> esi_client().get_corporation_info(id, fetch_opts) end,
       "corporation"
     )
   end
@@ -148,7 +148,7 @@ defmodule WandererNotifier.ESI.Service do
       :alliance,
       alliance_id,
       opts,
-      &esi_client().get_alliance_info/2,
+      fn id, fetch_opts -> esi_client().get_alliance_info(id, fetch_opts) end,
       "alliance"
     )
   end
@@ -307,7 +307,7 @@ defmodule WandererNotifier.ESI.Service do
       :system,
       system_id,
       opts,
-      &esi_client().get_system/2,
+      fn id, fetch_opts -> esi_client().get_system(id, fetch_opts) end,
       "solar system"
     )
   end
@@ -380,7 +380,7 @@ defmodule WandererNotifier.ESI.Service do
       :character,
       character_id,
       opts,
-      &esi_client().get_character_info/2,
+      fn id, fetch_opts -> esi_client().get_character_info(id, fetch_opts) end,
       "character"
     )
   end
@@ -391,7 +391,7 @@ defmodule WandererNotifier.ESI.Service do
       :type,
       type_id,
       opts,
-      &esi_client().get_universe_type/2,
+      fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
       "type"
     )
   end

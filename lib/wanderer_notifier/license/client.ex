@@ -47,8 +47,14 @@ defmodule WandererNotifier.License.Client do
   # Make the actual API request for validation
   defp make_validation_request(url, body, headers) do
     case WandererNotifier.HTTP.post_json(url, body, headers) do
-      {:ok, %{status_code: _status, body: decoded}} ->
+      {:ok, %{status_code: status, body: decoded}} when status in 200..299 ->
         process_successful_validation(decoded)
+
+      {:ok, %{status_code: status, body: body}} ->
+        AppLogger.api_error("License Manager API returned error status", 
+          status: status, 
+          body: inspect(body))
+        {:error, :request_failed}
 
       {:error, :connect_timeout} ->
         AppLogger.api_error("License Manager API request timed out")

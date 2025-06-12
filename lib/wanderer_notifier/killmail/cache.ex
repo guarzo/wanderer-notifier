@@ -175,11 +175,13 @@ defmodule WandererNotifier.Killmail.Cache do
       end
 
     # Add the new kill ID to the list (if not already present)
+    # Limit the list to a maximum of 100 recent kills
+    max_recent_kills = 100
     updated_ids =
       if kill_id in kill_ids do
         kill_ids
       else
-        [kill_id | kill_ids]
+        [kill_id | kill_ids] |> Enum.take(max_recent_kills)
       end
 
     # Store the updated list
