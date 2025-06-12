@@ -5,6 +5,7 @@ defmodule WandererNotifier.Logger.ErrorLogger do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Utils.TimeUtils
 
   @doc """
   Logs an API error with consistent formatting.
@@ -97,7 +98,7 @@ defmodule WandererNotifier.Logger.ErrorLogger do
     - metadata: Additional metadata to include in the log
   """
   def log_http_error(method, url, reason, start_time, metadata \\ []) do
-    duration = System.monotonic_time() - start_time
+    duration_ms = TimeUtils.monotonic_ms() - start_time
 
     AppLogger.api_error(
       "HTTP request failed",
@@ -105,7 +106,7 @@ defmodule WandererNotifier.Logger.ErrorLogger do
         method: method,
         url: url,
         error: inspect(reason),
-        duration_ms: duration / 1_000_000
+        duration_ms: duration_ms
       )
     )
   end

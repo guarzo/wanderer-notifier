@@ -20,15 +20,16 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   @impl true
   def extract_data(%{"data" => data}) when is_list(data) do
     # Flatten the nested structure to get all characters
-    characters = 
+    characters =
       data
       |> Enum.flat_map(fn
         %{"characters" => chars} when is_list(chars) -> chars
         _ -> []
       end)
-    
+
     {:ok, characters}
   end
+
   def extract_data(_), do: {:error, :invalid_data_format}
 
   @impl true
@@ -36,9 +37,9 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     if Enum.all?(items, &valid_character?/1), do: :ok, else: {:error, :invalid_data}
   end
 
-  defp valid_character?(%{"eve_id" => eve_id, "name" => name}) 
+  defp valid_character?(%{"eve_id" => eve_id, "name" => name})
        when is_binary(eve_id) and is_binary(name),
-    do: true
+       do: true
 
   defp valid_character?(_), do: false
 

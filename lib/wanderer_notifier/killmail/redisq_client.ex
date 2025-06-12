@@ -5,11 +5,13 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   """
 
   use GenServer
-  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Telemetry
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.HttpClient.Utils.RateLimiter
+  alias WandererNotifier.Http.Utils.RateLimiter
   alias WandererNotifier.Constants
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Killmail.Schema
+  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Http.ResponseHandler
 
   # Internal state struct
   defmodule State do
@@ -71,25 +73,33 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       parent: parent,
       poll_interval: poll_interval,
       url: url,
-      startup_time: DateTime.utc_now(),
+      startup_time: TimeUtils.now(),
       ttw: ttw,
       retry_count: 0,
       last_error: nil,
       backoff_timer: nil,
       consecutive_timeouts: 0,
-      last_successful_poll: DateTime.utc_now()
+      last_successful_poll: TimeUtils.now()
     }
 
+    # Log initialization
+    AppLogger.processor_info("🚀 RedisQ client initialized",
+      queue_id: queue_id,
+      url: url,
+      ttw: ttw,
+      poll_interval: poll_interval
+    )
+
     # Update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: false,
       connecting: true,
       startup_time: state.startup_time,
       url: url
     })
 
-    # Schedule first poll using the proper timer management
-    timer_ref = Process.send_after(self(), :poll, poll_interval)
+    # Schedule first poll immediately
+    timer_ref = Process.send_after(self(), :poll, 100)
     state = %{state | poll_timer: timer_ref}
 
     {:ok, state}
@@ -119,10 +129,10 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     cancel_timer(state.backoff_timer)
 
     # Update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: false,
       connecting: false,
-      last_disconnect: DateTime.utc_now()
+      last_disconnect: TimeUtils.now()
     })
 
     {:stop, :normal, state}
@@ -138,7 +148,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
         handle_no_killmail(state)
 
       {:error, :timeout} ->
-        handle_timeout_error(state)
+        handle_timeout_retry(state)
 
       {:error, reason} ->
         handle_fetch_error(state, reason)
@@ -153,22 +163,39 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       | retry_count: 0,
         last_error: nil,
         consecutive_timeouts: 0,
-        last_successful_poll: DateTime.utc_now()
+        last_successful_poll: TimeUtils.now()
     }
 
     # Update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: true,
       connecting: false,
-      last_message: DateTime.utc_now()
+      last_message: TimeUtils.now()
     })
+
+    # Track killmail received
+    # Handle both killmail_id and killID formats
+    kill_id =
+      Map.get(data, "killmail_id") || Map.get(data, "killID") ||
+        get_in(data, ["killmail", "killmail_id"]) ||
+        get_in(data, Schema.package_killmail_id_path())
+
+    Telemetry.killmail_received(kill_id)
+
+    # Log the received killmail
+    system_id =
+      get_in(data, ["killmail", "solar_system_id"]) ||
+        get_in(data, ["solar_system_id"])
+
+    system_name = get_system_name(system_id)
+    AppLogger.processor_info("💀 📥 Killmail #{kill_id} | #{system_name} | Received from RedisQ")
 
     # Send to parent
     send(state.parent, {:zkill_message, data})
 
     # Immediate retry when killmail received (hot polling during activity)
-    AppLogger.api_debug(
-      "Killmail received, scheduling immediate poll for hot polling during activity",
+    AppLogger.processor_debug(
+      "Scheduling immediate poll for hot polling during activity",
       queue_id: state.queue_id
     )
 
@@ -178,7 +205,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   # Handle case when no killmail is available
   defp handle_no_killmail(state) do
     # No killmail available, just update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: true,
       connecting: false
     })
@@ -189,18 +216,22 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       | retry_count: 0,
         last_error: nil,
         consecutive_timeouts: 0,
-        last_successful_poll: DateTime.utc_now()
+        last_successful_poll: TimeUtils.now()
     }
 
     # Regular polling interval when no activity
-    AppLogger.api_debug("No killmail available, polling again in #{state.poll_interval}ms")
+    # Only log occasionally to avoid spam
+    if rem(System.system_time(:second), 60) < 5 do
+      AppLogger.processor_debug("RedisQ poll complete - no new killmails")
+    end
+
     schedule_next_poll(new_state)
   end
 
   # Handle non-timeout errors
   defp handle_fetch_error(state, reason) do
     # Update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: false,
       connecting: false,
       last_error: reason
@@ -230,16 +261,16 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     cancel_timer(state.backoff_timer)
 
     # Update connection stats
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: false,
       connecting: false,
-      last_disconnect: DateTime.utc_now()
+      last_disconnect: TimeUtils.now()
     })
 
     AppLogger.api_debug("RedisQ client terminated",
       reason: inspect(reason),
       queue_id: state.queue_id,
-      uptime_seconds: DateTime.diff(DateTime.utc_now(), state.startup_time)
+      uptime_seconds: TimeUtils.elapsed_seconds(state.startup_time)
     )
 
     :ok
@@ -251,26 +282,26 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     http_client = get_http_client()
     opts = build_http_options(state)
 
-    AppLogger.api_debug("RedisQ request starting",
-      url: url,
-      ttw: state.ttw,
-      timeout: opts[:timeout],
-      queue_id: state.queue_id
+    AppLogger.processor_debug("🔄 Polling RedisQ for killmails...",
+      queue_id: state.queue_id,
+      ttw: state.ttw
     )
 
-    result = RateLimiter.run(
-      fn -> 
-        case http_client.get(url, [], opts) do
-          {:ok, response} -> {:ok, response}
-          {:error, reason} -> {:error, reason}
-          response -> {:ok, response}  # Wrap bare responses
-        end
-      end,
-      context: "RedisQ request",
-      max_retries: @max_retries,
-      base_backoff: Constants.redisq_base_backoff()
-    )
-    
+    result =
+      RateLimiter.run(
+        fn ->
+          case http_client.get(url, [], opts) do
+            {:ok, response} -> {:ok, response}
+            {:error, reason} -> {:error, reason}
+            # Wrap bare responses
+            response -> {:ok, response}
+          end
+        end,
+        context: "RedisQ request",
+        max_retries: @max_retries,
+        base_backoff: Constants.redisq_base_backoff()
+      )
+
     case result do
       {:ok, response} -> handle_http_response({:ok, response}, state)
       {:error, reason} -> handle_http_response({:error, reason}, state)
@@ -278,9 +309,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   end
 
   # Get the configured HTTP client
-  defp get_http_client do
-    HTTP
-  end
+  defp get_http_client, do: WandererNotifier.Core.Dependencies.http_client()
 
   # Build HTTP request options based on state
   defp build_http_options(state) do
@@ -304,7 +333,29 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   end
 
   # Handle HTTP response and decode body
-  defp handle_http_response({:ok, %{status_code: 200, body: body}}, _state) do
+  defp handle_http_response(response, state) do
+    # Use ResponseHandler for basic response handling, but maintain RedisQ-specific logic
+    case ResponseHandler.handle_response(response,
+           success_codes: 200,
+           error_format: :string,
+           log_context: %{client: "RedisQ", queue_id: state.queue_id}
+         ) do
+      {:ok, body} ->
+        handle_successful_response(body)
+
+      {:error, :timeout} ->
+        handle_timeout_error(state)
+
+      {:error, :connect_timeout} ->
+        handle_connect_timeout_error(state)
+
+      {:error, reason} = error ->
+        handle_general_error(reason, state)
+        error
+    end
+  end
+
+  defp handle_successful_response(body) do
     case decode_response_body(body) do
       {:ok, %{"package" => nil}} ->
         {:error, :no_killmail}
@@ -317,49 +368,36 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     end
   end
 
-  defp handle_http_response({:ok, %{status_code: status}}, state) do
-    AppLogger.api_error(
-      "RedisQ Client: Received error status #{status} for queue_id=#{state.queue_id}"
-    )
-
-    {:error, "HTTP error: #{status}"}
-  end
-
-  defp handle_http_response({:error, :timeout}, state) do
-    # Log timeouts as warnings instead of errors since they're somewhat expected
-    # with long-polling endpoints like RedisQ, but include helpful context
+  defp handle_timeout_error(state) do
     log_level = if state.consecutive_timeouts > @timeout_threshold, do: :debug, else: :warn
-
-    case log_level do
-      :debug ->
-        AppLogger.api_debug(
-          "RedisQ timeout (frequent pattern)",
-          queue_id: state.queue_id,
-          consecutive_timeouts: state.consecutive_timeouts
-        )
-
-      :warn ->
-        AppLogger.api_warn(
-          "RedisQ timeout (#{state.consecutive_timeouts + 1} consecutive)",
-          queue_id: state.queue_id
-        )
-    end
-
+    log_timeout_message(log_level, state)
     {:error, :timeout}
   end
 
-  defp handle_http_response({:error, :connect_timeout}, state) do
-    AppLogger.api_error("RedisQ Client: Connection timed out for queue_id=#{state.queue_id}")
+  defp log_timeout_message(:debug, state) do
+    AppLogger.api_debug(
+      "RedisQ timeout (frequent pattern)",
+      queue_id: state.queue_id,
+      consecutive_timeouts: state.consecutive_timeouts
+    )
+  end
 
+  defp log_timeout_message(:warn, state) do
+    AppLogger.api_warn(
+      "RedisQ timeout (#{state.consecutive_timeouts + 1} consecutive)",
+      queue_id: state.queue_id
+    )
+  end
+
+  defp handle_connect_timeout_error(state) do
+    AppLogger.api_error("RedisQ Client: Connection timed out for queue_id=#{state.queue_id}")
     {:error, :connect_timeout}
   end
 
-  defp handle_http_response({:error, reason}, state) do
+  defp handle_general_error(reason, state) do
     AppLogger.api_error(
       "RedisQ Client: Request failed for queue_id=#{state.queue_id}: #{inspect(reason)}"
     )
-
-    {:error, reason}
   end
 
   # Handle response body decoding (may already be decoded by HTTP client)
@@ -386,7 +424,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   end
 
   # Handle timeout errors with retry logic
-  defp handle_timeout_error(state) do
+  defp handle_timeout_retry(state) do
     new_retry_count = state.retry_count + 1
     new_consecutive_timeouts = state.consecutive_timeouts + 1
 
@@ -414,7 +452,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     # Use exponential backoff similar to RateLimiter
     base_backoff = Constants.redisq_base_backoff()
     max_backoff = Constants.max_backoff()
-    
+
     # Calculate exponential backoff: base * 2^(attempt - 1)
     exponential = base_backoff * :math.pow(2, state.retry_count - 1)
     backoff = min(exponential, max_backoff) |> round()
@@ -436,7 +474,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       "RedisQ max retries exceeded, falling back to regular polling interval of #{state.poll_interval}ms"
     )
 
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       connected: false,
       connecting: false,
       last_error: :max_retries_exceeded
@@ -456,7 +494,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     )
 
     # Update connection stats but don't mark as error
-    Stats.update_redisq(%{
+    Telemetry.redisq_status_changed(%{
       # Still consider connected since timeouts are expected
       connected: true,
       connecting: false,
@@ -470,4 +508,15 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     # Use regular polling interval instead of backoff
     schedule_next_poll(new_state)
   end
+
+  defp get_system_name(nil), do: "unknown"
+
+  defp get_system_name(system_id) do
+    case esi_service().get_system_info(system_id) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "System #{system_id}"
+    end
+  end
+
+  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
 end

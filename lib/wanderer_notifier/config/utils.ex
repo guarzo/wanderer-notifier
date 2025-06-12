@@ -237,14 +237,12 @@ defmodule WandererNotifier.Config.Utils do
   end
 
   defp build_url_from_components(uri) do
-    port_part =
-      case {uri.scheme, uri.port} do
-        {"http", 80} -> ""
-        {"https", 443} -> ""
-        {_, nil} -> ""
-        {_, port} -> ":#{port}"
-      end
-
+    port_part = format_port(uri.scheme, uri.port)
     "#{uri.scheme}://#{uri.host}#{port_part}"
   end
+
+  defp format_port("http", 80), do: ""
+  defp format_port("https", 443), do: ""
+  defp format_port(_scheme, nil), do: ""
+  defp format_port(_scheme, port), do: ":#{port}"
 end

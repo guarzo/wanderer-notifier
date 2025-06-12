@@ -6,7 +6,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.HTTPMock, as: HttpClientMock
+  alias WandererNotifier.Utils.TimeUtils
 
   # Define MockConfig for testing
   defmodule MockConfig do
@@ -83,16 +83,16 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     # Set up metrics module
     Application.put_env(:wanderer_notifier, :metrics, MockMetrics)
 
-    # Set up WandererNotifier.HttpClient.HttpoisonMock
+    # Set up WandererNotifier.HTTPMock
     Application.put_env(
       :wanderer_notifier,
       :http_client,
-      WandererNotifier.HttpClient.HttpoisonMock
+      WandererNotifier.HTTPMock
     )
 
-    # Add stub for HttpClient.HttpoisonMock.get/2
-    WandererNotifier.HttpClient.HttpoisonMock
-    |> stub(:get, fn url, _headers ->
+    # Add stub for HTTPMock.get/3
+    WandererNotifier.HTTPMock
+    |> stub(:get, fn url, _headers, _opts ->
       cond do
         String.contains?(url, "killmails/12345/test_hash") ->
           {:ok,
@@ -105,7 +105,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
                  "corporation_id" => 300,
                  "ship_type_id" => 200
                },
-               "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
+               "killmail_time" => TimeUtils.log_timestamp(),
                "solar_system_id" => 30_000_142,
                "attackers" => []
              }

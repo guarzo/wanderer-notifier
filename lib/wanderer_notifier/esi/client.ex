@@ -4,16 +4,20 @@ defmodule WandererNotifier.ESI.Client do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Http.ResponseHandler
+  alias WandererNotifier.Http.Headers
+  alias WandererNotifier.Config
   @behaviour WandererNotifier.ESI.ClientBehaviour
 
+  use WandererNotifier.Logger.ApiLoggerMacros
+
   @base_url "https://esi.evetech.net/latest"
-  @user_agent "WandererNotifier/1.0"
   @default_timeout 15_000
   @default_recv_timeout 15_000
 
   defp get_http_client do
-    HTTP
+    Config.http_client()
   end
 
   defp default_opts do
@@ -44,7 +48,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_character_info(character_id, _opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
 
-    get_http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers(), [])
     |> handle_response("character", %{character_id: character_id})
   end
 
@@ -55,7 +59,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
 
-    get_http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers(), [])
     |> handle_response("corporation", %{corporation_id: corporation_id})
   end
 
@@ -66,7 +70,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_alliance_info(alliance_id, _opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
 
-    get_http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers(), [])
     |> handle_response("alliance", %{alliance_id: alliance_id})
   end
 
@@ -77,7 +81,7 @@ defmodule WandererNotifier.ESI.Client do
   def get_universe_type(type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{type_id}/"
 
-    get_http_client().get(url, default_headers())
+    get_http_client().get(url, default_headers(), [])
     |> handle_response("type", %{type_id: type_id})
   end
 
@@ -101,7 +105,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "search_inventory_type"
     })
 
-    get_http_client().get(url, headers)
+    get_http_client().get(url, headers, [])
     |> handle_response("search", %{query: query})
   end
 
@@ -113,7 +117,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/systems/#{system_id}/?datasource=tranquility"
     headers = default_headers()
 
-    case get_http_client().get(url, headers) do
+    case get_http_client().get(url, headers, []) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         # HTTP client already decodes JSON responses
         {:ok, body}
@@ -148,75 +152,47 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
-    get_http_client().get(url, headers)
+    get_http_client().get(url, headers, [])
     |> handle_response("system_kills", %{system_id: system_id})
   end
 
   # Private helper functions
 
   defp default_headers do
-    [
-      {"Accept", "application/json"},
-      {"User-Agent", @user_agent}
-    ]
+    Headers.esi_headers()
   end
 
   # Helper function to handle common HTTP response patterns
-  defp handle_response({:ok, %{status_code: status, body: body}}, _resource_type, _context)
-       when status in 200..299 do
-    # HTTP client already decodes JSON responses
-    {:ok, body}
-  end
-
-  defp handle_response({:ok, %{status_code: 404}}, resource_type, context) do
-    AppLogger.api_error("ESI Client: #{resource_type} not found", context)
-    {:error, :not_found}
-  end
-
-  defp handle_response({:ok, %{status_code: status_code, body: body}}, resource_type, context) do
-    AppLogger.api_error(
-      "ESI Client: HTTP error for #{resource_type}",
-      context
-      |> Map.merge(%{
-        status_code: status_code,
-        response: String.slice(inspect(body), 0, 200)
+  defp handle_response(response, resource_type, context) do
+    log_context =
+      Map.merge(context, %{
+        client: "ESI",
+        resource_type: resource_type
       })
+
+    ResponseHandler.handle_response(response,
+      success_codes: 200..299,
+      custom_handlers: [
+        {404,
+         fn _status, _body ->
+           AppLogger.api_info("ESI #{resource_type} not found", context)
+           {:error, :not_found}
+         end}
+      ],
+      log_context: log_context
     )
-
-    {:error, {:http_error, status_code}}
-  end
-
-  defp handle_response({:error, %{reason: :timeout}}, resource_type, context) do
-    AppLogger.api_error("ESI Client: Timeout for #{resource_type}", context)
-    {:error, :timeout}
-  end
-
-  defp handle_response({:error, reason}, resource_type, context) do
-    AppLogger.api_error(
-      "ESI Client: Request failed for #{resource_type}",
-      context |> Map.put(:error, inspect(reason))
-    )
-
-    {:error, reason}
   end
 
   # Helper function to measure request timing
   defp with_timing(request_fn) do
-    start_time = System.monotonic_time()
-    result = request_fn.()
-    duration = System.monotonic_time() - start_time
+    {result, duration_ms} = TimeUtils.measure(request_fn)
 
     case result do
       {:ok, response} ->
         {:ok, response}
 
       {:error, reason} when is_map(reason) ->
-        {:error,
-         Map.put_new(
-           reason,
-           :duration_ms,
-           System.convert_time_unit(duration, :native, :millisecond)
-         )}
+        {:error, Map.put_new(reason, :duration_ms, duration_ms)}
 
       {:error, reason} ->
         {:error, reason}

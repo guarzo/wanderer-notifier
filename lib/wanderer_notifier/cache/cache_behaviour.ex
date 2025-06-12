@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Cache.Behaviour do
+defmodule WandererNotifier.Cache.CacheBehaviour do
   @moduledoc """
   Unified behaviour for cache implementations.
   This consolidates functionality from both repository and cache operations.

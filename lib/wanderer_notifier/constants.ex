@@ -215,5 +215,4 @@ defmodule WandererNotifier.Constants do
       jitter: 0.1
     }
   end
-
 end

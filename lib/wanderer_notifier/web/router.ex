@@ -7,8 +7,8 @@ defmodule WandererNotifier.Web.Router do
 
   alias WandererNotifier.Api.Controllers.HealthController
 
-  # Basic request logging
-  plug(Plug.Logger)
+  # Disable HTTP request/response logging 
+  # plug(Plug.Logger, log: :debug)
 
   # Serve static assets with specific paths first
   plug(Plug.Static,
@@ -41,24 +41,6 @@ defmodule WandererNotifier.Web.Router do
   # Health check endpoints
   forward("/health", to: HealthController)
   forward("/api/health", to: HealthController)
-
-  # React app routes
-  get "/schedulers" do
-    send_file(conn, 200, "priv/static/app/index.html")
-  end
-
-  get "/charts" do
-    send_file(conn, 200, "priv/static/app/index.html")
-  end
-
-  get "/kill-comparison" do
-    send_file(conn, 200, "priv/static/app/index.html")
-  end
-
-  # Catch-all route for SPA
-  get "/*path" do
-    send_file(conn, 200, "priv/static/app/index.html")
-  end
 
   # 404 handler
   match _ do

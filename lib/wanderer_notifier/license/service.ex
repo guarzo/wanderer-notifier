@@ -6,7 +6,9 @@ defmodule WandererNotifier.License.Service do
   use GenServer
   require Logger
   alias WandererNotifier.Config
+  alias WandererNotifier.Config.Utils
   alias WandererNotifier.License.Client, as: LicenseClient
+  alias WandererNotifier.License.Validation
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Define the behaviour callbacks
@@ -72,62 +74,57 @@ defmodule WandererNotifier.License.Service do
   """
   def validate do
     # Safely validate with fallback to a complete default state
-    case GenServer.call(__MODULE__, :validate, 5000) do
-      result when is_map(result) and is_map_key(result, :valid) ->
-        # Proper result received
-        result
+    with {:ok, result} <- safe_validate_call(),
+         true <- valid_result?(result) do
+      result
+    else
+      {:error, :timeout} ->
+        AppLogger.config_error("License validation timed out")
+        default_error_state(:timeout, "License validation timed out")
 
-      unexpected_result ->
-        # Create a safe default state
-        AppLogger.config_error(
-          "Unexpected result from license validation: #{inspect(unexpected_result)}"
-        )
+      {:error, {:exception, e}} ->
+        AppLogger.config_error("Error in license validation: #{inspect(e)}")
+        default_error_state(:exception, "License validation error: #{inspect(e)}")
 
-        %{
-          valid: false,
-          bot_assigned: false,
-          details: nil,
-          error: :unexpected_result,
-          error_message: "Unexpected validation result",
-          last_validated: :os.system_time(:second)
-        }
+      {:error, {:exit, type, reason}} ->
+        AppLogger.config_error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+        default_error_state(type, "License validation error: #{inspect(reason)}")
+
+      {:unexpected, result} ->
+        AppLogger.config_error("Unexpected result from license validation: #{inspect(result)}")
+        default_error_state(:unexpected_result, "Unexpected validation result")
     end
+  end
+
+  defp safe_validate_call do
+    {:ok, GenServer.call(__MODULE__, :validate, 5000)}
   rescue
     e ->
-      AppLogger.config_error("Error in license validation: #{inspect(e)}")
-
-      %{
-        valid: false,
-        bot_assigned: false,
-        details: nil,
-        error: :exception,
-        error_message: "License validation error: #{inspect(e)}",
-        last_validated: :os.system_time(:second)
-      }
+      {:error, {:exception, e}}
   catch
     :exit, {:timeout, _} ->
-      AppLogger.config_error("License validation timed out")
-
-      %{
-        valid: false,
-        bot_assigned: false,
-        details: nil,
-        error: :timeout,
-        error_message: "License validation timed out",
-        last_validated: :os.system_time(:second)
-      }
+      {:error, :timeout}
 
     type, reason ->
-      AppLogger.config_error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+      {:error, {:exit, type, reason}}
+  end
 
-      %{
-        valid: false,
-        bot_assigned: false,
-        details: nil,
-        error: type,
-        error_message: "License validation error: #{inspect(reason)}",
-        last_validated: :os.system_time(:second)
-      }
+  defp valid_result?(result) do
+    case result do
+      map when is_map(map) and is_map_key(map, :valid) -> true
+      other -> {:unexpected, other}
+    end
+  end
+
+  defp default_error_state(error_type, error_message) do
+    %{
+      valid: false,
+      bot_assigned: false,
+      details: nil,
+      error: error_type,
+      error_message: error_message,
+      last_validated: :os.system_time(:second)
+    }
   end
 
   @doc """
@@ -159,7 +156,7 @@ defmodule WandererNotifier.License.Service do
     AppLogger.config_info("License validation - environment: #{Config.get_env(:environment)}")
 
     # Basic validation - ensure token exists and is a non-empty string
-    is_valid = is_binary(token) && String.trim(token) != ""
+    is_valid = !Utils.nil_or_empty?(token)
 
     if !is_valid do
       AppLogger.config_warn("License validation warning: Invalid notifier API token")
@@ -186,10 +183,9 @@ defmodule WandererNotifier.License.Service do
   Checks if the current license is valid.
   """
   def check_license do
-    if valid?() do
-      {:ok, :valid}
-    else
-      {:error, :invalid_license}
+    case valid?() do
+      true -> {:ok, :valid}
+      false -> {:error, :invalid_license}
     end
   end
 
@@ -218,25 +214,7 @@ defmodule WandererNotifier.License.Service do
 
   # Private helper to check if license is valid
   defp valid? do
-    bot_assigned?() && license_key_valid?()
-  end
-
-  # Private helper to check if bot token is assigned
-  defp bot_assigned? do
-    case Config.get_env(:bot_token) do
-      nil -> false
-      "" -> false
-      _ -> true
-    end
-  end
-
-  # Private helper to check if license key is valid
-  defp license_key_valid? do
-    case Config.get_env(:license_key) do
-      nil -> false
-      "" -> false
-      _ -> true
-    end
+    Validation.license_and_bot_valid?()
   end
 
   # Server Implementation
@@ -301,37 +279,46 @@ defmodule WandererNotifier.License.Service do
       {:noreply, invalid_state}
   end
 
-  defp process_validation_result({:ok, response}) do
+  defp process_validation_result({:ok, response}, state) do
+    # Handle both normalized responses (with atom keys) and raw responses (with string keys)
+    license_valid = response[:valid] || response["valid"] || response["license_valid"] || false
+    # Check both possible field names for bot assignment
+    bot_assigned =
+      response[:bot_assigned] || response["bot_assigned"] || response["bot_associated"] || false
+
     {
-      response["valid"] || false,
-      response["bot_assigned"] || false,
+      license_valid,
+      bot_assigned,
       response,
       nil,
-      nil
+      nil,
+      state
     }
   end
 
-  defp process_validation_result({:error, :rate_limited}) do
+  defp process_validation_result({:error, :rate_limited}, state) do
     {
       false,
       false,
       nil,
       :rate_limited,
-      "License validation failed: Rate limit exceeded"
+      "License validation failed: Rate limit exceeded",
+      state
     }
   end
 
-  defp process_validation_result({:error, reason}) do
+  defp process_validation_result({:error, reason}, state) do
     {
       false,
       false,
       nil,
       :validation_error,
-      "License validation failed: #{inspect(reason)}"
+      "License validation failed: #{inspect(reason)}",
+      state
     }
   end
 
-  defp create_new_state({valid, bot_assigned, details, error, error_message}, state) do
+  defp create_new_state({valid, bot_assigned, details, error, error_message, old_state}, _state) do
     %State{
       valid: valid,
       bot_assigned: bot_assigned,
@@ -339,7 +326,8 @@ defmodule WandererNotifier.License.Service do
       error: error,
       error_message: error_message,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts
+      notification_counts:
+        old_state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
   end
 
@@ -381,7 +369,7 @@ defmodule WandererNotifier.License.Service do
 
     new_state =
       validation_result
-      |> process_validation_result()
+      |> process_validation_result(state)
       |> create_new_state(state)
 
     reply_with_state(new_state)
@@ -505,10 +493,8 @@ defmodule WandererNotifier.License.Service do
     )
   end
 
-  defp should_use_dev_mode?(license_key, notifier_api_token) do
-    Application.get_env(:wanderer_notifier, :environment) in [:dev, :test] &&
-      (is_nil(license_key) || license_key == "" || is_nil(notifier_api_token) ||
-         notifier_api_token == "")
+  defp should_use_dev_mode?(_license_key, _notifier_api_token) do
+    Validation.should_use_dev_mode?()
   end
 
   defp create_dev_mode_state(state) do
@@ -539,10 +525,11 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp process_api_result({:ok, response}, state) do
-    # Check if the license is valid from the response
-    license_valid = response["license_valid"] || false
+    # Check if the license is valid from the normalized response
+    # The response from validate_bot is already normalized and uses "valid" field
+    license_valid = response[:valid] || response["valid"] || false
     # Extract error message if provided
-    message = response["message"]
+    message = response[:message] || response["message"]
 
     if license_valid do
       create_valid_license_state(response, state)
@@ -591,17 +578,33 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp create_valid_license_state(response, state) do
+    # Check if bot is actually assigned from the normalized response
+    # The response is already normalized and uses "bot_assigned" field
+    bot_assigned = response[:bot_assigned] || response["bot_assigned"] || false
+
+    # If license is valid but bot not assigned, handle it differently
+    if !bot_assigned do
+      AppLogger.config_debug(
+        "License is valid but no bot is assigned. Please assign a bot to your license."
+      )
+    end
+
     valid_state = %{
       valid: true,
-      bot_assigned: true,
+      bot_assigned: bot_assigned,
       details: response,
       error: nil,
-      error_message: nil,
+      error_message: if(bot_assigned, do: nil, else: "License valid but bot not assigned"),
       last_validated: :os.system_time(:second),
       notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
     }
 
-    AppLogger.config_info("✅ Valid license state", state: inspect(valid_state))
+    log_message =
+      if bot_assigned,
+        do: "✅  Valid license with bot assigned",
+        else: "⚠️  Valid license but bot not assigned"
+
+    AppLogger.config_info(log_message, state: inspect(valid_state))
     valid_state
   end
 
@@ -625,9 +628,7 @@ defmodule WandererNotifier.License.Service do
   end
 
   # Helper function to convert error reasons to human-readable messages
-  defp error_reason_to_message(reason) when is_atom(reason), do: "License server error: #{reason}"
-  defp error_reason_to_message(reason) when is_binary(reason), do: reason
-  defp error_reason_to_message(reason), do: "Unknown error: #{inspect(reason)}"
+  defp error_reason_to_message(reason), do: Validation.format_error_message(reason)
 
   # Helper to ensure the state has all required fields
   defp ensure_complete_state(state) do
@@ -637,10 +638,18 @@ defmodule WandererNotifier.License.Service do
       details: nil,
       error: nil,
       error_message: nil,
-      last_validated: :os.system_time(:second)
+      last_validated: :os.system_time(:second),
+      notification_counts: %{system: 0, character: 0, killmail: 0}
     }
 
-    # Merge defaults with existing state, but ensure we have all keys
-    Map.merge(defaults, Map.take(state || %{}, Map.keys(defaults)))
+    # Merge defaults with existing state, ensuring notification_counts is preserved
+    base_state = Map.merge(defaults, Map.take(state || %{}, Map.keys(defaults)))
+
+    # Ensure notification_counts is properly initialized
+    if is_map(base_state[:notification_counts]) do
+      base_state
+    else
+      Map.put(base_state, :notification_counts, defaults.notification_counts)
+    end
   end
 end

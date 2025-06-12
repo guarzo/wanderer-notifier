@@ -5,8 +5,27 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Constants
+  alias WandererNotifier.Utils.TimeUtils
 
   @behaviour WandererNotifier.Schedulers.Scheduler
+
+  defmodule State do
+    @moduledoc """
+    State for the service status scheduler.
+    """
+    defstruct last_run: nil,
+              run_count: 0,
+              timer_ref: nil
+
+    @type t :: %__MODULE__{
+            last_run: DateTime.t() | nil,
+            run_count: non_neg_integer(),
+            timer_ref: reference() | nil
+          }
+
+    @spec new() :: t()
+    def new, do: %__MODULE__{}
+  end
 
   @impl true
   def config, do: %{type: :interval, spec: Constants.service_status_interval()}
@@ -34,8 +53,9 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   @impl GenServer
   def init(opts) do
     AppLogger.scheduler_info("ServiceStatusScheduler starting", opts: opts)
-    schedule_next_run()
-    {:ok, %{}}
+    state = State.new()
+    timer_ref = schedule_next_run()
+    {:ok, %{state | timer_ref: timer_ref}}
   end
 
   @impl GenServer
@@ -49,8 +69,16 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
         )
     end
 
-    schedule_next_run()
-    {:noreply, state}
+    timer_ref = schedule_next_run()
+
+    new_state = %{
+      state
+      | last_run: TimeUtils.now(),
+        run_count: state.run_count + 1,
+        timer_ref: timer_ref
+    }
+
+    {:noreply, new_state}
   end
 
   @impl GenServer
@@ -103,9 +131,6 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     case :erlang.statistics(:wall_clock) do
       {total_wall_clock, _} ->
         div(total_wall_clock, 1000)
-
-      _ ->
-        0
     end
   end
 end

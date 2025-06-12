@@ -43,12 +43,7 @@ defmodule WandererNotifier.Notifications.NeoClient do
 
   defp validate_inputs(_embed, _channel_id), do: :ok
 
-  defp format_error(error) do
-    case error do
-      %{message: message} -> message
-      %{reason: reason} -> "Reason: #{reason}"
-      error when is_binary(error) -> error
-      _ -> inspect(error)
-    end
+  defp format_error(%{response: response, status_code: status_code}) do
+    "HTTP #{status_code}: #{inspect(response)}"
   end
 end

@@ -129,9 +129,8 @@ config :wanderer_notifier,
       feature_env_vars
     ),
   character_exclude_list:
-    (System.get_env("CHARACTER_EXCLUDE_LIST") || "")
-    |> String.split(",", trim: true)
-    |> Enum.map(&String.trim/1),
+    System.get_env("CHARACTER_EXCLUDE_LIST")
+    |> WandererNotifier.Config.Utils.parse_comma_list(),
   cache_dir: System.get_env("CACHE_DIR") || "/app/data/cache",
   public_url: System.get_env("PUBLIC_URL"),
   host: System.get_env("HOST") || "localhost",

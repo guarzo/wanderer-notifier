@@ -67,10 +67,13 @@ defmodule WandererNotifier.Map.MapCharacter do
 
     case Cachex.get(cache_name, Keys.character_list()) do
       {:ok, characters} when is_list(characters) ->
-        Enum.any?(characters, fn char ->
-          id = Map.get(char, :character_id) || Map.get(char, "character_id")
-          to_string(id) == character_id_str
-        end)
+        result =
+          Enum.any?(characters, fn char ->
+            id = Map.get(char, :character_id) || Map.get(char, "character_id")
+            to_string(id) == character_id_str
+          end)
+
+        {:ok, result}
 
       _ ->
         {:ok, false}
@@ -170,7 +173,7 @@ defmodule WandererNotifier.Map.MapCharacter do
 
   defp parse_integer(val) when is_binary(val) do
     case Integer.parse(val) do
-      {int, _rem} -> int
+      {int, _} -> int
       :error -> nil
     end
   end

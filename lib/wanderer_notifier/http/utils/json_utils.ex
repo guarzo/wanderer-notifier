@@ -1,4 +1,4 @@
-defmodule WandererNotifier.HttpClient.Utils.JsonUtils do
+defmodule WandererNotifier.Http.Utils.JsonUtils do
   @moduledoc """
   Centralized JSON encoding and decoding utilities.
   Provides consistent JSON handling across the entire application with proper error handling.

@@ -92,7 +92,6 @@ defmodule WandererNotifier.ConfigProvider do
     else
       nil -> 4000
       :error -> 4000
-      _ -> 4000
     end
   end
 
@@ -102,7 +101,6 @@ defmodule WandererNotifier.ConfigProvider do
       parse_bool_value(normalized, default)
     else
       nil -> default
-      _ -> default
     end
   end
 
@@ -126,15 +124,8 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_character_exclude_list do
-    case System.get_env("CHARACTER_EXCLUDE_LIST") do
-      nil ->
-        []
-
-      value ->
-        value
-        |> String.split(",", trim: true)
-        |> Enum.map(&String.trim/1)
-    end
+    System.get_env("CHARACTER_EXCLUDE_LIST")
+    |> WandererNotifier.Config.Utils.parse_comma_list()
   end
 
   # Configuration building functions

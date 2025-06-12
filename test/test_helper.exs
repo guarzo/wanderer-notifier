@@ -9,12 +9,12 @@ ExUnit.start()
 Application.ensure_all_started(:mox)
 
 # Set up Mox mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.Behaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.SystemBehaviour)
 Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.CharacterBehaviour)
 
 Mox.defmock(WandererNotifier.MockDeduplication,
-  for: WandererNotifier.Notifications.Deduplication.Behaviour
+  for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
 )
 
 Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
@@ -23,7 +23,7 @@ Mox.defmock(WandererNotifier.MockDispatcher,
   for: WandererNotifier.Notifications.DispatcherBehaviour
 )
 
-Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.Behaviour)
+Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.HttpBehaviour)
 Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.ESI.ClientMock, for: WandererNotifier.ESI.ClientBehaviour)
 
@@ -43,7 +43,7 @@ Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.Client
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
 # Set up default stubs for cache mock
-Mox.stub(WandererNotifier.MockCache, :get, fn _key -> {:ok, %{}} end)
+Mox.stub(WandererNotifier.MockCache, :get, fn _key, _opts -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.MockCache, :mget, fn _keys -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.MockCache, :get_kill, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.MockCache, :set, fn _key, value, _ttl -> {:ok, value} end)
@@ -92,10 +92,10 @@ Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
 end)
 
 # Set up default stubs for system mock
-Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> true end)
+Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> false end)
 
 # Set up default stubs for character mock
-Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> true end)
+Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
 
 # Set up default stubs for dispatcher mock
 Mox.stub(WandererNotifier.MockDispatcher, :send_message, fn _ -> {:ok, :sent} end)

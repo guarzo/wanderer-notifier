@@ -183,8 +183,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error
       defp get_error_type({:http_error, status, _}) when status >= 400, do: :client_error
-      defp get_error_type({:request_error, _}), do: :request_error
-      defp get_error_type({:unexpected_result, _}), do: :unexpected_result
+      defp get_error_type(:cache_error), do: :cache_error
+      defp get_error_type(:invalid_data), do: :invalid_data
       defp get_error_type(_), do: :unknown_error
 
       defp schedule_update(state) do
@@ -274,10 +274,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       defp update_stats_count(module, count) do
-        stat_type = module.stats_type()
+        # Call module.stats_type() and update stats if it returns a valid type
+        # This function will only be called from schedulers that return :systems or :characters
+        case module.stats_type() do
+          stat_type when stat_type in [:systems, :characters] ->
+            Stats.set_tracked_count(stat_type, count)
 
-        if stat_type do
-          Stats.set_tracked_count(stat_type, count)
+          _ ->
+            :ok
         end
       end
     end

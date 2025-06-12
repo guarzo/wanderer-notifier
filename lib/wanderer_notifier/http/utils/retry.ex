@@ -1,4 +1,4 @@
-defmodule WandererNotifier.HttpClient.Utils.Retry do
+defmodule WandererNotifier.Http.Utils.Retry do
   @moduledoc """
   Unified retry utility for WandererNotifier.
 
@@ -92,32 +92,42 @@ defmodule WandererNotifier.HttpClient.Utils.Retry do
   # Private implementation
 
   defp execute_with_retry(fun, state) do
-    case fun.() do
-      {:ok, result} ->
-        {:ok, result}
+    try do
+      handle_function_result(fun.(), state, fun)
+    rescue
+      error ->
+        handle_exception(error, state, fun)
+    end
+  end
 
-      {:error, reason} when state.attempt < state.max_attempts ->
-        if retryable_error?(reason, state.retryable_errors) do
-          perform_retry(fun, state, reason)
-        else
-          {:error, reason}
-        end
+  defp handle_function_result(result, state, fun) do
+    case result do
+      {:ok, value} ->
+        {:ok, value}
 
       {:error, reason} ->
-        {:error, reason}
+        handle_error_result(reason, state, fun)
 
       other ->
         # Handle non-tuple returns - treat as success
         {:ok, other}
     end
-  rescue
-    error ->
-      if state.attempt < state.max_attempts and
-           retryable_exception?(error, state.retryable_errors) do
-        perform_retry(fun, state, error)
-      else
-        {:error, error}
-      end
+  end
+
+  defp handle_error_result(reason, state, fun) do
+    if state.attempt < state.max_attempts and retryable_error?(reason, state.retryable_errors) do
+      perform_retry(fun, state, reason)
+    else
+      {:error, reason}
+    end
+  end
+
+  defp handle_exception(error, state, fun) do
+    if state.attempt < state.max_attempts and retryable_exception?(error, state.retryable_errors) do
+      perform_retry(fun, state, error)
+    else
+      {:error, error}
+    end
   end
 
   defp perform_retry(fun, state, error) do
@@ -145,12 +155,7 @@ defmodule WandererNotifier.HttpClient.Utils.Retry do
   defp retryable_error?(_reason, _retryable_errors), do: false
 
   defp retryable_exception?(exception, retryable_errors) do
-    error_type =
-      case exception do
-        %{__exception__: true} -> exception.__struct__
-        _ -> :unknown_exception
-      end
-
+    error_type = exception.__struct__
     error_type in retryable_errors
   end
 

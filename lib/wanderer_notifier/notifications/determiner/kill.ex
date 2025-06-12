@@ -5,7 +5,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   require Logger
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Notifications.Deduplication
+  alias WandererNotifier.Config
 
   @type notification_result ::
           {:ok, %{should_notify: boolean(), reason: String.t() | atom() | nil}} | {:error, term()}
@@ -29,6 +29,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_character_id = get_in(data, ["victim", "character_id"])
 
     check_killmail_notification(id, system_id, victim_character_id)
+  end
+
+  def should_notify?(%{"killID" => id, "killmail" => killmail_data} = _data) do
+    # Handle zkillboard format with nested killmail data
+    system_id = get_in(killmail_data, ["solar_system_id"])
+    victim_character_id = get_in(killmail_data, ["victim", "character_id"])
+    killmail_id = get_in(killmail_data, ["killmail_id"]) || id
+
+    check_killmail_notification(killmail_id, system_id, victim_character_id)
   end
 
   def should_notify?(%{"solar_system_id" => _} = data) do
@@ -60,29 +69,19 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # Private function to centralize the notification checking logic
   @spec check_killmail_notification(any(), any(), any()) :: notification_result()
   defp check_killmail_notification(killmail_id, system_id, victim_character_id) do
-    # Check deduplication first
-    case Deduplication.check(:kill, killmail_id) do
-      {:ok, :duplicate} ->
-        {:ok, %{should_notify: false, reason: :duplicate}}
-
-      {:ok, :new} ->
-        # Only proceed with other checks if it's not a duplicate
-        with {:ok, config} <- get_config() do
-          check_killmail_notification_with_config(
-            killmail_id,
-            system_id,
-            victim_character_id,
-            config
-          )
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    # No duplicate check here - the pipeline already handles deduplication
+    with {:ok, config} <- get_config() do
+      check_killmail_notification_with_config(
+        killmail_id,
+        system_id,
+        victim_character_id,
+        config
+      )
     end
   end
 
   # Private function to check notification rules with provided config
-  @spec check_killmail_notification_with_config(any(), any(), any(), keyword()) ::
+  @spec check_killmail_notification_with_config(any(), any(), any(), keyword() | map()) ::
           notification_result()
   defp check_killmail_notification_with_config(
          _killmail_id,
@@ -90,47 +89,103 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
          victim_character_id,
          config
        ) do
-    with :ok <- check_notifications_enabled(config),
-         :ok <- check_kill_notifications_enabled(config),
-         system_tracked? <- tracked_system?(system_id),
-         character_tracked? <- tracked_character?(victim_character_id) do
-      check_tracking_status(system_tracked?, character_tracked?, config)
+    case check_notifications_enabled(config) do
+      :ok ->
+        case check_kill_notifications_enabled(config) do
+          :ok ->
+            system_tracked? = tracked_system?(system_id)
+            character_tracked? = tracked_character?(victim_character_id)
+            check_tracking_status(system_tracked?, character_tracked?, config)
+
+          {:error, _} = error ->
+            error
+        end
+
+      {:error, _} = error ->
+        error
     end
   end
 
-  @spec check_notifications_enabled(keyword()) :: :ok | {:error, :notifications_disabled}
-  defp check_notifications_enabled(%{notifications_enabled: true}), do: :ok
-  defp check_notifications_enabled(_), do: {:error, :notifications_disabled}
+  @spec check_notifications_enabled(keyword() | map()) :: :ok | {:error, :notifications_disabled}
+  defp check_notifications_enabled(config) when is_list(config) do
+    if Keyword.get(config, :notifications_enabled, false),
+      do: :ok,
+      else: {:error, :notifications_disabled}
+  end
 
-  @spec check_kill_notifications_enabled(keyword()) ::
+  defp check_notifications_enabled(config) when is_map(config) do
+    if Map.get(config, :notifications_enabled, false),
+      do: :ok,
+      else: {:error, :notifications_disabled}
+  end
+
+  @spec check_kill_notifications_enabled(keyword() | map()) ::
           :ok | {:error, :kill_notifications_disabled}
-  defp check_kill_notifications_enabled(%{kill_notifications_enabled: true}), do: :ok
-  defp check_kill_notifications_enabled(_config), do: {:error, :kill_notifications_disabled}
+  defp check_kill_notifications_enabled(config) when is_list(config) do
+    if Keyword.get(config, :kill_notifications_enabled, false),
+      do: :ok,
+      else: {:error, :kill_notifications_disabled}
+  end
 
-  @spec check_tracking_status(boolean(), boolean(), keyword()) :: notification_result()
-  defp check_tracking_status(true, _, config) do
-    if config[:system_notifications_enabled] == true do
-      {:ok, %{should_notify: true}}
+  defp check_kill_notifications_enabled(config) when is_map(config) do
+    if Map.get(config, :kill_notifications_enabled, false),
+      do: :ok,
+      else: {:error, :kill_notifications_disabled}
+  end
+
+  @spec check_tracking_status(boolean(), boolean(), keyword() | map()) :: notification_result()
+  defp check_tracking_status(system_tracked?, character_tracked?, config) do
+    case {system_tracked?, character_tracked?} do
+      {true, true} -> handle_both_tracked(config)
+      {true, false} -> handle_system_only_tracked(config)
+      {false, true} -> handle_character_only_tracked(config)
+      {false, false} -> {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+    end
+  end
+
+  defp handle_both_tracked(config) do
+    if character_notifications_enabled?(config) do
+      {:ok, %{should_notify: true, reason: :both_tracked}}
+    else
+      handle_system_only_tracked(config)
+    end
+  end
+
+  defp handle_system_only_tracked(config) do
+    if system_notifications_enabled?(config) do
+      {:ok, %{should_notify: true, reason: :system_tracked}}
     else
       {:ok, %{should_notify: false, reason: "System notifications disabled"}}
     end
   end
 
-  defp check_tracking_status(_, true, config) do
-    if config[:character_notifications_enabled] == true do
-      {:ok, %{should_notify: true}}
+  defp handle_character_only_tracked(config) do
+    if character_notifications_enabled?(config) do
+      {:ok, %{should_notify: true, reason: :character_tracked}}
     else
       {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
     end
   end
 
-  defp check_tracking_status(_, _, _config) do
-    {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+  defp system_notifications_enabled?(config) when is_map(config) do
+    Map.get(config, :system_notifications_enabled, true)
+  end
+
+  defp system_notifications_enabled?(config) when is_list(config) do
+    Keyword.get(config, :system_notifications_enabled, true)
+  end
+
+  defp character_notifications_enabled?(config) when is_map(config) do
+    Map.get(config, :character_notifications_enabled, true)
+  end
+
+  defp character_notifications_enabled?(config) when is_list(config) do
+    Keyword.get(config, :character_notifications_enabled, true)
   end
 
   @spec get_config() :: {:ok, keyword()} | {:error, term()}
   defp get_config do
-    {:ok, Application.get_env(:wanderer_notifier, :config_module).get_config()}
+    {:ok, Config.config_module().get_config()}
   end
 
   @doc """
@@ -160,11 +215,23 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   @spec check_tracking_status(atom(), any()) :: boolean()
   defp check_tracking_status(module_key, id) do
-    case Application.get_env(:wanderer_notifier, module_key).is_tracked?(id) do
-      {:ok, result} -> result
-      {:error, _} -> false
-      false -> false
-      true -> true
+    module =
+      case module_key do
+        :character_module -> Config.character_track_module()
+        :system_module -> Config.system_track_module()
+      end
+
+    case module_key do
+      :character_module ->
+        # CharacterBehaviour returns {:ok, boolean()} | {:error, any()}
+        case module.is_tracked?(id) do
+          {:ok, result} -> result
+          {:error, _} -> false
+        end
+
+      :system_module ->
+        # SystemBehaviour returns boolean()
+        module.is_tracked?(id)
     end
   end
 

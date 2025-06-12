@@ -6,6 +6,7 @@ defmodule WandererNotifier.License.Client do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.License.Validation
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
@@ -65,41 +66,22 @@ defmodule WandererNotifier.License.Client do
 
   # Process a successful validation response
   defp process_successful_validation(decoded) when is_map(decoded) do
-    # Additional logging for easier debugging without exposing sensitive data
-    license_valid = decoded["license_valid"] || false
-
-    log_validation_result(license_valid, decoded["message"])
-
-    # Ensure the response contains both formats for compatibility
-    enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
-    {:ok, enhanced_response}
+    Validation.process_validation_result({:ok, decoded})
   end
 
   # Handle case when response is not a map
   defp process_successful_validation(decoded) do
-    AppLogger.config_error("License validation failed - Invalid response format: #{inspect(decoded)}")
-
-    # Return a standardized error response
-    {:ok,
-     %{
-       "license_valid" => false,
-       "valid" => false,
-       "message" => "Invalid response format: #{inspect(decoded)}"
-     }}
-  end
-
-  # Log the validation result based on validity
-  defp log_validation_result(true, _message) do
-    AppLogger.api_debug("License and bot validation successful", license_valid: true)
-  end
-
-  defp log_validation_result(false, message) do
-    error_msg = message || "License is not valid"
-
-    AppLogger.api_warn("License and bot validation failed",
-      reason: error_msg,
-      license_valid: false
+    AppLogger.config_error(
+      "License validation failed - Invalid response format: #{inspect(decoded)}"
     )
+
+    error_response =
+      Validation.create_error_response(
+        :invalid_response,
+        "Invalid response format: #{inspect(decoded)}"
+      )
+
+    {:ok, error_response}
   end
 
   @doc """

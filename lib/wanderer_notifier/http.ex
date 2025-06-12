@@ -4,11 +4,14 @@ defmodule WandererNotifier.HTTP do
   Provides a single interface for making HTTP requests with built-in retry logic,
   timeout management, and error handling.
   """
-  @behaviour WandererNotifier.HTTP.Behaviour
+  @behaviour WandererNotifier.HTTP.HttpBehaviour
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Constants
-  alias WandererNotifier.HttpClient.Utils.JsonUtils
+  alias WandererNotifier.Http.Utils.JsonUtils
+  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  use WandererNotifier.Logger.ApiLoggerMacros
 
   @type url :: String.t()
   @type headers :: list({String.t(), String.t()})
@@ -53,16 +56,18 @@ defmodule WandererNotifier.HTTP do
   """
   @spec request(method(), url(), headers(), body() | nil, opts()) :: response()
   def request(method, url, headers, body, opts) do
-    start_time = System.monotonic_time()
+    start_time = TimeUtils.monotonic_ms()
 
     case make_request(method, url, headers, body, opts) do
       {:ok, response} ->
         result = process_response(response, url, method)
+
         case result do
           {:ok, _} -> log_success(method, url, start_time)
         end
+
         result
-      
+
       {:error, %HTTPoison.Error{reason: reason}} ->
         log_error(method, url, reason, start_time)
         {:error, reason}
@@ -94,32 +99,32 @@ defmodule WandererNotifier.HTTP do
 
   @spec process_response(HTTPoison.Response.t(), url(), method()) :: response()
   defp process_response(%HTTPoison.Response{status_code: status, body: body}, _url, _method) do
-    processed_body = case JsonUtils.decode(body) do
-      {:ok, decoded} -> decoded
-      {:error, _reason} -> body
-    end
-    
+    processed_body =
+      case JsonUtils.decode(body) do
+        {:ok, decoded} -> decoded
+        {:error, _reason} -> body
+      end
+
     {:ok, %{status_code: status, body: processed_body}}
   end
 
   defp log_success(method, url, start_time) do
-    duration = System.monotonic_time() - start_time
-
-    AppLogger.api_debug("HTTP request successful",
-      method: method,
-      url: url,
-      duration_ms: duration / 1_000_000
-    )
+    duration_ms = TimeUtils.monotonic_ms() - start_time
+    log_api_success(url, 200, duration_ms, %{method: method, client: "HTTP"})
   end
 
   defp log_error(method, url, reason, start_time) do
-    duration = System.monotonic_time() - start_time
+    duration_ms = TimeUtils.monotonic_ms() - start_time
+    # Explicitly pass duration_ms as the third parameter (not nil)
+    # The macro handles both nil and non-nil cases, but we always have a value
+    metadata = Map.put(%{method: method, client: "HTTP"}, :duration_ms, duration_ms)
 
-    AppLogger.api_error("HTTP request failed",
-      method: method,
-      url: url,
-      error: inspect(reason),
-      duration_ms: duration / 1_000_000
+    AppLogger.api_error(
+      "API request failed",
+      Map.merge(metadata, %{
+        url: url,
+        error: inspect(reason)
+      })
     )
   end
 

@@ -129,14 +129,16 @@ defmodule WandererNotifier.Cache.KeyGenerator do
   Creates functions that follow the pattern: prefix:name
   """
   defmacro defkey_simple(name, prefix, suffix \\ nil) do
+    parts_expr =
+      if suffix,
+        do: quote(do: [unquote(prefix), unquote(suffix)]),
+        else: quote(do: [unquote(prefix)])
+
     quote do
       @doc "Key for #{unquote(name)}: #{unquote(prefix)}#{if unquote(suffix), do: ":#{unquote(suffix)}", else: ""}"
-      @spec unquote(name)(String.t() | nil) :: String.t()
-      def unquote(name)(extra \\ nil) do
-        parts =
-          if unquote(suffix), do: [unquote(prefix), unquote(suffix)], else: [unquote(prefix)]
-
-        WandererNotifier.Cache.KeyGenerator.combine(parts, [], extra)
+      @spec unquote(name)() :: String.t()
+      def unquote(name)() do
+        WandererNotifier.Cache.KeyGenerator.combine(unquote(parts_expr), [], nil)
       end
     end
   end

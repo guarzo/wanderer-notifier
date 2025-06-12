@@ -7,6 +7,7 @@ defmodule WandererNotifier.Killmail.Cache do
   - Maintains a list of kill IDs for quick access
   """
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Config, as: CacheConfig
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Constants
 
@@ -33,7 +34,7 @@ defmodule WandererNotifier.Killmail.Cache do
     individual_key = CacheKeys.zkill_recent_kill(kill_id)
 
     AppLogger.cache_debug("Caching individual kill", key: individual_key)
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
     Cachex.put(cache_name, individual_key, killmail,
       ttl: :timer.seconds(Constants.static_info_ttl())
@@ -50,7 +51,7 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   def get_kill(kill_id) when is_binary(kill_id) or is_integer(kill_id) do
     id = to_string(kill_id)
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
     with {:ok, kill_ids} <- Cachex.get(cache_name, CacheKeys.zkill_recent_kills()),
          true <- is_list(kill_ids),
@@ -76,7 +77,7 @@ defmodule WandererNotifier.Killmail.Cache do
   end
 
   defp get_cached_kill_ids do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
     case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, ids} -> {:ok, ids}
@@ -85,7 +86,7 @@ defmodule WandererNotifier.Killmail.Cache do
   end
 
   defp fetch_kills_by_ids(kill_ids) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
     keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
 
     results =
@@ -101,17 +102,12 @@ defmodule WandererNotifier.Killmail.Cache do
   end
 
   defp process_kill_results(kill_ids, results) do
-    kill_ids
-    |> Enum.zip(results)
-    |> Enum.filter(&valid_kill_result?/1)
-    |> Enum.map(&extract_kill_data/1)
-    |> Enum.into(%{})
+    for {id, {:ok, data}} <- Enum.zip(kill_ids, results),
+        not is_nil(data),
+        into: %{} do
+      {id, data}
+    end
   end
-
-  defp valid_kill_result?({_id, {:ok, data}}) when not is_nil(data), do: true
-  defp valid_kill_result?(_), do: false
-
-  defp extract_kill_data({id, {:ok, data}}), do: {id, data}
 
   @doc """
   Gets all recent cached kills as a list for API consumption.
@@ -120,7 +116,7 @@ defmodule WandererNotifier.Killmail.Cache do
   - List of killmails with their IDs
   """
   def get_latest_killmails do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
     # Get the list of cached kill IDs
     kill_ids = get_cached_kill_ids(cache_name)
@@ -155,7 +151,7 @@ defmodule WandererNotifier.Killmail.Cache do
   - System name or nil if not found
   """
   def get_system_name(_system_id) do
-    # This function would be moved here from the main KillProcessor
+    # @todo Move system name lookup from KillProcessor to this module
     # It would handle looking up system names from the cache
     # and falling back to the API if not found
     nil
@@ -165,7 +161,7 @@ defmodule WandererNotifier.Killmail.Cache do
 
   # Helper to update the recent kills list with a new kill ID
   defp update_recent_kills_list(kill_id) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
     # Get current list of kill IDs
     kill_ids =
       case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do

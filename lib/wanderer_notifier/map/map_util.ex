@@ -87,7 +87,10 @@ defmodule WandererNotifier.Map.MapUtil do
           list({atom(), list(String.t() | atom())} | {atom(), list(String.t() | atom()), any()})
         ) :: map()
   def extract_map(map, field_mappings) when is_map(map) and is_list(field_mappings) do
-    Enum.reduce(field_mappings, %{}, &extract_field(map, &1))
+    Enum.reduce(field_mappings, %{}, fn mapping, acc ->
+      {key, value} = extract_field(map, mapping)
+      Map.put(acc, key, value)
+    end)
   end
 
   defp extract_field(map, {dest_key, key_paths}) do
@@ -116,7 +119,11 @@ defmodule WandererNotifier.Map.MapUtil do
   @spec atomize_keys(map(), keyword()) :: map()
   def atomize_keys(map, opts \\ []) when is_map(map) do
     recursive = Keyword.get(opts, :recursive, false)
-    Enum.reduce(map, %{}, &atomize_key(&1, recursive, opts))
+
+    Enum.reduce(map, %{}, fn {k, v}, acc ->
+      {atom_key, processed_value} = atomize_key({k, v}, recursive, opts)
+      Map.put(acc, atom_key, processed_value)
+    end)
   end
 
   defp atomize_key({key, value}, recursive, opts) when is_atom(key) do

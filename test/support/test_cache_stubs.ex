@@ -6,7 +6,7 @@ defmodule WandererNotifier.Test.Support.TestCacheStubs do
   @behaviour WandererNotifier.Cache.Behaviour
 
   @impl true
-  def get(_key), do: {:ok, nil}
+  def get(_key, _opts \\ []), do: {:ok, nil}
 
   @impl true
   def set(_key, value, _ttl), do: {:ok, value}

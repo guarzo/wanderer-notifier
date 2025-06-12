@@ -7,6 +7,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger
   alias WandererNotifier.Map.MapSystem
+  alias WandererNotifier.Utils.TimeUtils
 
   # Color and icon constants (can be refactored to a shared place if needed)
   @default_color 0x3498DB
@@ -24,8 +25,33 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   Creates a standard formatted system notification from a MapSystem struct.
   """
   def format_system_notification(%MapSystem{} = system) do
-    validate_system_fields(system)
+    with :ok <- validate_system_fields(system),
+         {:ok, formatted} <- safe_format_system(system) do
+      formatted
+    else
+      {:error, :invalid_system_id} ->
+        raise ArgumentError, "System must have a solar_system_id"
 
+      {:error, :invalid_system_name} ->
+        raise ArgumentError, "System must have a name"
+
+      {:exception, exception, stacktrace} ->
+        Logger.error(
+          "[SystemFormatter] Exception formatting system notification: #{Exception.message(exception)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
+        )
+
+        WandererNotifier.Logger.Logger.processor_error(
+          "[SystemFormatter] Error formatting system notification",
+          system: system.name,
+          error: Exception.message(exception),
+          stacktrace: Exception.format_stacktrace(stacktrace)
+        )
+
+        reraise exception, stacktrace
+    end
+  end
+
+  defp safe_format_system(system) do
     is_wormhole = MapSystem.wormhole?(system)
     # Only use the system name for the title
     display_name = system.name
@@ -46,41 +72,34 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         system_name_with_link
       )
 
-    %{
-      type: :system_notification,
-      title: title,
-      description: description,
-      color: determine_system_color_from_security(system),
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-      thumbnail: %{url: icon_url},
-      fields: fields,
-      footer: %{
-        text: "System ID: #{system.solar_system_id}"
-      }
-    }
+    {:ok,
+     %{
+       type: :system_notification,
+       title: title,
+       description: description,
+       color: determine_system_color_from_security(system),
+       timestamp: TimeUtils.log_timestamp(),
+       thumbnail: %{url: icon_url},
+       fields: fields,
+       footer: %{
+         text: "System ID: #{system.solar_system_id}"
+       }
+     }}
   rescue
-    e ->
-      Logger.error(
-        "[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
-      )
-
-      WandererNotifier.Logger.Logger.processor_error(
-        "[SystemFormatter] Error formatting system notification",
-        system: system.name,
-        error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      reraise e, __STACKTRACE__
+    exception ->
+      {:exception, exception, __STACKTRACE__}
   end
 
   defp validate_system_fields(system) do
-    if is_nil(system.solar_system_id) do
-      raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
-    end
+    cond do
+      is_nil(system.solar_system_id) ->
+        {:error, :invalid_system_id}
 
-    if is_nil(system.name) do
-      raise "Cannot format system notification: name is missing in MapSystem struct"
+      is_nil(system.name) ->
+        {:error, :invalid_system_name}
+
+      true ->
+        :ok
     end
   end
 

@@ -11,6 +11,7 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig
   alias WandererNotifier.MockDispatcher
+  alias WandererNotifier.Utils.TimeUtils
 
   setup :set_mox_from_context
   setup :verify_on_exit!
@@ -36,7 +37,7 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
           details: %{},
           error: nil,
           error_message: nil,
-          last_validated: DateTime.utc_now() |> DateTime.to_string()
+          last_validated: TimeUtils.log_timestamp()
         }
 
         # Start the license service with mock state

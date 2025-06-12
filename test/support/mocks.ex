@@ -393,7 +393,7 @@ defmodule WandererNotifier.Mocks do
 end
 
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifiers.Discord.Behaviour
+  for: WandererNotifier.Notifiers.Discord.DiscordBehaviour
 )
 
 defmodule WandererNotifier.Map.MapSystemMock do
@@ -413,7 +413,7 @@ defmodule WandererNotifier.Map.MapCharacterMock do
   @behaviour WandererNotifier.Map.CharacterBehaviour
 
   @impl true
-  def is_tracked?(_character_id), do: false
+  def is_tracked?(_character_id), do: {:ok, false}
 end
 
 defmodule WandererNotifier.Test.Mocks do

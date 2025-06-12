@@ -6,6 +6,7 @@ defmodule WandererNotifier.Core.Stats do
   """
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Utils.TimeUtils
   require Logger
 
   # State struct for the Stats GenServer
@@ -234,7 +235,7 @@ defmodule WandererNotifier.Core.Stats do
     last_message =
       case redisq.last_message do
         nil -> "never"
-        dt -> "#{DateTime.diff(DateTime.utc_now(), dt)}s ago"
+        dt -> "#{TimeUtils.elapsed_seconds(dt)}s ago"
       end
 
     # Log the summary
@@ -370,7 +371,7 @@ defmodule WandererNotifier.Core.Stats do
     uptime_seconds =
       case state.redisq.startup_time do
         nil -> 0
-        startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
+        startup_time -> TimeUtils.elapsed_seconds(startup_time)
       end
 
     stats = %{
@@ -401,25 +402,12 @@ defmodule WandererNotifier.Core.Stats do
   # Helper functions
 
   defp format_uptime(seconds) do
-    days = div(seconds, 86_400)
-    seconds = rem(seconds, 86_400)
-    hours = div(seconds, 3600)
-    seconds = rem(seconds, 3600)
-    minutes = div(seconds, 60)
-    seconds = rem(seconds, 60)
-
-    cond do
-      days > 0 -> "#{days}d #{hours}h #{minutes}m #{seconds}s"
-      hours > 0 -> "#{hours}h #{minutes}m #{seconds}s"
-      minutes > 0 -> "#{minutes}m #{seconds}s"
-      true -> "#{seconds}s"
-    end
+    TimeUtils.format_uptime(seconds)
   end
 
   # Helper to normalize DateTime fields in the status map
   defp normalize_datetime_fields(status) do
-    status
-    |> Enum.map(fn
+    Enum.into(status, %{}, fn
       {key, %DateTime{} = dt} ->
         {key, dt}
 
@@ -432,6 +420,5 @@ defmodule WandererNotifier.Core.Stats do
       {key, val} ->
         {key, val}
     end)
-    |> Map.new()
   end
 end

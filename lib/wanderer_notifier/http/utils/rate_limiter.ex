@@ -1,4 +1,4 @@
-defmodule WandererNotifier.HttpClient.Utils.RateLimiter do
+defmodule WandererNotifier.Http.Utils.RateLimiter do
   @moduledoc """
   Unified rate limiting utility for WandererNotifier.
 
@@ -13,6 +13,7 @@ defmodule WandererNotifier.HttpClient.Utils.RateLimiter do
   alias WandererNotifier.Constants
   alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Config.Utils, as: ConfigUtils
 
   @type rate_limit_opts :: [
           max_retries: pos_integer(),
@@ -115,7 +116,11 @@ defmodule WandererNotifier.HttpClient.Utils.RateLimiter do
 
     try do
       result = fun.()
-      :timer.sleep(div(window_ms, max_operations))
+
+      window_ms
+      |> div(max_operations)
+      |> :timer.sleep()
+
       {:ok, result}
     rescue
       e ->
@@ -198,7 +203,7 @@ defmodule WandererNotifier.HttpClient.Utils.RateLimiter do
 
   defp get_retry_after(headers) do
     case Enum.find(headers, fn {key, _} -> String.downcase(key) == "retry-after" end) do
-      {_, value} -> String.to_integer(value) * 1000
+      {_, value} -> ConfigUtils.parse_int(value, 0) * 1000
       nil -> Constants.base_backoff()
     end
   end

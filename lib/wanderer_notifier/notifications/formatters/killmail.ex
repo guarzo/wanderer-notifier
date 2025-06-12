@@ -6,9 +6,8 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   require Logger
 
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @error_color 0xD9534F
+  alias WandererNotifier.Logger.ErrorLogger
+  alias WandererNotifier.Config.Utils
 
   @doc """
   Creates a standard formatted kill notification embed/attachment from a Killmail struct.
@@ -35,14 +34,12 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     notification
   rescue
     e ->
-      Logger.error(
-        "[KillmailFormatter] Exception formatting kill notification: #{Exception.message(e)}\nStruct: #{inspect(killmail)}\nFields: #{inspect(Map.from_struct(killmail))}"
-      )
-
-      AppLogger.processor_error("[KillmailFormatter] Error formatting kill notification",
+      ErrorLogger.log_exception(
+        "Error formatting kill notification",
+        e,
         kill_id: killmail.killmail_id,
-        error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        module: __MODULE__,
+        killmail_struct: inspect(killmail)
       )
 
       reraise e, __STACKTRACE__
@@ -96,7 +93,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     security_status = get_system_security_status(system_id)
     security_formatted = format_security_status(security_status)
 
-    zkb = killmail.zkb || %{}
+    zkb = killmail.zkb
     kill_value = Map.get(zkb, "totalValue", 0)
     formatted_value = format_isk_value(kill_value)
 
@@ -121,9 +118,18 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp get_system_security_status(_), do: 0.0
 
-  defp format_security_status(security_status) when is_float(security_status) and security_status >= 0.5, do: "High Sec"
-  defp format_security_status(security_status) when is_float(security_status) and security_status > 0.0, do: "Low Sec"
-  defp format_security_status(security_status) when is_float(security_status), do: "Null Sec"
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status >= 0.5,
+       do: "High Sec"
+
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status > 0.0,
+       do: "Low Sec"
+
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status <= 0.0,
+       do: "Null Sec"
+
   defp format_security_status(_), do: "Unknown"
 
   defp get_final_blow_details(killmail) do
@@ -137,7 +143,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     enriched_attacker = enrich_attacker_data(final_blow_attacker, killmail)
 
     # Check if this is an NPC kill
-    is_npc_kill = Map.get(killmail.zkb || %{}, "npc", false)
+    is_npc_kill = Map.get(killmail.zkb, "npc", false)
 
     # Build the final blow details
     %{
@@ -339,7 +345,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       type: :kill_notification,
       title: title,
       description: description,
-      color: @error_color,
+      color: 0xD9534F,
       url: "https://zkillboard.com/kill/#{kill_id}/",
       timestamp: kill_time,
       footer: %{
@@ -397,7 +403,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp build_attacker_description_part(_final_blow_details, %{is_npc_kill: true}), do: "NPCs"
 
-  defp build_attacker_description_part(%{character: character, corp: corp} = final_blow_details, kill_context)
+  defp build_attacker_description_part(
+         %{character: character, corp: corp} = final_blow_details,
+         kill_context
+       )
        when not is_nil(character) and not is_nil(corp) do
     attacker_name_part = build_attacker_name_part(final_blow_details)
     corp_part = build_attacker_corp_part(final_blow_details)
@@ -406,7 +415,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     "#{attacker_name_part}#{corp_part}#{ship_part}"
   end
 
-  defp build_attacker_description_part(%{character: character, character_id: character_id}, _kill_context)
+  defp build_attacker_description_part(
+         %{character: character, character_id: character_id},
+         _kill_context
+       )
        when not is_nil(character) and not is_nil(character_id) do
     "[#{character}](https://zkillboard.com/character/#{character_id}/)"
   end
@@ -503,11 +515,11 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp valid_alliance?(alliance) do
-    alliance && alliance != "" && alliance != "Unknown" && alliance != "Unknown Alliance"
+    not Utils.nil_or_empty?(alliance) and alliance not in ["Unknown", "Unknown Alliance"]
   end
 
   defp valid_ticker?(ticker) do
-    ticker && ticker != "" && ticker != "Unknown"
+    not Utils.nil_or_empty?(ticker) and ticker != "Unknown"
   end
 
   defp format_alliance_link(display_name, alliance_id) do
@@ -660,8 +672,8 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     items
     |> Enum.map(&enrich_item_data/1)
     |> Enum.filter(& &1.is_notable)
-    # Limit to 10 notable items to keep message manageable
-    |> Enum.take(10)
+    # Limit to 3 notable items to keep message manageable
+    |> Enum.take(3)
   end
 
   defp enrich_item_data(item) do
@@ -715,16 +727,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       "x-type",
       "a-type",
       "b-type",
-      "c-type",
-      "shadow serpentis",
-      "true sansha",
-      "dark blood",
-      "dread guristas",
-      "domination",
-      "republic fleet",
-      "imperial navy",
-      "caldari navy",
-      "federation navy"
+      "c-type"
     ]
 
     has_valuable_name =
@@ -763,7 +766,5 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   # ESI service configuration
-  defp esi_service do
-    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
-  end
+  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
 end

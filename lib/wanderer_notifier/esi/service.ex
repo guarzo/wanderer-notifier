@@ -10,6 +10,7 @@ defmodule WandererNotifier.ESI.Service do
   require Logger
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CacheHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Config
 
@@ -87,7 +88,7 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character_info(character_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :character,
       character_id,
       opts,
@@ -115,7 +116,7 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_corporation_info(corporation_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :corporation,
       corporation_id,
       opts,
@@ -143,7 +144,7 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_alliance_info(alliance_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :alliance,
       alliance_id,
       opts,
@@ -239,12 +240,13 @@ defmodule WandererNotifier.ESI.Service do
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    fetch_with_cache_custom_key(
-      query,
+    custom_key = CacheKeys.search_inventory_type(query, strict)
+
+    CacheHelper.fetch_with_custom_key(
+      custom_key,
       opts,
-      &esi_client().search_inventory_type/2,
-      "inventory type search",
-      fn -> CacheKeys.search_inventory_type(query, strict) end
+      fn -> esi_client().search_inventory_type(query, opts) end,
+      %{query: query, type: "inventory type search"}
     )
   end
 
@@ -301,7 +303,7 @@ defmodule WandererNotifier.ESI.Service do
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system(system_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :system,
       system_id,
       opts,
@@ -374,7 +376,7 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character(character_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :character,
       character_id,
       opts,
@@ -385,7 +387,7 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_type(type_id, opts \\ []) do
-    fetch_with_cache(
+    CacheHelper.fetch_with_cache(
       :type,
       type_id,
       opts,
@@ -396,12 +398,13 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system_kills(system_id, limit, opts \\ []) do
-    fetch_with_cache_custom_key(
-      system_id,
+    custom_key = CacheKeys.system_kills(system_id, limit)
+
+    CacheHelper.fetch_with_custom_key(
+      custom_key,
       opts,
-      fn id, options -> esi_client().get_system_kills(id, limit, options) end,
-      "system kills",
-      fn -> CacheKeys.system_kills(system_id, limit) end
+      fn -> esi_client().get_system_kills(system_id, limit, opts) end,
+      %{system_id: system_id, limit: limit, type: "system kills"}
     )
   end
 
@@ -415,9 +418,7 @@ defmodule WandererNotifier.ESI.Service do
     ]
   end
 
-  defp esi_client do
-    Application.get_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.Client)
-  end
+  defp esi_client, do: WandererNotifier.Core.Dependencies.esi_client()
 
   # Fallback module that returns safe defaults to prevent crashes
   defmodule SafeCache do
@@ -436,59 +437,5 @@ defmodule WandererNotifier.ESI.Service do
 
   defp cache_put(cache_name, key, value) do
     Cachex.put(cache_name, key, value)
-  end
-
-  # Common pattern for cache-and-fetch operations
-  defp fetch_with_cache(cache_type, id, opts, fetch_fn, log_name) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = apply(CacheKeys, cache_type, [id])
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        log_cache_hit(log_name, id)
-        {:ok, data}
-
-      _ ->
-        log_cache_miss(log_name, id)
-        fetch_and_cache_data(cache_name, cache_key, id, fetch_fn, opts)
-    end
-  end
-
-  defp log_cache_hit(log_name, id) do
-    AppLogger.api_debug("✨ ESI cache hit for #{log_name}", [
-      {String.to_atom("#{log_name}_id"), id}
-    ])
-  end
-
-  defp log_cache_miss(log_name, id) do
-    AppLogger.api_debug("🔍 ESI cache miss for #{log_name}", [
-      {String.to_atom("#{log_name}_id"), id}
-    ])
-  end
-
-  defp fetch_and_cache_data(cache_name, cache_key, id, fetch_fn, opts) do
-    case fetch_fn.(id, Keyword.merge(retry_opts(), opts)) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        cache_put(cache_name, cache_key, data)
-        {:ok, data}
-
-      error ->
-        error
-    end
-  end
-
-  defp fetch_with_cache_custom_key(query, opts, fetch_fn, log_name, key_fn) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = key_fn.()
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        log_cache_hit(log_name, query)
-        {:ok, data}
-
-      _ ->
-        log_cache_miss(log_name, query)
-        fetch_and_cache_data(cache_name, cache_key, query, fetch_fn, opts)
-    end
   end
 end

@@ -232,7 +232,7 @@ If you encounter issues or have questions, please open an issue on the project r
 ## Notes
 
 ```
- mix archive.install hex bunt
+
 
  docker buildx build . \
   --build-arg API_TOKEN=your_token_here \

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Api.Helpers do
   """
   import Plug.Conn
 
-  alias WandererNotifier.HttpClient.Utils.JsonUtils
+  alias WandererNotifier.Http.Utils.JsonUtils
 
   @success_status 200
   @error_key :error

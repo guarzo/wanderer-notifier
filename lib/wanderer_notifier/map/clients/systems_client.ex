@@ -76,7 +76,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   def enrich_item(system) do
     case SystemStaticInfo.enrich_system(system) do
       {:ok, enriched} -> enriched
-      _ -> system
     end
   end
 

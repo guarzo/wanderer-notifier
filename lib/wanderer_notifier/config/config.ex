@@ -86,11 +86,13 @@ defmodule WandererNotifier.Config do
     # First try the explicit MAP_URL, then fall back to parsing from URL
     explicit_url = get(:map_url)
 
-    if explicit_url && explicit_url != "" do
-      explicit_url
-    else
-      # Fall back to base_map_url for backward compatibility
-      base_map_url()
+    case explicit_url do
+      url when is_binary(url) and url != "" ->
+        url
+
+      _ ->
+        # Fall back to base_map_url for backward compatibility
+        base_map_url()
     end
   end
 
@@ -213,22 +215,26 @@ defmodule WandererNotifier.Config do
 
   @impl true
   def notifications_enabled? do
-    get(:notifications_enabled, true)
+    features = get(:features, %{})
+    Map.get(features, :notifications_enabled, true)
   end
 
   @impl true
   def kill_notifications_enabled? do
-    get(:kill_notifications_enabled, true)
+    features = get(:features, %{})
+    Map.get(features, :kill_notifications_enabled, true)
   end
 
   @impl true
   def system_notifications_enabled? do
-    get(:system_notifications_enabled, true)
+    features = get(:features, %{})
+    Map.get(features, :system_notifications_enabled, true)
   end
 
   @impl true
   def character_notifications_enabled? do
-    get(:character_notifications_enabled, true)
+    features = get(:features, %{})
+    Map.get(features, :character_notifications_enabled, true)
   end
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
@@ -293,6 +299,76 @@ defmodule WandererNotifier.Config do
   @doc "Returns true if test mode is enabled."
   def test_mode_enabled?, do: feature_enabled?(:test_mode_enabled)
 
+  # --- Module Dependencies ---
+  @doc "Returns the HTTP client module to use."
+  def http_client, do: get(:http_client, WandererNotifier.Http)
+
+  @doc "Returns the ESI service module to use."
+  def esi_service, do: get(:esi_service, WandererNotifier.ESI.Service)
+
+  @doc "Returns the notification service module to use."
+  def notification_service,
+    do: get(:notification_service, WandererNotifier.Notifications.NotificationService)
+
+  @doc "Returns the Discord notifier module to use."
+  def discord_notifier, do: get(:discord_notifier, WandererNotifier.Notifiers.Discord.Notifier)
+
+  @doc "Returns the killmail notification module to use."
+  def killmail_notification_module,
+    do: get(:killmail_notification_module, WandererNotifier.Notifications.KillmailNotification)
+
+  @doc "Returns the config module to use."
+  def config_module, do: get(:config_module, __MODULE__)
+
+  @doc "Returns the character track module to use."
+  def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
+
+  @doc "Returns the system track module to use."
+  def system_track_module, do: get(:system_track_module, WandererNotifier.Map.MapSystem)
+
+  @doc "Returns the deduplication module to use."
+  def deduplication_module,
+    do: get(:deduplication_module, WandererNotifier.Notifications.Deduplication.CacheImpl)
+
+  @doc "Returns the notification determiner module to use."
+  def notification_determiner_module,
+    do: get(:notification_determiner_module, WandererNotifier.Notifications.Determiner.Kill)
+
+  @doc "Returns the killmail enrichment module to use."
+  def killmail_enrichment_module,
+    do: get(:killmail_enrichment_module, WandererNotifier.Killmail.Enrichment)
+
+  @doc "Returns the notification dispatcher module to use."
+  def notification_dispatcher_module,
+    do: get(:notification_dispatcher_module, WandererNotifier.Notifications.Dispatcher)
+
+  # --- Telemetry ---
+  @doc "Returns whether telemetry logging is enabled."
+  def telemetry_logging_enabled?, do: get(:telemetry_logging, false)
+
+  # --- Schedulers ---
+  @doc "Returns whether schedulers are enabled."
+  def schedulers_enabled?, do: get(:schedulers_enabled, false)
+
+  # --- RedisQ Timeouts ---
+  @doc "Returns the RedisQ receive timeout in ms."
+  def redisq_recv_timeout, do: get(:redisq_recv_timeout, 30_000)
+
+  @doc "Returns the RedisQ connect timeout in ms."
+  def redisq_connect_timeout, do: get(:redisq_connect_timeout, 10_000)
+
+  # --- Service URLs ---
+  @doc "Returns the notification service base URL."
+  def notification_service_base_url, do: get(:notification_service_base_url)
+
+  # --- Service Status ---
+  @doc "Returns whether the service is up."
+  def service_up?, do: get(:service_up, true)
+
+  # --- Deduplication TTL ---
+  @doc "Returns the deduplication TTL in seconds."
+  def deduplication_ttl, do: get(:deduplication_ttl, 3600)
+
   # --- Timings and Intervals ---
   @doc "Returns the character update scheduler interval in ms."
   def character_update_scheduler_interval, do: get(:character_update_scheduler_interval, 30_000)
@@ -342,11 +418,11 @@ defmodule WandererNotifier.Config do
       map_url_with_name: url,
       map_url_with_name_present: !Utils.nil_or_empty?(url),
       map_url: base_url,
-      map_url_present: !Utils.nil_or_empty?(base_url),
-      map_url_explicit: !Utils.nil_or_empty?(get(:map_url)),
+      map_url_present: base_url |> Utils.nil_or_empty?() |> Kernel.not(),
+      map_url_explicit: get(:map_url) |> Utils.nil_or_empty?() |> Kernel.not(),
       map_name: name,
-      map_name_present: !Utils.nil_or_empty?(name),
-      map_name_explicit: !Utils.nil_or_empty?(get(:map_name)),
+      map_name_present: name |> Utils.nil_or_empty?() |> Kernel.not(),
+      map_name_explicit: get(:map_name) |> Utils.nil_or_empty?() |> Kernel.not(),
       map_token: token,
       map_token_present: !Utils.nil_or_empty?(token),
       map_token_length: if(token, do: String.length(token), else: 0),

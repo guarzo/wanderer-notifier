@@ -65,7 +65,7 @@ defmodule WandererNotifier.Web.Server do
     case check_health_endpoint(state.port) do
       :ok ->
         AppLogger.startup_debug("Web server heartbeat check passed")
-      
+
       {:error, reason} ->
         AppLogger.startup_error("Web server heartbeat check failed",
           reason: inspect(reason)
@@ -129,14 +129,14 @@ defmodule WandererNotifier.Web.Server do
 
   defp check_health_endpoint(port) do
     url = "http://localhost:#{port}/health"
-    
+
     case :httpc.request(:get, {String.to_charlist(url), []}, [{:timeout, 5000}], []) do
       {:ok, {{_, 200, _}, _, _}} ->
         :ok
-      
+
       {:ok, {{_, status, _}, _, _}} ->
         {:error, {:bad_status, status}}
-      
+
       {:error, reason} ->
         {:error, reason}
     end
