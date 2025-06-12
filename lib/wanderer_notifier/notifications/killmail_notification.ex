@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
