@@ -60,7 +60,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   def cache_key, do: CacheKeys.map_systems()
 
   @impl true
-  def cache_ttl, do: 300
+  def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
 
   @impl true
   def should_notify?(system_id, system) do

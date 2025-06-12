@@ -34,8 +34,11 @@ defmodule WandererNotifier.Notifications.Formatters.Common do
   def convert_color(color) when is_integer(color), do: color
 
   def convert_color("#" <> hex) do
-    {color, _} = Integer.parse(hex, 16)
-    color
+    # Convert hex color to integer, use 0 as default
+    case Integer.parse(hex, 16) do
+      {color, _} -> color
+      :error -> Constants.default_embed_color()
+    end
   end
 
   def convert_color(_color), do: Constants.default_embed_color()

@@ -3,7 +3,7 @@ defmodule WandererNotifier.Test.Support.TestCacheStubs do
   Test stubs for cache behaviour.
   """
 
-  @behaviour WandererNotifier.Cache.Behaviour
+  @behaviour WandererNotifier.Cache.CacheBehaviour
 
   @impl true
   def get(_key, _opts \\ []), do: {:ok, nil}

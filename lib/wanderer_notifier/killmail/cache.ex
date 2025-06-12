@@ -8,8 +8,8 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Config, as: CacheConfig
+  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Constants
 
   # System name cache - process dictionary for performance
   @system_names_cache_key :system_names_cache
@@ -36,8 +36,11 @@ defmodule WandererNotifier.Killmail.Cache do
     AppLogger.cache_debug("Caching individual kill", key: individual_key)
     cache_name = CacheConfig.cache_name()
 
-    Cachex.put(cache_name, individual_key, killmail,
-      ttl: :timer.seconds(Constants.static_info_ttl())
+    Adapter.set(
+      cache_name,
+      individual_key,
+      killmail,
+      :timer.seconds(WandererNotifier.Cache.Config.ttl_for(:killmail))
     )
 
     # Update the recent kills list
@@ -53,10 +56,10 @@ defmodule WandererNotifier.Killmail.Cache do
     id = to_string(kill_id)
     cache_name = CacheConfig.cache_name()
 
-    with {:ok, kill_ids} <- Cachex.get(cache_name, CacheKeys.zkill_recent_kills()),
+    with {:ok, kill_ids} <- Adapter.get(cache_name, CacheKeys.zkill_recent_kills()),
          true <- is_list(kill_ids),
          true <- id in kill_ids,
-         {:ok, data} <- Cachex.get(cache_name, CacheKeys.zkill_recent_kill(id)),
+         {:ok, data} <- Adapter.get(cache_name, CacheKeys.zkill_recent_kill(id)),
          true <- not is_nil(data) do
       {:ok, data}
     else
@@ -79,8 +82,9 @@ defmodule WandererNotifier.Killmail.Cache do
   defp get_cached_kill_ids do
     cache_name = CacheConfig.cache_name()
 
-    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
-      {:ok, ids} -> {:ok, ids}
+    case Adapter.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      {:ok, ids} when is_list(ids) -> {:ok, ids}
+      {:ok, nil} -> {:ok, []}
       _ -> {:ok, []}
     end
   end
@@ -91,7 +95,7 @@ defmodule WandererNotifier.Killmail.Cache do
 
     results =
       Enum.map(keys, fn key ->
-        case Cachex.get(cache_name, key) do
+        case Adapter.get(cache_name, key) do
           {:ok, value} -> {:ok, value}
           _ -> {:ok, nil}
         end
@@ -128,14 +132,15 @@ defmodule WandererNotifier.Killmail.Cache do
   end
 
   defp get_cached_kill_ids(cache_name) do
-    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
-      {:ok, ids} -> ids
+    case Adapter.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      {:ok, ids} when is_list(ids) -> ids
+      {:ok, nil} -> []
       _ -> []
     end
   end
 
   defp get_kill_by_id(cache_name, id) do
-    case Cachex.get(cache_name, CacheKeys.zkill_recent_kill(id)) do
+    case Adapter.get(cache_name, CacheKeys.zkill_recent_kill(id)) do
       {:ok, data} when not is_nil(data) -> Map.put(data, "id", id)
       _ -> nil
     end
@@ -164,7 +169,7 @@ defmodule WandererNotifier.Killmail.Cache do
     cache_name = CacheConfig.cache_name()
     # Get current list of kill IDs
     kill_ids =
-      case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      case Adapter.get(cache_name, CacheKeys.zkill_recent_kills()) do
         {:ok, ids} when is_list(ids) -> ids
         _ -> []
       end
@@ -178,8 +183,11 @@ defmodule WandererNotifier.Killmail.Cache do
       end
 
     # Store the updated list
-    Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), updated_ids,
-      ttl: :timer.seconds(Constants.static_info_ttl())
+    Adapter.set(
+      cache_name,
+      CacheKeys.zkill_recent_kills(),
+      updated_ids,
+      :timer.seconds(WandererNotifier.Cache.Config.ttl_for(:killmail))
     )
   end
 end

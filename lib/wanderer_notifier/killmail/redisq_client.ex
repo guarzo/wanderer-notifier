@@ -512,7 +512,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp get_system_name(nil), do: "unknown"
 
   defp get_system_name(system_id) do
-    case esi_service().get_system_info(system_id) do
+    case esi_service().get_system_info(system_id, []) do
       {:ok, %{"name" => name}} -> name
       _ -> "System #{system_id}"
     end

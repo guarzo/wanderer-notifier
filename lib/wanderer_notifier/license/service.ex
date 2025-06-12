@@ -356,8 +356,9 @@ defmodule WandererNotifier.License.Service do
     notifier_api_token = Config.api_token()
     license_key = Config.license_key()
 
+    # Use supervised task for license validation
     task =
-      Task.async(fn ->
+      Task.Supervisor.async(WandererNotifier.TaskSupervisor, fn ->
         LicenseClient.validate_bot(notifier_api_token, license_key)
       end)
 

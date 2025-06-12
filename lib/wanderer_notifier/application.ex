@@ -152,6 +152,9 @@ defmodule WandererNotifier.Application do
       WandererNotifier.Cache.ETSCache ->
         {WandererNotifier.Cache.ETSCache, name: cache_name}
 
+      WandererNotifier.Cache.SimpleETSCache ->
+        {WandererNotifier.Cache.SimpleETSCache, name: cache_name}
+
       other ->
         raise "Unknown cache adapter: #{inspect(other)}"
     end

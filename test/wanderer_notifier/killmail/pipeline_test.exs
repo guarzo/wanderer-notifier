@@ -13,6 +13,14 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     def notifications_enabled?, do: true
     def system_notifications_enabled?, do: true
     def character_notifications_enabled?, do: true
+    def deduplication_module, do: MockDeduplication
+    def system_track_module, do: WandererNotifier.MockSystem
+    def character_track_module, do: WandererNotifier.MockCharacter
+    def notification_determiner_module, do: WandererNotifier.Notifications.Determiner.Kill
+    def killmail_enrichment_module, do: WandererNotifier.Killmail.Enrichment
+    def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
+    def killmail_notification_module, do: WandererNotifier.Notifications.KillmailNotification
+    def config_module, do: __MODULE__
   end
 
   # Define MockCache for the tests

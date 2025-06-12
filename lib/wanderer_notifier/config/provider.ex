@@ -86,13 +86,8 @@ defmodule WandererNotifier.ConfigProvider do
   # Private helper functions
 
   defp parse_port do
-    with port_str when is_binary(port_str) <- System.get_env("PORT"),
-         {port, _} <- Integer.parse(port_str) do
-      port
-    else
-      nil -> 4000
-      :error -> 4000
-    end
+    port_str = System.get_env("PORT")
+    WandererNotifier.Config.Utils.parse_int(port_str, 4000)
   end
 
   defp parse_bool(key, default) do

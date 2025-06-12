@@ -68,4 +68,4 @@ config :mox, :global, true
 config :wanderer_notifier,
   cache_name: :wanderer_test_cache,
   env_provider: WandererNotifier.Config.EnvProviderMock,
-  cache_adapter: WandererNotifier.Cache.ETSCache
+  cache_adapter: WandererNotifier.Cache.SimpleETSCache

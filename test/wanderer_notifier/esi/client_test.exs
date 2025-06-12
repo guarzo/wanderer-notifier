@@ -28,7 +28,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, 3, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_killmail(123, "abc")
@@ -55,7 +55,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_character_info(123)
@@ -82,7 +82,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_corporation_info(789)
@@ -109,7 +109,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_alliance_info(345)
@@ -136,7 +136,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_universe_type(999)
@@ -165,7 +165,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.search_inventory_type("test")
@@ -238,7 +238,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
       Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 404}}
+        {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
       assert {:error, :not_found} = Client.get_system_kills(42)

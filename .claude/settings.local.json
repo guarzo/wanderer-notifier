@@ -23,7 +23,8 @@
       "Bash(mv:*)",
       "Bash(mkdir:*)",
       "Bash(yamllint:*)",
-      "Bash(mix credo:*)"
+      "Bash(mix credo:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }

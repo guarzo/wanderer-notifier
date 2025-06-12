@@ -70,6 +70,7 @@ defmodule WandererNotifier.MixProject do
       {:bunt, "~> 1.0"},
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},
+      {:stream_data, "~> 1.0", only: [:dev, :test]},
       {:crontab, "~> 1.1"},
       {:excoveralls, "~> 0.18", only: :test},
       {:mix_version, "~> 2.4", only: [:dev, :test], runtime: false}

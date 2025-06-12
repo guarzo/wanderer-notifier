@@ -295,6 +295,8 @@ defmodule WandererNotifier.MockConfig do
   def notifier_api_token, do: "test-api-token"
 
   def track_kspace_systems?, do: true
+
+  def deduplication_module, do: WandererNotifier.MockDeduplication
 end
 
 defmodule WandererNotifier.MockCacheHelpers do

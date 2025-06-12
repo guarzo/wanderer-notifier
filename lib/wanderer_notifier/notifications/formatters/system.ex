@@ -177,7 +177,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp create_system_name_link(system, display_name) do
     has_numeric_id =
       is_integer(system.solar_system_id) ||
-        (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
+        (is_binary(system.solar_system_id) && parse_system_id(system.solar_system_id) != nil)
 
     if has_numeric_id do
       system_id_str = to_string(system.solar_system_id)
@@ -268,10 +268,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   end
 
   defp parse_system_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_val, _} -> int_val
-      :error -> nil
-    end
+    WandererNotifier.Config.Utils.parse_int(id, nil)
   end
 
   defp parse_system_id(id) when is_integer(id), do: id

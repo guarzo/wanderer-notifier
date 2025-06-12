@@ -21,7 +21,7 @@ defmodule WandererNotifier.Config.Utils do
       iex> parse_int(nil, 100)
       100
   """
-  @spec parse_int(String.t() | nil, integer()) :: integer()
+  @spec parse_int(String.t() | nil, integer() | nil) :: integer() | nil
   def parse_int(nil, default), do: default
 
   def parse_int(str, default) when is_binary(str) do

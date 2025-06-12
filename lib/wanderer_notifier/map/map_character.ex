@@ -172,10 +172,7 @@ defmodule WandererNotifier.Map.MapCharacter do
   defp parse_integer(val) when is_integer(val), do: val
 
   defp parse_integer(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> nil
-    end
+    WandererNotifier.Config.Utils.parse_int(val, nil)
   end
 
   defp parse_integer(_), do: nil

@@ -15,7 +15,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   def cache_key, do: "characters"
 
   @impl true
-  def cache_ttl, do: 3600
+  def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
 
   @impl true
   def extract_data(%{"data" => data}) when is_list(data) do

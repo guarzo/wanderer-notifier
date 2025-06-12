@@ -182,7 +182,8 @@ defmodule WandererNotifier.Utils.ErrorHandler do
   """
   @spec timeout_wrapper(function(), pos_integer()) :: {:ok, term()} | {:error, :timeout}
   def timeout_wrapper(fun, timeout_ms) when is_function(fun, 0) and is_integer(timeout_ms) do
-    task = Task.async(fun)
+    # Use supervised task to ensure proper cleanup
+    task = Task.Supervisor.async(WandererNotifier.TaskSupervisor, fun)
 
     case Task.yield(task, timeout_ms) do
       {:ok, result} ->

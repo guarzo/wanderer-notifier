@@ -122,6 +122,7 @@ defmodule WandererNotifier.Config do
     end
   end
 
+  @deprecated "Use map_url/0 instead"
   def map_api_url do
     # Alias for map_url for backward compatibility
     map_url()
@@ -146,9 +147,15 @@ defmodule WandererNotifier.Config do
 
   # --- Debug config ---
   def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
-  def enable_debug_logging, do: set(:debug_logging_enabled, true)
-  def disable_debug_logging, do: set(:debug_logging_enabled, false)
-  def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
+
+  def enable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
+
+  def disable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
+
+  def set_debug_logging(state) when is_boolean(state),
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
 
   # Cache dev mode value at compile time
   @dev_mode Application.compile_env(:wanderer_notifier, :dev_mode, false)
@@ -161,8 +168,6 @@ defmodule WandererNotifier.Config do
   To change the value, you must recompile the module or restart the application.
   """
   def dev_mode?, do: @dev_mode
-
-  defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
   # --- Notification config ---
   def discord_channel_id, do: get(:discord_channel_id)
@@ -346,31 +351,39 @@ defmodule WandererNotifier.Config do
   def discord_notifier, do: get(:discord_notifier, WandererNotifier.Notifiers.Discord.Notifier)
 
   @doc "Returns the killmail notification module to use."
+  @impl true
   def killmail_notification_module,
     do: get(:killmail_notification_module, WandererNotifier.Notifications.KillmailNotification)
 
   @doc "Returns the config module to use."
+  @impl true
   def config_module, do: get(:config_module, __MODULE__)
 
   @doc "Returns the character track module to use."
+  @impl true
   def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
 
   @doc "Returns the system track module to use."
+  @impl true
   def system_track_module, do: get(:system_track_module, WandererNotifier.Map.MapSystem)
 
   @doc "Returns the deduplication module to use."
+  @impl true
   def deduplication_module,
     do: get(:deduplication_module, WandererNotifier.Notifications.Deduplication.CacheImpl)
 
   @doc "Returns the notification determiner module to use."
+  @impl true
   def notification_determiner_module,
     do: get(:notification_determiner_module, WandererNotifier.Notifications.Determiner.Kill)
 
   @doc "Returns the killmail enrichment module to use."
+  @impl true
   def killmail_enrichment_module,
     do: get(:killmail_enrichment_module, WandererNotifier.Killmail.Enrichment)
 
   @doc "Returns the notification dispatcher module to use."
+  @impl true
   def notification_dispatcher_module,
     do: get(:notification_dispatcher_module, WandererNotifier.Notifications.Dispatcher)
 

@@ -181,19 +181,15 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, _} -> parsed_id > 0
-      :error -> false
-    end
+    parsed_id = WandererNotifier.Config.Utils.parse_int(id, 0)
+    parsed_id > 0
   end
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, _} -> parsed_id > 0
-      :error -> false
-    end
+    parsed_id = WandererNotifier.Config.Utils.parse_int(id, 0)
+    parsed_id > 0
   end
 
   defp valid_system_id?(_), do: false

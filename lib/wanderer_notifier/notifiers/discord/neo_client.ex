@@ -486,23 +486,24 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   # Parse string channel ID to integer if possible
   defp parse_string_channel_id(channel_id) do
-    case Integer.parse(channel_id) do
-      {int_id, _} ->
-        AppLogger.api_debug("Successfully parsed channel ID as integer",
-          raw: channel_id,
-          parsed: int_id
-        )
+    # Try to parse to validate it's numeric, but keep as string
+    parsed = Utils.parse_int(channel_id, nil)
 
-        # Discord channel IDs are too large for regular integers
-        # We need to keep them as strings
-        channel_id
+    if parsed do
+      AppLogger.api_debug("Successfully parsed channel ID as integer",
+        raw: channel_id,
+        parsed: parsed
+      )
 
-      :error ->
-        AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
-          channel_id: channel_id
-        )
+      # Discord channel IDs are too large for regular integers
+      # We need to keep them as strings
+      channel_id
+    else
+      AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
+        channel_id: channel_id
+      )
 
-        nil
+      nil
     end
   end
 

@@ -63,7 +63,8 @@ defmodule WandererNotifier.Core.Application.API do
   @doc """
   Gets the current map API URL.
   """
-  def map_api_url, do: Config.map_api_url()
+  @deprecated "Use map_url/0 instead"
+  def map_api_url, do: Config.map_url()
 
   @doc """
   Gets the current map URL with name.
