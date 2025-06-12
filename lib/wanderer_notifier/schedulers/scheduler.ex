@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.Scheduler do
     - `run/0` which executes the job.
   """
 
-  @type config :: %{type: :cron | :interval, spec: String.t()}
+  @type config :: %{type: :cron, spec: String.t()} | %{type: :interval, spec: integer()}
 
   @callback config() :: config()
   @callback run() :: :ok | {:error, term()}

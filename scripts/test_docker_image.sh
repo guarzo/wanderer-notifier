@@ -75,18 +75,32 @@ done
 echo "Health check passed."
 
 # Define commands to validate
-COMMANDS=(
-  "elixir --version"
-  "ldd --version | head -n1"
-  "mix help"
+RUNTIME_COMMANDS=(
+  "ls -la /app/bin"
+  "ls -la /app/lib"
+  "/app/bin/wanderer_notifier version"
+  "ps aux | grep wanderer_notifier"
+)
+
+BASIC_COMMANDS=(
+  "whoami"
+  "uname -a"
+  "which wget"
 )
 
 if [ "$BASIC_ONLY" = false ]; then
-  COMMANDS+=("wget --spider http://localhost:4000/health")
+  RUNTIME_COMMANDS+=("wget --spider http://localhost:4000/health")
 fi
 
-for cmd in "${COMMANDS[@]}"; do
-  echo "→ Running: $cmd"
+echo "→ Running basic system checks..."
+for cmd in "${BASIC_COMMANDS[@]}"; do
+  echo "  → Running: $cmd"
+  docker exec "$CONTAINER_ID" sh -c "$cmd" || echo "    (command failed, but continuing...)"
+done
+
+echo "→ Running runtime application checks..."
+for cmd in "${RUNTIME_COMMANDS[@]}"; do
+  echo "  → Running: $cmd"
   docker exec "$CONTAINER_ID" sh -c "$cmd"
 done
 

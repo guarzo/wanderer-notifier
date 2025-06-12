@@ -4,13 +4,13 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: get_version(),
+      version: "2.0.1",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      overrides: overrides(),
+      aliases: aliases(),
       validate_compile_env: false,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
@@ -19,29 +19,10 @@ defmodule WandererNotifier.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.json": :test
-      ],
-      aliases: [
-        "release.bump": ["version --bump patch"],
-        version: "version"
       ]
     ]
   end
 
-  # Get version - check for VERSION file first, then try MixVersion
-  defp get_version do
-    cond do
-      # Try to read from VERSION file first
-      File.exists?("VERSION") ->
-        File.read!("VERSION") |> String.trim()
-
-      # For Docker builds or other environments where mix_version may not be available
-      true ->
-        # Default version when neither source is available
-        System.get_env("APP_VERSION") || "0.1.0"
-    end
-  end
-
-  # Specifies which paths to compile per environment
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
@@ -65,15 +46,17 @@ defmodule WandererNotifier.MixProject do
       {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.4"},
-      {:plug, "~> 1.17"},
+      {:plug, "~> 1.18"},
       {:plug_cowboy, "~> 2.7"},
       {:mime, "~> 2.0"},
       {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},
       {:bunt, "~> 1.0"},
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},
+      {:stream_data, "~> 1.0", only: [:dev, :test]},
       {:crontab, "~> 1.1"},
       {:excoveralls, "~> 0.18", only: :test},
       {:mix_version, "~> 2.4", only: [:dev, :test], runtime: false}
@@ -93,9 +76,17 @@ defmodule WandererNotifier.MixProject do
     ]
   end
 
-  defp overrides do
+  defp aliases do
     [
-      {:ranch, "2.1.0", override: true}
+      check: [
+        "format --check-formatted",
+        "credo --strict",
+        "dialyzer"
+      ],
+      "test.coverage": ["coveralls.html"],
+      "test.coverage.ci": ["coveralls.json"],
+      "release.bump": ["version --bump patch"],
+      version: "version"
     ]
   end
 end

@@ -22,18 +22,11 @@ defmodule WandererNotifier.Test.ConfigBehaviour do
   @callback get_config() :: map()
 end
 
-defmodule WandererNotifier.Test.CharacterBehaviour do
+defmodule WandererNotifier.Test.TrackingBehaviour do
   @moduledoc """
-  Test behaviour definition for character tracking services.
+  Test behaviour definition for entity tracking services (characters and systems).
   """
-  @callback is_tracked?(String.t() | integer()) :: boolean()
-end
-
-defmodule WandererNotifier.Test.SystemBehaviour do
-  @moduledoc """
-  Test behaviour definition for system tracking services.
-  """
-  @callback is_tracked?(String.t() | integer()) :: boolean()
+  @callback is_tracked?(non_neg_integer()) :: {:ok, boolean()} | {:error, any()}
 end
 
 defmodule WandererNotifier.ESI.Service.Behaviour do
@@ -63,14 +56,14 @@ defmodule WandererNotifier.System.Behaviour do
   @moduledoc """
   Behaviour for system operations
   """
-  @callback is_tracked?(integer()) :: boolean()
+  @callback is_tracked?(integer()) :: {:ok, boolean()} | {:error, any()}
 end
 
 defmodule WandererNotifier.Character.Behaviour do
   @moduledoc """
   Behaviour for character operations
   """
-  @callback is_tracked?(integer()) :: boolean()
+  @callback is_tracked?(integer()) :: {:ok, boolean()} | {:error, any()}
 end
 
 defmodule WandererNotifier.Deduplication.Behaviour do

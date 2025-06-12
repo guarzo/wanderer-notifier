@@ -4,9 +4,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   Handles sending notifications to Discord using the Nostrum client.
   """
   require Logger
-  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Killmail.Cache, as: KillmailCache
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
@@ -188,14 +188,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         )
 
         {:error, reason}
-
-      unexpected ->
-        AppLogger.api_error("Unexpected result from send_rich_kill_notification",
-          channel_id: channel_id,
-          result: inspect(unexpected)
-        )
-
-        {:error, :unexpected_result}
     end
   rescue
     e ->
@@ -228,14 +220,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         )
 
         {:error, reason}
-
-      unexpected ->
-        AppLogger.api_error("Unexpected result from NeoClient.send_embed",
-          channel_id: channel_id,
-          result: inspect(unexpected)
-        )
-
-        {:error, :unexpected_result}
     end
   rescue
     e ->
@@ -267,6 +251,11 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:characters)
+
+      # Log successful character notification
+      character_name = character.name || "Unknown Character"
+      character_id = character.character_id || "Unknown ID"
+      AppLogger.processor_info("👤 ✅ Character #{character_name} (#{character_id}) notified")
     rescue
       e ->
         Logger.error(
@@ -290,6 +279,12 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:systems)
+
+      # Log successful system notification
+      system_name = system.name || "Unknown System"
+      system_id = system.solar_system_id || "Unknown ID"
+      AppLogger.processor_info("🗺️ ✅ System #{system_name} (#{system_id}) notified")
+
       {:ok, :sent}
     rescue
       e ->
@@ -400,16 +395,18 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     # Get system_id from the esi_data
     system_id = get_system_id_from_killmail(killmail)
 
-    # Check if we need to get the system name
-    if system_id do
-      # Get system name using the same approach as in kill_processor
-      system_name = get_system_name(system_id)
+    # Check if we have a valid system_id (must be an integer)
+    case system_id do
+      id when is_integer(id) ->
+        # Get system name using the same approach as in kill_processor
+        system_name = get_system_name(id)
 
-      # Add system name to esi_data
-      new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
-      %{killmail | esi_data: new_esi_data}
-    else
-      killmail
+        # Add system name to esi_data
+        new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
+        %{killmail | esi_data: new_esi_data}
+
+      _ ->
+        killmail
     end
   end
 
@@ -423,14 +420,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   # Helper function to get system name with caching
-  defp get_system_name(nil), do: nil
-
-  defp get_system_name(system_id) do
-    case ESIService.get_system_info(system_id) do
-      {:ok, system_info} -> Map.get(system_info, "name")
-      {:error, :not_found} -> "Unknown-#{system_id}"
-      _ -> nil
-    end
+  defp get_system_name(system_id) when is_integer(system_id) do
+    # KillmailCache.get_system_name always returns a string, never nil
+    KillmailCache.get_system_name(system_id)
   end
 
   # Send killmail notification

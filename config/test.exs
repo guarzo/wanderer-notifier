@@ -46,10 +46,10 @@ config :logger, :console,
   format: "[$level] $message\n",
   metadata: [:pid, :module]
 
-# Configure the cache
-config :wanderer_notifier, :cache,
-  backend: Cachex,
-  ttl: 60
+# Configure the cache - all cache settings in one place
+config :wanderer_notifier,
+  cache_name: :wanderer_test_cache,
+  cache_adapter: WandererNotifier.Cache.SimpleETSCache
 
 # Configure the ESI service
 config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock
@@ -64,6 +64,6 @@ config :wanderer_notifier, :kill_determiner,
 # Configure Mox
 config :mox, :global, true
 
-# Configure the cache for testing
+# Configure the env provider for testing
 config :wanderer_notifier,
-  cache_name: :wanderer_test_cache
+  env_provider: WandererNotifier.Config.EnvProviderMock

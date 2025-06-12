@@ -28,24 +28,28 @@ defmodule WandererNotifier.Killmail.Context do
   @behaviour Access
 
   @impl Access
-  def fetch(struct, key) when is_atom(key) do
+  @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
+  def fetch(struct, key) do
     Map.fetch(struct, key)
   end
 
   # This is not part of the Access behaviour, but a helpful utility function
+  @spec get(t(), atom() | String.t(), any()) :: any()
   def get(struct, key, default \\ nil) do
     Map.get(struct, key, default)
   end
 
   @impl Access
-  def get_and_update(struct, key, fun) when is_atom(key) do
+  @spec get_and_update(t(), atom() | String.t(), (any() -> {any(), any()})) :: {any(), t()}
+  def get_and_update(struct, key, fun) do
     current = Map.get(struct, key)
     {get, update} = fun.(current)
     {get, Map.put(struct, key, update)}
   end
 
   @impl Access
-  def pop(struct, key) when is_atom(key) do
+  @spec pop(t(), atom() | String.t()) :: {any(), t()}
+  def pop(struct, key) do
     value = Map.get(struct, key)
     {value, Map.put(struct, key, nil)}
   end
@@ -66,7 +70,7 @@ defmodule WandererNotifier.Killmail.Context do
     %__MODULE__{
       killmail_id: killmail_id,
       system_id: nil,
-      system_name: system_name || "Unknown",
+      system_name: system_name || "unknown",
       options: options
     }
   end

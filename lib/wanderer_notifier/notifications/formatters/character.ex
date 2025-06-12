@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.Formatters.Character do
 
   alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Utils.TimeUtils
 
   @info_color 0x3498DB
 
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Notifications.Formatters.Character do
       title: "New Character Tracked",
       description: "A new character has been added to the tracking list.",
       color: @info_color,
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      timestamp: TimeUtils.log_timestamp(),
       thumbnail: %{
         url: "https://imageserver.eveonline.com/Character/#{character.character_id}_128.jpg"
       },
@@ -38,18 +39,24 @@ defmodule WandererNotifier.Notifications.Formatters.Character do
             inline: true
           }
         ] ++
-          if MapCharacter.has_corporation?(character) do
-            corporation_link =
-              "[#{character.corporation_ticker}](https://zkillboard.com/corporation/#{character.corporation_id}/)"
-
-            [%{name: "Corporation", value: corporation_link, inline: true}]
-          else
-            AppLogger.processor_warn(
-              "[CharacterFormatter] No corporation data available for inclusion"
-            )
-
-            []
-          end
+          build_corporation_field(character)
     }
+  end
+
+  defp build_corporation_field(character) do
+    case MapCharacter.has_corporation?(character) do
+      true ->
+        corporation_link =
+          "[#{character.corporation_ticker}](https://zkillboard.com/corporation/#{character.corporation_id}/)"
+
+        [%{name: "Corporation", value: corporation_link, inline: true}]
+
+      false ->
+        AppLogger.processor_warn(
+          "[CharacterFormatter] No corporation data available for inclusion"
+        )
+
+        []
+    end
   end
 end

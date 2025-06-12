@@ -6,9 +6,13 @@ defmodule WandererNotifier.TestMocks do
   import Mox
 
   # Define mocks
-  defmock(MockSystem, for: WandererNotifier.Map.SystemBehaviour)
-  defmock(MockCharacter, for: WandererNotifier.Map.CharacterBehaviour)
-  defmock(MockDeduplication, for: WandererNotifier.Notifications.Deduplication.Behaviour)
+  defmock(MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
+  defmock(MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
+
+  defmock(MockDeduplication,
+    for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
+  )
+
   defmock(MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
 
   @doc """
@@ -23,10 +27,10 @@ defmodule WandererNotifier.TestMocks do
 
   defp setup_tracking_mocks do
     MockSystem
-    |> stub(:is_tracked?, fn _id -> true end)
+    |> stub(:is_tracked?, fn _id -> {:ok, true} end)
 
     MockCharacter
-    |> stub(:is_tracked?, fn _id -> true end)
+    |> stub(:is_tracked?, fn _id -> {:ok, true} end)
   end
 
   defp setup_deduplication_mocks do

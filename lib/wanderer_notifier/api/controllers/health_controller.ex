@@ -5,14 +5,16 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.ApiPipeline
   use WandererNotifier.Api.Controllers.ControllerHelpers
 
+  alias WandererNotifier.Config
   alias WandererNotifier.Web.Server
+  alias WandererNotifier.Utils.TimeUtils
 
   # Health check endpoint - simple status
   get "/" do
     send_success(conn, %{
       status: "OK",
-      timestamp: DateTime.utc_now() |> DateTime.to_string(),
-      server_version: WandererNotifier.Config.version()
+      timestamp: TimeUtils.log_timestamp(),
+      server_version: Config.version()
     })
   end
 
@@ -28,18 +30,15 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     # Get memory information
     memory_info = :erlang.memory()
 
-    # Calculate uptime using monotonic_time
-    time_now = :erlang.monotonic_time(:millisecond)
-    time_start = :erlang.system_info(:start_time)
-    uptime_ms = time_now - time_start
-    uptime_seconds = div(uptime_ms, 1000)
+    # Calculate uptime in seconds using reliable system uptime
+    uptime_seconds = :erlang.system_info(:uptime)
 
     detailed_status = %{
       status: "OK",
       web_server: %{
         running: web_server_status,
-        port: WandererNotifier.Config.port(),
-        bind_address: WandererNotifier.Config.host()
+        port: Config.port(),
+        bind_address: Config.host()
       },
       system: %{
         uptime_seconds: uptime_seconds,
@@ -53,8 +52,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
         scheduler_count: :erlang.system_info(:schedulers_online),
         node_name: Node.self() |> to_string()
       },
-      timestamp: DateTime.utc_now() |> DateTime.to_string(),
-      server_version: WandererNotifier.Config.version()
+      timestamp: TimeUtils.log_timestamp(),
+      server_version: Config.version()
     }
 
     send_success(conn, detailed_status)

@@ -6,6 +6,8 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   use Supervisor
   require Logger
 
+  alias WandererNotifier.Config
+
   def start_link(_opts \\ []) do
     Logger.info("Starting scheduler supervisor")
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -14,7 +16,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   @impl true
   def init(_) do
     # Only start schedulers if enabled
-    schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
+    schedulers_enabled = Config.schedulers_enabled?()
     Logger.info("Schedulers enabled: #{schedulers_enabled}")
 
     if schedulers_enabled do

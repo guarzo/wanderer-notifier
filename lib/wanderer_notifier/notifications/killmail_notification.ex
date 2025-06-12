@@ -6,12 +6,17 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
   alias WandererNotifier.Notifications.Types.Notification
   alias WandererNotifier.Notifications.NotificationService
+  alias WandererNotifier.Config
+
+  # Cache the cache name at compile time to avoid repeated lookups
+  @cache_name Config.cache_name()
 
   @doc """
   Creates a notification from a killmail.
@@ -107,9 +112,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Gets the latest killmails for notification.
   """
   def get_latest_killmails do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, kill_ids} when is_list(kill_ids) ->
         get_kills_by_ids(kill_ids)
 
@@ -121,9 +124,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Private helper functions
 
   defp get_recent_kill do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
       _ -> {:error, :no_recent_kills}
     end
@@ -161,7 +162,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   defp check_notification_requirements(enriched_killmail) do
     # Get configuration
-    config = Application.get_env(:wanderer_notifier, :config_module).get_config()
+    config = Config.config_module().get_config()
     character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
     system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
 
@@ -255,15 +256,10 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   # Validate killmail has essential data
   defp validate_killmail_data(killmail) do
-    cond do
-      is_nil(killmail.esi_data) ->
-        {:error, "Missing ESI data"}
-
-      is_nil(killmail.killmail_id) ->
-        {:error, "Missing killmail ID"}
-
-      true ->
-        :ok
+    if is_nil(killmail.esi_data) do
+      {:error, "Missing ESI data"}
+    else
+      :ok
     end
   end
 
@@ -337,12 +333,11 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   defp get_kills_by_ids(kill_ids) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
 
     results =
       Enum.map(keys, fn key ->
-        case Cachex.get(cache_name, key) do
+        case Adapter.get(@cache_name, key) do
           {:ok, value} -> {:ok, value}
           _ -> {:ok, nil}
         end
@@ -352,14 +347,9 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   defp process_kill_results(kill_ids, results) do
-    kill_ids
-    |> Enum.zip(results)
-    |> Enum.filter(&valid_kill_result?/1)
-    |> Enum.map(&extract_kill_data/1)
+    for {id, {:ok, data}} <- Enum.zip(kill_ids, results),
+        not is_nil(data) do
+      Map.put(data, :id, id)
+    end
   end
-
-  defp valid_kill_result?({_id, {:ok, data}}) when not is_nil(data), do: true
-  defp valid_kill_result?(_), do: false
-
-  defp extract_kill_data({id, {:ok, data}}), do: Map.put(data, "id", id)
 end

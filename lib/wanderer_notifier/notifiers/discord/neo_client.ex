@@ -9,6 +9,8 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   alias Nostrum.Struct.Embed
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Config.Utils
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -178,16 +180,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     )
 
     {:error, {:api_error, status_code, response}}
-  end
-
-  defp handle_discord_error(error, channel_id) do
-    AppLogger.api_error("Failed to send embed via Nostrum",
-      error: inspect(error),
-      channel_id: channel_id,
-      error_type: typeof(error)
-    )
-
-    {:error, error}
   end
 
   # Handle exceptions during message sending
@@ -413,7 +405,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
       %Embed{
         title: title,
         description: description,
-        timestamp: DateTime.utc_now(),
+        timestamp: TimeUtils.now(),
         color: 3_447_003,
         image: %{url: "attachment://#{filename}"}
       }
@@ -492,25 +484,23 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     nil
   end
 
-  # Parse string channel ID to integer if possible
+  # Validate string channel ID without parsing to integer (avoids overflow)
   defp parse_string_channel_id(channel_id) do
-    case Integer.parse(channel_id) do
-      {int_id, _} ->
-        AppLogger.api_debug("Successfully parsed channel ID as integer",
-          raw: channel_id,
-          parsed: int_id
-        )
+    # Discord IDs are snowflakes (64-bit integers), validate as numeric string
+    # without parsing to avoid overflow on large IDs
+    if Regex.match?(~r/^\d+$/, channel_id) do
+      AppLogger.api_debug("Valid numeric channel ID",
+        channel_id: channel_id
+      )
 
-        # Discord channel IDs are too large for regular integers
-        # We need to keep them as strings
-        channel_id
+      # Keep as string to avoid integer overflow
+      channel_id
+    else
+      AppLogger.api_warn("Invalid channel ID format, not numeric",
+        channel_id: channel_id
+      )
 
-      :error ->
-        AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
-          channel_id: channel_id
-        )
-
-        nil
+      nil
     end
   end
 
@@ -684,7 +674,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # Validate URL is not empty
   defp extract_valid_url(url) when is_binary(url) do
     trimmed = String.trim(url)
-    if trimmed != "", do: trimmed, else: nil
+    if Utils.nil_or_empty?(trimmed), do: nil, else: trimmed
   end
 
   defp extract_valid_url(_), do: nil
@@ -722,17 +712,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   end
 
   defp extract_image_from_map(_), do: {:error, "Data is not a map"}
-
-  defp get_retry_after(%{"retry_after" => retry_after}) when is_number(retry_after) do
-    round(retry_after * 1000)
-  end
-
-  defp get_retry_after(%{"retry_after" => retry_after}) when is_binary(retry_after) do
-    case Float.parse(retry_after) do
-      {value, _} -> round(value * 1000)
-      :error -> 5000
-    end
-  end
 
   defp get_retry_after(_) do
     5000

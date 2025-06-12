@@ -49,8 +49,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
 
   @impl true
   def process_data(new_systems, _cached_systems, _opts) do
-    # For now, just return the new systems
-    # In the future, we could implement diffing or other processing here
     AppLogger.api_info("Processing systems data",
       count: length(new_systems)
     )
@@ -62,7 +60,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   def cache_key, do: CacheKeys.map_systems()
 
   @impl true
-  def cache_ttl, do: 300
+  def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
 
   @impl true
   def should_notify?(system_id, system) do
@@ -78,7 +76,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   def enrich_item(system) do
     case SystemStaticInfo.enrich_system(system) do
       {:ok, enriched} -> enriched
-      _ -> system
     end
   end
 

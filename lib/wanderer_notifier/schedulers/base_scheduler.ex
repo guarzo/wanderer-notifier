@@ -9,6 +9,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Constants
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -68,7 +69,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       # Get the interval configuration for different scheduler types
       defp get_scheduler_interval(opts) do
         # Get the default interval from opts
-        default_interval = Keyword.get(opts, :interval, 30_000)
+        default_interval = Keyword.get(opts, :interval, Constants.default_service_interval())
 
         # Get the config key from the callback
         config_key = interval_key()
@@ -127,7 +128,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           )
 
           # Even if feature is disabled, we should still schedule the next check
-          timer = Process.send_after(self(), :check_feature, 30_000)
+          timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
           {:noreply, %{state | timer: timer}}
         end
       end
@@ -182,8 +183,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error
       defp get_error_type({:http_error, status, _}) when status >= 400, do: :client_error
-      defp get_error_type({:request_error, _}), do: :request_error
-      defp get_error_type({:unexpected_result, _}), do: :unexpected_result
+      defp get_error_type(:cache_error), do: :cache_error
+      defp get_error_type(:invalid_data), do: :invalid_data
       defp get_error_type(_), do: :unknown_error
 
       defp schedule_update(state) do
@@ -273,10 +274,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       defp update_stats_count(module, count) do
-        stat_type = module.stats_type()
+        # Call module.stats_type() and update stats if it returns a valid type
+        # This function will only be called from schedulers that return :systems or :characters
+        case module.stats_type() do
+          stat_type when stat_type in [:systems, :characters] ->
+            Stats.set_tracked_count(stat_type, count)
 
-        if stat_type do
-          Stats.set_tracked_count(stat_type, count)
+          _ ->
+            :ok
         end
       end
     end

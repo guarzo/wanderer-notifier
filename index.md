@@ -32,7 +32,7 @@ For a streamlined installation that creates the necessary directory and files au
 curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
 ```
 
-Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container. The setup includes a PostgreSQL database which is now required for the application to function properly.
+Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container.
 
 ### Manual Setup
 
@@ -43,7 +43,7 @@ If you'd rather set up everything manually, follow these steps:
 Pull the latest Docker image:
 
 ```bash
-docker pull guarzo/wanderer-notifier:v1
+docker pull guarzo/wanderer-notifier:v2
 ```
 
 #### 2. Configure Your Environment
@@ -111,7 +111,7 @@ Create a file named `docker-compose.yml` with the following content:
 ```yaml
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v1
+    image: guarzo/wanderer-notifier:v2
     container_name: wanderer-notifier
     restart: unless-stopped
     env_file:
@@ -151,14 +151,18 @@ Your notifier is now up and running, delivering alerts to your Discord channel a
 
 On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them. This ensures that your notifier is properly configured before it begins operation.
 
-## Features
+## Current Features
 
-- **Real-Time Monitoring:** Listens to live kill data via polling from ZKillboard
-- **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems (with option to include K-Space systems) and process only kills from systems you care about
-- **Periodic Maintenance:** Automatically updates system data and processes backup kills
-- **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
-- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
+- **Real-Time Kill Monitoring:** Consumes live killmail data via ZKillboard's RedisQ API
+- **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
+- **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
+- **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
+- **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
+- **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
+- **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information
+- **Map Integration:** Connects to Wanderer map API for system and character tracking
+- **Robust Architecture:** Built on Elixir's OTP supervision trees for fault tolerance and reliability
+- **Production Ready:** Comprehensive logging, telemetry, Docker deployment, and health checks
 
 [Learn more about notification types](./notifications.html)
 

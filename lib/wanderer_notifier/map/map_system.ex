@@ -25,10 +25,11 @@ defmodule WandererNotifier.Map.MapSystem do
   - constellation_name: Name of the system's constellation
   """
 
-  @behaviour WandererNotifier.Map.SystemBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias Cachex
+  alias WandererNotifier.Cache.Config, as: CacheConfig
+  alias WandererNotifier.Cache.Adapter
 
   @enforce_keys [:solar_system_id, :name]
   defstruct [
@@ -63,21 +64,24 @@ defmodule WandererNotifier.Map.MapSystem do
   end
 
   def is_tracked?(system_id_str) when is_binary(system_id_str) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
-    case Cachex.get(cache_name, CacheKeys.map_systems()) do
+    case Adapter.get(cache_name, CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
-        Enum.any?(systems, fn system ->
-          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-          to_string(id) == system_id_str
-        end)
+        result =
+          Enum.any?(systems, fn system ->
+            id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+            to_string(id) == system_id_str
+          end)
+
+        {:ok, result}
 
       _ ->
-        false
+        {:ok, false}
     end
   end
 
-  def is_tracked?(_), do: false
+  def is_tracked?(_), do: {:error, :invalid_system_id}
 
   @type t :: %__MODULE__{
           solar_system_id: String.t() | integer(),
@@ -155,8 +159,10 @@ defmodule WandererNotifier.Map.MapSystem do
   # Helper function to extract fields from data using mappings
   defp extract_fields(data, mappings) do
     Enum.reduce(mappings, %{}, fn {field, keys}, acc ->
-      value = get_first_valid_value(data, keys)
-      if value != nil, do: Map.put(acc, field, value), else: acc
+      case get_first_valid_value(data, keys) do
+        nil -> acc
+        value -> Map.put(acc, field, value)
+      end
     end)
   end
 
@@ -412,9 +418,9 @@ defmodule WandererNotifier.Map.MapSystem do
   Gets a system by ID from the cache.
   """
   def get_system(system_id) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
-    case Cachex.get(cache_name, CacheKeys.map_systems()) do
+    case Adapter.get(cache_name, CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         Enum.find(systems, &(&1["id"] == system_id))
 
@@ -427,9 +433,9 @@ defmodule WandererNotifier.Map.MapSystem do
   Gets a system by name from the cache.
   """
   def get_system_by_name(system_name) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
 
-    case Cachex.get(cache_name, CacheKeys.map_systems()) do
+    case Adapter.get(cache_name, CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         Enum.find(systems, &(&1["name"] == system_name))
 

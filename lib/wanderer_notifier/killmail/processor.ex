@@ -9,6 +9,7 @@ defmodule WandererNotifier.Killmail.Processor do
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
+  alias WandererNotifier.Utils.TimeUtils
 
   @type state :: term()
   @type kill_id :: String.t()
@@ -32,14 +33,16 @@ defmodule WandererNotifier.Killmail.Processor do
       {:ok, _killmail_id} ->
         case should_notify?(kill_data) do
           {:ok, %{should_notify: true}} ->
+            # Process the killmail since we should notify
             process_kill_data(kill_data, state)
 
-          {:ok, %{should_notify: false, reason: reason}} ->
+          {:ok, %{should_notify: false} = result} ->
+            reason = Map.get(result, :reason, "unknown")
             log_skipped(kill_data, reason)
             {:ok, :skipped}
 
-          unexpected ->
-            {:error, {:invalid_notification_response, unexpected}}
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->
@@ -48,11 +51,14 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   # Extract killmail_id from the data structure
+  # Handle both "killmail_id" and "killID" formats from different sources
   defp extract_killmail_id(%{"killmail_id" => id}) when is_binary(id) and id != "", do: {:ok, id}
   defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, to_string(id)}
+  defp extract_killmail_id(%{"killID" => id}) when is_integer(id), do: {:ok, to_string(id)}
+  defp extract_killmail_id(%{"killID" => id}) when is_binary(id) and id != "", do: {:ok, id}
 
   defp extract_killmail_id(data) do
-    AppLogger.kill_error("Failed to extract killmail_id - expected killmail_id field",
+    AppLogger.kill_error("Failed to extract killmail_id - expected killmail_id or killID field",
       data: inspect(data),
       module: __MODULE__
     )
@@ -60,12 +66,27 @@ defmodule WandererNotifier.Killmail.Processor do
     {:error, :invalid_killmail_id}
   end
 
+  # Helper function to extract killmail_id for logging purposes
+  # Handles multiple data formats from different sources
+  defp get_killmail_id_for_logging(%{"killmail_id" => id}) when not is_nil(id), do: id
+  defp get_killmail_id_for_logging(%{"killID" => id}) when not is_nil(id), do: id
+
+  defp get_killmail_id_for_logging(%{"killmail" => %{"killmail_id" => id}}) when not is_nil(id),
+    do: id
+
+  defp get_killmail_id_for_logging(%{"killID" => id, "killmail" => %{"killmail_id" => nested_id}}) do
+    # Prefer the nested killmail_id if available, otherwise use killID
+    nested_id || id
+  end
+
+  defp get_killmail_id_for_logging(_), do: nil
+
   @spec log_stats() :: :ok
   def log_stats do
     :ok
   end
 
-  @spec get_recent_kills() :: {:ok, kill_data} | {:error, :no_recent_kills}
+  @spec get_recent_kills() :: {:ok, list(kill_data())}
   def get_recent_kills do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
@@ -83,7 +104,7 @@ defmodule WandererNotifier.Killmail.Processor do
 
     context_opts = %{
       source: source,
-      processing_started_at: DateTime.utc_now()
+      processing_started_at: TimeUtils.now()
     }
 
     context_opts = if state, do: Map.put(context_opts, :original_state, state), else: context_opts
@@ -140,8 +161,12 @@ defmodule WandererNotifier.Killmail.Processor do
   """
   @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
   def send_test_kill_notification do
-    with {:ok, kill_data} <- get_recent_kills() do
-      process_killmail(kill_data, source: :test_notification)
+    case get_recent_kills() do
+      {:ok, [kill_data | _]} ->
+        process_killmail(kill_data, source: :test_notification)
+
+      {:ok, []} ->
+        {:error, :no_recent_kills}
     end
   end
 
@@ -184,9 +209,6 @@ defmodule WandererNotifier.Killmail.Processor do
           "PROCESSOR: Kill notification skipped: #{reason} (killmail_id=#{killmail.killmail_id})"
         )
 
-      {:ok, %{should_notify: true}} ->
-        :ok
-
       {:error, reason} ->
         AppLogger.error(
           "PROCESSOR: Kill notification error: #{inspect(reason)} (killmail_id=#{killmail.killmail_id})"
@@ -200,40 +222,39 @@ defmodule WandererNotifier.Killmail.Processor do
     # Get the determination from the Kill Determiner
     result = KillDeterminer.should_notify?(kill_data)
 
-    # Only log errors and inconsistencies
+    # Don't log here - let the pipeline handle the elegant logging
+    # This avoids duplicate logs
     case result do
-      {:ok, %{should_notify: false, reason: reason}} ->
-        AppLogger.error(
-          "PROCESSOR: Kill notification skipped: #{reason} (killmail_id=#{kill_data["killmail_id"]})"
-        )
-
-      {:ok, %{should_notify: true}} ->
-        :ok
-
       {:error, reason} ->
+        killmail_id = get_killmail_id_for_logging(kill_data)
+
         AppLogger.error(
-          "PROCESSOR: Kill notification error: #{inspect(reason)} (killmail_id=#{kill_data["killmail_id"]})"
+          "PROCESSOR: Kill notification error: #{inspect(reason)} (killmail_id=#{killmail_id})"
         )
+
+      _ ->
+        # Pipeline will handle success/skip logging with emojis and system names
+        :ok
     end
 
     result
   end
 
-  defp log_skipped(kill_data, reason) do
-    AppLogger.kill_info("Skipping killmail notification",
-      kill_id: kill_data["killmail_id"],
-      reason: reason
-    )
+  defp log_skipped(_kill_data, _reason) do
+    # This is now handled by the pipeline with elegant emoji logging
+    # Keeping the function for compatibility but it just returns :ok
+    :ok
   end
 
   defp get_system_name(nil), do: "unknown"
-  defp get_system_name(system_id), do: "System #{system_id}"
 
-  defp killmail_pipeline do
-    Application.get_env(
-      :wanderer_notifier,
-      :killmail_pipeline,
-      WandererNotifier.Killmail.Pipeline
-    )
+  defp get_system_name(system_id) do
+    case esi_service().get_system(system_id, []) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "System #{system_id}"
+    end
   end
+
+  defp killmail_pipeline, do: WandererNotifier.Core.Dependencies.killmail_pipeline()
+  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
 end

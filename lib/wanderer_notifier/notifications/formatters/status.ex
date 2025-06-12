@@ -4,6 +4,8 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
   Provides rich formatting for service status and startup events.
   """
 
+  alias WandererNotifier.Utils.TimeUtils
+
   @info_color 0x3498DB
 
   @doc """
@@ -102,7 +104,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       title: data.title,
       description: "#{data.description}\n\n**System Status Overview:**",
       color: @info_color,
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      timestamp: TimeUtils.log_timestamp(),
       thumbnail: %{
         url: "https://images.evetech.net/corporations/1_000_001/logo?size=128"
       },
@@ -171,13 +173,8 @@ defmodule WandererNotifier.Notifiers.StatusNotifier do
     stats = Stats.get_stats()
     features_status = Config.features()
 
-    # Ensure features_status is a map for the formatter
-    features_map =
-      if is_list(features_status) do
-        Enum.into(features_status, %{})
-      else
-        features_status
-      end
+    # Convert features_status (always a list) to a map for the formatter
+    features_map = Enum.into(features_status, %{})
 
     systems_count = Map.get(stats, :systems_count, 0)
     characters_count = Map.get(stats, :characters_count, 0)

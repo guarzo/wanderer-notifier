@@ -12,6 +12,8 @@ on:
       - 'assets/**'
       - '_config.yml'
       - '.github/workflows/docs.yml'
+  release:
+    types: [published, created, edited]
   workflow_dispatch:
 
 concurrency:

@@ -1,8 +1,9 @@
 defmodule WandererNotifier.Map.SystemStaticInfo do
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Config
-  alias WandererNotifier.HttpClient
-  alias WandererNotifier.AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Http.ResponseHandler
+  alias WandererNotifier.Http.Headers
 
   @moduledoc """
   Client for fetching static information about EVE systems from the map API.
@@ -71,9 +72,6 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   }
   """
 
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
   @doc """
   Fetches static information for a specific solar system.
   Uses a more robust approach with proper validation and timeouts.
@@ -122,10 +120,18 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
-    case HttpClient.get(url, headers) do
-      {:ok, %{status_code: 200, body: body}} -> handle_successful_response(body)
-      {:ok, %{status_code: status}} -> handle_http_error(status)
-      {:error, reason} -> handle_request_error(reason)
+    result = WandererNotifier.HTTP.get(url, headers)
+
+    case ResponseHandler.handle_response(result,
+           success_codes: [200],
+           log_context: %{client: "SystemStaticInfo", url: url}
+         ) do
+      {:ok, body} ->
+        handle_successful_response(body)
+
+      {:error, reason} = error ->
+        AppLogger.api_error("[SystemStaticInfo] Request failed", error: inspect(reason))
+        error
     end
   end
 
@@ -133,24 +139,13 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   defp handle_successful_response(body) when is_binary(body) do
     case Jason.decode(body) do
-      {:ok, parsed_response} -> {:ok, parsed_response}
-      {:error, reason} -> handle_json_parse_error(reason)
+      {:ok, parsed_response} ->
+        {:ok, parsed_response}
+
+      {:error, reason} ->
+        AppLogger.api_error("[SystemStaticInfo] Failed to parse JSON", error: inspect(reason))
+        {:error, {:json_parse_error, reason}}
     end
-  end
-
-  defp handle_http_error(status) do
-    AppLogger.api_error("[SystemStaticInfo] HTTP error", status: status)
-    {:error, {:http_error, status}}
-  end
-
-  defp handle_request_error(reason) do
-    AppLogger.api_error("[SystemStaticInfo] Request failed", error: inspect(reason))
-    {:error, reason}
-  end
-
-  defp handle_json_parse_error(reason) do
-    AppLogger.api_error("[SystemStaticInfo] Failed to parse JSON", error: inspect(reason))
-    {:error, {:json_parse_error, reason}}
   end
 
   @doc """
@@ -178,10 +173,6 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
       {:error, reason} ->
         log_enrichment_failure(system, reason)
         {:ok, system}
-
-      error ->
-        log_enrichment_exception(system, error)
-        {:ok, system}
     end
   end
 
@@ -190,19 +181,15 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, _} -> parsed_id > 0
-      :error -> false
-    end
+    parsed_id = WandererNotifier.Config.Utils.parse_int(id, 0)
+    parsed_id > 0
   end
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, _} -> parsed_id > 0
-      :error -> false
-    end
+    parsed_id = WandererNotifier.Config.Utils.parse_int(id, 0)
+    parsed_id > 0
   end
 
   defp valid_system_id?(_), do: false
@@ -284,21 +271,8 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     )
   end
 
-  defp log_enrichment_exception(system, error) do
-    log_message =
-      [
-        "[SystemStaticInfo] Exception during system enrichment:",
-        "Error: #{inspect(error)}",
-        "System: #{inspect(system, pretty: true, limit: 1000)}"
-      ]
-      |> Enum.join("\n")
-
-    AppLogger.api_error(log_message)
-  end
-
   defp get_auth_headers do
-    api_key = Config.map_token()
-    [{"Authorization", "Bearer #{api_key}"}]
+    Headers.map_api_headers()
   end
 
   @doc """
@@ -313,38 +287,28 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     - {:error, reason} on other errors
   """
   def get_system_info(system_id) do
-    headers = [
-      {"Authorization", "Bearer #{Config.map_token()}"},
-      {"Content-Type", "application/json"}
-    ]
+    headers = Headers.map_api_headers(Config.map_token())
 
     base_url = Config.map_url_with_name()
     url = "#{base_url}/systems/#{system_id}/static"
 
-    case Req.get(url, headers: headers) do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, body}
+    result = WandererNotifier.HTTP.get(url, headers)
 
-      {:ok, %{status: 404}} ->
-        AppLogger.api_debug("[SystemStaticInfo] System not found", system_id: system_id)
-        {:error, :not_found}
-
-      {:ok, %{status: status}} ->
-        AppLogger.api_error("[SystemStaticInfo] API request failed",
-          system_id: system_id,
-          status: status
-        )
-
-        {:error, {:api_error, status}}
-
-      {:error, reason} ->
-        AppLogger.api_error("[SystemStaticInfo] Request failed",
-          system_id: system_id,
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-    end
+    ResponseHandler.handle_response(result,
+      success_codes: 200,
+      custom_handlers: [
+        {404,
+         fn _status, _body ->
+           AppLogger.api_debug("[SystemStaticInfo] System not found", system_id: system_id)
+           {:error, :not_found}
+         end}
+      ],
+      log_context: %{
+        client: "SystemStaticInfo",
+        system_id: system_id,
+        url: url
+      }
+    )
   end
 
   # Helper function to get system_id from both MapSystem structs and maps with string keys

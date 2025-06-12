@@ -5,8 +5,9 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   """
   require Logger
   alias WandererNotifier.Killmail.Enrichment
-  alias WandererNotifier.Logger.Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.MapSystem
+  alias WandererNotifier.Utils.TimeUtils
 
   # Color and icon constants (can be refactored to a shared place if needed)
   @default_color 0x3498DB
@@ -24,10 +25,36 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   Creates a standard formatted system notification from a MapSystem struct.
   """
   def format_system_notification(%MapSystem{} = system) do
-    validate_system_fields(system)
+    with :ok <- validate_system_fields(system),
+         {:ok, formatted} <- safe_format_system(system) do
+      formatted
+    else
+      {:error, :invalid_system_id} ->
+        raise ArgumentError, "System must have a solar_system_id"
 
+      {:error, :invalid_system_name} ->
+        raise ArgumentError, "System must have a name"
+
+      {:exception, exception, stacktrace} ->
+        handle_formatting_exception(system, exception, stacktrace)
+    end
+  end
+
+  defp handle_formatting_exception(system, exception, stacktrace) do
+    AppLogger.processor_error(
+      "[SystemFormatter] Error formatting system notification",
+      system: system.name,
+      error: Exception.message(exception),
+      struct: inspect(system, limit: 500, printable_limit: 500),
+      fields: inspect(Map.from_struct(system), limit: 500, printable_limit: 500),
+      stacktrace: Exception.format_stacktrace(stacktrace) |> String.slice(0, 1000)
+    )
+
+    reraise exception, stacktrace
+  end
+
+  defp safe_format_system(system) do
     is_wormhole = MapSystem.wormhole?(system)
-    # Only use the system name for the title
     display_name = system.name
 
     formatted_statics =
@@ -35,7 +62,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
     system_name_with_link = create_system_name_link(system, display_name)
 
-    {title, description, _color, icon_url} =
+    {title, description, color, icon_url} =
       generate_notification_elements(system, is_wormhole, display_name)
 
     fields =
@@ -46,41 +73,37 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         system_name_with_link
       )
 
+    {:ok, build_notification_map(title, description, color, icon_url, fields, system)}
+  rescue
+    exception ->
+      {:exception, exception, __STACKTRACE__}
+  end
+
+  defp build_notification_map(title, description, color, icon_url, fields, system) do
     %{
       type: :system_notification,
       title: title,
       description: description,
-      color: determine_system_color_from_security(system),
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      color: color,
+      timestamp: TimeUtils.log_timestamp(),
       thumbnail: %{url: icon_url},
       fields: fields,
       footer: %{
         text: "System ID: #{system.solar_system_id}"
       }
     }
-  rescue
-    e ->
-      Logger.error(
-        "[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
-      )
-
-      WandererNotifier.Logger.Logger.processor_error(
-        "[SystemFormatter] Error formatting system notification",
-        system: system.name,
-        error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      reraise e, __STACKTRACE__
   end
 
   defp validate_system_fields(system) do
-    if is_nil(system.solar_system_id) do
-      raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
-    end
+    cond do
+      is_nil(system.solar_system_id) ->
+        {:error, :invalid_system_id}
 
-    if is_nil(system.name) do
-      raise "Cannot format system notification: name is missing in MapSystem struct"
+      is_nil(system.name) ->
+        {:error, :invalid_system_name}
+
+      true ->
+        :ok
     end
   end
 
@@ -149,7 +172,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         "#{name} (#{dest})"
 
       other ->
-        inspect(other)
+        inspect(other, limit: 100, printable_limit: 100)
     end)
   end
 
@@ -158,7 +181,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp create_system_name_link(system, display_name) do
     has_numeric_id =
       is_integer(system.solar_system_id) ||
-        (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
+        (is_binary(system.solar_system_id) && parse_system_id(system.solar_system_id) != nil)
 
     if has_numeric_id do
       system_id_str = to_string(system.solar_system_id)
@@ -180,7 +203,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   # Ensure a value is safely converted to a string
   defp safe_to_string(nil), do: ""
   defp safe_to_string(val) when is_binary(val), do: val
-  defp safe_to_string(val), do: inspect(val)
+  defp safe_to_string(val), do: inspect(val, limit: 100, printable_limit: 100)
 
   defp build_rich_system_notification_fields(
          system,
@@ -211,8 +234,14 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp add_statics_field(fields, _, _), do: fields
 
-  defp add_region_field(fields, region_name) when not is_nil(region_name),
-    do: fields ++ [%{name: "Region", value: safe_to_string(region_name), inline: true}]
+  defp add_region_field(fields, region_name) when not is_nil(region_name) do
+    # Create a hyperlink to EVE Maps dotlan for the region
+    region_str = safe_to_string(region_name)
+    # Replace spaces with underscores for the URL
+    region_url_name = String.replace(region_str, " ", "_")
+    region_link = "[#{region_str}](https://evemaps.dotlan.net/map/#{region_url_name})"
+    fields ++ [%{name: "Region", value: region_link, inline: true}]
+  end
 
   defp add_region_field(fields, _), do: fields
 
@@ -222,45 +251,36 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp add_effect_field(fields, _, _), do: fields
 
   defp add_zkill_system_kills(fields, system_id) do
-    system_id_int = parse_system_id(system_id)
+    case parse_system_id(system_id) do
+      nil -> fields
+      system_id_int -> add_kills_field(fields, system_id_int)
+    end
+  end
 
-    if is_nil(system_id_int) do
-      fields
-    else
-      # Get kill information from enrichment module
-      try do
-        # The response should now be safe strings we can directly use
-        case Enrichment.recent_kills_for_system(system_id_int, 3) do
-          kills when is_binary(kills) and kills != "" ->
-            # Add as a field if we have kill data
-            fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
+  defp add_kills_field(fields, system_id) do
+    try do
+      case Enrichment.recent_kills_for_system(system_id, 3) do
+        kills when is_binary(kills) and kills != "" ->
+          fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
 
-          _ ->
-            # No kill data
-            fields
-        end
-      rescue
-        e ->
-          # Log but don't crash
-          WandererNotifier.Logger.Logger.processor_warn("Error adding kills field",
-            error: Exception.message(e),
-            system_id: system_id
-          )
-
+        _ ->
           fields
       end
+    rescue
+      e ->
+        AppLogger.processor_warn("Error adding kills field",
+          error: Exception.message(e),
+          system_id: system_id
+        )
+
+        fields
     end
   end
 
   defp parse_system_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_val, _} -> int_val
-      :error -> nil
-    end
+    WandererNotifier.Config.Utils.parse_int(id, nil)
   end
 
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
-
-  defp determine_system_color_from_security(_), do: @default_color
 end

@@ -1,20 +1,16 @@
-# syntax=docker/dockerfile:experimental
+# syntax=docker/dockerfile:1.4
 
 ###############################################################################
-# 1. Build Dependencies Stage
-#
-#    - Installs build tools, pulls in Elixir, fetches & compiles production deps.
-#    - Uses cache mounts for Hex/Rebar and Mix builds to speed up rebuilds.
+# 1. Build Dependencies Stage with enhanced caching
 ###############################################################################
 FROM elixir:1.18.3-otp-27-slim AS deps
 
 WORKDIR /app
 
-# Set Mix environment and a default application version (overridable via build-arg)
-ENV MIX_ENV=prod \
-    APP_VERSION=0.1.0-docker
+# Set Mix environment
+ENV MIX_ENV=prod
 
-# Install only the build tools we need
+# Install build tools
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential \
@@ -23,67 +19,83 @@ RUN apt-get update \
  && update-ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Hex and Rebar (for dependency resolution)
-RUN mix local.hex --force \
+# Install Hex and Rebar with cache mount
+RUN --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
+    mix local.hex --force \
  && mix local.rebar --force
 
-# Copy only mix.exs and mix.lock to leverage Docker layer caching
+# Copy dependency files first
 COPY mix.exs mix.lock ./
 
-# Fetch and compile production dependencies, using cache mounts to speed rebuilds
-RUN --mount=type=cache,target=/root/.cache/mix \
-    --mount=type=cache,target=/root/.cache/rebar \
+# Fetch and compile dependencies with cache mounts
+RUN --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
+    --mount=type=cache,target=/root/.cache \
+    --mount=type=cache,target=/app/_build,sharing=locked \
     mix deps.get --only prod \
  && mix deps.compile
 
 ###############################################################################
-# 2. Build Stage
-#
-#    - Copies the entire source tree, compiles the application, and builds a release.
+# 2. Build Stage with build cache
 ###############################################################################
 FROM deps AS build
 
 WORKDIR /app
 
-# Propagate the app version into the build
-ARG APP_VERSION=0.1.0-docker
-ENV APP_VERSION=${APP_VERSION}
+# Accept build arguments
+ARG NOTIFIER_API_TOKEN
 
-# Copy the rest of the application code
+# Copy source code
 COPY . .
 
-# Compile the app (fail on any warnings) and build the OTP release
-RUN mix compile --warnings-as-errors \
- && mix release --overwrite
+# Ensure Hex and Rebar are available in build stage
+RUN --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
+    mix local.hex --force \
+ && mix local.rebar --force
+
+# Compile and release with cache mount for build artifacts
+RUN --mount=type=cache,target=/app/_build,sharing=locked \
+    --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
+    mix compile --warnings-as-errors \
+ && mix release --overwrite \
+ && cp -r /app/_build/prod/rel/wanderer_notifier /app/release
 
 ###############################################################################
-# 3. Runtime Stage
-#
-#    - Starts from a fresh Elixir slim image.
-#    - Installs only what’s needed at runtime (wget for health checks and CA certs).
-#    - Copies the compiled release and switches to a non-root user.
+# 3. Runtime Stage - minimal size
 ###############################################################################
-FROM elixir:1.18.3-otp-27-slim AS runtime
+FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies (wget for health checks, ca-certificates for HTTPS)
+# Install runtime dependencies in one layer
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      wget \
+      libncurses6 \
+      libstdc++6 \
+      openssl \
       ca-certificates \
+      libgcc-s1 \
+      wget \
+      procps \
  && rm -rf /var/lib/apt/lists/* \
- && addgroup --system app \
- && adduser --system --ingroup app app
+ && groupadd -r app \
+ && useradd -r -g app app
 
-# Copy the built release from the build stage, with ownership set to the 'app' user
-COPY --from=build --chown=app:app /app/_build/prod/rel/wanderer_notifier ./
+# Copy release from build stage
+COPY --from=build --chown=app:app /app/release ./
 
-# Allow runtime configuration via environment variables
+# Accept build arguments in runtime stage
+ARG NOTIFIER_API_TOKEN
+
+# Runtime configuration
 ENV REPLACE_OS_VARS=true \
-    HOME=/app
+    HOME=/app \
+    NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
 
-# Labels for container metadata
+# Metadata
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
@@ -91,13 +103,13 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.version=$VERSION
 
-# Drop to non-root user for safety
+# Run as non-root
 USER app
 
-# Define entrypoint and default command to start the release
+# Entry point
 ENTRYPOINT ["bin/wanderer_notifier"]
 CMD ["start"]
 
-# Simple HTTP health check on port 4000
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1

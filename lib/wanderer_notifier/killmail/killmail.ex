@@ -19,10 +19,14 @@ defmodule WandererNotifier.Killmail.Killmail do
     :value
   ]
 
+  @type killmail_id :: String.t() | integer()
+  @type zkb_data :: map()
+  @type esi_data :: map() | nil
+
   @type t :: %__MODULE__{
-          killmail_id: String.t() | integer(),
-          zkb: map(),
-          esi_data: map() | nil,
+          killmail_id: killmail_id(),
+          zkb: zkb_data(),
+          esi_data: esi_data(),
           victim_name: String.t() | nil,
           victim_corporation: String.t() | nil,
           victim_corp_ticker: String.t() | nil,
@@ -41,6 +45,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   @behaviour Access
 
   @impl Access
+  @spec fetch(t(), String.t()) :: {:ok, any()} | :error
   def fetch(killmail, key) when key in ["killmail_id", "zkb", "esi_data"] do
     fetch_direct_property(killmail, key)
   end
@@ -79,6 +84,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   Helper function to get a value from the killmail.
   Not part of the Access behaviour but useful for convenience.
   """
+  @spec get(t(), String.t(), any()) :: any()
   def get(killmail, key, default \\ nil) do
     case fetch(killmail, key) do
       {:ok, value} -> value
@@ -87,6 +93,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   end
 
   @impl Access
+  @spec get_and_update(t(), String.t(), (any() -> {any(), any()})) :: {any(), t()}
   def get_and_update(killmail, key, fun) do
     current_value = get(killmail, key)
     {get_value, new_value} = fun.(current_value)
@@ -115,6 +122,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   end
 
   @impl Access
+  @spec pop(t(), String.t()) :: {any(), t()}
   def pop(killmail, key) do
     value = get(killmail, key)
 
@@ -145,6 +153,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   Creates a new killmail struct with just ID and ZKB data.
   This is used for scenarios where esi data isn't available.
   """
+  @spec new(killmail_id(), zkb_data()) :: t()
   def new(killmail_id, zkb) do
     value = get_in(zkb, ["totalValue"]) || 0
 
@@ -162,10 +171,12 @@ defmodule WandererNotifier.Killmail.Killmail do
   Creates a new killmail struct with the provided data.
   Overloaded for compatibility with processing/killmail/core.ex
   """
+  @spec new(killmail_id(), zkb_data(), map()) :: t()
   def new(kill_id, zkb, enriched_data) do
     value = get_in(zkb, ["totalValue"]) || 0
     system_id = get_in(enriched_data, ["solar_system_id"])
-    system_name = get_in(enriched_data, ["solar_system_name"]) || "Unknown"
+
+    system_name = get_system_name_with_fallback(enriched_data, system_id)
 
     %__MODULE__{
       killmail_id: kill_id,
@@ -186,10 +197,12 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   A new %WandererNotifier.Killmail.Killmail{} struct
   """
+  @spec from_map(map()) :: t()
   def from_map(map) when is_map(map) do
     value = get_in(map, ["zkb", "totalValue"]) || 0
     system_id = get_in(map, ["esi_data", "solar_system_id"])
-    system_name = get_in(map, ["esi_data", "solar_system_name"]) || "Unknown"
+
+    system_name = get_system_name_with_fallback(map["esi_data"] || %{}, system_id)
 
     %__MODULE__{
       killmail_id: map["killmail_id"],
@@ -210,6 +223,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   A map with victim data, or nil if not available
   """
+  @spec get_victim(t()) :: map() | nil
   def get_victim(killmail) do
     get(killmail, "victim")
   end
@@ -223,6 +237,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   A list of attacker data maps, or empty list if not available
   """
+  @spec get_attacker(t()) :: list(map())
   def get_attacker(killmail) do
     # Return the full list of attackers
     get(killmail, "attackers") || []
@@ -237,6 +252,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   The solar system ID as an integer, or nil if not available
   """
+  @spec get_system_id(t()) :: integer() | nil
   def get_system_id(killmail) do
     killmail.system_id || get(killmail, "solar_system_id")
   end
@@ -250,6 +266,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   The ship type ID, or nil if not available
   """
+  @spec get_victim_ship_type_id(t()) :: integer() | nil
   def get_victim_ship_type_id(killmail) do
     victim = get_victim(killmail)
     if victim, do: victim["ship_type_id"], else: nil
@@ -264,6 +281,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   The character ID, or nil if not available
   """
+  @spec get_victim_character_id(t()) :: integer() | nil
   def get_victim_character_id(killmail) do
     victim = get_victim(killmail)
     if victim, do: victim["character_id"], else: nil
@@ -278,6 +296,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   The corporation ID, or nil if not available
   """
+  @spec get_victim_corporation_id(t()) :: integer() | nil
   def get_victim_corporation_id(killmail) do
     victim = get_victim(killmail)
     if victim, do: victim["corporation_id"], else: nil
@@ -292,7 +311,24 @@ defmodule WandererNotifier.Killmail.Killmail do
   ## Returns
   The killmail hash, or nil if not available
   """
+  @spec get_hash(t()) :: String.t() | nil
   def get_hash(killmail) do
     if killmail.zkb, do: killmail.zkb["hash"], else: nil
+  end
+
+  # Private helper functions
+
+  @spec get_system_name_with_fallback(map(), integer() | nil) :: String.t()
+  defp get_system_name_with_fallback(enriched_data, system_id) do
+    get_in(enriched_data, ["solar_system_name"]) ||
+      fetch_system_name_from_cache(system_id) ||
+      "Unknown"
+  end
+
+  @spec fetch_system_name_from_cache(integer() | nil) :: String.t() | nil
+  defp fetch_system_name_from_cache(nil), do: nil
+
+  defp fetch_system_name_from_cache(system_id) do
+    WandererNotifier.Killmail.Cache.get_system_name(system_id)
   end
 end

@@ -6,6 +6,11 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.ESI.Service, as: ESIService
+  alias WandererNotifier.Constants
+  alias WandererNotifier.Http.Utils.RateLimiter
+  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Http.ResponseHandler
+  alias WandererNotifier.Http.Headers
   require Logger
 
   # -- Configuration --
@@ -15,13 +20,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
               :zkill_base_url,
               "https://zkillboard.com/api/kills"
             )
-  @user_agent Application.compile_env(
-                :wanderer_notifier,
-                :zkill_user_agent,
-                "WandererNotifier/1.0"
-              )
   @max_retries Application.compile_env(:wanderer_notifier, :zkill_max_retries, 3)
-  @retry_backoff_ms Application.compile_env(:wanderer_notifier, :zkill_retry_backoff_ms, 2_000)
 
   @type date_range :: %{start: DateTime.t(), end: DateTime.t()}
 
@@ -56,6 +55,22 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     handle_list_request(url, limit, :get_character_kills)
   end
 
+  @doc """
+  Fetches killmail data from zKillboard's API.
+  Returns `{:ok, data}` on success or `{:error, reason}` on failure.
+  """
+  def fetch_killmail(killmail_id, hash) do
+    url = build_url(killmail_id, hash)
+
+    RateLimiter.run(
+      fn -> get_http_client().get(url, http_headers(), http_options()) end,
+      context: "ZKill request",
+      max_retries: 3,
+      base_backoff: Constants.zkill_retry_backoff()
+    )
+    |> handle_response()
+  end
+
   # -- Internal Request Handlers --
 
   defp handle_single_request(url, id) do
@@ -87,62 +102,46 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   # -- HTTP + Retry Pipeline --
 
-  defp perform_request(url), do: retry(fn -> make_http_request(url) end, 0)
-
-  defp retry(fun, attempt) when attempt < @max_retries do
-    case fun.() do
-      {:ok, resp} ->
-        {:ok, resp}
-
-      {:error, reason} ->
-        Logger.warning("ZKill request error: #{inspect(reason)}, retry ##{attempt + 1}")
-        :timer.sleep(@retry_backoff_ms * (attempt + 1))
-        retry(fun, attempt + 1)
-    end
+  defp perform_request(url) do
+    RateLimiter.run(
+      fn -> make_http_request(url) end,
+      context: "ZKill request",
+      max_retries: @max_retries,
+      base_backoff: Constants.zkill_retry_backoff()
+    )
   end
-
-  defp retry(_, attempt), do: {:error, {:max_retries_reached, attempt}}
 
   # -- Raw HTTP Request (via configured HTTP client) --
 
-  defp make_http_request(url) do
-    headers = [
-      {"Accept", "application/json"},
-      {"User-Agent", @user_agent},
-      {"Cache-Control", "no-cache"}
-    ]
+  defp get_http_client, do: WandererNotifier.Core.Dependencies.http_client()
 
-    opts = [
+  defp make_http_request(url) do
+    result = get_http_client().get(url, http_headers(), http_options())
+
+    case ResponseHandler.handle_response(result,
+           success_codes: [200],
+           log_context: %{client: "ZKill", url: url}
+         ) do
+      {:ok, body} ->
+        AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
+        {:ok, body}
+
+      {:error, reason} = error ->
+        AppLogger.api_error("ZKill request failed", %{url: url, error: inspect(reason)})
+        error
+    end
+  end
+
+  defp http_headers do
+    Headers.zkill_headers()
+  end
+
+  defp http_options do
+    [
       recv_timeout: 10_000,
       timeout: 10_000,
       follow_redirect: true
     ]
-
-    client =
-      Application.get_env(
-        :wanderer_notifier,
-        :http_client,
-        WandererNotifier.HttpClient.Httpoison
-      )
-
-    case client.get(url, headers, opts) do
-      {:ok, %{status_code: 200, body: body}} ->
-        AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
-        {:ok, body}
-
-      {:ok, %{status_code: status, body: body}} ->
-        error_info = try_parse_error_body(body)
-        AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, error: error_info})
-        {:error, {:http_error, status}}
-
-      {:error, %{reason: :timeout}} ->
-        AppLogger.api_error("ZKill timeout", %{url: url, timeout: 10_000})
-        {:error, :timeout}
-
-      {:error, reason} ->
-        AppLogger.api_error("ZKill HTTP client error", %{url: url, error: inspect(reason)})
-        {:error, reason}
-    end
   end
 
   # -- Decode JSON or pass through maps/lists --
@@ -179,9 +178,15 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     "#{@base_url}/characterID/#{id}/startTime/#{start_iso}/endTime/#{end_iso}/"
   end
 
-  # -- Formatting Kills into Strings --
+  defp build_url(killmail_id, hash) do
+    "#{@base_url}/killID/#{killmail_id}/#{hash}/"
+  end
 
-  defp format_kills(kills), do: Enum.map(kills, &format_kill/1)
+  # -- Response Formatting --
+
+  defp format_kills(kills) do
+    Enum.map(kills, &format_kill/1)
+  end
 
   defp format_kill(kill) do
     kill_id = Map.get(kill, "killmail_id", "Unknown")
@@ -259,7 +264,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp format_time(details) do
     with time_str when is_binary(time_str) <- Map.get(details, "killmail_time"),
          {:ok, dt, _} <- DateTime.from_iso8601(time_str) do
-      diff = DateTime.diff(DateTime.utc_now(), dt)
+      diff = TimeUtils.elapsed_seconds(dt)
       format_diff(diff)
     else
       _ -> ""
@@ -284,17 +289,37 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   defp format_isk(_), do: "0 ISK"
 
-  # -- Utilities --
+  # -- Logging Helpers --
 
-  defp sample(body) when is_binary(body), do: String.slice(body, 0, 200)
-  defp sample(_), do: ""
+  defp log_api(method, metadata) do
+    AppLogger.api_debug("ZKill API request", Map.merge(%{method: method}, Map.new(metadata)))
+  end
 
-  defp try_parse_error_body(body) when is_binary(body) do
+  defp sample(body) when is_binary(body) do
+    String.slice(body, 0, 100)
+  end
+
+  defp sample(_), do: nil
+
+  # Add handle_response function
+  defp handle_response({:ok, %{status_code: 200, body: body}}) do
     case Jason.decode(body) do
-      {:ok, json} -> json
-      _ -> nil
+      {:ok, data} when is_map(data) ->
+        {:ok, data}
+
+      {:ok, _} ->
+        {:error, :invalid_response_format}
+
+      {:error, reason} ->
+        {:error, {:json_decode_error, reason}}
     end
   end
 
-  defp log_api(method, meta), do: AppLogger.api_info("ZKill #{method}", meta)
+  defp handle_response({:ok, %{status_code: status}}) do
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_response({:error, reason}) do
+    {:error, reason}
+  end
 end

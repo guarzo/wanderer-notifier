@@ -72,6 +72,7 @@ defmodule WandererNotifier.Logger.Logger do
   @behaviour WandererNotifier.Logger.LoggerBehaviour
 
   require Logger
+  alias WandererNotifier.Utils.TimeUtils
 
   # Category constants
   @category_processor :processor
@@ -617,6 +618,7 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   def count_batch_event(_category, _details, _log_immediately \\ false) do
+    # @todo Implement batch event logging to reduce log volume
     # For now, just log immediately with a batch indicator
     # log(@level_info, category, "Batch event", Map.merge(details, %{batch: true}))
     :ok
@@ -651,7 +653,7 @@ defmodule WandererNotifier.Logger.Logger do
     info("[Startup] Beginning phase: #{phase}", %{
       phase: phase,
       message: message,
-      timestamp: DateTime.utc_now()
+      timestamp: TimeUtils.now()
     })
 
     :ok
@@ -676,7 +678,7 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   def complete_startup do
-    info("[Startup] Application startup complete", %{timestamp: DateTime.utc_now()})
+    info("[Startup] Application startup complete", %{timestamp: TimeUtils.now()})
     :ok
   end
 

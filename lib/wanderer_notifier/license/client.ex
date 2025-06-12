@@ -4,9 +4,9 @@ defmodule WandererNotifier.License.Client do
   Provides functions for validating licenses and bots.
   """
   require Logger
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.License.Validation
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
@@ -46,13 +46,17 @@ defmodule WandererNotifier.License.Client do
 
   # Make the actual API request for validation
   defp make_validation_request(url, body, headers) do
-    case HttpClient.post_json(url, body, headers,
-           label: "LicenseManager.validate_bot",
-           debug: true,
-           timeout: 5000
-         ) do
-      {:ok, %{status_code: _status, body: decoded}} ->
+    case WandererNotifier.HTTP.post_json(url, body, headers) do
+      {:ok, %{status_code: status, body: decoded}} when status in 200..299 ->
         process_successful_validation(decoded)
+
+      {:ok, %{status_code: status, body: body}} ->
+        AppLogger.api_error("License Manager API returned error status",
+          status: status,
+          body: inspect(body)
+        )
+
+        {:error, :request_failed}
 
       {:error, :connect_timeout} ->
         AppLogger.api_error("License Manager API request timed out")
@@ -70,41 +74,22 @@ defmodule WandererNotifier.License.Client do
 
   # Process a successful validation response
   defp process_successful_validation(decoded) when is_map(decoded) do
-    # Additional logging for easier debugging without exposing sensitive data
-    license_valid = decoded["license_valid"] || false
-
-    log_validation_result(license_valid, decoded["message"])
-
-    # Ensure the response contains both formats for compatibility
-    enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
-    {:ok, enhanced_response}
+    Validation.process_validation_result({:ok, decoded})
   end
 
   # Handle case when response is not a map
   defp process_successful_validation(decoded) do
-    AppLogger.api_error("Invalid license validation response format", response: inspect(decoded))
-
-    # Return a standardized error response
-    {:ok,
-     %{
-       "license_valid" => false,
-       "valid" => false,
-       "message" => "Invalid response format: #{inspect(decoded)}"
-     }}
-  end
-
-  # Log the validation result based on validity
-  defp log_validation_result(true, _message) do
-    AppLogger.api_debug("License and bot validation successful", license_valid: true)
-  end
-
-  defp log_validation_result(false, message) do
-    error_msg = message || "License is not valid"
-
-    AppLogger.api_warn("License and bot validation failed",
-      reason: error_msg,
-      license_valid: false
+    AppLogger.config_error(
+      "License validation failed - Invalid response format: #{inspect(decoded)}"
     )
+
+    error_response =
+      Validation.create_error_response(
+        :invalid_response,
+        "Invalid response format: #{inspect(decoded)}"
+      )
+
+    {:ok, error_response}
   end
 
   @doc """
@@ -149,14 +134,7 @@ defmodule WandererNotifier.License.Client do
 
   # Make the actual HTTP request for license validation
   defp make_license_validation_request(url, body, headers) do
-    request_options = [
-      label: "LicenseManager.validate_license",
-      timeout: 2500,
-      max_retries: 1,
-      debug: true
-    ]
-
-    case HttpClient.post_json(url, body, headers, request_options) do
+    case WandererNotifier.HTTP.post_json(url, body, headers) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_decoded_license_data(decoded)
 
@@ -174,18 +152,17 @@ defmodule WandererNotifier.License.Client do
     end
   end
 
-  # Process decoded license data based on its format
+  # Process decoded license data based on its format using pattern matching
+  defp process_decoded_license_data(%{"license_valid" => _} = decoded) do
+    process_license_valid_format(decoded)
+  end
+
+  defp process_decoded_license_data(%{"valid" => _} = decoded) do
+    process_valid_format(decoded)
+  end
+
   defp process_decoded_license_data(decoded) do
-    cond do
-      Map.has_key?(decoded, "license_valid") ->
-        process_license_valid_format(decoded)
-
-      Map.has_key?(decoded, "valid") ->
-        process_valid_format(decoded)
-
-      true ->
-        process_unknown_format(decoded)
-    end
+    process_unknown_format(decoded)
   end
 
   # Handle the license_valid format (from validate_bot endpoint)

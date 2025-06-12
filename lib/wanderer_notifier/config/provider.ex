@@ -86,29 +86,27 @@ defmodule WandererNotifier.ConfigProvider do
   # Private helper functions
 
   defp parse_port do
-    case System.get_env("PORT") do
-      nil ->
-        4000
-
-      port_str ->
-        case Integer.parse(port_str) do
-          {port, _} -> port
-          :error -> 4000
-        end
-    end
+    System.get_env("PORT") |> WandererNotifier.Config.Utils.parse_port()
   end
 
   defp parse_bool(key, default) do
-    System.get_env(key)
-    |> case do
+    case System.get_env(key) do
       nil ->
         default
 
+      # Handle empty string explicitly
+      "" ->
+        default
+
       value ->
-        value
-        |> String.downcase()
-        |> String.trim()
-        |> parse_bool_value(default)
+        normalized = value |> String.downcase() |> String.trim()
+
+        if normalized == "" do
+          # Handle whitespace-only strings
+          default
+        else
+          parse_bool_value(normalized, default)
+        end
     end
   end
 
@@ -132,15 +130,8 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_character_exclude_list do
-    case System.get_env("CHARACTER_EXCLUDE_LIST") do
-      nil ->
-        []
-
-      value ->
-        value
-        |> String.split(",", trim: true)
-        |> Enum.map(&String.trim/1)
-    end
+    System.get_env("CHARACTER_EXCLUDE_LIST")
+    |> WandererNotifier.Config.Utils.parse_comma_list()
   end
 
   # Configuration building functions

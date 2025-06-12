@@ -8,6 +8,7 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
   alias WandererNotifier.TestMocks
 
   # Make sure mocks are verified when the test exits
+  setup :set_mox_from_context
   setup :verify_on_exit!
 
   setup do
