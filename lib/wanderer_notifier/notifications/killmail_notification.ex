@@ -112,7 +112,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Gets the latest killmails for notification.
   """
   def get_latest_killmails do
-    case Cachex.get(@cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, kill_ids} when is_list(kill_ids) ->
         get_kills_by_ids(kill_ids)
 
@@ -124,7 +124,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Private helper functions
 
   defp get_recent_kill do
-    case Cachex.get(@cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
       _ -> {:error, :no_recent_kills}
     end
@@ -337,7 +337,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
     results =
       Enum.map(keys, fn key ->
-        case Cachex.get(@cache_name, key) do
+        case Adapter.get(@cache_name, key) do
           {:ok, value} -> {:ok, value}
           _ -> {:ok, nil}
         end
