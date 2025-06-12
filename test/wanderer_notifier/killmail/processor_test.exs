@@ -37,10 +37,14 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     |> stub(:deduplication_module, fn -> MockDeduplication end)
     |> stub(:system_track_module, fn -> MockSystem end)
     |> stub(:character_track_module, fn -> MockCharacter end)
-    |> stub(:notification_determiner_module, fn -> WandererNotifier.Notifications.Determiner.Kill end)
+    |> stub(:notification_determiner_module, fn ->
+      WandererNotifier.Notifications.Determiner.Kill
+    end)
     |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Killmail.Enrichment end)
     |> stub(:notification_dispatcher_module, fn -> MockDispatcher end)
-    |> stub(:killmail_notification_module, fn -> WandererNotifier.Notifications.KillmailNotification end)
+    |> stub(:killmail_notification_module, fn ->
+      WandererNotifier.Notifications.KillmailNotification
+    end)
     |> stub(:config_module, fn -> MockConfig end)
 
     # Set up default ESI client mock responses

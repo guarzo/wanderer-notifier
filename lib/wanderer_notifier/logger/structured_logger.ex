@@ -230,6 +230,4 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   rescue
     _ -> nil
   end
-
-  defp safe_get_in(_, _), do: nil
 end

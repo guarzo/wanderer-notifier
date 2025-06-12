@@ -15,7 +15,7 @@ defmodule WandererNotifier.Cache.ETSCache do
   defmodule State do
     @moduledoc """
     State struct for the ETSCache GenServer.
-    
+
     Holds the ETS table name for the cache instance.
     """
     defstruct [:table_name]
@@ -228,9 +228,9 @@ defmodule WandererNotifier.Cache.ETSCache do
     results =
       Enum.map(keys, fn key ->
         case get(key) do
+          {:ok, nil} -> {:error, :not_found}
           {:ok, value} -> {:ok, value}
           {:error, reason} -> {:error, reason}
-          _ -> {:error, :not_found}
         end
       end)
 

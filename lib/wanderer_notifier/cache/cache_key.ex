@@ -257,7 +257,7 @@ defmodule WandererNotifier.Cache.CacheKey do
   defp determine_type(key_info) do
     prefix = key_info.prefix
     entity = Map.get(key_info, :entity)
-    
+
     cond do
       type = Map.get(@type_mappings, {prefix, entity}) -> type
       prefix == "config" -> :config

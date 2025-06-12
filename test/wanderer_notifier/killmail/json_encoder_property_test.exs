@@ -6,7 +6,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
   describe "JSON encoding/decoding round-trip properties" do
     property "any valid killmail can be encoded and decoded back" do
-      check all killmail <- killmail_generator() do
+      check all(killmail <- killmail_generator()) do
         # Encode to JSON
         {:ok, json} = Jason.encode(killmail)
 
@@ -29,7 +29,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "encoded JSON contains all non-nil fields" do
-      check all killmail <- killmail_generator() do
+      check all(killmail <- killmail_generator()) do
         {:ok, json} = Jason.encode(killmail)
         {:ok, decoded} = Jason.decode(json)
 
@@ -44,7 +44,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "nil values are handled properly in JSON" do
-      check all killmail <- killmail_with_nils_generator() do
+      check all(killmail <- killmail_with_nils_generator()) do
         {:ok, json} = Jason.encode(killmail)
         {:ok, decoded} = Jason.decode(json)
 
@@ -56,6 +56,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
         |> Enum.filter(fn {_k, v} -> is_nil(v) end)
         |> Enum.each(fn {key, _value} ->
           key_str = Atom.to_string(key)
+
           if key_str in ["zkb", "esi_data", "attackers"] do
             # These fields might exist but be nil due to Map.update behavior
             if Map.has_key?(decoded, key_str) do
@@ -72,7 +73,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
   describe "nested structure encoding properties" do
     property "zkb data is properly encoded" do
-      check all zkb_data <- zkb_generator() do
+      check all(zkb_data <- zkb_generator()) do
         killmail = %Killmail{
           killmail_id: "123456",
           zkb: zkb_data
@@ -86,8 +87,9 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "victim data in esi_data is preserved" do
-      check all victim <- victim_generator() do
+      check all(victim <- victim_generator()) do
         esi_data = %{"victim" => victim, "solar_system_id" => 30_000_142}
+
         killmail = %Killmail{
           killmail_id: "123456",
           zkb: %{},
@@ -102,8 +104,9 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "attackers list is properly encoded" do
-      check all attackers <- list_of(attacker_generator(), min_length: 0, max_length: 10) do
+      check all(attackers <- list_of(attacker_generator(), min_length: 0, max_length: 10)) do
         esi_data = %{"attackers" => attackers, "solar_system_id" => 30_000_142}
+
         killmail = %Killmail{
           killmail_id: "123456",
           zkb: %{},
@@ -122,7 +125,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
   describe "type conversion properties" do
     property "killmail_id can be string or integer" do
-      check all id <- one_of([positive_integer(), string(:alphanumeric, min_length: 1)]) do
+      check all(id <- one_of([positive_integer(), string(:alphanumeric, min_length: 1)])) do
         killmail = %Killmail{
           killmail_id: id,
           zkb: %{}
@@ -137,8 +140,10 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "numeric values are preserved" do
-      check all value <- float(min: 0.0, max: 1_000_000_000.0),
-                system_id <- positive_integer() do
+      check all(
+              value <- float(min: 0.0, max: 1_000_000_000.0),
+              system_id <- positive_integer()
+            ) do
         killmail = %Killmail{
           killmail_id: "123456",
           zkb: %{"totalValue" => value},
@@ -158,11 +163,14 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
   describe "edge cases and invariants" do
     property "empty structures are handled correctly" do
-      check all killmail <- one_of([
+      check all(
+              killmail <-
+                one_of([
                   constant(%Killmail{killmail_id: "1", zkb: %{}}),
                   constant(%Killmail{killmail_id: "2", zkb: %{}, esi_data: %{}}),
                   constant(%Killmail{killmail_id: "3", zkb: %{}, attackers: []})
-                ]) do
+                ])
+            ) do
         {:ok, json} = Jason.encode(killmail)
         {:ok, decoded} = Jason.decode(json)
 
@@ -172,9 +180,10 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     end
 
     property "deeply nested structures are preserved" do
-      check all depth <- integer(1..5) do
+      check all(depth <- integer(1..5)) do
         # Create a nested structure
         nested = create_nested_map(depth)
+
         killmail = %Killmail{
           killmail_id: "nested",
           zkb: nested
@@ -191,27 +200,40 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   # Generators
 
   defp killmail_generator do
-    gen all core_fields <- core_killmail_fields_generator(),
-            victim_fields <- victim_fields_generator(),
-            system_fields <- system_fields_generator(),
-            optional_fields <- optional_fields_generator() do
-      struct(Killmail, Map.merge(core_fields, Map.merge(victim_fields, Map.merge(system_fields, optional_fields))))
+    gen all(
+          core_fields <- core_killmail_fields_generator(),
+          victim_fields <- victim_fields_generator(),
+          system_fields <- system_fields_generator(),
+          optional_fields <- optional_fields_generator()
+        ) do
+      struct(
+        Killmail,
+        Map.merge(
+          core_fields,
+          Map.merge(victim_fields, Map.merge(system_fields, optional_fields))
+        )
+      )
     end
   end
 
   defp core_killmail_fields_generator do
-    gen all killmail_id <- one_of([positive_integer(), string(:alphanumeric, min_length: 1)]),
-            zkb <- zkb_generator(),
-            esi_data <- one_of([nil, esi_data_generator()]) do
+    gen all(
+          killmail_id <- one_of([positive_integer(), string(:alphanumeric, min_length: 1)]),
+          zkb <- zkb_generator(),
+          esi_data <- one_of([nil, esi_data_generator()])
+        ) do
       %{killmail_id: killmail_id, zkb: zkb, esi_data: esi_data}
     end
   end
 
   defp victim_fields_generator do
-    gen all victim_name <- one_of([nil, string(:alphanumeric)]),
-            victim_corporation <- one_of([nil, string(:alphanumeric)]),
-            victim_corp_ticker <- one_of([nil, string(:alphanumeric, min_length: 1, max_length: 5)]),
-            victim_alliance <- one_of([nil, string(:alphanumeric)]) do
+    gen all(
+          victim_name <- one_of([nil, string(:alphanumeric)]),
+          victim_corporation <- one_of([nil, string(:alphanumeric)]),
+          victim_corp_ticker <-
+            one_of([nil, string(:alphanumeric, min_length: 1, max_length: 5)]),
+          victim_alliance <- one_of([nil, string(:alphanumeric)])
+        ) do
       %{
         victim_name: victim_name,
         victim_corporation: victim_corporation,
@@ -222,23 +244,29 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp system_fields_generator do
-    gen all ship_name <- one_of([nil, string(:alphanumeric)]),
-            system_name <- one_of([nil, string(:alphanumeric)]),
-            system_id <- one_of([nil, positive_integer()]) do
+    gen all(
+          ship_name <- one_of([nil, string(:alphanumeric)]),
+          system_name <- one_of([nil, string(:alphanumeric)]),
+          system_id <- one_of([nil, positive_integer()])
+        ) do
       %{ship_name: ship_name, system_name: system_name, system_id: system_id}
     end
   end
 
   defp optional_fields_generator do
-    gen all attackers <- one_of([nil, list_of(attacker_generator(), max_length: 5)]),
-            value <- one_of([nil, float(min: 0.0, max: 1_000_000_000.0)]) do
+    gen all(
+          attackers <- one_of([nil, list_of(attacker_generator(), max_length: 5)]),
+          value <- one_of([nil, float(min: 0.0, max: 1_000_000_000.0)])
+        ) do
       %{attackers: attackers, value: value}
     end
   end
 
   defp killmail_with_nils_generator do
-    gen all killmail_id <- string(:alphanumeric, min_length: 1),
-            zkb <- zkb_generator() do
+    gen all(
+          killmail_id <- string(:alphanumeric, min_length: 1),
+          zkb <- zkb_generator()
+        ) do
       %Killmail{
         killmail_id: killmail_id,
         zkb: zkb,
@@ -266,10 +294,12 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp esi_data_generator do
-    gen all victim <- one_of([nil, victim_generator()]),
-            attackers <- list_of(attacker_generator(), max_length: 5),
-            solar_system_id <- positive_integer(),
-            killmail_time <- string(:alphanumeric) do
+    gen all(
+          victim <- one_of([nil, victim_generator()]),
+          attackers <- list_of(attacker_generator(), max_length: 5),
+          solar_system_id <- positive_integer(),
+          killmail_time <- string(:alphanumeric)
+        ) do
       %{
         "victim" => victim,
         "attackers" => attackers,
@@ -280,10 +310,12 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp victim_generator do
-    gen all character_id <- one_of([nil, positive_integer()]),
-            corporation_id <- positive_integer(),
-            alliance_id <- one_of([nil, positive_integer()]),
-            ship_type_id <- positive_integer() do
+    gen all(
+          character_id <- one_of([nil, positive_integer()]),
+          corporation_id <- positive_integer(),
+          alliance_id <- one_of([nil, positive_integer()]),
+          ship_type_id <- positive_integer()
+        ) do
       %{
         "character_id" => character_id,
         "corporation_id" => corporation_id,
@@ -294,12 +326,14 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp attacker_generator do
-    gen all character_id <- one_of([nil, positive_integer()]),
-            corporation_id <- positive_integer(),
-            alliance_id <- one_of([nil, positive_integer()]),
-            ship_type_id <- positive_integer(),
-            weapon_type_id <- positive_integer(),
-            damage_done <- positive_integer() do
+    gen all(
+          character_id <- one_of([nil, positive_integer()]),
+          corporation_id <- positive_integer(),
+          alliance_id <- one_of([nil, positive_integer()]),
+          ship_type_id <- positive_integer(),
+          weapon_type_id <- positive_integer(),
+          damage_done <- positive_integer()
+        ) do
       %{
         "character_id" => character_id,
         "corporation_id" => corporation_id,
@@ -312,6 +346,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp create_nested_map(0), do: %{"value" => "leaf"}
+
   defp create_nested_map(depth) do
     %{
       "level" => depth,

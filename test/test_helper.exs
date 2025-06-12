@@ -91,13 +91,32 @@ Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
    }}
 end)
 
-Mox.stub(WandererNotifier.MockConfig, :deduplication_module, fn -> WandererNotifier.MockDeduplication end)
+Mox.stub(WandererNotifier.MockConfig, :deduplication_module, fn ->
+  WandererNotifier.MockDeduplication
+end)
+
 Mox.stub(WandererNotifier.MockConfig, :system_track_module, fn -> WandererNotifier.MockSystem end)
-Mox.stub(WandererNotifier.MockConfig, :character_track_module, fn -> WandererNotifier.MockCharacter end)
-Mox.stub(WandererNotifier.MockConfig, :notification_determiner_module, fn -> WandererNotifier.Notifications.Determiner.Kill end)
-Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn -> WandererNotifier.Killmail.Enrichment end)
-Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn -> WandererNotifier.MockDispatcher end)
-Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn -> WandererNotifier.Notifications.KillmailNotification end)
+
+Mox.stub(WandererNotifier.MockConfig, :character_track_module, fn ->
+  WandererNotifier.MockCharacter
+end)
+
+Mox.stub(WandererNotifier.MockConfig, :notification_determiner_module, fn ->
+  WandererNotifier.Notifications.Determiner.Kill
+end)
+
+Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn ->
+  WandererNotifier.Killmail.Enrichment
+end)
+
+Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn ->
+  WandererNotifier.MockDispatcher
+end)
+
+Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn ->
+  WandererNotifier.Notifications.KillmailNotification
+end)
+
 Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)
 
 # Set up default stubs for system mock
