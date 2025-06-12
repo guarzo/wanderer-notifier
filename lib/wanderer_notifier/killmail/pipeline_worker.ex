@@ -55,7 +55,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     worker_pid = self()
 
     # Process asynchronously using Task.Supervisor to avoid blocking the GenServer
-    Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+    %Task{ref: ref} = Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
       case Processor.process_zkill_message(data, state) do
         {:ok, result} ->
           AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
@@ -66,6 +66,9 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
           send(worker_pid, {:update_stats, :errors})
       end
     end)
+
+    # Demonitor to prevent receiving DOWN messages
+    Process.demonitor(ref, [:flush])
 
     {:noreply, state}
   end
@@ -142,7 +145,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
   end
 
   defp update_stats(state, type) do
-    stats = Map.update!(state.stats, type, &(&1 + 1))
+    stats = Map.update(state.stats, type, 1, &(&1 + 1))
     %{state | stats: stats}
   end
 end

@@ -42,7 +42,7 @@ defmodule WandererNotifier.Cache.CacheKey do
     character: &Keys.character/1,
     tracked_system: &Keys.tracked_system/1,
     tracked_character: &Keys.tracked_character/1,
-    killmail: &Keys.kill/1,
+    killmail: &Keys.killmail/2,
     corporation: &Keys.corporation/1,
     alliance: &Keys.alliance/1,
     ship_type: &Keys.ship_type/1,

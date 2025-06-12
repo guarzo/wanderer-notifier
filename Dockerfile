@@ -63,24 +63,26 @@ RUN mix compile --warnings-as-errors \
 #    - Installs only what's needed at runtime.
 #    - Copies the compiled release and switches to a non-root user.
 ###############################################################################
-FROM alpine:3.20 AS runtime
+FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
 # Install minimal runtime dependencies
-# - ncurses-libs is required for Erlang VM
-# - libstdc++ is required for NIFs
+# - libncurses6 is required for Erlang VM
+# - libstdc++6 is required for NIFs
 # - openssl for crypto operations
 # - ca-certificates for HTTPS
-# - libgcc for runtime C dependencies
-RUN apk add --no-cache \
-      ncurses-libs=6.4_p20240420-r0 \
-      libstdc++=13.2.1_git20240309-r0 \
-      openssl=3.3.2-r0 \
-      ca-certificates=20240705-r0 \
-      libgcc=13.2.1_git20240309-r0 \
- && addgroup -S app \
- && adduser -S -G app app
+# - libgcc-s1 for runtime C dependencies
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libncurses6 \
+      libstdc++6 \
+      openssl \
+      ca-certificates \
+      libgcc-s1 \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -r app \
+ && useradd -r -g app app
 
 # Copy the built release from the build stage, with ownership set to the 'app' user
 COPY --from=build --chown=app:app /app/_build/prod/rel/wanderer_notifier ./

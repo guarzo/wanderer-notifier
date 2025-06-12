@@ -349,7 +349,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   defp process_kill_results(kill_ids, results) do
     for {id, {:ok, data}} <- Enum.zip(kill_ids, results),
         not is_nil(data) do
-      Map.put(data, "id", id)
+      Map.put(data, :id, id)
     end
   end
 end

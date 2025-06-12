@@ -187,8 +187,11 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       get_in(data, ["killmail", "solar_system_id"]) ||
         get_in(data, ["solar_system_id"])
 
-    system_name = get_system_name(system_id)
-    AppLogger.processor_info("💀 📥 Killmail #{kill_id} | #{system_name} | Received from RedisQ")
+    # Spawn async task to log with system name to avoid blocking the GenServer
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      system_name = get_system_name(system_id)
+      AppLogger.processor_info("💀 📥 Killmail #{kill_id} | #{system_name} | Received from RedisQ")
+    end)
 
     # Send to parent
     send(state.parent, {:zkill_message, data})
@@ -525,13 +528,25 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp get_system_name(nil), do: "unknown"
 
   defp get_system_name(system_id) do
-    # ESI service already handles caching internally
-    case esi_service().get_system_info(system_id, []) do
-      {:ok, %{"name" => name}} when is_binary(name) ->
-        name
+    # Check if we have a cached name first
+    cache_key = "system_name:#{system_id}"
+    
+    case :persistent_term.get({__MODULE__, cache_key}, nil) do
+      nil ->
+        # No cached name, fetch from ESI
+        case esi_service().get_system_info(system_id, []) do
+          {:ok, %{"name" => name}} when is_binary(name) ->
+            # Cache the name for future use
+            :persistent_term.put({__MODULE__, cache_key}, name)
+            name
 
-      _ ->
-        "System #{system_id}"
+          _ ->
+            "System #{system_id}"
+        end
+        
+      name ->
+        # Return cached name
+        name
     end
   end
 

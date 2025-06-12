@@ -42,8 +42,17 @@ defmodule WandererNotifier.Cache.Adapter do
   def set(cache_name, key, value, ttl \\ nil) do
     # Use default TTL if not specified
     ttl =
-      ttl ||
-        :default |> WandererNotifier.Cache.Config.ttl_for() |> :timer.seconds()
+      case ttl do
+        nil ->
+          case WandererNotifier.Cache.Config.ttl_for(:default) do
+            :infinity -> :infinity
+            ttl_ms -> :timer.seconds(ttl_ms)
+          end
+        :infinity ->
+          :infinity
+        ttl_val ->
+          ttl_val
+      end
 
     case adapter() do
       Cachex ->

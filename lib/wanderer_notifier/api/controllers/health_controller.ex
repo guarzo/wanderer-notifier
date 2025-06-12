@@ -29,9 +29,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     # Get memory information
     memory_info = :erlang.memory()
 
-    # Calculate uptime in milliseconds
-    uptime_ms = :erlang.statistics(:wall_clock) |> elem(0)
-    uptime_seconds = div(uptime_ms, 1000)
+    # Calculate uptime in seconds using reliable system uptime
+    uptime_seconds = :erlang.system_info(:uptime) |> div(1000)
 
     detailed_status = %{
       status: "OK",
