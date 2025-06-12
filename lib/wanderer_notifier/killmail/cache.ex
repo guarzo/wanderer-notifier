@@ -181,8 +181,8 @@ defmodule WandererNotifier.Killmail.Cache do
       end
 
     # Add the new kill ID to the list (if not already present)
-    # Limit the list to a maximum of 100 recent kills
-    max_recent_kills = 100
+    # Limit the list to a maximum of recent kills
+    max_recent_kills = Application.get_env(:wanderer_notifier, :max_recent_kills, 100)
 
     updated_ids =
       if kill_id in kill_ids do

@@ -65,7 +65,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
       send_notification(killmail, ctx)
     else
       {:ok, :duplicate} ->
-        {:ok, :duplicate}
+        handle_notification_skipped(kill_id, system_id, :duplicate)
 
       {:ok, %{should_notify: false, reason: r}} ->
         handle_notification_skipped(kill_id, system_id, r)
@@ -134,6 +134,23 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   # — Killmail ID Extraction ————————————————————————————————————————————
+
+  defp extract_killmail_id(%Killmail{killmail_id: id}) when is_integer(id) do
+    {:ok, to_string(id)}
+  end
+
+  defp extract_killmail_id(%Killmail{killmail_id: id}) when is_binary(id) and id != "" do
+    {:ok, id}
+  end
+
+  defp extract_killmail_id(%Killmail{} = killmail) do
+    ErrorLogger.log_kill_error("Invalid killmail ID in struct",
+      data: inspect(killmail),
+      module: __MODULE__
+    )
+
+    {:error, :invalid_killmail_id}
+  end
 
   defp extract_killmail_id(%{} = data) do
     case get_kill_id(data) do
@@ -302,6 +319,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Utilities —————————————————————————————————————————————————————————
 
+  defp get_reason_emoji(:duplicate), do: "♻️"
   defp get_reason_emoji(:no_tracked_entities), do: "🚫"
   defp get_reason_emoji(:notifications_disabled), do: "⏸️"
   defp get_reason_emoji(:system_notifications_disabled), do: "🗺️❌"

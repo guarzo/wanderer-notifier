@@ -55,7 +55,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     worker_pid = self()
 
     # Process asynchronously using Task.Supervisor to avoid blocking the GenServer
-    %Task{ref: ref} = Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
       case Processor.process_zkill_message(data, state) do
         {:ok, result} ->
           AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
@@ -66,9 +66,6 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
           send(worker_pid, {:update_stats, :errors})
       end
     end)
-
-    # Demonitor to prevent receiving DOWN messages
-    Process.demonitor(ref, [:flush])
 
     {:noreply, state}
   end
@@ -116,6 +113,18 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     else
       {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info({ref, _result}, state) when is_reference(ref) do
+    # Ignore Task replies since we're using start_child (fire and forget)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state) do
+    # Ignore normal task termination
+    {:noreply, state}
   end
 
   @impl true

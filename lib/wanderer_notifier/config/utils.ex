@@ -61,7 +61,7 @@ defmodule WandererNotifier.Config.Utils do
   def parse_port(port) when is_integer(port), do: port
 
   def parse_port(port) when is_binary(port) do
-    case Integer.parse(port) do
+    case port |> String.trim() |> Integer.parse() do
       {int_port, _} -> int_port
       :error -> 4000
     end

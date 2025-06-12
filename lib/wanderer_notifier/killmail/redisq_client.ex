@@ -530,7 +530,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp get_system_name(system_id) do
     # Check if we have a cached name first
     cache_key = "system_name:#{system_id}"
-    
+
     case :persistent_term.get({__MODULE__, cache_key}, nil) do
       nil ->
         # No cached name, fetch from ESI
@@ -543,7 +543,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
           _ ->
             "System #{system_id}"
         end
-        
+
       name ->
         # Return cached name
         name

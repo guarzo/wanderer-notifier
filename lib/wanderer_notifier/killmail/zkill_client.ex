@@ -102,21 +102,14 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   # -- HTTP + Retry Pipeline --
 
-  defp perform_request(url), do: retry(fn -> make_http_request(url) end, 0)
-
-  defp retry(fun, attempt) when attempt < @max_retries do
-    case fun.() do
-      {:ok, resp} ->
-        {:ok, resp}
-
-      {:error, reason} ->
-        Logger.warning("ZKill request error: #{inspect(reason)}, retry ##{attempt + 1}")
-        :timer.sleep(Constants.zkill_retry_backoff() * (attempt + 1))
-        retry(fun, attempt + 1)
-    end
+  defp perform_request(url) do
+    RateLimiter.run(
+      fn -> make_http_request(url) end,
+      context: "ZKill request",
+      max_retries: @max_retries,
+      base_backoff: Constants.zkill_retry_backoff()
+    )
   end
-
-  defp retry(_, attempt), do: {:error, {:max_retries_reached, attempt}}
 
   # -- Raw HTTP Request (via configured HTTP client) --
 

@@ -18,7 +18,7 @@ defmodule WandererNotifier.Config.SystemEnvProvider do
   @impl true
   def fetch_env!(key) do
     case System.get_env(key) do
-      nil -> raise ArgumentError, "Environment variable #{key} is not set"
+      nil -> raise KeyError, key: key, term: "environment"
       value -> value
     end
   end

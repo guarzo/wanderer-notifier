@@ -8,7 +8,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   require Logger
   alias WandererNotifier.HTTP
-  alias WandererNotifier.Http.ResponseHandler
 
   @callback endpoint() :: String.t()
   @callback extract_data(map()) :: {:ok, list()} | {:error, term()}
@@ -20,38 +19,116 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   @callback send_notification(term()) :: :ok | {:error, term()}
   @callback enrich_item(term()) :: term()
 
+  # Extract shared functions out of the macro
+  def fetch_and_decode(url, headers) do
+    with {:ok, response} <- HTTP.get(url, headers),
+         {:ok, body} <- extract_body(response),
+         {:ok, decoded} <- decode_body(body) do
+      {:ok, decoded}
+    else
+      {:error, _} = error -> error
+    end
+  end
+
+  defp extract_body(%{status_code: 200, body: body}), do: {:ok, body}
+  defp extract_body(%{status_code: status} = _response), do: {:error, {:api_error, status}}
+
+  defp decode_body(body) when is_map(body), do: {:ok, body}
+
+  defp decode_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, _} -> {:error, :json_decode_error}
+    end
+  end
+
+  defp decode_body(_), do: {:error, :invalid_body}
+
+  def cache_get(cache_key) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_list(data) and length(data) > 0 ->
+        AppLogger.api_info("Retrieved data from cache",
+          count: length(data),
+          key: cache_key
+        )
+
+        {:ok, data}
+
+      _ ->
+        AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
+        {:error, :cache_miss}
+    end
+  end
+
+  def cache_put(cache_key, data, ttl) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    AppLogger.api_info("Caching fetched data",
+      count: length(data),
+      key: cache_key,
+      ttl: ttl
+    )
+
+    case Cachex.put(cache_name, cache_key, data, ttl: :timer.seconds(ttl)) do
+      {:ok, true} ->
+        {:ok, data}
+
+      error ->
+        AppLogger.api_error("Failed to cache data", error: inspect(error))
+        {:error, :cache_error}
+    end
+  end
+
+  def build_url(endpoint) do
+    base_url = Config.base_map_url()
+    base_url = String.trim_trailing(base_url, "/")
+    map_slug = Config.map_slug()
+    "#{base_url}/api/maps/#{map_slug}/#{endpoint}"
+  end
+
+  def auth_headers do
+    token = Config.map_token()
+    [{"Authorization", "Bearer #{token}"}]
+  end
+
+  def find_new_items(cached_items, new_items) do
+    cached_ids =
+      cached_items
+      |> Enum.map(&get_item_id/1)
+      |> MapSet.new()
+
+    Enum.reject(new_items, fn item ->
+      get_item_id(item) in cached_ids
+    end)
+  end
+
+  def get_item_id(%{"id" => id}), do: id
+  def get_item_id(%{"eve_id" => id}), do: id
+  def get_item_id(%{id: id}), do: id
+  def get_item_id(%{eve_id: id}), do: id
+  def get_item_id(_), do: nil
+
   defmacro __using__(_opts) do
     quote do
       @behaviour WandererNotifier.Map.Clients.BaseMapClient
 
       # Default implementations of required functions
       def api_url do
-        base_url = Config.base_map_url()
-        endpoint = endpoint()
-        build_url(base_url, endpoint)
+        WandererNotifier.Map.Clients.BaseMapClient.build_url(endpoint())
       end
 
       def headers do
-        auth_header()
+        WandererNotifier.Map.Clients.BaseMapClient.auth_headers()
       end
 
       defoverridable api_url: 0, headers: 0
 
       def get_all do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-        case Cachex.get(cache_name, cache_key()) do
-          {:ok, data} when is_list(data) and length(data) > 0 ->
-            AppLogger.api_info("Retrieved data from cache",
-              count: length(data),
-              key: cache_key()
-            )
-
-            {:ok, data}
-
-          _ ->
-            AppLogger.api_info("Cache miss, fetching from API", key: cache_key())
-            fetch_and_cache()
+        case WandererNotifier.Map.Clients.BaseMapClient.cache_get(cache_key()) do
+          {:ok, data} -> {:ok, data}
+          {:error, :cache_miss} -> fetch_and_cache()
         end
       end
 
@@ -76,10 +153,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       def update_data(cached \\ [], opts \\ []) do
-        base_url = Config.base_map_url()
-        endpoint = endpoint()
-        url = build_url(base_url, endpoint)
-        headers = auth_header()
+        url = api_url()
+        headers = headers()
 
         case fetch_and_process(url, headers, cached, opts) do
           {:ok, _} = ok -> ok
@@ -88,14 +163,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fetch_and_process(url, headers, cached, opts) do
-        result = HTTP.get(url, headers)
-
-        with {:ok, body} <-
-               ResponseHandler.handle_response(result,
-                 success_codes: [200],
-                 log_context: %{client: module_name(), url: url}
-               ),
-             {:ok, decoded} <- decode_body(body),
+        with {:ok, decoded} <-
+               WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode(url, headers),
              {:ok, items} <- extract_data(decoded) do
           validate_and_process(items, cached, opts, url)
         else
@@ -113,7 +182,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
       end
 
-      # Validate data and process if valid
       defp validate_and_process(items, cached, opts, url) do
         case validate_data(items) do
           :ok ->
@@ -129,29 +197,18 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
       end
 
-      # Get the module name for logging
       defp module_name do
         __MODULE__ |> Module.split() |> List.last()
       end
 
       defp process_with_notifications(new_items, [], _opts) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-        case Cachex.put(cache_name, cache_key(), new_items, ttl: :timer.seconds(cache_ttl())) do
-          {:ok, true} ->
-            {:ok, new_items}
-
-          error ->
-            AppLogger.api_error("Failed to cache data", error: inspect(error))
-            {:error, :cache_error}
-        end
+        WandererNotifier.Map.Clients.BaseMapClient.cache_put(cache_key(), new_items, cache_ttl())
       end
 
       defp process_with_notifications(new_items, cached_items, opts) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
         # Find new items that aren't in the cache
-        truly_new_items = find_new_items(cached_items, new_items)
+        truly_new_items =
+          WandererNotifier.Map.Clients.BaseMapClient.find_new_items(cached_items, new_items)
 
         # Process notifications if not suppressed
         if !Keyword.get(opts, :suppress_notifications, false) do
@@ -159,22 +216,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
 
         # Cache the new data (all items, not just the new ones)
-        case Cachex.put(cache_name, cache_key(), new_items, ttl: :timer.seconds(cache_ttl())) do
-          {:ok, true} ->
-            {:ok, new_items}
-
-          error ->
-            AppLogger.api_error("Failed to cache data", error: inspect(error))
-            {:error, :cache_error}
-        end
-      end
-
-      defp find_new_items(cached_items, new_items) do
-        cached_ids = Enum.map(cached_items, &get_item_id/1) |> MapSet.new()
-
-        Enum.reject(new_items, fn item ->
-          get_item_id(item) in cached_ids
-        end)
+        WandererNotifier.Map.Clients.BaseMapClient.cache_put(cache_key(), new_items, cache_ttl())
       end
 
       defp process_notifications(items) do
@@ -186,7 +228,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp maybe_send_notification(item) do
-        if should_notify?(get_item_id(item), item) do
+        if should_notify?(WandererNotifier.Map.Clients.BaseMapClient.get_item_id(item), item) do
           send_notification(item)
         end
       rescue
@@ -199,34 +241,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           :error
       end
 
-      defp get_item_id(%{"id" => id}), do: id
-      defp get_item_id(%{"eve_id" => id}), do: id
-      defp get_item_id(%{id: id}), do: id
-      defp get_item_id(%{eve_id: id}), do: id
-      defp get_item_id(_), do: nil
-
       defp fetch_and_cache do
         case fetch_from_api() do
           {:ok, items} ->
-            cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-            AppLogger.api_info("Caching fetched data",
-              count: length(items),
-              key: cache_key(),
-              ttl: cache_ttl()
-            )
-
-            case Cachex.put(cache_name, cache_key(), items, ttl: :timer.seconds(cache_ttl())) do
-              {:ok, true} ->
-                {:ok, items}
-
-              error ->
-                AppLogger.api_error("Failed to cache data",
-                  error: inspect(error)
-                )
-
-                {:error, :cache_error}
-            end
+            WandererNotifier.Map.Clients.BaseMapClient.cache_put(cache_key(), items, cache_ttl())
 
           error ->
             AppLogger.api_error("Failed to fetch and cache data",
@@ -241,22 +259,12 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         url = api_url()
         headers = headers()
 
-        case HTTP.get(url, headers) do
-          {:ok, %{status_code: 200, body: body}} ->
-            # Check if body is already decoded
-            case body do
-              body when is_map(body) -> 
-                {:ok, body}
-              body when is_binary(body) ->
-                case Jason.decode(body) do
-                  {:ok, decoded} -> {:ok, decoded}
-                  {:error, _} -> {:error, :json_decode_error}
-                end
-              _ ->
-                {:error, :invalid_response_body}
-            end
-
-          {:ok, %{status_code: status}} ->
+        with {:ok, decoded} <-
+               WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode(url, headers),
+             {:ok, items} <- extract_data(decoded) do
+          {:ok, items}
+        else
+          {:error, {:api_error, status}} ->
             AppLogger.error("API request failed", %{
               status: status,
               url: url
@@ -274,13 +282,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
       end
 
-      # Helper functions
-      defp build_url(base_url, endpoint) do
-        base_url = String.trim_trailing(base_url, "/")
-        map_slug = Config.map_slug()
-        "#{base_url}/api/maps/#{map_slug}/#{endpoint}"
-      end
-
       defp add_query_params(url) do
         case endpoint() do
           "map/user_characters" ->
@@ -290,28 +291,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
             url
         end
       end
-
-      defp auth_header do
-        token = Config.map_token()
-        [{"Authorization", "Bearer #{token}"}]
-      end
-
-      defp decode_body(body) when is_binary(body) do
-        case Jason.decode(body) do
-          {:ok, data} ->
-            {:ok, data}
-
-          error ->
-            AppLogger.api_error("Failed to decode JSON",
-              error: inspect(error)
-            )
-
-            {:error, :json_decode_failed}
-        end
-      end
-
-      defp decode_body(map) when is_map(map), do: {:ok, map}
-      defp decode_body(other), do: {:error, :invalid_body}
 
       defp fallback(cached, reason) when is_list(cached) and cached != [] do
         AppLogger.api_info("Using cached data as fallback",

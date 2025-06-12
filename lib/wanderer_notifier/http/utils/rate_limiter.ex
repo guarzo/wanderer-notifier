@@ -21,7 +21,8 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
           max_backoff: pos_integer(),
           jitter: boolean(),
           on_retry: (pos_integer(), term(), pos_integer() -> :ok),
-          context: String.t()
+          context: String.t(),
+          async: boolean()
         ]
 
   @type rate_limit_result(success) :: {:ok, success} | {:error, term()}
@@ -99,11 +100,11 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       result = fun.()
 
       if async do
-        # Non-blocking: spawn a task to handle the delay
-        Task.start(fn -> :timer.sleep(interval_ms) end)
+        # Non-blocking: don't wait
+        :ok
       else
         # Blocking: maintain existing behavior for backward compatibility
-        :timer.sleep(interval_ms)
+        Process.sleep(interval_ms)
       end
 
       {:ok, result}
@@ -176,16 +177,12 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, :rate_limited, retry_after)
 
-    # Use Process.send_after for non-blocking delay
-    ref = make_ref()
-    Process.send_after(self(), {:retry_after, ref}, retry_after)
+    # Sleep for the retry_after duration
+    Process.sleep(retry_after)
 
-    receive do
-      {:retry_after, ^ref} ->
-        # Retry with incremented attempt counter
-        new_state = %{state | attempt: state.attempt + 1}
-        execute_with_rate_limit(fun, new_state)
-    end
+    # Retry with incremented attempt counter
+    new_state = %{state | attempt: state.attempt + 1}
+    execute_with_rate_limit(fun, new_state)
   end
 
   defp handle_retry(fun, state, error) do
@@ -194,16 +191,12 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, error, delay)
 
-    # Use Process.send_after for non-blocking delay
-    ref = make_ref()
-    Process.send_after(self(), {:retry_after, ref}, delay)
+    # Sleep for the calculated delay
+    Process.sleep(delay)
 
-    receive do
-      {:retry_after, ^ref} ->
-        # Retry with incremented attempt counter
-        new_state = %{state | attempt: state.attempt + 1}
-        execute_with_rate_limit(fun, new_state)
-    end
+    # Retry with incremented attempt counter
+    new_state = %{state | attempt: state.attempt + 1}
+    execute_with_rate_limit(fun, new_state)
   end
 
   defp calculate_backoff(attempt, base_backoff, max_backoff, jitter) do

@@ -40,33 +40,34 @@ defmodule WandererNotifier.Cache.Adapter do
   Sets a value in the cache with a TTL.
   """
   def set(cache_name, key, value, ttl \\ nil) do
-    # Use default TTL if not specified
-    ttl =
-      case ttl do
-        nil ->
-          case WandererNotifier.Cache.Config.ttl_for(:default) do
-            :infinity -> :infinity
-            ttl_ms -> :timer.seconds(ttl_ms)
-          end
-        :infinity ->
-          :infinity
-        ttl_val ->
-          ttl_val
-      end
+    ttl = normalize_ttl(ttl)
+    do_set(adapter(), cache_name, key, value, ttl)
+  end
 
-    case adapter() do
-      Cachex ->
-        Cachex.put(cache_name, key, value, ttl: ttl)
-
-      WandererNotifier.Cache.ETSCache ->
-        WandererNotifier.Cache.ETSCache.set(key, value, div(ttl, 1000), table: cache_name)
-
-      WandererNotifier.Cache.SimpleETSCache ->
-        WandererNotifier.Cache.SimpleETSCache.set(key, value, div(ttl, 1000))
-
-      other ->
-        {:error, {:unknown_adapter, other}}
+  defp normalize_ttl(nil) do
+    case WandererNotifier.Cache.Config.ttl_for(:default) do
+      :infinity -> :infinity
+      ttl_ms -> :timer.seconds(ttl_ms)
     end
+  end
+
+  defp normalize_ttl(:infinity), do: :infinity
+  defp normalize_ttl(ttl_val), do: ttl_val
+
+  defp do_set(Cachex, cache_name, key, value, ttl) do
+    Cachex.put(cache_name, key, value, ttl: ttl)
+  end
+
+  defp do_set(WandererNotifier.Cache.ETSCache, cache_name, key, value, ttl) do
+    WandererNotifier.Cache.ETSCache.set(key, value, div(ttl, 1000), table: cache_name)
+  end
+
+  defp do_set(WandererNotifier.Cache.SimpleETSCache, _cache_name, key, value, ttl) do
+    WandererNotifier.Cache.SimpleETSCache.set(key, value, div(ttl, 1000))
+  end
+
+  defp do_set(other, _cache_name, _key, _value, _ttl) do
+    {:error, {:unknown_adapter, other}}
   end
 
   @doc """

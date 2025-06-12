@@ -19,10 +19,6 @@ defmodule WandererNotifier.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.json": :test
-      ],
-      aliases: [
-        "release.bump": ["version --bump patch"],
-        version: "version"
       ]
     ]
   end
@@ -98,7 +94,9 @@ defmodule WandererNotifier.MixProject do
         "dialyzer"
       ],
       "test.coverage": ["coveralls.html"],
-      "test.coverage.ci": ["coveralls.json"]
+      "test.coverage.ci": ["coveralls.json"],
+      "release.bump": ["version --bump patch"],
+      version: "version"
     ]
   end
 end

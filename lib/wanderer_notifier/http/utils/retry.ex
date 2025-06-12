@@ -140,7 +140,7 @@ defmodule WandererNotifier.Http.Utils.Retry do
     state.on_retry.(state.attempt, error, delay)
 
     # Wait for the calculated delay
-    :timer.sleep(delay)
+    Process.sleep(delay)
 
     # Retry with incremented attempt counter
     new_state = %{state | attempt: state.attempt + 1}

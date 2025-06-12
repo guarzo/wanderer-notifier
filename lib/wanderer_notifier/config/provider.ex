@@ -88,7 +88,7 @@ defmodule WandererNotifier.ConfigProvider do
   defp parse_port do
     port_str = System.get_env("PORT")
     parsed_port = WandererNotifier.Config.Utils.parse_int(port_str, nil)
-    
+
     # Return default if parsing returned nil
     if is_nil(parsed_port) do
       4000

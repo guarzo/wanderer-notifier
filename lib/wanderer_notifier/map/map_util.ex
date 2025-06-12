@@ -134,14 +134,15 @@ defmodule WandererNotifier.Map.MapUtil do
   end
 
   defp atomize_key({key, value}, recursive, opts) when is_binary(key) do
-    atom_key = 
+    atom_key =
       try do
         String.to_existing_atom(key)
       rescue
-        ArgumentError -> 
+        ArgumentError ->
           # If atom doesn't exist, keep the string key
           key
       end
+
     process_value(atom_key, value, recursive, opts)
   end
 

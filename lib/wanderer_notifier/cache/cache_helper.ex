@@ -244,7 +244,13 @@ defmodule WandererNotifier.Cache.CacheHelper do
     end
   end
 
-  defp fetch_and_cache_custom(cache_name, cache_key, fetch_fn, log_context, ttl \\ :timer.hours(1)) do
+  defp fetch_and_cache_custom(
+         cache_name,
+         cache_key,
+         fetch_fn,
+         log_context,
+         ttl \\ :timer.hours(1)
+       ) do
     AppLogger.cache_debug(
       "Cache miss, fetching fresh data",
       Map.merge(log_context, %{cache_key: cache_key})

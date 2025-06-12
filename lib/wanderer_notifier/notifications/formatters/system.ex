@@ -36,14 +36,12 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         raise ArgumentError, "System must have a name"
 
       {:exception, exception, stacktrace} ->
-        Logger.error(
-          "[SystemFormatter] Exception formatting system notification: #{Exception.message(exception)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
-        )
-
         WandererNotifier.Logger.Logger.processor_error(
           "[SystemFormatter] Error formatting system notification",
           system: system.name,
           error: Exception.message(exception),
+          struct: inspect(system),
+          fields: inspect(Map.from_struct(system)),
           stacktrace: Exception.format_stacktrace(stacktrace)
         )
 
@@ -258,7 +256,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       end
     rescue
       e ->
-        WandererNotifier.Logger.Logger.processor_warn("Error adding kills field",
+        Logger.processor_warn("Error adding kills field",
           error: Exception.message(e),
           system_id: system_id
         )
