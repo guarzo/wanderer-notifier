@@ -168,21 +168,36 @@ defmodule WandererNotifier.Killmail.Enrichment do
   # Adds system name and id
   defp add_system_info({:ok, km}) do
     system_id = km.esi_data["solar_system_id"] || km.system_id
+    
+    case get_system_name_from_killmail(km, system_id) do
+      {:ok, updated_km} -> {:ok, updated_km}
+      {:needs_fetch} -> fetch_system_name(km, system_id)
+    end
+  end
 
-    # Check if system name is already in the killmail (from cache or previous enrichment)
-    if km.system_name && km.system_name != "" do
-      {:ok, %{km | system_id: system_id}}
-    else
-      case get_system(system_id) do
-        {:ok, name} ->
-          {:ok, %{km | system_name: name, system_id: system_id}}
+  defp get_system_name_from_killmail(km, system_id) do
+    cond do
+      km.system_name && km.system_name != "" ->
+        {:ok, %{km | system_id: system_id}}
 
-        {:error, :service_unavailable} = err ->
-          err
+      is_binary(km.esi_data["solar_system_name"]) ->
+        {:ok, %{km | system_name: km.esi_data["solar_system_name"], system_id: system_id}}
 
-        _error ->
-          {:error, :esi_data_missing}
-      end
+      true ->
+        {:needs_fetch}
+    end
+  end
+
+  defp fetch_system_name(km, system_id) do
+    case get_system(system_id) do
+      {:ok, name} ->
+        {:ok, %{km | system_name: name, system_id: system_id}}
+
+      {:error, :service_unavailable} = err ->
+        err
+
+      _error ->
+        {:error, :esi_data_missing}
     end
   end
 

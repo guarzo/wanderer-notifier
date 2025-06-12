@@ -98,7 +98,10 @@ defmodule WandererNotifier.Map.MapUtil do
   end
 
   defp extract_field(map, {dest_key, key_paths, default_value}) do
-    {dest_key, get_value(map, key_paths) || default_value}
+    case get_value(map, key_paths) do
+      nil -> {dest_key, default_value}
+      value -> {dest_key, value}
+    end
   end
 
   @doc """

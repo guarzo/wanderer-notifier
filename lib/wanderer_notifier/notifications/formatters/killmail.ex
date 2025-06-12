@@ -3,8 +3,6 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   Killmail notification formatting utilities for Discord notifications.
   Provides rich formatting for killmail events.
   """
-  require Logger
-
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Config.Utils
@@ -127,8 +125,12 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
        do: "Low Sec"
 
   defp format_security_status(security_status)
-       when is_float(security_status) and security_status <= 0.0,
+       when is_float(security_status) and security_status == 0.0,
        do: "Null Sec"
+
+  defp format_security_status(security_status)
+       when is_float(security_status) and security_status < 0.0,
+       do: "W-Space"
 
   defp format_security_status(_), do: "Unknown"
 
@@ -412,7 +414,9 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     corp_part = build_attacker_corp_part(final_blow_details)
     ship_part = build_attacker_ship_part(final_blow_details, kill_context)
 
-    "#{attacker_name_part}#{corp_part}#{ship_part}"
+    [attacker_name_part, corp_part, ship_part]
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.join(" ")
   end
 
   defp build_attacker_description_part(
@@ -603,15 +607,15 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp format_isk_value(value) when is_number(value) and value >= 1_000_000_000 do
-    "#{Float.round(value / 1_000_000_000, 1)}B"
+    "#{Float.round(value / 1_000_000_000, 2)}B"
   end
 
   defp format_isk_value(value) when is_number(value) and value >= 1_000_000 do
-    "#{Float.round(value / 1_000_000, 1)}M"
+    "#{Float.round(value / 1_000_000, 2)}M"
   end
 
   defp format_isk_value(value) when is_number(value) and value >= 1_000 do
-    "#{Float.round(value / 1_000, 1)}K"
+    "#{Float.round(value / 1_000, 2)}K"
   end
 
   defp format_isk_value(value) when is_number(value) do

@@ -97,7 +97,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
 
     try do
       result = fun.()
-      
+
       if async do
         # Non-blocking: spawn a task to handle the delay
         Task.start(fn -> :timer.sleep(interval_ms) end)
@@ -105,7 +105,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
         # Blocking: maintain existing behavior for backward compatibility
         :timer.sleep(interval_ms)
       end
-      
+
       {:ok, result}
     rescue
       e ->
@@ -122,13 +122,19 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
   def burst_limit(fun, max_operations, window_ms, opts \\ [])
       when is_function(fun, 0) and is_integer(max_operations) and is_integer(window_ms) do
     context = Keyword.get(opts, :context, "burst operation")
+    async = Keyword.get(opts, :async, false)
 
     try do
       result = fun.()
+      delay = div(window_ms, max_operations)
 
-      window_ms
-      |> div(max_operations)
-      |> :timer.sleep()
+      if async do
+        # Non-blocking: spawn a task to handle the delay
+        Task.start(fn -> :timer.sleep(delay) end)
+      else
+        # Blocking: maintain existing behavior for backward compatibility
+        :timer.sleep(delay)
+      end
 
       {:ok, result}
     rescue
@@ -170,12 +176,16 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, :rate_limited, retry_after)
 
-    # Wait for the retry-after duration
-    :timer.sleep(retry_after)
+    # Use Process.send_after for non-blocking delay
+    ref = make_ref()
+    Process.send_after(self(), {:retry_after, ref}, retry_after)
 
-    # Retry with incremented attempt counter
-    new_state = %{state | attempt: state.attempt + 1}
-    execute_with_rate_limit(fun, new_state)
+    receive do
+      {:retry_after, ^ref} ->
+        # Retry with incremented attempt counter
+        new_state = %{state | attempt: state.attempt + 1}
+        execute_with_rate_limit(fun, new_state)
+    end
   end
 
   defp handle_retry(fun, state, error) do
@@ -184,12 +194,16 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, error, delay)
 
-    # Wait for the calculated delay
-    :timer.sleep(delay)
+    # Use Process.send_after for non-blocking delay
+    ref = make_ref()
+    Process.send_after(self(), {:retry_after, ref}, delay)
 
-    # Retry with incremented attempt counter
-    new_state = %{state | attempt: state.attempt + 1}
-    execute_with_rate_limit(fun, new_state)
+    receive do
+      {:retry_after, ^ref} ->
+        # Retry with incremented attempt counter
+        new_state = %{state | attempt: state.attempt + 1}
+        execute_with_rate_limit(fun, new_state)
+    end
   end
 
   defp calculate_backoff(attempt, base_backoff, max_backoff, jitter) do

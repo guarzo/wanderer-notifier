@@ -51,16 +51,28 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
   def handle_info({:zkill_message, data}, state) do
     AppLogger.processor_debug("Received zkill message", data: inspect(data))
 
-    # Process through the pipeline
-    case Processor.process_zkill_message(data, state) do
-      {:ok, result} ->
-        AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
-        {:noreply, update_stats(state, :processed)}
+    # Capture the current process PID to send stats updates back
+    worker_pid = self()
 
-      {:error, reason} ->
-        AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
-        {:noreply, update_stats(state, :errors)}
-    end
+    # Process asynchronously using Task.Supervisor to avoid blocking the GenServer
+    Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+      case Processor.process_zkill_message(data, state) do
+        {:ok, result} ->
+          AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
+          send(worker_pid, {:update_stats, :processed})
+
+        {:error, reason} ->
+          AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
+          send(worker_pid, {:update_stats, :errors})
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:update_stats, stat_type}, state) do
+    {:noreply, update_stats(state, stat_type)}
   end
 
   @impl true

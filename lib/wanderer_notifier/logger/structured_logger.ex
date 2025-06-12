@@ -15,9 +15,9 @@ defmodule WandererNotifier.Logger.StructuredLogger do
     log_info "Processing killmail", killmail: killmail do
       # Automatically extracts kill_id, system_id, victim.character_id
     end
-    
+
     # Or with custom metadata
-    log_debug "Killmail validation", 
+    log_debug "Killmail validation",
       killmail: killmail,
       custom: "value" do
       # Merges automatic extraction with custom metadata
@@ -33,7 +33,6 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   ```
   """
 
-  alias WandererNotifier.Logger.Logger
   alias WandererNotifier.Logger.MetadataKeys
 
   @doc """
@@ -42,9 +41,10 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   defmacro log_info(message, metadata \\ []) do
     quote do
       require WandererNotifier.Logger.Logger
+      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       metadata = unquote(__MODULE__).extract_metadata(unquote(metadata))
-      Logger.info(unquote(message), metadata)
+      AppLogger.info(unquote(message), metadata)
     end
   end
 
@@ -54,9 +54,10 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   defmacro log_debug(message, metadata \\ []) do
     quote do
       require WandererNotifier.Logger.Logger
+      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       metadata = unquote(__MODULE__).extract_metadata(unquote(metadata))
-      Logger.debug(unquote(message), metadata)
+      AppLogger.debug(unquote(message), metadata)
     end
   end
 
@@ -66,9 +67,10 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   defmacro log_warn(message, metadata \\ []) do
     quote do
       require WandererNotifier.Logger.Logger
+      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       metadata = unquote(__MODULE__).extract_metadata(unquote(metadata))
-      Logger.warn(unquote(message), metadata)
+      AppLogger.warn(unquote(message), metadata)
     end
   end
 
@@ -78,9 +80,10 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   defmacro log_error(message, metadata \\ []) do
     quote do
       require WandererNotifier.Logger.Logger
+      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       metadata = unquote(__MODULE__).extract_metadata(unquote(metadata))
-      Logger.error(unquote(message), metadata)
+      AppLogger.error(unquote(message), metadata)
     end
   end
 
@@ -95,9 +98,12 @@ defmodule WandererNotifier.Logger.StructuredLogger do
   - Errors: error, reason
   """
   def extract_metadata(metadata) when is_list(metadata) do
-    Enum.reduce(metadata, [], fn {key, value}, acc ->
-      acc ++ extract_from_value(key, value)
+    metadata
+    |> Enum.reduce([], fn {key, value}, acc ->
+      [extract_from_value(key, value) | acc]
     end)
+    |> List.flatten()
+    |> Enum.reverse()
   end
 
   def extract_metadata(metadata) when is_map(metadata) do

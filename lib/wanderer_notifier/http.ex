@@ -21,6 +21,7 @@ defmodule WandererNotifier.HTTP do
   @type response :: {:ok, %{status_code: integer(), body: term()}} | {:error, term()}
 
   @default_headers [{"Content-Type", "application/json"}]
+  @default_get_headers []
   @default_timeout Constants.default_timeout()
   @default_recv_timeout Constants.default_recv_timeout()
   @default_connect_timeout Constants.default_connect_timeout()
@@ -30,7 +31,7 @@ defmodule WandererNotifier.HTTP do
   Makes a GET request to the specified URL.
   """
   @spec get(url(), headers(), opts()) :: response()
-  def get(url, headers \\ @default_headers, opts \\ []) do
+  def get(url, headers \\ @default_get_headers, opts \\ []) do
     request(:get, url, headers, nil, opts)
   end
 
@@ -63,7 +64,7 @@ defmodule WandererNotifier.HTTP do
         result = process_response(response, url, method)
 
         case result do
-          {:ok, _} -> log_success(method, url, start_time)
+          {:ok, %{status_code: status}} -> log_success(method, url, status, start_time)
         end
 
         result
@@ -108,9 +109,9 @@ defmodule WandererNotifier.HTTP do
     {:ok, %{status_code: status, body: processed_body}}
   end
 
-  defp log_success(method, url, start_time) do
+  defp log_success(method, url, status, start_time) do
     duration_ms = TimeUtils.monotonic_ms() - start_time
-    log_api_success(url, 200, duration_ms, %{method: method, client: "HTTP"})
+    log_api_success(url, status, duration_ms, %{method: method, client: "HTTP"})
   end
 
   defp log_error(method, url, reason, start_time) do

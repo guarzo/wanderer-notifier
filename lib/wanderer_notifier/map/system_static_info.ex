@@ -123,7 +123,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     result = WandererNotifier.HTTP.get(url, headers)
 
     case ResponseHandler.handle_response(result,
-           success_codes: 200,
+           success_codes: [200],
            log_context: %{client: "SystemStaticInfo", url: url}
          ) do
       {:ok, body} ->

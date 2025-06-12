@@ -64,7 +64,7 @@ defmodule WandererNotifier.Logger.ErrorLogger do
 
   @doc """
   Logs an exception with its stacktrace.
-  
+
   ## Parameters
     - message: The log message
     - exception: The exception that was raised
@@ -73,7 +73,7 @@ defmodule WandererNotifier.Logger.ErrorLogger do
   """
   def log_exception(message, exception, stacktrace \\ nil, metadata \\ []) do
     trace = stacktrace || Process.info(self(), :current_stacktrace) |> elem(1)
-    
+
     try do
       AppLogger.error(
         message,

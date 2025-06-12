@@ -19,6 +19,7 @@ defmodule WandererNotifier.Api.Helpers do
         conn
         |> put_resp_content_type("application/json", "utf-8")
         |> send_resp(status, json)
+        |> halt()
 
       {:error, reason} ->
         # Log the error
@@ -32,6 +33,7 @@ defmodule WandererNotifier.Api.Helpers do
         conn
         |> put_resp_content_type("application/json", "utf-8")
         |> send_resp(500, error_response)
+        |> halt()
     end
   rescue
     e ->
@@ -43,6 +45,7 @@ defmodule WandererNotifier.Api.Helpers do
       conn
       |> put_resp_content_type("application/json", "utf-8")
       |> send_resp(500, "{\"error\":\"Critical server error\"}")
+      |> halt()
   end
 
   @doc """

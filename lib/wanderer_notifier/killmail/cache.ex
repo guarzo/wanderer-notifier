@@ -36,11 +36,17 @@ defmodule WandererNotifier.Killmail.Cache do
     AppLogger.cache_debug("Caching individual kill", key: individual_key)
     cache_name = CacheConfig.cache_name()
 
+    # Adapter expects milliseconds
+    ttl_ms = 
+      :killmail
+      |> WandererNotifier.Cache.Config.ttl_for()
+      |> :timer.seconds()
+
     Adapter.set(
       cache_name,
       individual_key,
       killmail,
-      :timer.seconds(WandererNotifier.Cache.Config.ttl_for(:killmail))
+      ttl_ms
     )
 
     # Update the recent kills list
@@ -177,6 +183,7 @@ defmodule WandererNotifier.Killmail.Cache do
     # Add the new kill ID to the list (if not already present)
     # Limit the list to a maximum of 100 recent kills
     max_recent_kills = 100
+
     updated_ids =
       if kill_id in kill_ids do
         kill_ids

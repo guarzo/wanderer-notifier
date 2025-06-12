@@ -36,7 +36,7 @@ jobs:
           otp-version: "27.0"
 
       - name: Restore dependencies cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             deps
@@ -56,7 +56,7 @@ jobs:
           [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
 
       - name: Restore PLT cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: plt_cache
         with:
           key: ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
@@ -112,8 +112,8 @@ jobs:
         run: |
           # Get the current tag on this commit
           CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
-          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_OUTPUT
-          echo "Current tag: $CURRENT_TAG"
+          echo "CURRENT_TAG=\"$CURRENT_TAG\"" >> $GITHUB_OUTPUT
+          echo "Current tag: '$CURRENT_TAG'"
 
       - name: Extract metadata
         id: meta
@@ -196,9 +196,9 @@ jobs:
           # Get the current tag on this commit
           CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
           if [[ "$CURRENT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "VERSION=$CURRENT_TAG" >> $GITHUB_OUTPUT
+            echo "VERSION=\"$CURRENT_TAG\"" >> $GITHUB_OUTPUT
             echo "HAS_VERSION_TAG=true" >> $GITHUB_OUTPUT
-            echo "Found version tag: $CURRENT_TAG"
+            echo "Found version tag: '$CURRENT_TAG'"
           else
             echo "HAS_VERSION_TAG=false" >> $GITHUB_OUTPUT
             echo "No version tag found on current commit"

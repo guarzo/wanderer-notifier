@@ -74,11 +74,11 @@ WORKDIR /app
 # - ca-certificates for HTTPS
 # - libgcc for runtime C dependencies
 RUN apk add --no-cache \
-      ncurses-libs \
-      libstdc++ \
-      openssl \
-      ca-certificates \
-      libgcc \
+      ncurses-libs=6.4_p20240420-r0 \
+      libstdc++=13.2.1_git20240309-r0 \
+      openssl=3.3.2-r0 \
+      ca-certificates=20240705-r0 \
+      libgcc=13.2.1_git20240309-r0 \
  && addgroup -S app \
  && adduser -S -G app app
 

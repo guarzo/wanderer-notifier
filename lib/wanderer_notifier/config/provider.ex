@@ -91,11 +91,23 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_bool(key, default) do
-    with value when is_binary(value) <- System.get_env(key),
-         normalized <- value |> String.downcase() |> String.trim() do
-      parse_bool_value(normalized, default)
-    else
-      nil -> default
+    case System.get_env(key) do
+      nil ->
+        default
+
+      # Handle empty string explicitly
+      "" ->
+        default
+
+      value ->
+        normalized = value |> String.downcase() |> String.trim()
+
+        if normalized == "" do
+          # Handle whitespace-only strings
+          default
+        else
+          parse_bool_value(normalized, default)
+        end
     end
   end
 

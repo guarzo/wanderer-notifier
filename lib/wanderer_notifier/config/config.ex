@@ -36,6 +36,7 @@ defmodule WandererNotifier.Config do
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
   @impl true
+  @spec get_config() :: map()
   def get_config do
     %{
       notifications_enabled: notifications_enabled?(),
@@ -46,6 +47,7 @@ defmodule WandererNotifier.Config do
   end
 
   @impl true
+  @spec get_notification_setting(atom(), atom()) :: {:ok, boolean()} | {:error, term()}
   def get_notification_setting(type, key) do
     case Application.get_env(:wanderer_notifier, :config) do
       nil -> {:ok, true}
@@ -263,15 +265,19 @@ defmodule WandererNotifier.Config do
   end
 
   @impl true
+  @spec notifications_enabled?() :: boolean()
   def notifications_enabled?, do: feature_enabled?(:notifications_enabled)
 
   @impl true
+  @spec kill_notifications_enabled?() :: boolean()
   def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
 
   @impl true
+  @spec system_notifications_enabled?() :: boolean()
   def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
 
   @impl true
+  @spec character_notifications_enabled?() :: boolean()
   def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
@@ -352,38 +358,46 @@ defmodule WandererNotifier.Config do
 
   @doc "Returns the killmail notification module to use."
   @impl true
+  @spec killmail_notification_module() :: module()
   def killmail_notification_module,
     do: get(:killmail_notification_module, WandererNotifier.Notifications.KillmailNotification)
 
   @doc "Returns the config module to use."
   @impl true
+  @spec config_module() :: module()
   def config_module, do: get(:config_module, __MODULE__)
 
   @doc "Returns the character track module to use."
   @impl true
+  @spec character_track_module() :: module()
   def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
 
   @doc "Returns the system track module to use."
   @impl true
+  @spec system_track_module() :: module()
   def system_track_module, do: get(:system_track_module, WandererNotifier.Map.MapSystem)
 
   @doc "Returns the deduplication module to use."
   @impl true
+  @spec deduplication_module() :: module()
   def deduplication_module,
     do: get(:deduplication_module, WandererNotifier.Notifications.Deduplication.CacheImpl)
 
   @doc "Returns the notification determiner module to use."
   @impl true
+  @spec notification_determiner_module() :: module()
   def notification_determiner_module,
     do: get(:notification_determiner_module, WandererNotifier.Notifications.Determiner.Kill)
 
   @doc "Returns the killmail enrichment module to use."
   @impl true
+  @spec killmail_enrichment_module() :: module()
   def killmail_enrichment_module,
     do: get(:killmail_enrichment_module, WandererNotifier.Killmail.Enrichment)
 
   @doc "Returns the notification dispatcher module to use."
   @impl true
+  @spec notification_dispatcher_module() :: module()
   def notification_dispatcher_module,
     do: get(:notification_dispatcher_module, WandererNotifier.Notifications.Dispatcher)
 

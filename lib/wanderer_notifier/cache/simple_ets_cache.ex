@@ -2,11 +2,19 @@ defmodule WandererNotifier.Cache.SimpleETSCache do
   @moduledoc """
   Simple ETS-based cache implementation for testing.
   Uses a single table name from application config.
-  
+
   ⚠️ WARNING: This cache implementation is intended for TEST ENVIRONMENTS ONLY.
   It has potential race conditions in get_and_update operations and lacks the
   robustness required for production use. Use Cachex or another production-ready
   cache implementation for production environments.
+
+  ## Return Values
+
+  The `get/2` function returns:
+  - `{:ok, value}` when the key exists and hasn't expired
+  - `{:ok, nil}` when the key doesn't exist
+  - `{:expired}` when the key exists but has expired (useful for refresh decisions)
+  - `{:error, :table_not_found}` when the ETS table doesn't exist
   """
   use GenServer
 
@@ -34,7 +42,7 @@ defmodule WandererNotifier.Cache.SimpleETSCache do
       [{^key, value, expiry}] ->
         if expired?(expiry) do
           :ets.delete(table, key)
-          {:ok, nil}
+          {:expired}
         else
           {:ok, value}
         end
@@ -47,7 +55,7 @@ defmodule WandererNotifier.Cache.SimpleETSCache do
   end
 
   @impl true
-  def set(key, value, ttl) do
+  def set(key, value, ttl) when is_integer(ttl) or ttl == :infinity do
     table = get_table_name()
     expiry = calculate_expiry(ttl)
 
@@ -55,6 +63,10 @@ defmodule WandererNotifier.Cache.SimpleETSCache do
     {:ok, value}
   rescue
     _ -> {:error, :table_not_found}
+  end
+
+  def set(_key, _value, ttl) do
+    {:error, {:invalid_ttl, "TTL must be an integer or :infinity, got: #{inspect(ttl)}"}}
   end
 
   @impl true

@@ -47,6 +47,7 @@ defmodule WandererNotifier.Logger.Messages do
   def cache_operation_failed(operation, key), do: "Cache #{operation} failed for key: #{key}"
 
   @doc "Message for successful cache put"
+  def cache_put(key, :infinity), do: "Cached #{key} with TTL infinity"
   def cache_put(key, ttl_seconds), do: "Cached #{key} with TTL #{ttl_seconds}s"
 
   # Killmail Message Templates

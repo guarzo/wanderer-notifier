@@ -31,10 +31,15 @@ defmodule WandererNotifier.Cache.KeyGenerator do
   @spec combine(list(term()), list(term()), term() | nil) :: String.t()
   def combine(fixed_parts, dynamic_parts, extra)
       when is_list(fixed_parts) and is_list(dynamic_parts) do
-    fixed_parts
-    |> Enum.map(&to_string/1)
-    |> Kernel.++(Enum.map(dynamic_parts, &to_string/1))
-    |> Kernel.++(if(extra, do: [to_string(extra)], else: []))
+    # Convert all parts to string, treating nil as empty string for id positions
+    # but filtering out nil extra values
+    all_parts = fixed_parts ++ dynamic_parts ++ (if extra, do: [extra], else: [])
+    
+    all_parts
+    |> Enum.map(fn
+      nil -> ""  # Convert nil to empty string to preserve key structure
+      val -> to_string(val)
+    end)
     |> join_parts()
   end
 

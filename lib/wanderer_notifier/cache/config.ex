@@ -90,10 +90,7 @@ defmodule WandererNotifier.Cache.Config do
   """
   @spec cache_config(keyword()) :: keyword()
   def cache_config(opts \\ []) do
-    name = Keyword.get(opts, :name, cache_name())
-
     base_config = [
-      name: name,
       stats: true,
       # Enable compression for larger values
       compression: [
@@ -102,8 +99,9 @@ defmodule WandererNotifier.Cache.Config do
       ]
     ]
 
-    # Merge with any provided options
-    Keyword.merge(base_config, opts)
+    # Use put_new to respect caller's name if provided
+    merged_config = Keyword.merge(base_config, opts)
+    Keyword.put_new(merged_config, :name, cache_name())
   end
 
   @doc """

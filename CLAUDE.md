@@ -9,6 +9,7 @@ Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail
 ## Common Development Commands
 
 ### Build & Compile
+
 ```bash
 make compile           # Compile the project
 make compile.strict    # Compile with warnings as errors
@@ -18,6 +19,7 @@ make clean            # Clean build artifacts
 ```
 
 ### Testing
+
 ```bash
 make test             # Run tests using custom script
 make test.killmail    # Run specific module tests (replace 'killmail' with module name)
@@ -27,6 +29,7 @@ make test.cover       # Run tests with coverage
 ```
 
 ### Development
+
 ```bash
 make s                # Clean, compile, and start interactive shell
 make format           # Format code using Mix format
@@ -34,6 +37,7 @@ make server-status    # Check web server connectivity
 ```
 
 ### Docker & Production
+
 ```bash
 make docker.build     # Build Docker image
 make docker.test      # Test Docker image
@@ -59,7 +63,7 @@ The application follows a domain-driven design with these core components:
 - **HTTP Client**: Centralized HTTP client with retry logic and rate limiting
 
 ### Configuration
-- Environment variables are loaded without WANDERER_ prefix (e.g., `DISCORD_BOT_TOKEN` instead of `WANDERER_DISCORD_BOT_TOKEN`)
+- Environment variables are loaded without the WANDERER_ prefix (e.g., `DISCORD_BOT_TOKEN` instead of `WANDERER_DISCORD_BOT_TOKEN`)
 - Configuration layers: `config/config.exs` (compile-time) → `config/runtime.exs` (runtime with env vars)
 - Local development uses `.env` file via Dotenvy
 

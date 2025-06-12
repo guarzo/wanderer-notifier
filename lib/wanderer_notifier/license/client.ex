@@ -51,9 +51,11 @@ defmodule WandererNotifier.License.Client do
         process_successful_validation(decoded)
 
       {:ok, %{status_code: status, body: body}} ->
-        AppLogger.api_error("License Manager API returned error status", 
-          status: status, 
-          body: inspect(body))
+        AppLogger.api_error("License Manager API returned error status",
+          status: status,
+          body: inspect(body)
+        )
+
         {:error, :request_failed}
 
       {:error, :connect_timeout} ->

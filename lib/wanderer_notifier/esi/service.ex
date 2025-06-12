@@ -32,6 +32,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_killmail(integer(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_killmail(kill_id, killmail_hash, opts \\ []) do
     cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
@@ -87,6 +88,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_character_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_character_info(character_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :character,
@@ -115,6 +117,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_corporation_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_corporation_info(corporation_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :corporation,
@@ -143,6 +146,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_alliance_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_alliance_info(alliance_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :alliance,
@@ -171,41 +175,17 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl true
+  @spec get_ship_type_name(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_ship_type_name(ship_type_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.type(ship_type_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        handle_cache_hit(ship_type_id, data)
-
-      _ ->
-        handle_cache_miss(ship_type_id, cache_key, opts)
-    end
-  end
-
-  defp handle_cache_miss(ship_type_id, cache_key, opts) do
-    AppLogger.api_debug("🔍 ESI cache miss for ship type", ship_type_id: ship_type_id)
-
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-
-    case esi_client().get_universe_type(ship_type_id, Keyword.merge(retry_opts(), opts)) do
-      {:ok, type_info} when is_map(type_info) and map_size(type_info) > 0 ->
-        case type_info do
-          %{"name" => name} ->
-            cache_put(cache_name, cache_key, type_info)
-            {:ok, %{"name" => name}}
-
-          _ ->
-            AppLogger.api_error("ESI Service: Missing name in type info",
-              type_info: inspect(type_info)
-            )
-
-            {:error, :esi_data_missing}
-        end
-
-      error ->
-        error
+    case CacheHelper.fetch_with_cache(
+           :type,
+           ship_type_id,
+           opts,
+           fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
+           "ship type"
+         ) do
+      {:ok, data} -> handle_cache_hit(ship_type_id, data)
+      error -> error
     end
   end
 
@@ -223,16 +203,17 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_type_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_type_info(type_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.type(type_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        handle_cache_hit(type_id, data)
-
-      _ ->
-        handle_cache_miss(type_id, cache_key, opts)
+    case CacheHelper.fetch_with_cache(
+           :type,
+           type_id,
+           opts,
+           fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
+           "type"
+         ) do
+      {:ok, data} -> handle_cache_hit(type_id, data)
+      error -> error
     end
   end
 
@@ -251,50 +232,15 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl true
+  @spec get_universe_type(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_universe_type(type_id, opts \\ []) do
-    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
-    cache_key = CacheKeys.type(type_id)
-
-    case Cachex.get(cache_name, cache_key) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        AppLogger.api_debug("✨ ESI cache hit for universe type", type_id: type_id)
-        {:ok, data}
-
-      _ ->
-        AppLogger.api_debug("🔍 ESI cache miss for universe type", type_id: type_id)
-        fetch_and_cache_type(type_id, cache_name, cache_key, opts)
-    end
-  end
-
-  defp fetch_and_cache_type(type_id, cache_name, cache_key, opts) do
-    case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        cache_put(cache_name, cache_key, data)
-        {:ok, data}
-
-      {:ok, nil} ->
-        AppLogger.api_error("ESI service got nil type data", %{
-          type_id: type_id
-        })
-
-        {:error, :type_not_found}
-
-      {:ok, invalid_data} ->
-        AppLogger.api_error("ESI service got invalid type data", %{
-          type_id: type_id,
-          data: inspect(invalid_data)
-        })
-
-        {:error, :invalid_type_data}
-
-      error ->
-        AppLogger.api_error("ESI service type error", %{
-          type_id: type_id,
-          error: inspect(error)
-        })
-
-        error
-    end
+    CacheHelper.fetch_with_cache(
+      :type,
+      type_id,
+      opts,
+      fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
+      "universe type"
+    )
   end
 
   @doc """
@@ -302,6 +248,7 @@ defmodule WandererNotifier.ESI.Service do
   Expects the response to include a "name" field.
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_system(integer() | String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_system(system_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :system,
@@ -338,6 +285,7 @@ defmodule WandererNotifier.ESI.Service do
   Fetches solar system info from ESI given a system_id.
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_system_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_system_info(system_id, opts \\ []) do
     cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.system(system_id)
@@ -375,6 +323,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_character(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_character(character_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :character,
@@ -386,6 +335,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_type(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_type(type_id, opts \\ []) do
     CacheHelper.fetch_with_cache(
       :type,
@@ -397,6 +347,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
+  @spec get_system_kills(integer(), integer(), keyword()) :: {:ok, list(map())} | {:error, term()}
   def get_system_kills(system_id, limit, opts \\ []) do
     custom_key = CacheKeys.system_kills(system_id, limit)
 
@@ -420,19 +371,9 @@ defmodule WandererNotifier.ESI.Service do
 
   defp esi_client, do: WandererNotifier.Core.Dependencies.esi_client()
 
-  # Fallback module that returns safe defaults to prevent crashes
-  defmodule SafeCache do
-    @moduledoc """
-    A fallback module that provides safe access to cache functions when the real cache is unavailable.
-    Returns default values to prevent application crashes when cache access fails.
-    """
-    def get(_cache_name, _key), do: {:error, :cache_not_available}
-    def put(_cache_name, _key, _value), do: {:error, :cache_not_available}
-    def delete(_cache_name, _key), do: {:error, :cache_not_available}
-    def exists?(_cache_name, _key), do: false
-  end
 
   @impl true
+  @spec search(String.t(), list(String.t()), keyword()) :: {:ok, map()} | {:error, term()}
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
 
   defp cache_put(cache_name, key, value) do

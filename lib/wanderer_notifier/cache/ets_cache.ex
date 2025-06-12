@@ -57,6 +57,9 @@ defmodule WandererNotifier.Cache.ETSCache do
         :ok
     end
 
+    # Schedule periodic cleanup
+    schedule_cleanup()
+
     {:ok, %{table_name: table_name}}
   end
 
@@ -73,6 +76,13 @@ defmodule WandererNotifier.Cache.ETSCache do
     # Log unexpected casts
     require Logger
     Logger.warning("ETSCache received unexpected cast: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
+  @impl GenServer
+  def handle_info(:cleanup_expired, state) do
+    cleanup_expired(state.table_name)
+    schedule_cleanup()
     {:noreply, state}
   end
 
@@ -258,21 +268,27 @@ defmodule WandererNotifier.Cache.ETSCache do
   @doc """
   Cleans up expired entries. Can be called periodically if needed.
   """
-  def cleanup_expired do
+  def cleanup_expired(table_name \\ @table_name) do
     now = System.system_time(:second)
 
     :ets.foldl(
       fn {key, _value, expiry}, acc ->
         if expiry != :infinity and expiry < now do
-          :ets.delete(@table_name, key)
+          :ets.delete(table_name, key)
         end
 
         acc
       end,
       :ok,
-      @table_name
+      table_name
     )
   rescue
     ArgumentError -> {:error, :table_not_found}
+  end
+
+  # Private helper to schedule the next cleanup
+  defp schedule_cleanup do
+    # Cleanup every 15 minutes
+    Process.send_after(self(), :cleanup_expired, :timer.minutes(15))
   end
 end

@@ -25,7 +25,8 @@ echo "Alpine image size: $ALPINE_SIZE"
 # Check if it's under 60MB
 if [[ "$ALPINE_SIZE" =~ MB$ ]]; then
     SIZE_MB=$(echo "$ALPINE_SIZE" | sed 's/MB$//')
-    if (( $(echo "$SIZE_MB < 60" | bc -l) )); then
+    # Use awk instead of bc for better portability
+    if awk "BEGIN {exit !($SIZE_MB < 60)}"; then
         echo "✅ SUCCESS: Image is under 60MB!"
     else
         echo "❌ Image is $SIZE_MB MB, which is over the 60MB target"

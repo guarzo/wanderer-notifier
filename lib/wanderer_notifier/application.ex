@@ -36,10 +36,10 @@ defmodule WandererNotifier.Application do
     AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
 
     base_children = [
+      # Add Task.Supervisor first to prevent initialization races
+      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
-      # Add Task.Supervisor for supervised background tasks
-      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
@@ -110,12 +110,14 @@ defmodule WandererNotifier.Application do
     )
 
     # Get all environment variables, sorted by key
-    for {key, value} <- System.get_env() |> Enum.sort_by(fn {k, _} -> k end),
-        String.starts_with?(key, "WANDERER_") do
+    System.get_env()
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.filter(fn {key, _} -> String.starts_with?(key, "WANDERER_") end)
+    |> Enum.each(fn {key, value} ->
       # Redact sensitive values
       safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
       AppLogger.startup_info("  #{key}: #{safe_value}")
-    end
+    end)
 
     # Log app config as well
     log_application_config()
@@ -131,7 +133,7 @@ defmodule WandererNotifier.Application do
     for {key, env_key} <- [
           {:features, :features},
           {:discord_channel_id, :discord_channel_id},
-          {:config_module, :config},
+          {:config_module, :config_module},
           {:env, :env},
           {:schedulers_enabled, :schedulers_enabled}
         ] do
@@ -147,7 +149,7 @@ defmodule WandererNotifier.Application do
 
     case cache_adapter do
       Cachex ->
-        {Cachex, name: cache_name}
+        Cachex.child_spec(name: cache_name)
 
       WandererNotifier.Cache.ETSCache ->
         {WandererNotifier.Cache.ETSCache, name: cache_name}

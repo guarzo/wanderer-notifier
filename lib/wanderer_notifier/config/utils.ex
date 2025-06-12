@@ -25,7 +25,9 @@ defmodule WandererNotifier.Config.Utils do
   def parse_int(nil, default), do: default
 
   def parse_int(str, default) when is_binary(str) do
-    case Integer.parse(str) do
+    trimmed = String.trim(str)
+
+    case Integer.parse(trimmed) do
       {i, _} ->
         i
 

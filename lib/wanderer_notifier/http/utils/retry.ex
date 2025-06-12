@@ -80,7 +80,8 @@ defmodule WandererNotifier.Http.Utils.Retry do
     with_jitter =
       if jitter do
         # Calculate jitter as integer (0-20% of exponential)
-        max_jitter = div(exponential, 5)  # 20% = 1/5
+        # 20% = 1/5
+        max_jitter = div(exponential, 5)
         jitter_amount = :rand.uniform(max_jitter + 1) - 1
         exponential + jitter_amount
       else
@@ -157,12 +158,37 @@ defmodule WandererNotifier.Http.Utils.Retry do
   defp retryable_error?(_reason, _retryable_errors), do: false
 
   defp retryable_exception?(exception, retryable_errors) do
-    error_type = exception.__struct__
-    error_type in retryable_errors
+    # Check if this is a known retryable exception type
+    case exception do
+      %Mint.TransportError{reason: reason} ->
+        # Check if the transport error reason is retryable
+        reason in retryable_errors
+
+      %Mint.HTTPError{reason: reason} ->
+        # Check if the HTTP error reason is retryable
+        reason in retryable_errors
+
+      _ ->
+        # For other exceptions, check the module name
+        error_type = exception.__struct__
+        error_type in retryable_errors
+    end
   end
 
   defp default_retryable_errors do
-    [:timeout, :connect_timeout, :econnrefused, :ehostunreach, :enetunreach, :econnreset]
+    # List of retryable error reasons (atoms) and exception modules
+    [
+      # Network/connection errors
+      :timeout,
+      :connect_timeout,
+      :econnrefused,
+      :ehostunreach,
+      :enetunreach,
+      :econnreset,
+      # Also include exception modules if needed
+      Mint.TransportError,
+      Mint.HTTPError
+    ]
   end
 
   defp default_retry_callback(attempt, error, delay) do

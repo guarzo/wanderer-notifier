@@ -92,7 +92,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
         with {:ok, body} <-
                ResponseHandler.handle_response(result,
-                 success_codes: 200,
+                 success_codes: [200],
                  log_context: %{client: module_name(), url: url}
                ),
              {:ok, decoded} <- decode_body(body),
@@ -243,7 +243,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
         case HTTP.get(url, headers) do
           {:ok, %{status_code: 200, body: body}} ->
-            {:ok, body}
+            case Jason.decode(body) do
+              {:ok, decoded} -> {:ok, decoded}
+              {:error, _} -> {:error, :json_decode_error}
+            end
 
           {:ok, %{status_code: status}} ->
             AppLogger.error("API request failed", %{

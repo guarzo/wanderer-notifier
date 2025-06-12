@@ -336,7 +336,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp handle_http_response(response, state) do
     # Use ResponseHandler for basic response handling, but maintain RedisQ-specific logic
     case ResponseHandler.handle_response(response,
-           success_codes: 200,
+           success_codes: [200],
            error_format: :string,
            log_context: %{client: "RedisQ", queue_id: state.queue_id}
          ) do
@@ -400,17 +400,24 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     )
   end
 
-  # Handle response body decoding (may already be decoded by HTTP client)
+  # Handle response body - ResponseHandler already decodes JSON, so we just need to wrap maps
+  # This function exists to handle edge cases where the body might still be binary
   defp decode_response_body(body) when is_binary(body) do
+    # This should rarely happen as ResponseHandler decodes JSON
+    # But we keep it for safety and backward compatibility
     Jason.decode(body)
   end
 
   defp decode_response_body(body) when is_map(body) do
+    # Most common case - body is already decoded by ResponseHandler
     {:ok, body}
   end
 
   # Schedule an immediate poll (for when killmail activity is detected)
   defp schedule_immediate_poll(state) do
+    # Cancel existing timer to prevent leaks
+    cancel_timer(state.poll_timer)
+
     timer_ref = Process.send_after(self(), :poll, 0)
     new_state = %{state | poll_timer: timer_ref, backoff_timer: nil}
     {:noreply, new_state}
@@ -418,6 +425,9 @@ defmodule WandererNotifier.Killmail.RedisQClient do
 
   # Schedule the next regular poll
   defp schedule_next_poll(state) do
+    # Cancel existing timer to prevent leaks
+    cancel_timer(state.poll_timer)
+
     timer_ref = Process.send_after(self(), :poll, state.poll_interval)
     new_state = %{state | poll_timer: timer_ref, backoff_timer: nil}
     {:noreply, new_state}
@@ -462,6 +472,9 @@ defmodule WandererNotifier.Killmail.RedisQClient do
       backoff: backoff,
       reason: inspect(state.last_error)
     )
+
+    # Cancel existing timer to prevent leaks
+    cancel_timer(state.poll_timer)
 
     timer_ref = Process.send_after(self(), :poll, backoff)
     new_state = %{state | poll_timer: timer_ref, backoff_timer: nil}
@@ -512,9 +525,13 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   defp get_system_name(nil), do: "unknown"
 
   defp get_system_name(system_id) do
+    # ESI service already handles caching internally
     case esi_service().get_system_info(system_id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "System #{system_id}"
+      {:ok, %{"name" => name}} when is_binary(name) ->
+        name
+
+      _ ->
+        "System #{system_id}"
     end
   end
 

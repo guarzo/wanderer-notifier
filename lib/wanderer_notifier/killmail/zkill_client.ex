@@ -126,7 +126,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     result = get_http_client().get(url, http_headers(), http_options())
 
     case ResponseHandler.handle_response(result,
-           success_codes: 200,
+           success_codes: [200],
            log_context: %{client: "ZKill", url: url}
          ) do
       {:ok, body} ->

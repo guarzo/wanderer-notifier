@@ -501,7 +501,7 @@ defmodule WandererNotifier.License.Service do
   defp create_dev_mode_state(state) do
     AppLogger.config_debug("Using development mode license validation")
 
-    dev_state = %{
+    dev_state = %State{
       valid: true,
       bot_assigned: true,
       details: %{"license_valid" => true, "valid" => true, "message" => "Development mode"},

@@ -7,7 +7,6 @@ defmodule WandererNotifier.Cache.Adapter do
   and ETSCache (testing) transparently.
   """
 
-
   @doc """
   Gets the configured cache adapter.
   """
@@ -27,7 +26,10 @@ defmodule WandererNotifier.Cache.Adapter do
         WandererNotifier.Cache.ETSCache.get(key, table: cache_name)
 
       WandererNotifier.Cache.SimpleETSCache ->
-        WandererNotifier.Cache.SimpleETSCache.get(key)
+        case WandererNotifier.Cache.SimpleETSCache.get(key) do
+          {:expired} -> {:ok, nil}
+          other -> other
+        end
 
       other ->
         {:error, {:unknown_adapter, other}}

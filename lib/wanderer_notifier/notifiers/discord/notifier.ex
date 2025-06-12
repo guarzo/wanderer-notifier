@@ -410,7 +410,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
-    case ESIService.get_system_info(system_id, []) do
+    case ESIService.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
       {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil

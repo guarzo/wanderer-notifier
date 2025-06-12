@@ -232,8 +232,11 @@ defmodule WandererNotifier.Cache.CacheHelper do
 
     case fetch_fn.(id, opts) do
       {:ok, data} = success ->
-        # Cache the successful result
-        Adapter.put(cache_name, cache_key, data)
+        # Cache the successful result with appropriate TTL
+        # Extract cache type from log_name (e.g., "character" -> :character)
+        cache_type = String.to_atom(log_name)
+        ttl = CacheConfig.ttl_for(cache_type) |> :timer.seconds()
+        Adapter.set(cache_name, cache_key, data, ttl)
         success
 
       error ->
