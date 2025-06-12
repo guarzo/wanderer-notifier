@@ -168,7 +168,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   # Adds system name and id
   defp add_system_info({:ok, km}) do
     system_id = km.esi_data["solar_system_id"] || km.system_id
-    
+
     case get_system_name_from_killmail(km, system_id) do
       {:ok, updated_km} -> {:ok, updated_km}
       {:needs_fetch} -> fetch_system_name(km, system_id)

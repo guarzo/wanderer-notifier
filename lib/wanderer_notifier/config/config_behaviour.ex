@@ -3,7 +3,7 @@ defmodule WandererNotifier.Config.ConfigBehaviour do
   Behaviour for application configuration.
   """
 
-  @doc """  
+  @doc """
   Returns whether notifications are enabled globally.
   """
   @callback notifications_enabled?() :: boolean()

@@ -33,11 +33,12 @@ defmodule WandererNotifier.Cache.KeyGenerator do
       when is_list(fixed_parts) and is_list(dynamic_parts) do
     # Convert all parts to string, treating nil as empty string for id positions
     # but filtering out nil extra values
-    all_parts = fixed_parts ++ dynamic_parts ++ (if extra, do: [extra], else: [])
-    
+    all_parts = fixed_parts ++ dynamic_parts ++ if extra, do: [extra], else: []
+
     all_parts
     |> Enum.map(fn
-      nil -> ""  # Convert nil to empty string to preserve key structure
+      # Convert nil to empty string to preserve key structure
+      nil -> ""
       val -> to_string(val)
     end)
     |> join_parts()

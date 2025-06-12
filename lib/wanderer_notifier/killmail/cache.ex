@@ -37,7 +37,7 @@ defmodule WandererNotifier.Killmail.Cache do
     cache_name = CacheConfig.cache_name()
 
     # Adapter expects milliseconds
-    ttl_ms = 
+    ttl_ms =
       :killmail
       |> WandererNotifier.Cache.Config.ttl_for()
       |> :timer.seconds()

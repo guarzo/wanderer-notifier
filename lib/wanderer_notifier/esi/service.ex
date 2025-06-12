@@ -371,7 +371,6 @@ defmodule WandererNotifier.ESI.Service do
 
   defp esi_client, do: WandererNotifier.Core.Dependencies.esi_client()
 
-
   @impl true
   @spec search(String.t(), list(String.t()), keyword()) :: {:ok, map()} | {:error, term()}
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
