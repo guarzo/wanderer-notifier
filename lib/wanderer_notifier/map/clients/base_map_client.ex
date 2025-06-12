@@ -243,9 +243,17 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
         case HTTP.get(url, headers) do
           {:ok, %{status_code: 200, body: body}} ->
-            case Jason.decode(body) do
-              {:ok, decoded} -> {:ok, decoded}
-              {:error, _} -> {:error, :json_decode_error}
+            # Check if body is already decoded
+            case body do
+              body when is_map(body) -> 
+                {:ok, body}
+              body when is_binary(body) ->
+                case Jason.decode(body) do
+                  {:ok, decoded} -> {:ok, decoded}
+                  {:error, _} -> {:error, :json_decode_error}
+                end
+              _ ->
+                {:error, :invalid_response_body}
             end
 
           {:ok, %{status_code: status}} ->
