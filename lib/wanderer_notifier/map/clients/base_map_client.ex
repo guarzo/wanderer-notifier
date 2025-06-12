@@ -4,9 +4,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   These clients handle fetching and caching data from the map API.
   """
 
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  require Logger
+  alias WandererNotifier.HTTP
+  alias WandererNotifier.Http.ResponseHandler
 
   @callback endpoint() :: String.t()
   @callback extract_data(map()) :: {:ok, list()} | {:error, term()}
@@ -21,6 +23,19 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   defmacro __using__(_opts) do
     quote do
       @behaviour WandererNotifier.Map.Clients.BaseMapClient
+
+      # Default implementations of required functions
+      def api_url do
+        base_url = Config.base_map_url()
+        endpoint = endpoint()
+        build_url(base_url, endpoint)
+      end
+
+      def headers do
+        auth_header()
+      end
+
+      defoverridable api_url: 0, headers: 0
 
       def get_all do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
@@ -45,7 +60,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
              item when not is_nil(item) <- Enum.find(items, &(&1["id"] == id)) do
           {:ok, item}
         else
-          _ -> {:error, :not_found}
+          {:error, reason} -> {:error, reason}
+          nil -> {:error, :not_found}
         end
       end
 
@@ -54,7 +70,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
              item when not is_nil(item) <- Enum.find(items, &(&1["name"] == name)) do
           {:ok, item}
         else
-          _ -> {:error, :not_found}
+          {:error, reason} -> {:error, reason}
+          nil -> {:error, :not_found}
         end
       end
 
@@ -71,12 +88,28 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fetch_and_process(url, headers, cached, opts) do
-        with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
+        result = HTTP.get(url, headers)
+
+        with {:ok, body} <-
+               ResponseHandler.handle_response(result,
+                 success_codes: [200],
+                 log_context: %{client: module_name(), url: url}
+               ),
              {:ok, decoded} <- decode_body(body),
              {:ok, items} <- extract_data(decoded) do
           validate_and_process(items, cached, opts, url)
         else
-          error -> handle_fetch_error(error, url)
+          {:error, :json_decode_error} = error ->
+            AppLogger.api_error("Failed to decode response", url: url)
+            error
+
+          {:error, :invalid_data} = error ->
+            AppLogger.api_error("Invalid data format", url: url)
+            error
+
+          {:error, reason} = error ->
+            AppLogger.api_error("Request failed", url: url, error: inspect(reason))
+            error
         end
       end
 
@@ -96,59 +129,42 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
       end
 
-      # Handle different types of fetch errors
-      defp handle_fetch_error({:ok, %{status_code: status, body: body}}, url) do
-        AppLogger.api_error("HTTP error",
-          status: status,
-          url: url,
-          response: String.slice(body, 0, 100)
-        )
-
-        {:error, {:http_error, status, body}}
+      # Get the module name for logging
+      defp module_name do
+        __MODULE__ |> Module.split() |> List.last()
       end
 
-      defp handle_fetch_error({:error, reason}, url) do
-        AppLogger.api_error("Request failed",
-          url: url,
-          error: inspect(reason)
-        )
-
-        {:error, {:request_error, reason}}
-      end
-
-      defp handle_fetch_error(other, url) do
-        AppLogger.api_error("Unexpected result",
-          url: url,
-          result: inspect(other)
-        )
-
-        {:error, {:unexpected_result, other}}
-      end
-
-      defp process_with_notifications(new_items, cached_items, opts) do
+      defp process_with_notifications(new_items, [], _opts) do
         cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
-        # Only process notifications if we had cached data
-        if cached_items != [] do
-          # Find new items that aren't in the cache
-          new_items = find_new_items(cached_items, new_items)
-
-          # Process notifications if not suppressed
-          if !Keyword.get(opts, :suppress_notifications, false) do
-            process_notifications(new_items)
-          end
-        end
-
-        # Cache the new data
         case Cachex.put(cache_name, cache_key(), new_items, ttl: :timer.seconds(cache_ttl())) do
           {:ok, true} ->
             {:ok, new_items}
 
           error ->
-            AppLogger.api_error("Failed to cache data",
-              error: inspect(error)
-            )
+            AppLogger.api_error("Failed to cache data", error: inspect(error))
+            {:error, :cache_error}
+        end
+      end
 
+      defp process_with_notifications(new_items, cached_items, opts) do
+        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+        # Find new items that aren't in the cache
+        truly_new_items = find_new_items(cached_items, new_items)
+
+        # Process notifications if not suppressed
+        if !Keyword.get(opts, :suppress_notifications, false) do
+          process_notifications(truly_new_items)
+        end
+
+        # Cache the new data (all items, not just the new ones)
+        case Cachex.put(cache_name, cache_key(), new_items, ttl: :timer.seconds(cache_ttl())) do
+          {:ok, true} ->
+            {:ok, new_items}
+
+          error ->
+            AppLogger.api_error("Failed to cache data", error: inspect(error))
             {:error, :cache_error}
         end
       end
@@ -222,60 +238,39 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fetch_from_api do
-        base_url = Config.base_map_url()
-        endpoint = endpoint()
-        url = build_url(base_url, endpoint)
-        headers = auth_header()
+        url = api_url()
+        headers = headers()
 
-        with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
-             {:ok, decoded} <- decode_body(body),
-             {:ok, items} <- extract_data(decoded) do
-          {:ok, items}
-        else
-          error -> handle_api_fetch_error(error, url)
+        case HTTP.get(url, headers) do
+          {:ok, %{status_code: 200, body: body}} ->
+            case Jason.decode(body) do
+              {:ok, decoded} -> {:ok, decoded}
+              {:error, _} -> {:error, :json_decode_error}
+            end
+
+          {:ok, %{status_code: status}} ->
+            AppLogger.error("API request failed", %{
+              status: status,
+              url: url
+            })
+
+            {:error, :api_request_failed}
+
+          {:error, reason} ->
+            AppLogger.error("API request error", %{
+              reason: reason,
+              url: url
+            })
+
+            {:error, reason}
         end
-      end
-
-      # Handle errors from API fetch (reusing existing error handling pattern)
-      defp handle_api_fetch_error({:ok, %{status_code: status, body: body}}, url) do
-        error_preview =
-          if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
-
-        AppLogger.api_error("HTTP error",
-          status: status,
-          url: url,
-          response: error_preview
-        )
-
-        {:error, {:http_error, status, error_preview}}
-      end
-
-      defp handle_api_fetch_error({:error, reason}, url) do
-        AppLogger.api_error("Request failed",
-          url: url,
-          error: inspect(reason)
-        )
-
-        {:error, {:request_error, reason}}
-      end
-
-      defp handle_api_fetch_error(other, url) do
-        AppLogger.api_error("Unexpected result",
-          url: url,
-          result: inspect(other)
-        )
-
-        {:error, {:unexpected_result, other}}
       end
 
       # Helper functions
       defp build_url(base_url, endpoint) do
-        base_url
-        |> String.trim_trailing("/")
-        |> Kernel.<>("/api/maps/")
-        |> Kernel.<>(Config.map_slug())
-        |> Kernel.<>("/")
-        |> Kernel.<>(endpoint)
+        base_url = String.trim_trailing(base_url, "/")
+        map_slug = Config.map_slug()
+        "#{base_url}/api/maps/#{map_slug}/#{endpoint}"
       end
 
       defp add_query_params(url) do

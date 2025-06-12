@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Killmail.ZKillClientTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import Mox
 
+  alias WandererNotifier.HTTPMock, as: HttpClientMock
   alias WandererNotifier.Killmail.ZKillClient
-  alias WandererNotifier.HttpClient.HttpoisonMock, as: HttpClientMock
 
   setup :verify_on_exit!
 

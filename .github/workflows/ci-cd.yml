@@ -1,0 +1,259 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
+      DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+      CACHE_DIR: "/tmp/wanderer_notifier_cache"
+      MAP_URL: "http://example.com"
+      MAP_NAME: "testmap"
+      MAP_API_KEY: ${{ secrets.MAP_API_KEY }}
+      DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+      LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+      LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
+      ENV: test
+      DISABLE_WEBSOCKET: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.4"
+          otp-version: "27.0"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get --include-children
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile (with special handling for Mox warnings)
+        run: |
+          mix compile 2>&1 | (grep -v "redefining module" || true)
+          [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+
+      - name: Restore PLT cache
+        uses: actions/cache@v4
+        id: plt_cache
+        with:
+          key: ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          path: |
+            priv/plts
+
+      - name: Compile for dev (for Dialyzer)
+        run: MIX_ENV=dev mix compile
+
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: MIX_ENV=dev mix dialyzer --plt
+
+      - name: Run Dialyzer
+        run: MIX_ENV=dev mix dialyzer --format github
+        continue-on-error: false
+
+      - name: Run Credo
+        run: mix credo
+        continue-on-error: false
+
+      - name: Run tests
+        run: mix test
+
+      - name: Generate test coverage
+        run: mix test --cover
+
+  docker:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    # Run on push to main or on version tags
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history to get all tags
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Get current version tag
+        id: get_tag
+        run: |
+          # Get the current tag on this commit
+          CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+          echo "CURRENT_TAG=\"$CURRENT_TAG\"" >> $GITHUB_OUTPUT
+          echo "Current tag: '$CURRENT_TAG'"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: guarzo/wanderer-notifier
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=raw,value=${{ steps.get_tag.outputs.CURRENT_TAG }},enable=${{ steps.get_tag.outputs.CURRENT_TAG != '' }}
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:test
+          cache-from: type=gha
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version || 'dev' }}
+            VCS_REF=${{ github.sha }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
+      - name: Test Docker image
+        run: |
+          chmod +x ./scripts/test_docker_image.sh
+          timeout 300 ./scripts/test_docker_image.sh -i guarzo/wanderer-notifier -t test -d ${{ secrets.FAKE_DISCORD_TOKEN }} \
+            -e "MAP_URL=http://test.example.com" \
+            -e "MAP_NAME=test_map" \
+            -e "MAP_API_KEY=test_key" \
+            -e "LICENSE_KEY=test_license" \
+            -e "NOTIFIER_API_TOKEN=test_token" || {
+            echo "Docker image test failed or timed out"
+            # Clean up any remaining containers
+            docker ps -a | grep "test_container" | awk '{print $1}' | xargs -r docker rm -f || true
+            exit 1
+          }
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Build and push to registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version || 'dev' }}
+            VCS_REF=${{ github.sha }}
+            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
+  release:
+    name: Create Release
+    needs: docker
+    runs-on: ubuntu-latest
+    # Run when a tag is pushed
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version tag
+        id: check_tag
+        run: |
+          # Get the current tag on this commit
+          CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+          if [[ "$CURRENT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION=\"$CURRENT_TAG\"" >> $GITHUB_OUTPUT
+            echo "HAS_VERSION_TAG=true" >> $GITHUB_OUTPUT
+            echo "Found version tag: '$CURRENT_TAG'"
+          else
+            echo "HAS_VERSION_TAG=false" >> $GITHUB_OUTPUT
+            echo "No version tag found on current commit"
+          fi
+
+      # Skip remaining steps if no version tag
+      - name: Exit if no version tag
+        if: steps.check_tag.outputs.HAS_VERSION_TAG != 'true'
+        run: |
+          echo "No version tag found, skipping release creation"
+          exit 0
+
+      - name: Get version from tag
+        id: get_version
+        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Generate changelog between tags
+          if [ -z "$PREV_TAG" ]; then
+            echo "CHANGELOG=Initial release" >> $GITHUB_OUTPUT
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Changes in this release
+
+            ${{ steps.release_notes.outputs.CHANGELOG }}
+
+            ## Docker Image
+
+            ```bash
+            docker pull guarzo/wanderer-notifier:${{ steps.get_version.outputs.VERSION }}
+            ```
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

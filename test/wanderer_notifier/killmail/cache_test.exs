@@ -1,10 +1,11 @@
 defmodule WandererNotifier.Killmail.CacheTest do
-  use ExUnit.Case, async: false
+  use WandererNotifier.CacheCase, async: false
   import Mox
 
   alias WandererNotifier.Killmail.Cache
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Adapter
 
   # Default TTL for tests
   @test_ttl 3600
@@ -12,19 +13,9 @@ defmodule WandererNotifier.Killmail.CacheTest do
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
-  setup do
+  setup context do
     # Set up mocks
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
-
-    # Get the cache name from application config (set in test_helper.exs)
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
-
-    # Ensure Cachex is started for tests - use the same name as configured
-    case Cachex.start_link(name: cache_name) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-      error -> raise "Failed to start Cachex: #{inspect(error)}"
-    end
 
     # Set up ESI Service mock for system name lookups
     ServiceMock
@@ -38,10 +29,6 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
     # Reset the cache
     Cache.init()
-
-    # Ensure cache is clean
-    cache_key = CacheKeys.zkill_recent_kills()
-    Cachex.put(cache_name, cache_key, [], ttl: @test_ttl)
 
     # Add sample killmail data to the test context
     sample_killmail = %{
@@ -58,7 +45,8 @@ defmodule WandererNotifier.Killmail.CacheTest do
       }
     }
 
-    %{sample_killmail: sample_killmail, cache_name: cache_name}
+    # Merge with context from CacheCase
+    Map.put(context, :sample_killmail, sample_killmail)
   end
 
   describe "init/0" do
@@ -80,7 +68,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert :ok = Cache.cache_kill(kill_id, killmail)
 
       # Verify it was stored in the recent_kills list
-      {:ok, kill_ids} = Cachex.get(cache_name, CacheKeys.zkill_recent_kills())
+      {:ok, kill_ids} = Adapter.get(cache_name, CacheKeys.zkill_recent_kills())
       assert is_list(kill_ids)
       assert to_string(kill_id) in kill_ids
 
@@ -90,13 +78,13 @@ defmodule WandererNotifier.Killmail.CacheTest do
         |> to_string()
         |> CacheKeys.zkill_recent_kill()
 
-      assert {:ok, _} = Cachex.get(cache_name, key)
+      assert {:ok, _} = Adapter.get(cache_name, key)
     end
 
     test "handles empty kill list when updating", %{cache_name: cache_name} do
       # Ensure the recent_kills list is empty
       cache_key = CacheKeys.zkill_recent_kills()
-      Cachex.put(cache_name, cache_key, [], ttl: @test_ttl)
+      Adapter.set(cache_name, cache_key, [], @test_ttl)
 
       # Cache a killmail
       kill_id = 54_321
@@ -105,7 +93,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert :ok = Cache.cache_kill(kill_id, killmail)
 
       # Verify the recent_kills list was updated
-      {:ok, kill_ids} = Cachex.get(cache_name, CacheKeys.zkill_recent_kills())
+      {:ok, kill_ids} = Adapter.get(cache_name, CacheKeys.zkill_recent_kills())
       assert is_list(kill_ids)
       assert to_string(kill_id) in kill_ids
     end
@@ -145,17 +133,17 @@ defmodule WandererNotifier.Killmail.CacheTest do
       invalid_id = 99_999
       :ok = Cache.cache_kill(kill_id, killmail)
       kill_ids = [to_string(invalid_id), to_string(kill_id)]
-      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), kill_ids, ttl: @test_ttl)
+      Adapter.set(cache_name, CacheKeys.zkill_recent_kills(), kill_ids, @test_ttl)
       {:ok, kills} = Cache.get_recent_kills()
       assert map_size(kills) == 1
       assert Map.has_key?(kills, to_string(kill_id))
       refute Map.has_key?(kills, to_string(invalid_id))
-      Cachex.del(cache_name, CacheKeys.zkill_recent_kills())
+      Adapter.del(cache_name, CacheKeys.zkill_recent_kills())
     end
 
     test "handles empty kill list", %{cache_name: cache_name} do
       # Ensure recent_kills is empty
-      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), [], ttl: @test_ttl)
+      Adapter.set(cache_name, CacheKeys.zkill_recent_kills(), [], @test_ttl)
 
       # Try to get recent kills
       {:ok, kills} = Cache.get_recent_kills()
@@ -186,7 +174,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
     test "handles missing kill data", %{cache_name: cache_name} do
       # Ensure the cache is empty
-      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), [], ttl: @test_ttl)
+      Adapter.set(cache_name, CacheKeys.zkill_recent_kills(), [], @test_ttl)
 
       # Get latest killmails
       latest_kills = Cache.get_latest_killmails()

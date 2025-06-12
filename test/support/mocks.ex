@@ -295,6 +295,8 @@ defmodule WandererNotifier.MockConfig do
   def notifier_api_token, do: "test-api-token"
 
   def track_kspace_systems?, do: true
+
+  def deduplication_module, do: WandererNotifier.MockDeduplication
 end
 
 defmodule WandererNotifier.MockCacheHelpers do
@@ -390,10 +392,14 @@ defmodule WandererNotifier.Mocks do
   Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
     for: WandererNotifier.Notifications.Determiner.KillBehaviour
   )
+
+  Mox.defmock(WandererNotifier.Config.EnvProviderMock,
+    for: WandererNotifier.Config.EnvProvider
+  )
 end
 
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifiers.Discord.Behaviour
+  for: WandererNotifier.Notifiers.Discord.DiscordBehaviour
 )
 
 defmodule WandererNotifier.Map.MapSystemMock do
@@ -413,7 +419,7 @@ defmodule WandererNotifier.Map.MapCharacterMock do
   @behaviour WandererNotifier.Map.CharacterBehaviour
 
   @impl true
-  def is_tracked?(_character_id), do: false
+  def is_tracked?(_character_id), do: {:ok, false}
 end
 
 defmodule WandererNotifier.Test.Mocks do

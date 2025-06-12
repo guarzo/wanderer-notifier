@@ -13,9 +13,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
                   WandererNotifier.Killmail.ZKillClient
                 )
 
-  defp esi_service do
-    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
-  end
+  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
 
   @doc """
   Enriches a `%Killmail{}` with ESI lookups.
@@ -61,7 +59,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   # If esi_data is already present, skip fetching.
-  defp maybe_use_cache(killmail, esi) when map_size(esi) > 0, do: {:ok, killmail}
   defp maybe_use_cache(km, _), do: {:ok, km}
 
   defp fetch_esi({:ok, %Killmail{} = km}, :get_killmail, [id, hash]) do
@@ -147,10 +144,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
     end
   end
 
-  defp fetch_victim_info(_invalid) do
-    {:error, :esi_data_missing}
-  end
-
   defp fetch_alliance_name(nil), do: "Unknown"
 
   defp fetch_alliance_name(alliance_id) do
@@ -176,6 +169,26 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp add_system_info({:ok, km}) do
     system_id = km.esi_data["solar_system_id"] || km.system_id
 
+    case get_system_name_from_killmail(km, system_id) do
+      {:ok, updated_km} -> {:ok, updated_km}
+      {:needs_fetch} -> fetch_system_name(km, system_id)
+    end
+  end
+
+  defp get_system_name_from_killmail(km, system_id) do
+    cond do
+      km.system_name && km.system_name != "" ->
+        {:ok, %{km | system_id: system_id}}
+
+      is_binary(km.esi_data["solar_system_name"]) ->
+        {:ok, %{km | system_name: km.esi_data["solar_system_name"], system_id: system_id}}
+
+      true ->
+        {:needs_fetch}
+    end
+  end
+
+  defp fetch_system_name(km, system_id) do
     case get_system(system_id) do
       {:ok, name} ->
         {:ok, %{km | system_name: name, system_id: system_id}}
@@ -220,14 +233,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
     case enrich_attacker(atk) do
       {:ok, e} ->
         {:cont, {:ok, [e | acc]}}
-
-      err ->
-        {:halt, err}
     end
-  end
-
-  defp process_attacker(_invalid, {:ok, _acc}) do
-    {:halt, {:error, :esi_data_missing}}
   end
 
   # Restore get_system/1
@@ -299,8 +305,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
     {:ok, enriched}
   end
-
-  defp enrich_attacker(_invalid), do: {:error, :esi_data_missing}
 
   # Fetch character name with fallback
   defp fetch_character_name(character_id) do

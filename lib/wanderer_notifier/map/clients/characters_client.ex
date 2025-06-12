@@ -1,76 +1,47 @@
 defmodule WandererNotifier.Map.Clients.CharactersClient do
   @moduledoc """
-  Client for fetching and caching character data from the EVE Online Map API.
+  Client for fetching and managing character data from the map API.
   """
 
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
 
   @impl true
   def endpoint, do: "user-characters"
 
   @impl true
+  def cache_key, do: "characters"
+
+  @impl true
+  def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
+
+  @impl true
   def extract_data(%{"data" => data}) when is_list(data) do
-    # Extract characters from each group
+    # Flatten the nested structure to get all characters
     characters =
-      Enum.flat_map(data, fn group ->
-        case group do
-          %{"characters" => chars} when is_list(chars) -> chars
-          _ -> []
-        end
+      data
+      |> Enum.flat_map(fn
+        %{"characters" => chars} when is_list(chars) -> chars
+        _ -> []
       end)
 
     {:ok, characters}
   end
 
-  def extract_data(data) do
-    AppLogger.api_error("Invalid characters data format",
-      data: inspect(data, pretty: true)
-    )
-
-    {:error, :invalid_data_format}
-  end
+  def extract_data(_), do: {:error, :invalid_data_format}
 
   @impl true
-  def validate_data(characters) when is_list(characters) do
-    if Enum.all?(characters, &valid_character?/1) do
-      :ok
-    else
-      AppLogger.api_error("Characters data validation failed",
-        count: length(characters)
-      )
-
-      {:error, :invalid_data}
-    end
+  def validate_data(items) when is_list(items) do
+    if Enum.all?(items, &valid_character?/1), do: :ok, else: {:error, :invalid_data}
   end
 
-  def validate_data(other) do
-    AppLogger.api_error("Invalid characters data type",
-      type: inspect(other)
-    )
+  defp valid_character?(%{"eve_id" => eve_id, "name" => name})
+       when is_binary(eve_id) and is_binary(name),
+       do: true
 
-    {:error, :invalid_data}
-  end
-
-  @impl true
-  def process_data(new_characters, _cached_characters, _opts) do
-    # For now, just return the new characters
-    # In the future, we could implement diffing or other processing here
-    AppLogger.api_info("Processing characters data",
-      count: length(new_characters)
-    )
-
-    {:ok, new_characters}
-  end
-
-  @impl true
-  def cache_key, do: CacheKeys.character_list()
-
-  @impl true
-  def cache_ttl, do: 300
+  defp valid_character?(_), do: false
 
   @impl true
   def should_notify?(character_id, character) do
@@ -89,32 +60,12 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     character
   end
 
-  defp valid_character?(character) do
-    is_map(character) and
-      valid_character_required_fields?(character) and
-      valid_character_optional_fields?(character)
-  end
+  @impl true
+  def process_data(new_characters, _cached_characters, _opts) do
+    AppLogger.api_info("Processing characters data",
+      count: length(new_characters)
+    )
 
-  defp valid_character_required_fields?(character) do
-    is_binary(character["name"]) and
-      valid_eve_id?(character["eve_id"]) and
-      is_binary(character["corporation_ticker"]) and
-      valid_corporation_id?(character["corporation_id"])
-  end
-
-  defp valid_character_optional_fields?(character) do
-    valid_alliance_id?(character["alliance_id"])
-  end
-
-  defp valid_eve_id?(eve_id) do
-    is_binary(eve_id) or is_integer(eve_id)
-  end
-
-  defp valid_corporation_id?(corp_id) do
-    is_binary(corp_id) or is_integer(corp_id)
-  end
-
-  defp valid_alliance_id?(alliance_id) do
-    is_binary(alliance_id) or is_integer(alliance_id) or is_nil(alliance_id)
+    {:ok, new_characters}
   end
 end

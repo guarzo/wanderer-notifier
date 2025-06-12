@@ -42,6 +42,11 @@ config :nostrum,
     :guild_messages
   ]
 
+# Configure scheduler intervals
+config :wanderer_notifier,
+  system_update_scheduler_interval: WandererNotifier.Constants.system_update_interval(),
+  character_update_scheduler_interval: WandererNotifier.Constants.character_update_interval()
+
 # Load feature-specific environment variables (no longer using WANDERER_FEATURE_ prefix)
 # Look for any environment variables ending with _ENABLED or common feature flag patterns
 feature_env_vars =
@@ -97,10 +102,10 @@ config :wanderer_notifier,
 
   # Optional settings with sensible defaults
   port: Helpers.parse_int(System.get_env("PORT"), 4000),
-  discord_system_kill_channel_id: System.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID") || "",
-  discord_character_kill_channel_id: System.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID") || "",
-  discord_system_channel_id: System.get_env("DISCORD_SYSTEM_CHANNEL_ID") || "",
-  discord_character_channel_id: System.get_env("DISCORD_CHARACTER_CHANNEL_ID") || "",
+  discord_system_kill_channel_id: System.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
+  discord_character_kill_channel_id: System.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
+  discord_system_channel_id: System.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
+  discord_character_channel_id: System.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
   license_manager_api_url: System.get_env("LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd",
   # Merge base features with any feature env vars
   features:
@@ -124,9 +129,8 @@ config :wanderer_notifier,
       feature_env_vars
     ),
   character_exclude_list:
-    (System.get_env("CHARACTER_EXCLUDE_LIST") || "")
-    |> String.split(",", trim: true)
-    |> Enum.map(&String.trim/1),
+    System.get_env("CHARACTER_EXCLUDE_LIST")
+    |> WandererNotifier.Config.Utils.parse_comma_list(),
   cache_dir: System.get_env("CACHE_DIR") || "/app/data/cache",
   public_url: System.get_env("PUBLIC_URL"),
   host: System.get_env("HOST") || "localhost",

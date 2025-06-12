@@ -35,16 +35,32 @@ defmodule WandererNotifier.Application do
     schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
     AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
 
-    children = [
+    base_children = [
+      # Add Task.Supervisor first to prevent initialization races
+      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []},
-      # Add scheduler supervisor last to ensure all dependencies are started
-      {WandererNotifier.Schedulers.Supervisor, []}
+      {WandererNotifier.Web.Server, []}
     ]
+
+    # Add Killmail processing pipeline if RedisQ is enabled
+    redisq_enabled = WandererNotifier.Config.redisq_enabled?()
+    AppLogger.startup_info("RedisQ enabled: #{redisq_enabled}")
+
+    killmail_children =
+      if redisq_enabled do
+        [{WandererNotifier.Killmail.Supervisor, []}]
+      else
+        []
+      end
+
+    # Add scheduler supervisor last to ensure all dependencies are started
+    scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
+
+    children = base_children ++ killmail_children ++ scheduler_children
 
     AppLogger.startup_info("Starting children: #{inspect(children)}")
 
@@ -66,7 +82,11 @@ defmodule WandererNotifier.Application do
 
     # Ensure cache name is set
     if Application.get_env(:wanderer_notifier, :cache_name) == nil do
-      Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+      Application.put_env(
+        :wanderer_notifier,
+        :cache_name,
+        WandererNotifier.Cache.Config.default_cache_name()
+      )
     end
 
     # Ensure schedulers are enabled
@@ -92,13 +112,11 @@ defmodule WandererNotifier.Application do
     # Get all environment variables, sorted by key
     System.get_env()
     |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.filter(fn {key, _} -> String.starts_with?(key, "WANDERER_") end)
     |> Enum.each(fn {key, value} ->
       # Redact sensitive values
       safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-      # Log each variable individually, and focus on WANDERER_ variables
-      if String.starts_with?(key, "WANDERER_") do
-        AppLogger.startup_info("  #{key}: #{safe_value}")
-      end
+      AppLogger.startup_info("  #{key}: #{safe_value}")
     end)
 
     # Log app config as well
@@ -112,22 +130,36 @@ defmodule WandererNotifier.Application do
     AppLogger.startup_info("Application configuration:")
 
     # Log critical config values from the application environment
-    [
-      {:features, Application.get_env(:wanderer_notifier, :features)},
-      {:discord_channel_id, Application.get_env(:wanderer_notifier, :discord_channel_id)},
-      {:config_module, Application.get_env(:wanderer_notifier, :config)},
-      {:env, Application.get_env(:wanderer_notifier, :env)},
-      {:schedulers_enabled, Application.get_env(:wanderer_notifier, :schedulers_enabled)}
-    ]
-    |> Enum.each(fn {key, value} ->
+    for {key, env_key} <- [
+          {:features, :features},
+          {:discord_channel_id, :discord_channel_id},
+          {:config_module, :config_module},
+          {:env, :env},
+          {:schedulers_enabled, :schedulers_enabled}
+        ] do
+      value = Application.get_env(:wanderer_notifier, env_key)
       AppLogger.startup_info("  #{key}: #{inspect(value)}")
-    end)
+    end
   end
 
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    {Cachex, name: cache_name}
+    cache_name = WandererNotifier.Cache.Config.cache_name()
+    cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
+
+    case cache_adapter do
+      Cachex ->
+        Cachex.child_spec(name: cache_name)
+
+      WandererNotifier.Cache.ETSCache ->
+        {WandererNotifier.Cache.ETSCache, name: cache_name}
+
+      WandererNotifier.Cache.SimpleETSCache ->
+        {WandererNotifier.Cache.SimpleETSCache, name: cache_name}
+
+      other ->
+        raise "Unknown cache adapter: #{inspect(other)}"
+    end
   end
 
   @doc """

@@ -7,6 +7,7 @@ defmodule WandererNotifier.Web.Server do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
+  alias WandererNotifier.Constants
 
   # Client API
 
@@ -33,31 +34,23 @@ defmodule WandererNotifier.Web.Server do
 
     AppLogger.startup_debug("Starting web server", port: port)
 
-    case start_server(port) do
-      {:ok, pid} ->
-        AppLogger.startup_info("🌐 Web server ready on port #{port}")
-        # Schedule a heartbeat check
+    {:ok, %{port: port}, {:continue, :start_server}}
+  end
+
+  @impl true
+  def handle_continue(:start_server, state) do
+    case start_server(state.port) do
+      {:ok, _} ->
+        AppLogger.startup_info("✅ Web server started on port #{state.port}")
         schedule_heartbeat()
-        {:ok, %{server_pid: pid, port: port, running: true}}
+        {:noreply, state}
 
       {:error, reason} ->
-        AppLogger.startup_error("❌ Failed to start web server", error: inspect(reason))
-        # Try to recover by using a different port
-        case start_server(port + 1) do
-          {:ok, pid} ->
-            AppLogger.startup_info("🌐 Web server started on fallback port #{port + 1}")
-            schedule_heartbeat()
-            {:ok, %{server_pid: pid, port: port + 1, running: true}}
+        AppLogger.startup_error("❌ Failed to start web server",
+          error: inspect(reason)
+        )
 
-          {:error, fallback_reason} ->
-            AppLogger.startup_error("❌ Failed to start web server on fallback port",
-              error: inspect(fallback_reason)
-            )
-
-            # Return ok but mark as not running - we'll retry on heartbeat
-            schedule_heartbeat()
-            {:ok, %{server_pid: nil, port: port, running: false}}
-        end
+        {:stop, reason, state}
     end
   end
 
@@ -67,43 +60,20 @@ defmodule WandererNotifier.Web.Server do
   end
 
   @impl true
-  def handle_info(:heartbeat, %{running: false, port: port} = state) do
-    # Try to start server again if it's not running
-    case start_server(port) do
-      {:ok, pid} ->
-        AppLogger.startup_info("🌐 Web server restarted successfully on port #{port}")
-        schedule_heartbeat()
-        {:noreply, %{state | server_pid: pid, running: true}}
-
-      {:error, _reason} ->
-        # Schedule another retry
-        schedule_heartbeat()
-        {:noreply, state}
-    end
-  end
-
-  @impl true
   def handle_info(:heartbeat, state) do
-    # Check if the server is still alive
-    if Process.alive?(state.server_pid) do
-      schedule_heartbeat()
-      {:noreply, state}
-    else
-      # Server died, try to restart it
-      AppLogger.startup_warn("Web server process died, attempting restart")
+    # Check if we can make a request to the health endpoint
+    case check_health_endpoint(state.port) do
+      :ok ->
+        AppLogger.startup_debug("Web server heartbeat check passed")
 
-      case start_server(state.port) do
-        {:ok, pid} ->
-          AppLogger.startup_info("🌐 Web server restarted successfully")
-          schedule_heartbeat()
-          {:noreply, %{state | server_pid: pid, running: true}}
-
-        {:error, reason} ->
-          AppLogger.startup_error("❌ Failed to restart web server", error: inspect(reason))
-          schedule_heartbeat()
-          {:noreply, %{state | server_pid: nil, running: false}}
-      end
+      {:error, reason} ->
+        AppLogger.startup_error("Web server heartbeat check failed",
+          reason: inspect(reason)
+        )
     end
+
+    schedule_heartbeat()
+    {:noreply, state}
   end
 
   @impl true
@@ -154,7 +124,21 @@ defmodule WandererNotifier.Web.Server do
   end
 
   defp schedule_heartbeat do
-    # Check every 30 seconds if the server is still running
-    Process.send_after(self(), :heartbeat, 30_000)
+    Process.send_after(self(), :heartbeat, Constants.web_server_heartbeat_interval())
+  end
+
+  defp check_health_endpoint(port) do
+    url = "http://localhost:#{port}/health"
+
+    case :httpc.request(:get, {String.to_charlist(url), []}, [{:timeout, 5000}], []) do
+      {:ok, {{_, 200, _}, _, _}} ->
+        :ok
+
+      {:ok, {{_, status, _}, _, _}} ->
+        {:error, {:bad_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end

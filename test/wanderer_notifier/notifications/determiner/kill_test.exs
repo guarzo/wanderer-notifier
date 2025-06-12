@@ -11,8 +11,13 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
 
   setup do
     # Set up application environment
-    Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.MockSystem)
-    Application.put_env(:wanderer_notifier, :character_module, WandererNotifier.MockCharacter)
+    Application.put_env(:wanderer_notifier, :system_track_module, WandererNotifier.MockSystem)
+
+    Application.put_env(
+      :wanderer_notifier,
+      :character_track_module,
+      WandererNotifier.MockCharacter
+    )
 
     Application.put_env(
       :wanderer_notifier,
@@ -28,7 +33,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     |> stub(:is_tracked?, fn _id -> false end)
 
     WandererNotifier.MockCharacter
-    |> stub(:is_tracked?, fn _id -> false end)
+    |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
     :ok
   end
@@ -45,25 +50,13 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
-
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: true
         }
       end)
 
@@ -71,7 +64,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       |> expect(:is_tracked?, fn 30_000_142 -> true end)
 
       WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> false end)
+      |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
 
       assert {:ok, %{should_notify: true}} = Kill.should_notify?(killmail)
     end
@@ -85,32 +78,16 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         }
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
-
-      WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> false end)
-
-      WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> false end)
+      # No mocks needed - notifications are disabled so tracking checks won't be called
 
       assert {:error, :notifications_disabled} =
                Kill.should_notify?(%{
                  killmail: killmail,
                  config: %{
-                   notifications: %{
-                     enabled: false,
-                     kill: %{
-                       enabled: true,
-                       system: %{
-                         enabled: true
-                       },
-                       character: %{
-                         enabled: true
-                       }
-                     }
-                   }
+                   notifications_enabled: false,
+                   kill_notifications_enabled: true,
+                   system_notifications_enabled: true,
+                   character_notifications_enabled: true
                  }
                })
     end
@@ -124,32 +101,16 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         }
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
-
-      WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> false end)
-
-      WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> false end)
+      # No mocks needed - kill notifications are disabled so tracking checks won't be called
 
       assert {:error, :kill_notifications_disabled} =
                Kill.should_notify?(%{
                  killmail: killmail,
                  config: %{
-                   notifications: %{
-                     enabled: true,
-                     kill: %{
-                       enabled: false,
-                       system: %{
-                         enabled: true
-                       },
-                       character: %{
-                         enabled: true
-                       }
-                     }
-                   }
+                   notifications_enabled: true,
+                   kill_notifications_enabled: false,
+                   system_notifications_enabled: true,
+                   character_notifications_enabled: true
                  }
                })
     end
@@ -165,31 +126,19 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
-
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> true end)
 
       WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> false end)
+      |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
 
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: false
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: false,
+          character_notifications_enabled: true
         }
       end)
 
@@ -208,31 +157,19 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
-
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
 
       WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> true end)
+      |> expect(:is_tracked?, fn 93_345_033 -> {:ok, true} end)
 
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: false
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: false
         }
       end)
 
@@ -251,31 +188,19 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         "zkb" => %{"hash" => "hash12345"}
       }
 
-      # Add deduplication mock
-      WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, _ -> {:ok, :new} end)
-
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
 
       WandererNotifier.MockCharacter
-      |> expect(:is_tracked?, fn 93_345_033 -> false end)
+      |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
 
       WandererNotifier.MockConfig
       |> expect(:get_config, fn ->
         %{
-          notifications: %{
-            enabled: true,
-            kill: %{
-              enabled: true,
-              system: %{
-                enabled: true
-              },
-              character: %{
-                enabled: true
-              }
-            }
-          }
+          notifications_enabled: true,
+          kill_notifications_enabled: true,
+          system_notifications_enabled: true,
+          character_notifications_enabled: true
         }
       end)
 

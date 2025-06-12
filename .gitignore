@@ -13,7 +13,7 @@ repomix.*
 /doc/
 /.fetch
 chart-service/node_modules/
-
+.claude
 # Crash dumps and archives
 erl_crash.dump
 *.ez

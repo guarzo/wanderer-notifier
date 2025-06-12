@@ -1,12 +1,12 @@
-defmodule WandererNotifier.ApiTest do
-  use ExUnit.Case
+defmodule WandererNotifier.API.APITest do
+  use ExUnit.Case, async: true
   import Mox
   alias WandererNotifier.Test.Fixtures.ApiResponses
 
   setup :verify_on_exit!
 
   test "uses fixtures for API testing" do
-    WandererNotifier.HttpClient.HttpoisonMock
+    WandererNotifier.HTTPMock
     |> expect(:get, fn "https://api.example.com/systems", [], [] ->
       {:ok, %{status_code: 200, body: "[]"}}
     end)
@@ -15,12 +15,12 @@ defmodule WandererNotifier.ApiTest do
     end)
 
     result =
-      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/systems", [], [])
+      WandererNotifier.HTTPMock.get("https://api.example.com/systems", [], [])
 
     assert {:ok, %{status_code: 200, body: "[]"}} = result
 
     char_result =
-      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/characters", [], [])
+      WandererNotifier.HTTPMock.get("https://api.example.com/characters", [], [])
 
     assert {:ok, %{status_code: 200, body: char_body}} = char_result
     assert char_body["character_id"] == 12_345

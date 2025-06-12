@@ -15,32 +15,28 @@ defmodule WandererNotifier.Config do
     - API
   """
   @behaviour WandererNotifier.Config.ConfigBehaviour
-  # --- General ENV helpers ---
-  def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
-  def fetch(key, default \\ nil), do: System.get_env(key) || default
-  def fetch_int(key, default), do: fetch(key) |> parse_int(default)
-  defp parse_int(nil, default), do: default
 
-  defp parse_int(str, default) do
-    case Integer.parse(str) do
-      {i, _} ->
-        i
+  alias WandererNotifier.Config.Utils
 
-      :error ->
-        require Logger
-
-        Logger.warning(
-          "Unable to parse integer from ENV value #{inspect(str)} – falling back to #{default}"
-        )
-
-        default
-    end
+  # Get the env provider from application config, defaulting to SystemEnvProvider
+  defp env_provider do
+    Application.get_env(
+      :wanderer_notifier,
+      :env_provider,
+      WandererNotifier.Config.SystemEnvProvider
+    )
   end
+
+  # --- General ENV helpers ---
+  def fetch!(key), do: env_provider().fetch_env!(key)
+  def fetch(key, default \\ nil), do: env_provider().get_env(key, default)
+  def fetch_int(key, default), do: fetch(key) |> Utils.parse_int(default)
 
   # --- General Application config ---
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
   @impl true
+  @spec get_config() :: map()
   def get_config do
     %{
       notifications_enabled: notifications_enabled?(),
@@ -51,6 +47,7 @@ defmodule WandererNotifier.Config do
   end
 
   @impl true
+  @spec get_notification_setting(atom(), atom()) :: {:ok, boolean()} | {:error, term()}
   def get_notification_setting(type, key) do
     case Application.get_env(:wanderer_notifier, :config) do
       nil -> {:ok, true}
@@ -66,15 +63,12 @@ defmodule WandererNotifier.Config do
   """
   def notification_dedup_ttl do
     # Get from environment variable first, then fall back to application config
-    case System.get_env("NOTIFICATION_DEDUP_TTL") do
+    case env_provider().get_env("NOTIFICATION_DEDUP_TTL") do
       nil ->
         Application.get_env(:wanderer_notifier, :dedup_ttl, 3600)
 
       ttl ->
-        case Integer.parse(ttl) do
-          {seconds, _} -> seconds
-          :error -> 3600
-        end
+        Utils.parse_int(ttl, 3600)
     end
   end
 
@@ -103,11 +97,13 @@ defmodule WandererNotifier.Config do
     # First try the explicit MAP_URL, then fall back to parsing from URL
     explicit_url = get(:map_url)
 
-    if explicit_url && explicit_url != "" do
-      explicit_url
-    else
-      # Fall back to base_map_url for backward compatibility
-      base_map_url()
+    case explicit_url do
+      url when is_binary(url) and url != "" ->
+        url
+
+      _ ->
+        # Fall back to base_map_url for backward compatibility
+        base_map_url()
     end
   end
 
@@ -124,10 +120,11 @@ defmodule WandererNotifier.Config do
       explicit_name
     else
       # Fall back to parsing from map_url_with_name for backward compatibility
-      parse_map_name_from_url()
+      Utils.parse_map_name_from_url(map_url_with_name())
     end
   end
 
+  @deprecated "Use map_url/0 instead"
   def map_api_url do
     # Alias for map_url for backward compatibility
     map_url()
@@ -135,27 +132,6 @@ defmodule WandererNotifier.Config do
 
   def map_url_with_name, do: get(:map_url_with_name)
   def map_csrf_token, do: get(:map_csrf_token)
-
-  # Helper function to parse map name from legacy URL format
-  defp parse_map_name_from_url do
-    url = map_url_with_name()
-
-    if nil_or_empty?(url) do
-      ""
-    else
-      uri = URI.parse(url)
-
-      # Try to get name from query parameter
-      case uri.query do
-        nil ->
-          ""
-
-        query_string ->
-          URI.decode_query(query_string)
-          |> Map.get("name", "")
-      end
-    end
-  end
 
   def map_slug do
     # First try the explicit MAP_NAME, which is now the preferred approach
@@ -165,31 +141,7 @@ defmodule WandererNotifier.Config do
       name
     else
       # Fallback to parsing from URL path for backward compatibility
-      extract_slug_from_url()
-    end
-  end
-
-  # Helper function to extract slug from URL (reduces nesting in map_slug)
-  defp extract_slug_from_url do
-    url = map_url_with_name()
-
-    if nil_or_empty?(url) do
-      ""
-    else
-      uri = URI.parse(url)
-      extract_path_slug(uri)
-    end
-  end
-
-  # Helper function to extract slug from URI path
-  defp extract_path_slug(uri) do
-    if uri.path != nil and uri.path != "" do
-      uri.path |> String.trim("/") |> String.split("/") |> List.last()
-    else
-      # Log warning and return empty string for missing path
-      require Logger
-      Logger.warning("No path in map URL: #{map_url_with_name()}")
-      ""
+      Utils.extract_slug_from_url(map_url_with_name())
     end
   end
 
@@ -197,9 +149,15 @@ defmodule WandererNotifier.Config do
 
   # --- Debug config ---
   def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
-  def enable_debug_logging, do: set(:debug_logging_enabled, true)
-  def disable_debug_logging, do: set(:debug_logging_enabled, false)
-  def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
+
+  def enable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
+
+  def disable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
+
+  def set_debug_logging(state) when is_boolean(state),
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
 
   # Cache dev mode value at compile time
   @dev_mode Application.compile_env(:wanderer_notifier, :dev_mode, false)
@@ -212,8 +170,6 @@ defmodule WandererNotifier.Config do
   To change the value, you must recompile the module or restart the application.
   """
   def dev_mode?, do: @dev_mode
-
-  defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
   # --- Notification config ---
   def discord_channel_id, do: get(:discord_channel_id)
@@ -261,43 +217,68 @@ defmodule WandererNotifier.Config do
   end
 
   def character_exclude_list do
-    get(:character_exclude_list, "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+    get(:character_exclude_list, "") |> Utils.parse_comma_list()
   end
 
   # --- Features ---
+  @default_features [
+    notifications_enabled: true,
+    kill_notifications_enabled: true,
+    system_notifications_enabled: true,
+    character_notifications_enabled: true,
+    status_messages_enabled: false,
+    track_kspace: false,
+    tracked_systems_notifications_enabled: false,
+    tracked_characters_notifications_enabled: false,
+    character_tracking_enabled: false,
+    system_tracking_enabled: false,
+    status_messages_disabled: false,
+    track_kspace_systems: false,
+    test_mode_enabled: false,
+    should_load_tracking_data: false
+  ]
+
   def features do
-    # Always return a valid keyword list with at least basic features
-    features_from_config = get(:features, [])
+    # Get features from config and normalize to keyword list
+    features_from_config = get(:features, %{})
+    normalized = Utils.normalize_features(features_from_config)
 
-    if Keyword.keyword?(features_from_config) do
-      features_from_config
-    else
-      # Default empty keyword list if not configured
-      []
-    end
+    # Merge with defaults, config values take precedence
+    Keyword.merge(@default_features, normalized)
   end
 
-  def feature_enabled?(flag), do: Keyword.get(features(), flag, false)
+  @doc """
+  Checks if a feature flag is enabled.
 
-  @impl true
-  def notifications_enabled? do
-    get(:notifications_enabled, true)
-  end
+  This is the primary interface for checking feature flags.
+  All feature checks should go through this function.
 
-  @impl true
-  def kill_notifications_enabled? do
-    get(:kill_notifications_enabled, true)
-  end
-
-  @impl true
-  def system_notifications_enabled? do
-    get(:system_notifications_enabled, true)
+  ## Examples
+      iex> feature_enabled?(:notifications_enabled)
+      true
+      
+      iex> feature_enabled?(:unknown_feature)
+      false
+  """
+  def feature_enabled?(flag) do
+    Keyword.get(features(), flag, false)
   end
 
   @impl true
-  def character_notifications_enabled? do
-    get(:character_notifications_enabled, true)
-  end
+  @spec notifications_enabled?() :: boolean()
+  def notifications_enabled?, do: feature_enabled?(:notifications_enabled)
+
+  @impl true
+  @spec kill_notifications_enabled?() :: boolean()
+  def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
+
+  @impl true
+  @spec system_notifications_enabled?() :: boolean()
+  def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
+
+  @impl true
+  @spec character_notifications_enabled?() :: boolean()
+  def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
   def track_kspace?, do: feature_enabled?(:track_kspace)
@@ -330,22 +311,7 @@ defmodule WandererNotifier.Config do
   def license_manager_api_key, do: get(:license_manager_api_key)
 
   # --- Web/server ---
-  def port do
-    case get(:port, 4000) do
-      port when is_integer(port) ->
-        port
-
-      port when is_binary(port) ->
-        case Integer.parse(port) do
-          {int_port, _} -> int_port
-          :error -> 4000
-        end
-
-      _ ->
-        4000
-    end
-  end
-
+  def port, do: get(:port, 4000) |> Utils.parse_port()
   def host, do: get(:host, "localhost")
   def scheme, do: get(:scheme, "http")
   def public_url, do: get(:public_url)
@@ -375,6 +341,92 @@ defmodule WandererNotifier.Config do
   # --- Test Mode ---
   @doc "Returns true if test mode is enabled."
   def test_mode_enabled?, do: feature_enabled?(:test_mode_enabled)
+
+  # --- Module Dependencies ---
+  @doc "Returns the HTTP client module to use."
+  def http_client, do: get(:http_client, WandererNotifier.Http)
+
+  @doc "Returns the ESI service module to use."
+  def esi_service, do: get(:esi_service, WandererNotifier.ESI.Service)
+
+  @doc "Returns the notification service module to use."
+  def notification_service,
+    do: get(:notification_service, WandererNotifier.Notifications.NotificationService)
+
+  @doc "Returns the Discord notifier module to use."
+  def discord_notifier, do: get(:discord_notifier, WandererNotifier.Notifiers.Discord.Notifier)
+
+  @doc "Returns the killmail notification module to use."
+  @impl true
+  @spec killmail_notification_module() :: module()
+  def killmail_notification_module,
+    do: get(:killmail_notification_module, WandererNotifier.Notifications.KillmailNotification)
+
+  @doc "Returns the config module to use."
+  @impl true
+  @spec config_module() :: module()
+  def config_module, do: get(:config_module, __MODULE__)
+
+  @doc "Returns the character track module to use."
+  @impl true
+  @spec character_track_module() :: module()
+  def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
+
+  @doc "Returns the system track module to use."
+  @impl true
+  @spec system_track_module() :: module()
+  def system_track_module, do: get(:system_track_module, WandererNotifier.Map.MapSystem)
+
+  @doc "Returns the deduplication module to use."
+  @impl true
+  @spec deduplication_module() :: module()
+  def deduplication_module,
+    do: get(:deduplication_module, WandererNotifier.Notifications.Deduplication.CacheImpl)
+
+  @doc "Returns the notification determiner module to use."
+  @impl true
+  @spec notification_determiner_module() :: module()
+  def notification_determiner_module,
+    do: get(:notification_determiner_module, WandererNotifier.Notifications.Determiner.Kill)
+
+  @doc "Returns the killmail enrichment module to use."
+  @impl true
+  @spec killmail_enrichment_module() :: module()
+  def killmail_enrichment_module,
+    do: get(:killmail_enrichment_module, WandererNotifier.Killmail.Enrichment)
+
+  @doc "Returns the notification dispatcher module to use."
+  @impl true
+  @spec notification_dispatcher_module() :: module()
+  def notification_dispatcher_module,
+    do: get(:notification_dispatcher_module, WandererNotifier.Notifications.Dispatcher)
+
+  # --- Telemetry ---
+  @doc "Returns whether telemetry logging is enabled."
+  def telemetry_logging_enabled?, do: get(:telemetry_logging, false)
+
+  # --- Schedulers ---
+  @doc "Returns whether schedulers are enabled."
+  def schedulers_enabled?, do: get(:schedulers_enabled, false)
+
+  # --- RedisQ Timeouts ---
+  @doc "Returns the RedisQ receive timeout in ms."
+  def redisq_recv_timeout, do: get(:redisq_recv_timeout, 30_000)
+
+  @doc "Returns the RedisQ connect timeout in ms."
+  def redisq_connect_timeout, do: get(:redisq_connect_timeout, 10_000)
+
+  # --- Service URLs ---
+  @doc "Returns the notification service base URL."
+  def notification_service_base_url, do: get(:notification_service_base_url)
+
+  # --- Service Status ---
+  @doc "Returns whether the service is up."
+  def service_up?, do: get(:service_up, true)
+
+  # --- Deduplication TTL ---
+  @doc "Returns the deduplication TTL in seconds."
+  def deduplication_ttl, do: get(:deduplication_ttl, 3600)
 
   # --- Timings and Intervals ---
   @doc "Returns the character update scheduler interval in ms."
@@ -423,20 +475,20 @@ defmodule WandererNotifier.Config do
 
     %{
       map_url_with_name: url,
-      map_url_with_name_present: !nil_or_empty?(url),
+      map_url_with_name_present: !Utils.nil_or_empty?(url),
       map_url: base_url,
-      map_url_present: !nil_or_empty?(base_url),
-      map_url_explicit: !nil_or_empty?(get(:map_url)),
+      map_url_present: base_url |> Utils.nil_or_empty?() |> Kernel.not(),
+      map_url_explicit: get(:map_url) |> Utils.nil_or_empty?() |> Kernel.not(),
       map_name: name,
-      map_name_present: !nil_or_empty?(name),
-      map_name_explicit: !nil_or_empty?(get(:map_name)),
+      map_name_present: name |> Utils.nil_or_empty?() |> Kernel.not(),
+      map_name_explicit: get(:map_name) |> Utils.nil_or_empty?() |> Kernel.not(),
       map_token: token,
-      map_token_present: !nil_or_empty?(token),
+      map_token_present: !Utils.nil_or_empty?(token),
       map_token_length: if(token, do: String.length(token), else: 0),
       map_slug: map_slug(),
-      map_slug_present: !nil_or_empty?(map_slug()),
+      map_slug_present: !Utils.nil_or_empty?(map_slug()),
       base_map_url: base_map_url(),
-      base_map_url_present: !nil_or_empty?(base_map_url()),
+      base_map_url_present: !Utils.nil_or_empty?(base_map_url()),
       system_tracking_enabled: system_tracking_enabled?(),
       track_kspace_systems: track_kspace_systems?()
     }
@@ -471,56 +523,6 @@ defmodule WandererNotifier.Config do
 
   # Add a function to return the base URL portion of map_url_with_name
   def base_map_url do
-    url = map_url_with_name()
-
-    # Return early for nil or empty URL
-    if nil_or_empty?(url) do
-      log_invalid_url("Missing map URL")
-      return_empty_string()
-    else
-      build_base_url(url)
-    end
-  end
-
-  # Helper to check for nil or empty string
-  defp nil_or_empty?(str), do: is_nil(str) or str == ""
-
-  # Helper to log invalid URL warning
-  defp log_invalid_url(message) do
-    require Logger
-    Logger.warning(message)
-  end
-
-  # Return empty string for invalid URLs
-  defp return_empty_string, do: ""
-
-  # Build base URL from full URL
-  defp build_base_url(url) do
-    uri = URI.parse(url)
-
-    if has_valid_scheme_and_host?(uri) do
-      build_url_from_components(uri)
-    else
-      log_invalid_url("Invalid map URL format: #{url}")
-      return_empty_string()
-    end
-  end
-
-  # Check if URI has valid scheme and host
-  defp has_valid_scheme_and_host?(uri) do
-    uri.scheme != nil and uri.host != nil
-  end
-
-  # Build URL string from URI components
-  defp build_url_from_components(uri) do
-    port_part =
-      case {uri.scheme, uri.port} do
-        {"http", 80} -> ""
-        {"https", 443} -> ""
-        {_, nil} -> ""
-        {_, port} -> ":#{port}"
-      end
-
-    "#{uri.scheme}://#{uri.host}#{port_part}"
+    Utils.build_base_url(map_url_with_name())
   end
 end

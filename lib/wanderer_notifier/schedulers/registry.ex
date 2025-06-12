@@ -13,9 +13,10 @@ defmodule WandererNotifier.Schedulers.Registry do
     Logger.debug("All loaded modules: #{inspect(loaded_modules)}")
 
     schedulers =
-      loaded_modules
-      |> Enum.filter(&scheduler_module?/1)
-      |> Enum.map(&elem(&1, 0))
+      for {mod, _path} = module_info <- loaded_modules,
+          scheduler_module?(module_info) do
+        mod
+      end
 
     Logger.info("Discovered schedulers: #{inspect(schedulers)}")
     schedulers

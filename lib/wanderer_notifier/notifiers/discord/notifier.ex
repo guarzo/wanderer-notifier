@@ -188,14 +188,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         )
 
         {:error, reason}
-
-      unexpected ->
-        AppLogger.api_error("Unexpected result from send_rich_kill_notification",
-          channel_id: channel_id,
-          result: inspect(unexpected)
-        )
-
-        {:error, :unexpected_result}
     end
   rescue
     e ->
@@ -228,14 +220,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         )
 
         {:error, reason}
-
-      unexpected ->
-        AppLogger.api_error("Unexpected result from NeoClient.send_embed",
-          channel_id: channel_id,
-          result: inspect(unexpected)
-        )
-
-        {:error, :unexpected_result}
     end
   rescue
     e ->

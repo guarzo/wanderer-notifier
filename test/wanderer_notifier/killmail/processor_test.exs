@@ -10,6 +10,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   alias WandererNotifier.MockDispatcher
   alias WandererNotifier.MockDeduplication
   alias WandererNotifier.Killmail.Pipeline
+  alias WandererNotifier.Utils.TimeUtils
 
   setup :verify_on_exit!
 
@@ -27,16 +28,24 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     MockConfig
     |> stub(:get_config, fn ->
       %{
-        notifications: %{
-          enabled: true,
-          kill: %{
-            enabled: true,
-            system: %{enabled: true},
-            character: %{enabled: true}
-          }
-        }
+        notifications_enabled: true,
+        kill_notifications_enabled: true,
+        system_notifications_enabled: true,
+        character_notifications_enabled: true
       }
     end)
+    |> stub(:deduplication_module, fn -> MockDeduplication end)
+    |> stub(:system_track_module, fn -> MockSystem end)
+    |> stub(:character_track_module, fn -> MockCharacter end)
+    |> stub(:notification_determiner_module, fn ->
+      WandererNotifier.Notifications.Determiner.Kill
+    end)
+    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Killmail.Enrichment end)
+    |> stub(:notification_dispatcher_module, fn -> MockDispatcher end)
+    |> stub(:killmail_notification_module, fn ->
+      WandererNotifier.Notifications.KillmailNotification
+    end)
+    |> stub(:config_module, fn -> MockConfig end)
 
     # Set up default ESI client mock responses
     ServiceMock
@@ -117,7 +126,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> {:ok, true} end)
+      |> expect(:is_tracked?, fn _id -> true end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
@@ -146,7 +155,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> {:ok, false} end)
+      |> expect(:is_tracked?, fn _id -> false end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
@@ -175,7 +184,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> {:ok, false} end)
+      |> expect(:is_tracked?, fn _id -> false end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
@@ -217,12 +226,12 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       state = %{
         redisq: %{
           connected: true,
-          last_message: DateTime.utc_now()
+          last_message: TimeUtils.now()
         }
       }
 
       MockSystem
-      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _id -> false end)
 
       MockCharacter
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)

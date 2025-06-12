@@ -6,7 +6,7 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Cache.Keys, as: CacheKeys
 
-  @behaviour WandererNotifier.Cache.Behaviour
+  @behaviour WandererNotifier.Cache.CacheBehaviour
 
   # Mock state that can be configured per test
   def configure(systems, characters) do

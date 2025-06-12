@@ -155,8 +155,10 @@ defmodule WandererNotifier.Map.MapSystem do
   # Helper function to extract fields from data using mappings
   defp extract_fields(data, mappings) do
     Enum.reduce(mappings, %{}, fn {field, keys}, acc ->
-      value = get_first_valid_value(data, keys)
-      if value != nil, do: Map.put(acc, field, value), else: acc
+      case get_first_valid_value(data, keys) do
+        nil -> acc
+        value -> Map.put(acc, field, value)
+      end
     end)
   end
 
