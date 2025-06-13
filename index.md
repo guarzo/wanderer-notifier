@@ -54,6 +54,7 @@ Create a `.env` file in your working directory with the following content. Repla
 # Discord Configuration
 DISCORD_BOT_TOKEN=your_discord_bot_token
 DISCORD_CHANNEL_ID=your_discord_channel_id
+# DISCORD_APPLICATION_ID=your_discord_application_id  # Optional: Required for slash commands
 
 # Optional Discord Channel Configuration
 # DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
@@ -89,6 +90,9 @@ NOTIFIER_API_TOKEN=your_notifier_api_token
 
 # Character Configuration
 # CHARACTER_EXCLUDE_LIST=character_id1,character_id2
+
+# Priority Systems Configuration
+# PRIORITY_SYSTEMS_ONLY=false  # Only send notifications for priority systems
 
 # Cache and RedisQ Configuration
 # CACHE_DIR=/app/data/cache
@@ -147,6 +151,40 @@ docker-compose up -d
 
 Your notifier is now up and running, delivering alerts to your Discord channel automatically!
 
+## Discord Slash Commands
+
+Wanderer Notifier supports Discord slash commands for managing your notification preferences directly from Discord:
+
+### Available Commands
+
+- **`/notifier status`** - Shows the current bot status including:
+  - Number of priority systems configured
+  - Priority-only mode status
+  - Total commands executed and unique users
+  - Feature status (system, character, and kill notifications)
+  - Tracking status for systems and characters
+
+- **`/notifier system <system_name> [action]`** - Manage system tracking and priority:
+  - `add-priority`: Add a system to your priority list for @here mentions
+  - `remove-priority`: Remove a system from the priority list
+  - `track`: Start tracking a system (coming soon)
+  - `untrack`: Stop tracking a system (coming soon)
+
+### Setting Up Slash Commands
+
+1. Ensure your bot has the `applications.commands` scope when inviting it to your server
+2. Add your Discord Application ID to the `.env` file
+3. Restart the notifier - commands will be registered automatically
+4. Type `/notifier` in Discord to see available commands
+
+### Priority Systems
+
+Priority systems receive special treatment in notifications:
+- Kill notifications in priority systems include @here mentions
+- Ensures critical systems get immediate attention
+- Priority status persists between bot restarts
+- Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
+
 ## Configuration Validation
 
 On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them. This ensures that your notifier is properly configured before it begins operation.
@@ -157,6 +195,8 @@ On startup, the application validates all configuration settings. If there are i
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
+- **Discord Slash Commands:** Manage priority systems and check bot status directly from Discord
+- **Priority Systems:** Mark critical systems for special notifications with @here mentions
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
 - **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information

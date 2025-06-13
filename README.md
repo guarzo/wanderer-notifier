@@ -8,6 +8,8 @@ Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-t
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
+- **Discord Slash Commands:** Manage priority systems and check bot status directly from Discord
+- **Priority Systems:** Mark critical systems for special notifications with @here mentions
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
 - **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information
@@ -58,6 +60,33 @@ The notifier supports configurable kill notifications based on tracked systems a
   - Red color: When tracked characters are victims (losses)
 
 If a kill involves both tracked systems and tracked characters, notifications will be sent to both channels. This allows for more targeted monitoring of activity.
+
+## Discord Slash Commands
+
+The notifier supports Discord slash commands for managing your notification preferences directly from Discord:
+
+### Available Commands
+
+- **`/notifier status`** - Shows the current bot status including:
+  - Number of priority systems configured
+  - Priority-only mode status
+  - Total commands executed and unique users
+  - Feature status (system, character, and kill notifications)
+  - Tracking status for systems and characters
+
+- **`/notifier system <system_name> [action]`** - Manage system tracking and priority:
+  - `add-priority`: Add a system to your priority list for @here mentions
+  - `remove-priority`: Remove a system from the priority list
+  - `track`: Start tracking a system (coming soon)
+  - `untrack`: Stop tracking a system (coming soon)
+
+### Priority Systems
+
+Priority systems receive special treatment in notifications:
+- Kill notifications in priority systems include @here mentions
+- Ensures critical systems get immediate attention
+- Priority status persists between bot restarts
+- Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
 
 ## Requirements
 
@@ -146,6 +175,7 @@ Environment variables now use simplified naming without redundant prefixes for c
 1. **Discord Configuration**
    - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token (required)
    - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications (required)
+   - `DISCORD_APPLICATION_ID`: Discord application ID for slash commands (optional)
    - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications (optional)
    - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications (optional)
    - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (optional)
@@ -165,6 +195,7 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `SYSTEM_NOTIFICATION_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATION_ENABLED`: Enable character notifications (default: true)
    - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
 5. **Tracking Configuration**
    - `TRACK_KSPACE_ENABLED`: Include K-Space systems in tracking (default: true)
