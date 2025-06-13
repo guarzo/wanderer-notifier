@@ -5,6 +5,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
 
@@ -55,9 +56,20 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   @impl true
   def enrich_item(character) do
-    # For now, just return the character as is
-    # In the future, we could add character-specific enrichment
-    character
+    # Convert the plain map to a MapCharacter struct
+    # This ensures the notification function receives the expected struct type
+    try do
+      MapCharacter.new(character)
+    rescue
+      e ->
+        AppLogger.api_error("Failed to create MapCharacter struct",
+          error: Exception.message(e),
+          character: inspect(character)
+        )
+        
+        # Return the original character if struct creation fails
+        character
+    end
   end
 
   @impl true

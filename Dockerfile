@@ -59,7 +59,7 @@ RUN mix compile --warnings-as-errors \
 ###############################################################################
 # 3. Runtime Stage
 #
-#    - Starts from Alpine Linux for minimal size.
+#    - Starts from Debian Bookworm Slim for minimal size.
 #    - Installs only what's needed at runtime.
 #    - Copies the compiled release and switches to a non-root user.
 ###############################################################################
@@ -77,11 +77,12 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libncurses6=6.4-2 \
-      libstdc++6=13.2.0-* \
-      openssl=3.0.* \
+      libstdc++6 \
+      openssl \
       ca-certificates=20230311 \
-      libgcc-s1=13.2.0-* \
-      wget=1.21.* \
+      libgcc-s1 \
+      wget \
+ && apt-mark hold libncurses6 ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app

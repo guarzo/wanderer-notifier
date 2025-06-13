@@ -1,5 +1,7 @@
 # WandererNotifier
 
+
+
 ## Project Overview
 
 WandererNotifier is a Discord bot application that provides notifications for important events. Built using Elixir with the Nostrum library, it offers persistent storage for tracking events and user interactions via slash commands.

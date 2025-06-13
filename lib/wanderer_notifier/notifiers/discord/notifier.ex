@@ -251,6 +251,11 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:characters)
+      
+      # Log successful character notification
+      character_name = character.name || "Unknown Character"
+      character_id = character.character_id || "Unknown ID"
+      AppLogger.processor_info("👤 ✅ Character #{character_name} (#{character_id}) notified")
     rescue
       e ->
         Logger.error(
@@ -274,6 +279,12 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:systems)
+      
+      # Log successful system notification
+      system_name = system.name || "Unknown System"
+      system_id = system.solar_system_id || "Unknown ID"
+      AppLogger.processor_info("🗺️ ✅ System #{system_name} (#{system_id}) notified")
+      
       {:ok, :sent}
     rescue
       e ->
@@ -410,7 +421,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
-    case ESIService.get_system_info(system_id) do
+    case ESIService.get_system(system_id, []) do
       {:ok, system_info} -> Map.get(system_info, "name")
       {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil

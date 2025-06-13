@@ -15,7 +15,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
 
   defmodule State do
     @moduledoc false
-    defstruct []
+    defstruct redisq_pid: nil
   end
 
   def start_link(opts \\ []) do
@@ -32,7 +32,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
       case start_redisq_client() do
         {:ok, pid} ->
           AppLogger.processor_info("RedisQ client started", pid: inspect(pid))
-          {:ok, Map.put(state, :redisq_pid, pid)}
+          {:ok, %{state | redisq_pid: pid}}
 
         {:error, reason} ->
           AppLogger.processor_error("Failed to start RedisQ client", reason: inspect(reason))
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     case start_redisq_client() do
       {:ok, new_pid} ->
         AppLogger.processor_info("RedisQ client restarted successfully", pid: inspect(new_pid))
-        {:noreply, Map.put(state, :redisq_pid, new_pid)}
+        {:noreply, %{state | redisq_pid: new_pid}}
 
       {:error, restart_reason} ->
         AppLogger.processor_error("Failed to restart RedisQ client",
@@ -86,17 +86,17 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
 
         # Schedule a retry
         Process.send_after(self(), :retry_redisq_start, 30_000)
-        {:noreply, Map.put(state, :redisq_pid, nil)}
+        {:noreply, %{state | redisq_pid: nil}}
     end
   end
 
   @impl true
   def handle_info(:retry_redisq_start, state) do
-    if Config.redisq_enabled?() and is_nil(Map.get(state, :redisq_pid)) do
+    if Config.redisq_enabled?() and is_nil(state.redisq_pid) do
       case start_redisq_client() do
         {:ok, pid} ->
           AppLogger.processor_info("RedisQ client started on retry", pid: inspect(pid))
-          {:noreply, Map.put(state, :redisq_pid, pid)}
+          {:noreply, %{state | redisq_pid: pid}}
 
         {:error, reason} ->
           AppLogger.processor_error("Retry failed to start RedisQ client", error: inspect(reason))

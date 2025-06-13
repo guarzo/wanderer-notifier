@@ -234,8 +234,14 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp add_statics_field(fields, _, _), do: fields
 
-  defp add_region_field(fields, region_name) when not is_nil(region_name),
-    do: fields ++ [%{name: "Region", value: safe_to_string(region_name), inline: true}]
+  defp add_region_field(fields, region_name) when not is_nil(region_name) do
+    # Create a hyperlink to EVE Maps dotlan for the region
+    region_str = safe_to_string(region_name)
+    # Replace spaces with underscores for the URL
+    region_url_name = String.replace(region_str, " ", "_")
+    region_link = "[#{region_str}](https://evemaps.dotlan.net/map/#{region_url_name})"
+    fields ++ [%{name: "Region", value: region_link, inline: true}]
+  end
 
   defp add_region_field(fields, _), do: fields
 

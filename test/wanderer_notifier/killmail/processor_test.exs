@@ -92,13 +92,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
          "description" => "A test ship"
        }}
     end)
-    |> stub(:get_system_info, fn _id, _opts ->
-      {:ok,
-       %{
-         "name" => "Test System",
-         "security_status" => 0.5
-       }}
-    end)
     |> stub(:get_system, fn _id, _opts ->
       {:ok,
        %{

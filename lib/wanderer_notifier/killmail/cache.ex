@@ -164,9 +164,26 @@ defmodule WandererNotifier.Killmail.Cache do
   def get_system_name(nil), do: "unknown"
 
   def get_system_name(system_id) when is_integer(system_id) do
-    case esi_service().get_system_info(system_id, []) do
-      {:ok, %{"name" => name}} when is_binary(name) -> name
-      _ -> "System #{system_id}"
+    # Use the central cache adapter with TTL
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_key = "system_name:#{system_id}"
+
+    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
+      {:ok, name} when is_binary(name) ->
+        name
+
+      _ ->
+        # No cached name, fetch from ESI
+        case esi_service().get_system(system_id, []) do
+          {:ok, %{"name" => name}} when is_binary(name) ->
+            # Cache the name with a 24-hour TTL
+            ttl_ms = :timer.hours(24)
+            WandererNotifier.Cache.Adapter.set(cache_name, cache_key, name, ttl_ms)
+            name
+
+          _ ->
+            "System #{system_id}"
+        end
     end
   end
 

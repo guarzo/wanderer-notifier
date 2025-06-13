@@ -106,10 +106,8 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       result = fun.()
 
       if async do
-        # Non-blocking: schedule delay asynchronously
-        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-          :timer.sleep(interval_ms)
-        end)
+        # Non-blocking: schedule delay asynchronously using timer
+        Process.send_after(self(), :rate_limit_delay_complete, interval_ms)
       else
         # Blocking: maintain existing behavior for backward compatibility
         Process.sleep(interval_ms)
@@ -138,10 +136,8 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       delay = div(window_ms, max_operations)
 
       if async do
-        # Non-blocking: schedule delay asynchronously
-        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-          :timer.sleep(delay)
-        end)
+        # Non-blocking: schedule delay asynchronously using timer
+        Process.send_after(self(), :rate_limit_delay_complete, delay)
       else
         # Blocking: maintain existing behavior for backward compatibility
         :timer.sleep(delay)
@@ -188,15 +184,15 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     state.on_retry.(state.attempt, :rate_limited, retry_after)
 
     if Map.get(state, :async, false) do
-      # Async: return task reference for the caller to handle
-      {:ok, task_ref} =
-        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      # Async: return task struct for the caller to handle
+      task =
+        Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
           :timer.sleep(retry_after)
           new_state = %{state | attempt: state.attempt + 1}
           execute_with_rate_limit(fun, new_state)
         end)
 
-      {:async, task_ref}
+      {:async, task}
     else
       # Blocking: maintain existing behavior
       Process.sleep(retry_after)
@@ -212,15 +208,15 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     state.on_retry.(state.attempt, error, delay)
 
     if Map.get(state, :async, false) do
-      # Async: return task reference for the caller to handle
-      {:ok, task_ref} =
-        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      # Async: return task struct for the caller to handle
+      task =
+        Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
           :timer.sleep(delay)
           new_state = %{state | attempt: state.attempt + 1}
           execute_with_rate_limit(fun, new_state)
         end)
 
-      {:async, task_ref}
+      {:async, task}
     else
       # Blocking: maintain existing behavior
       Process.sleep(delay)

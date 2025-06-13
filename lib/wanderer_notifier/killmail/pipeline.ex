@@ -137,25 +137,24 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — Killmail ID Extraction ————————————————————————————————————————————
 
   defp extract_killmail_id(%Killmail{killmail_id: id}) do
-    validate_killmail_id(id, "Invalid killmail ID in struct")
+    validate_killmail_id(id)
   end
 
   defp extract_killmail_id(%{} = data) do
-    case get_kill_id(data) do
-      id -> validate_killmail_id(id, "Invalid killmail ID")
-    end
+    id = get_kill_id(data)
+    validate_killmail_id(id)
   end
 
-  defp validate_killmail_id(id, _error_message) when is_integer(id) do
+  defp validate_killmail_id(id) when is_integer(id) do
     {:ok, to_string(id)}
   end
 
-  defp validate_killmail_id(id, _error_message) when is_binary(id) and id != "" do
+  defp validate_killmail_id(id) when is_binary(id) and id != "" do
     {:ok, id}
   end
 
-  defp validate_killmail_id(invalid_id, error_message) do
-    ErrorLogger.log_kill_error(error_message,
+  defp validate_killmail_id(invalid_id) do
+    ErrorLogger.log_kill_error("Invalid killmail ID",
       data: inspect(invalid_id),
       module: __MODULE__
     )

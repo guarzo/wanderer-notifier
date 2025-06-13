@@ -551,31 +551,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     schedule_next_poll(new_state)
   end
 
-  defp get_system_name(nil), do: "unknown"
-
   defp get_system_name(system_id) do
-    # Use the central cache adapter with TTL
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    cache_key = "system_name:#{system_id}"
-
-    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
-      {:ok, name} when is_binary(name) ->
-        name
-
-      _ ->
-        # No cached name, fetch from ESI
-        case esi_service().get_system_info(system_id, []) do
-          {:ok, %{"name" => name}} when is_binary(name) ->
-            # Cache the name with a 24-hour TTL
-            ttl_ms = :timer.hours(24)
-            WandererNotifier.Cache.Adapter.set(cache_name, cache_key, name, ttl_ms)
-            name
-
-          _ ->
-            "System #{system_id}"
-        end
-    end
+    WandererNotifier.Killmail.Cache.get_system_name(system_id)
   end
-
-  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
 end

@@ -240,7 +240,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     )
 
     # Sanitize options by removing internal cache keys
-    sanitized_opts = Keyword.drop(opts, [:cache_name, :ttl, :ttl_override])
+    sanitized_opts = Keyword.drop(opts, [:cache_name, :ttl])
 
     case fetch_fn.(id, sanitized_opts) do
       {:ok, data} = success ->

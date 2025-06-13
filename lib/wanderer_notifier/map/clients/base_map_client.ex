@@ -76,7 +76,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     ttl_ms =
       case ttl do
         :infinity -> :infinity
-        seconds -> :timer.seconds(seconds)
+        seconds when is_integer(seconds) and seconds > 0 -> :timer.seconds(seconds)
+        _ -> 0
       end
 
     case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl_ms) do
@@ -125,6 +126,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       # Default implementations of required functions
       def api_url do
         WandererNotifier.Map.Clients.BaseMapClient.build_url(endpoint())
+        |> add_query_params()
       end
 
       def headers do
