@@ -7,12 +7,12 @@ defmodule WandererNotifier.Discord.CommandRegistrarTest do
     setup do
       # Save original value
       original_value = Application.get_env(:wanderer_notifier, :discord_application_id)
-      
+
       on_exit(fn ->
         # Restore original value after test
         Application.put_env(:wanderer_notifier, :discord_application_id, original_value)
       end)
-      
+
       {:ok, original_value: original_value}
     end
 

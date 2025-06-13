@@ -308,7 +308,7 @@ defmodule WandererNotifier.Config do
 
   @doc """
   Refreshes the cached value for priority_systems_only.
-  
+
   Call this function whenever the configuration changes to ensure
   the cached value stays in sync.
   """
