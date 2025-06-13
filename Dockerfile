@@ -10,9 +10,8 @@ FROM elixir:1.18.3-otp-27-slim AS deps
 
 WORKDIR /app
 
-# Set Mix environment and a default application version (overridable via build-arg)
-ENV MIX_ENV=prod \
-    APP_VERSION=0.1.0-docker
+# Set Mix environment
+ENV MIX_ENV=prod
 
 # Install only the build tools we need
 RUN apt-get update \
@@ -45,9 +44,7 @@ FROM deps AS build
 
 WORKDIR /app
 
-# Propagate the app version into the build
-ARG APP_VERSION=0.1.0-docker
-ENV APP_VERSION=${APP_VERSION}
+# Build stage configuration
 
 # Copy the rest of the application code
 COPY . .

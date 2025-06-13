@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: get_version(),
+      version: "2.0.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -21,16 +21,6 @@ defmodule WandererNotifier.MixProject do
         "coveralls.json": :test
       ]
     ]
-  end
-
-  defp get_version do
-    cond do
-      File.exists?("VERSION") ->
-        File.read!("VERSION") |> String.trim()
-
-      true ->
-        System.get_env("APP_VERSION") || "0.1.0"
-    end
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

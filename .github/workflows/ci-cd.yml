@@ -142,7 +142,6 @@ jobs:
           tags: guarzo/wanderer-notifier:test
           cache-from: type=gha
           build-args: |
-            APP_VERSION=${{ steps.meta.outputs.version || 'dev' }}
             VCS_REF=${{ github.sha }}
             API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
@@ -174,7 +173,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            APP_VERSION=${{ steps.meta.outputs.version || 'dev' }}
             VCS_REF=${{ github.sha }}
             API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
