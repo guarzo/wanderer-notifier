@@ -51,6 +51,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
   # Make sure mocks are verified after each test
   setup :verify_on_exit!
+  setup :set_mox_from_context
 
   # Stub the Client module
   setup do

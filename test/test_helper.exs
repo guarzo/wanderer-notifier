@@ -8,9 +8,6 @@ ExUnit.start()
 # Configure Mox
 Application.ensure_all_started(:mox)
 
-# Set global mode for mocks that are used in async processes
-Mox.set_mox_global()
-
 # Set up Mox mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)

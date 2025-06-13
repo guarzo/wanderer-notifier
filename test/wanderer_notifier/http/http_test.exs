@@ -3,6 +3,7 @@ defmodule WandererNotifier.HTTPTest do
   import Mox
 
   setup :verify_on_exit!
+  setup :set_mox_from_context
 
   test "mocks HTTP client successfully" do
     WandererNotifier.HTTPMock

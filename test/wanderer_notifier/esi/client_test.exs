@@ -1,10 +1,14 @@
 defmodule WandererNotifier.ESI.ClientTest do
   use ExUnit.Case, async: true
+  import Mox
 
   alias WandererNotifier.ESI.Client
 
   # Module attribute to control mock behavior in error cases
   @moduledoc false
+
+  setup :verify_on_exit!
+  setup :set_mox_from_context
 
   setup do
     Application.put_env(
@@ -18,7 +22,7 @@ defmodule WandererNotifier.ESI.ClientTest do
 
   describe "get_killmail/3" do
     test "returns {:ok, body} on 2xx response" do
-      Mox.expect(WandererNotifier.HTTPMock, :get, 3, fn
+      Mox.expect(WandererNotifier.HTTPMock, :get, fn
         "https://esi.evetech.net/latest/killmails/123/abc/", _headers, _opts ->
           {:ok, %{status_code: 200, body: %{foo: "bar"}}}
       end)
@@ -27,7 +31,7 @@ defmodule WandererNotifier.ESI.ClientTest do
     end
 
     test "returns {:error, {:http_error, status}} on non-2xx response" do
-      Mox.expect(WandererNotifier.HTTPMock, :get, 3, fn _url, _headers, _opts ->
+      Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
         {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
@@ -35,7 +39,7 @@ defmodule WandererNotifier.ESI.ClientTest do
     end
 
     test "returns {:error, reason} on network error" do
-      Mox.expect(WandererNotifier.HTTPMock, :get, 3, fn _url, _headers, _opts ->
+      Mox.expect(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
         {:error, :timeout}
       end)
 

@@ -6,6 +6,7 @@ defmodule WandererNotifier.Killmail.ZKillClientTest do
   alias WandererNotifier.Killmail.ZKillClient
 
   setup :verify_on_exit!
+  setup :set_mox_from_context
 
   setup do
     # Set up the HTTP client mock
