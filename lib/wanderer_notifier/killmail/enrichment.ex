@@ -237,7 +237,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   # Restore get_system/1
-  defp get_system(nil), do: {:ok, "Unknown System"}
+  defp get_system(nil), do: {:ok, "unknown"}
 
   defp get_system(system_id) when is_integer(system_id) or is_binary(system_id) do
     case esi_service().get_system(system_id, []) do

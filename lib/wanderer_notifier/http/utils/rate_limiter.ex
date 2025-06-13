@@ -21,10 +21,11 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
           max_backoff: pos_integer(),
           jitter: boolean(),
           on_retry: (pos_integer(), term(), pos_integer() -> :ok),
-          context: String.t()
+          context: String.t(),
+          async: boolean()
         ]
 
-  @type rate_limit_result(success) :: {:ok, success} | {:error, term()}
+  @type rate_limit_result(success) :: {:ok, success} | {:error, term()} | {:async, Task.t()}
 
   @doc """
   Executes a function with rate limiting and exponential backoff.
@@ -36,6 +37,10 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     * `:jitter` - Whether to add random jitter to backoff (default: true)
     * `:on_retry` - Callback function called on each retry attempt
     * `:context` - Context string for logging (default: "operation")
+    * `:async` - Whether to handle delays and retries asynchronously (default: false)
+                When true, the function executes immediately but any delays
+                (rate limiting or retries) happen asynchronously. Returns
+                `{:async, task_ref}` for retry cases instead of blocking.
 
   ## Examples
       # Simple rate limiting with defaults
@@ -57,6 +62,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     jitter = Keyword.get(opts, :jitter, true)
     on_retry = Keyword.get(opts, :on_retry, &default_retry_callback/3)
     context = Keyword.get(opts, :context, "operation")
+    async = Keyword.get(opts, :async, false)
 
     execute_with_rate_limit(fun, %{
       max_retries: max_retries,
@@ -65,6 +71,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       jitter: jitter,
       on_retry: on_retry,
       context: context,
+      async: async,
       attempt: 1
     })
   end
@@ -99,11 +106,11 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       result = fun.()
 
       if async do
-        # Non-blocking: spawn a task to handle the delay
-        Task.start(fn -> :timer.sleep(interval_ms) end)
+        # Non-blocking: schedule delay asynchronously using timer
+        Process.send_after(self(), :rate_limit_delay_complete, interval_ms)
       else
         # Blocking: maintain existing behavior for backward compatibility
-        :timer.sleep(interval_ms)
+        Process.sleep(interval_ms)
       end
 
       {:ok, result}
@@ -129,8 +136,8 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       delay = div(window_ms, max_operations)
 
       if async do
-        # Non-blocking: spawn a task to handle the delay
-        Task.start(fn -> :timer.sleep(delay) end)
+        # Non-blocking: schedule delay asynchronously using timer
+        Process.send_after(self(), :rate_limit_delay_complete, delay)
       else
         # Blocking: maintain existing behavior for backward compatibility
         :timer.sleep(delay)
@@ -176,15 +183,21 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, :rate_limited, retry_after)
 
-    # Use Process.send_after for non-blocking delay
-    ref = make_ref()
-    Process.send_after(self(), {:retry_after, ref}, retry_after)
+    if Map.get(state, :async, false) do
+      # Async: return task struct for the caller to handle
+      task =
+        Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(retry_after)
+          new_state = %{state | attempt: state.attempt + 1}
+          execute_with_rate_limit(fun, new_state)
+        end)
 
-    receive do
-      {:retry_after, ^ref} ->
-        # Retry with incremented attempt counter
-        new_state = %{state | attempt: state.attempt + 1}
-        execute_with_rate_limit(fun, new_state)
+      {:async, task}
+    else
+      # Blocking: maintain existing behavior
+      Process.sleep(retry_after)
+      new_state = %{state | attempt: state.attempt + 1}
+      execute_with_rate_limit(fun, new_state)
     end
   end
 
@@ -194,15 +207,21 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, error, delay)
 
-    # Use Process.send_after for non-blocking delay
-    ref = make_ref()
-    Process.send_after(self(), {:retry_after, ref}, delay)
+    if Map.get(state, :async, false) do
+      # Async: return task struct for the caller to handle
+      task =
+        Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(delay)
+          new_state = %{state | attempt: state.attempt + 1}
+          execute_with_rate_limit(fun, new_state)
+        end)
 
-    receive do
-      {:retry_after, ^ref} ->
-        # Retry with incremented attempt counter
-        new_state = %{state | attempt: state.attempt + 1}
-        execute_with_rate_limit(fun, new_state)
+      {:async, task}
+    else
+      # Blocking: maintain existing behavior
+      Process.sleep(delay)
+      new_state = %{state | attempt: state.attempt + 1}
+      execute_with_rate_limit(fun, new_state)
     end
   end
 

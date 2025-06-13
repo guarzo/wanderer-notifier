@@ -51,12 +51,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
   describe "init/0" do
     test "initializes the cache system" do
-      # Clear any existing data
-      Process.delete(:system_names_cache)
-
       assert :ok = Cache.init()
-      # Verify that the system_names_cache was initialized in process dictionary
-      assert Process.get(:system_names_cache) == %{}
     end
   end
 

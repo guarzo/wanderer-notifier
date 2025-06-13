@@ -70,7 +70,7 @@ defmodule WandererNotifier.Killmail.Context do
     %__MODULE__{
       killmail_id: killmail_id,
       system_id: nil,
-      system_name: system_name || "Unknown",
+      system_name: system_name || "unknown",
       options: options
     }
   end

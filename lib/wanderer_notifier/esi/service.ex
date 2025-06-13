@@ -184,37 +184,28 @@ defmodule WandererNotifier.ESI.Service do
            fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
            "ship type"
          ) do
-      {:ok, data} -> handle_cache_hit(ship_type_id, data)
-      error -> error
-    end
-  end
-
-  defp handle_cache_hit(ship_type_id, data) do
-    AppLogger.api_debug("✨ ESI cache hit for ship type", ship_type_id: ship_type_id)
-
-    case data do
-      %{"name" => name} ->
+      {:ok, %{"name" => name}} ->
         {:ok, %{"name" => name}}
 
-      _ ->
-        AppLogger.api_error("ESI Service: Missing name in cached type info", data: inspect(data))
+      {:ok, _} ->
+        AppLogger.api_error("ESI Service: Missing name in type info")
         {:error, :esi_data_missing}
+
+      error ->
+        error
     end
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   @spec get_type_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_type_info(type_id, opts \\ []) do
-    case CacheHelper.fetch_with_cache(
-           :type,
-           type_id,
-           opts,
-           fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
-           "type"
-         ) do
-      {:ok, data} -> handle_cache_hit(type_id, data)
-      error -> error
-    end
+    CacheHelper.fetch_with_cache(
+      :type,
+      type_id,
+      opts,
+      fn id, fetch_opts -> esi_client().get_universe_type(id, fetch_opts) end,
+      "type"
+    )
   end
 
   @doc """

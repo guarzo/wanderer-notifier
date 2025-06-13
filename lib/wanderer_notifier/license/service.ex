@@ -12,7 +12,7 @@ defmodule WandererNotifier.License.Service do
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Define the behaviour callbacks
-  @callback validate() :: boolean()
+  @callback validate() :: map()
   @callback status() :: map()
 
   # State struct for the License Service GenServer

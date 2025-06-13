@@ -29,7 +29,7 @@ defmodule WandererNotifier.Map.MapCharacter do
   """
 
   @behaviour Access
-  @behaviour WandererNotifier.Map.CharacterBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys
 
@@ -145,6 +145,19 @@ defmodule WandererNotifier.Map.MapCharacter do
 
   def new(_) do
     raise ArgumentError, "Missing required character identification (eve_id or character_id)"
+  end
+
+  @doc """
+  Safely creates a new MapCharacter struct, returning {:ok, struct} or {:error, reason}.
+  """
+  @spec new_safe(map()) :: {:ok, t()} | {:error, String.t()}
+  def new_safe(attrs) do
+    try do
+      {:ok, new(attrs)}
+    rescue
+      e in ArgumentError ->
+        {:error, Exception.message(e)}
+    end
   end
 
   defp normalize_character_id(eve_id) when is_binary(eve_id), do: eve_id

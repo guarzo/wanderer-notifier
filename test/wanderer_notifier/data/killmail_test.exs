@@ -89,6 +89,7 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       esi_data = %{
         "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
         "solar_system_id" => 30_000_142,
+        "solar_system_name" => "Jita",
         "attackers" => [
           %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
         ]
@@ -111,6 +112,7 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       assert killmail["esi_data"] == %{
                "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
                "solar_system_id" => 30_000_142,
+               "solar_system_name" => "Jita",
                "attackers" => [
                  %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
                ]
@@ -149,6 +151,7 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       esi_data = %{
         "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
         "solar_system_id" => 30_000_142,
+        "solar_system_name" => "Jita",
         "attackers" => [
           %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
         ]

@@ -221,17 +221,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
         :system_module -> Config.system_track_module()
       end
 
-    case module_key do
-      :character_module ->
-        # CharacterBehaviour returns {:ok, boolean()} | {:error, any()}
-        case module.is_tracked?(id) do
-          {:ok, result} -> result
-          {:error, _} -> false
-        end
-
-      :system_module ->
-        # SystemBehaviour returns boolean()
-        module.is_tracked?(id)
+    # Both modules now return {:ok, boolean()} | {:error, any()}
+    case module.is_tracked?(id) do
+      {:ok, result} -> result
+      {:error, _} -> false
     end
   end
 

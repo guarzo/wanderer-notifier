@@ -79,8 +79,8 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
       {:ok, sample_alliance_data()}
     end)
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_system, fn _id ->
-      {:ok, sample_system_data()}
+    stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
+      {:ok, Map.put(sample_system_data(), "name", "System-#{id}")}
     end)
 
     stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id ->
@@ -118,11 +118,8 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
       {:ok, %{status_code: 200, body: "{}"}}
     end)
 
-    # System tracking defaults
-    stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> false end)
-
-    # Character tracking defaults  
-    stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
+    # Use centralized tracking defaults
+    setup_tracking_defaults()
   end
 
   @doc """
@@ -296,7 +293,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     tracked_characters = Keyword.get(opts, :tracked_characters, [])
 
     stub(WandererNotifier.MockSystem, :is_tracked?, fn id ->
-      id in tracked_systems
+      {:ok, id in tracked_systems}
     end)
 
     stub(WandererNotifier.MockCharacter, :is_tracked?, fn id ->
@@ -416,6 +413,15 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
         end
       end)
     end
+  end
+
+  @doc """
+  Sets up common tracking-related mocks.
+  This centralizes the MockSystem.is_tracked?/1 stub that was duplicated across tests.
+  """
+  def setup_tracking_defaults do
+    stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
+    stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
   end
 
   # Private helpers

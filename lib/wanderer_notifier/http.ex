@@ -106,7 +106,11 @@ defmodule WandererNotifier.HTTP do
         {:error, _reason} -> body
       end
 
-    {:ok, %{status_code: status, body: processed_body}}
+    if status >= 400 do
+      {:error, {:http_error, status, processed_body}}
+    else
+      {:ok, %{status_code: status, body: processed_body}}
+    end
   end
 
   defp log_success(method, url, status, start_time) do

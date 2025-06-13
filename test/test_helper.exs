@@ -10,8 +10,8 @@ Application.ensure_all_started(:mox)
 
 # Set up Mox mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
-Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.SystemBehaviour)
-Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.CharacterBehaviour)
+Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
+Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
 Mox.defmock(WandererNotifier.MockDeduplication,
   for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
@@ -120,7 +120,7 @@ end)
 Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)
 
 # Set up default stubs for system mock
-Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> false end)
+Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
 
 # Set up default stubs for character mock
 Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
@@ -142,7 +142,11 @@ Mox.stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id -> {:ok, %{}} 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_universe_type, fn _id, _opts -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn _id -> {:ok, %{}} end)
+
+Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
+  {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
+end)
+
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id -> {:ok, %{}} end)
 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system_kills, fn _id, _limit, _opts ->

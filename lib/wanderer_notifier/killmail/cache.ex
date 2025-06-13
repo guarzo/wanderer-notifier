@@ -11,15 +11,10 @@ defmodule WandererNotifier.Killmail.Cache do
   alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  # System name cache - process dictionary for performance
-  @system_names_cache_key :system_names_cache
-
   @doc """
   Initializes the killmail cache system.
   """
   def init do
-    # Initialize the system names cache in the process dictionary
-    Process.put(@system_names_cache_key, %{})
     AppLogger.kill_debug("Kill cache initialized")
     :ok
   end
@@ -159,14 +154,44 @@ defmodule WandererNotifier.Killmail.Cache do
   - system_id: The ID of the system to get name for
 
   ## Returns
-  - System name or nil if not found
+  - System name string or "System [ID]" if not found
   """
-  def get_system_name(_system_id) do
-    # @todo Move system name lookup from KillProcessor to this module
-    # It would handle looking up system names from the cache
-    # and falling back to the API if not found
-    nil
+  def get_system_name(nil), do: "Unknown"
+
+  def get_system_name(system_id) when is_integer(system_id) do
+    # Use the central cache adapter with TTL
+    cache_name = CacheConfig.cache_name()
+    cache_key = CacheKeys.esi_data("system_name", system_id)
+
+    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
+      {:ok, name} when is_binary(name) ->
+        name
+
+      _ ->
+        # No cached name, fetch from ESI
+        case esi_service().get_system(system_id, []) do
+          {:ok, %{"name" => name}} when is_binary(name) ->
+            # Cache the name with configurable TTL
+            ttl_ms = CacheConfig.ttl_for(:system) |> :timer.seconds()
+            WandererNotifier.Cache.Adapter.set(cache_name, cache_key, name, ttl_ms)
+            name
+
+          _ ->
+            "System #{system_id}"
+        end
+    end
   end
+
+  def get_system_name(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, ""} -> get_system_name(id)
+      _ -> "System #{system_id}"
+    end
+  end
+
+  # Dependency injection helper
+  defp esi_service,
+    do: Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
 
   # Private functions
 
@@ -181,8 +206,8 @@ defmodule WandererNotifier.Killmail.Cache do
       end
 
     # Add the new kill ID to the list (if not already present)
-    # Limit the list to a maximum of 100 recent kills
-    max_recent_kills = 100
+    # Limit the list to a maximum of recent kills
+    max_recent_kills = Application.get_env(:wanderer_notifier, :max_recent_kills, 100)
 
     updated_ids =
       if kill_id in kill_ids do

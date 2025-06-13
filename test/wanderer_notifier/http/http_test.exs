@@ -2,6 +2,7 @@ defmodule WandererNotifier.HTTPTest do
   use ExUnit.Case, async: true
   import Mox
 
+  setup :set_mox_from_context
   setup :verify_on_exit!
 
   test "mocks HTTP client successfully" do

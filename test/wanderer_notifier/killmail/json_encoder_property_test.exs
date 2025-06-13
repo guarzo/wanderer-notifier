@@ -88,7 +88,11 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
     property "victim data in esi_data is preserved" do
       check all(victim <- victim_generator()) do
-        esi_data = %{"victim" => victim, "solar_system_id" => 30_000_142}
+        esi_data = %{
+          "victim" => victim,
+          "solar_system_id" => 30_000_142,
+          "solar_system_name" => "Jita"
+        }
 
         killmail = %Killmail{
           killmail_id: "123456",
@@ -105,7 +109,11 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
     property "attackers list is properly encoded" do
       check all(attackers <- list_of(attacker_generator(), min_length: 0, max_length: 10)) do
-        esi_data = %{"attackers" => attackers, "solar_system_id" => 30_000_142}
+        esi_data = %{
+          "attackers" => attackers,
+          "solar_system_id" => 30_000_142,
+          "solar_system_name" => "Jita"
+        }
 
         killmail = %Killmail{
           killmail_id: "123456",
@@ -293,17 +301,51 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     )
   end
 
+  defp iso8601_datetime_generator do
+    # Generate dynamic ISO-8601 datetime strings
+    gen all(
+          date <- date_generator(),
+          time <- time_generator()
+        ) do
+      "#{date}T#{time}Z"
+    end
+  end
+
+  defp date_generator do
+    gen all(
+          year <- integer(2020..2025),
+          month <- integer(1..12),
+          day <- integer(1..28)
+        ) do
+      :io_lib.format("~4..0B-~2..0B-~2..0B", [year, month, day])
+      |> IO.iodata_to_binary()
+    end
+  end
+
+  defp time_generator do
+    gen all(
+          hour <- integer(0..23),
+          minute <- integer(0..59),
+          second <- integer(0..59)
+        ) do
+      :io_lib.format("~2..0B:~2..0B:~2..0B", [hour, minute, second])
+      |> IO.iodata_to_binary()
+    end
+  end
+
   defp esi_data_generator do
     gen all(
           victim <- one_of([nil, victim_generator()]),
           attackers <- list_of(attacker_generator(), max_length: 5),
           solar_system_id <- positive_integer(),
-          killmail_time <- string(:alphanumeric)
+          killmail_time <- iso8601_datetime_generator(),
+          solar_system_name <- string(:alphanumeric, min_length: 1)
         ) do
       %{
         "victim" => victim,
         "attackers" => attackers,
         "solar_system_id" => solar_system_id,
+        "solar_system_name" => solar_system_name,
         "killmail_time" => killmail_time
       }
     end

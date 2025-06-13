@@ -7,6 +7,10 @@ defmodule WandererNotifier.Config.Utils do
 
   require Logger
 
+  @default_port 4000
+  @min_port 1
+  @max_port 65_535
+
   @doc """
   Parses an integer from a string value with error handling.
   Returns the default value if parsing fails.
@@ -58,16 +62,48 @@ defmodule WandererNotifier.Config.Utils do
       4000
   """
   @spec parse_port(integer() | String.t() | any()) :: integer()
-  def parse_port(port) when is_integer(port), do: port
+  def parse_port(port) when is_integer(port) do
+    validate_port_range(port)
+  end
 
   def parse_port(port) when is_binary(port) do
-    case Integer.parse(port) do
-      {int_port, _} -> int_port
-      :error -> 4000
+    case port |> String.trim() |> Integer.parse() do
+      {int_port, ""} ->
+        validate_port_range(int_port)
+
+      {_int_port, _rest} ->
+        Logger.warning(fn ->
+          "Port string '#{port}' contains non-numeric trailing characters – using default #{@default_port}."
+        end)
+
+        @default_port
+
+      :error ->
+        Logger.warning(fn ->
+          "Failed to parse port string '#{port}'. Using default #{@default_port}."
+        end)
+
+        @default_port
     end
   end
 
-  def parse_port(_), do: 4000
+  def parse_port(port) do
+    Logger.warning(fn ->
+      "Unsupported data type for port (#{inspect(port)}). Using default #{@default_port}."
+    end)
+
+    @default_port
+  end
+
+  defp validate_port_range(port) when port >= @min_port and port <= @max_port, do: port
+
+  defp validate_port_range(port) do
+    Logger.warning(fn ->
+      "Invalid port number #{port}, must be between #{@min_port} and #{@max_port}. Using default #{@default_port}."
+    end)
+
+    @default_port
+  end
 
   @doc """
   Checks if a string value is nil or empty.

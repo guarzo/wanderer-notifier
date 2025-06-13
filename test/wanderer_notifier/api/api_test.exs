@@ -3,6 +3,7 @@ defmodule WandererNotifier.API.APITest do
   import Mox
   alias WandererNotifier.Test.Fixtures.ApiResponses
 
+  setup :set_mox_from_context
   setup :verify_on_exit!
 
   test "uses fixtures for API testing" do

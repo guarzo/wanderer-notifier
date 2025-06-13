@@ -4,7 +4,7 @@ defmodule WandererNotifier.Notifications.Formatters.PlainText do
   """
 
   def plain_system_notification(system) do
-    name = Map.get(system, :name) || Map.get(system, "name") || "Unknown System"
+    name = Map.get(system, :name) || Map.get(system, "name") || "unknown"
     id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id") || "?"
     "System mapped: #{name} (ID: #{id})"
   end

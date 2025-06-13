@@ -38,6 +38,8 @@ defmodule WandererNotifier.Application do
     base_children = [
       # Add Task.Supervisor first to prevent initialization races
       {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
+      # Add Registry for cache process naming
+      {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
       {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
       {WandererNotifier.Core.Stats, []},

@@ -47,10 +47,6 @@ config :logger, :console,
   metadata: [:pid, :module]
 
 # Configure the cache - all cache settings in one place
-config :wanderer_notifier, :cache,
-  backend: Cachex,
-  ttl: 60
-
 config :wanderer_notifier,
   cache_name: :wanderer_test_cache,
   cache_adapter: WandererNotifier.Cache.SimpleETSCache

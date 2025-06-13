@@ -33,6 +33,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     * `id` - The ID of the entity being fetched
     * `opts` - Options including:
       * `:cache_name` - Override the default cache name
+      * `:ttl` - Override the default TTL (in seconds or :infinity)
       * Any other options to pass to the fetch function
     * `fetch_fn` - Function to call when data is not in cache
     * `log_name` - Human-readable name for logging (e.g., "character", "corporation")
@@ -46,8 +47,14 @@ defmodule WandererNotifier.Cache.CacheHelper do
         "character"
       )
       
-      # With custom validation
-      fetch_with_cache(:system, "30000142", [],
+      # With custom TTL override (cache for 30 minutes)
+      fetch_with_cache(:character, "123", [ttl: 1800],
+        &esi_client().get_character_info/2,
+        "character"
+      )
+      
+      # With custom validation and infinite TTL
+      fetch_with_cache(:system, "30000142", [ttl: :infinity],
         &esi_client().get_system/2,
         "solar system",
         fn data -> is_map(data) and Map.has_key?(data, "name") end
@@ -99,7 +106,9 @@ defmodule WandererNotifier.Cache.CacheHelper do
   ## Parameters
 
     * `custom_key` - Pre-generated cache key
-    * `opts` - Options including cache name override
+    * `opts` - Options including:
+      * `:cache_name` - Override the default cache name
+      * `:ttl` - Override the default TTL (in seconds, or `:infinity`)
     * `fetch_fn` - Function to call when data is not in cache
     * `log_context` - Map of context for logging
     * `validator` - Optional function to validate cached data
@@ -130,12 +139,12 @@ defmodule WandererNotifier.Cache.CacheHelper do
           {:ok, cached_data}
         else
           # Invalid cached data, fetch fresh
-          fetch_and_cache_custom(cache_name, custom_key, fetch_fn, log_context)
+          fetch_and_cache_custom(cache_name, custom_key, opts, fetch_fn, log_context)
         end
 
       _ ->
         # Cache miss or error
-        fetch_and_cache_custom(cache_name, custom_key, fetch_fn, log_context)
+        fetch_and_cache_custom(cache_name, custom_key, opts, fetch_fn, log_context)
     end
   end
 
@@ -230,12 +239,13 @@ defmodule WandererNotifier.Cache.CacheHelper do
       cache_key: cache_key
     )
 
-    case fetch_fn.(id, opts) do
+    # Sanitize options by removing internal cache keys
+    sanitized_opts = Keyword.drop(opts, [:cache_name, :ttl])
+
+    case fetch_fn.(id, sanitized_opts) do
       {:ok, data} = success ->
         # Cache the successful result with appropriate TTL
-        # Extract cache type from log_name (e.g., "character" -> :character)
-        cache_type = String.to_atom(log_name)
-        ttl = CacheConfig.ttl_for(cache_type) |> :timer.seconds()
+        ttl = get_ttl_from_opts(opts, log_name)
         Adapter.set(cache_name, cache_key, data, ttl)
         success
 
@@ -244,7 +254,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     end
   end
 
-  defp fetch_and_cache_custom(cache_name, cache_key, fetch_fn, log_context) do
+  defp fetch_and_cache_custom(cache_name, cache_key, opts, fetch_fn, log_context) do
     AppLogger.cache_debug(
       "Cache miss, fetching fresh data",
       Map.merge(log_context, %{cache_key: cache_key})
@@ -252,12 +262,55 @@ defmodule WandererNotifier.Cache.CacheHelper do
 
     case fetch_fn.() do
       {:ok, data} = success ->
-        # Cache the successful result
-        Adapter.put(cache_name, cache_key, data)
+        # Cache the successful result with TTL
+        ttl = get_ttl_from_opts(opts, "custom", :timer.hours(1))
+        Adapter.set(cache_name, cache_key, data, ttl)
         success
 
       error ->
         error
     end
   end
+
+  # Helper function to get TTL from options with fallback to config
+  defp get_ttl_from_opts(opts, log_name, default_ttl \\ nil) do
+    case Keyword.get(opts, :ttl) do
+      nil -> get_config_ttl(log_name)
+      :infinity -> :infinity
+      ttl_seconds when is_integer(ttl_seconds) -> :timer.seconds(ttl_seconds)
+      _other -> get_fallback_ttl(default_ttl, log_name)
+    end
+  end
+
+  defp get_config_ttl(log_name) do
+    cache_type = log_name_to_cache_type(log_name)
+
+    case CacheConfig.ttl_for(cache_type) do
+      :infinity -> :infinity
+      seconds -> :timer.seconds(seconds)
+    end
+  end
+
+  defp get_fallback_ttl(default_ttl, log_name) do
+    if default_ttl do
+      default_ttl
+    else
+      get_config_ttl(log_name)
+    end
+  end
+
+  # Helper function to safely convert log names to cache type atoms
+  defp log_name_to_cache_type(log_name) when is_binary(log_name) do
+    case log_name do
+      "character" -> :character
+      "corporation" -> :corporation
+      "alliance" -> :alliance
+      "system" -> :system
+      "killmail" -> :killmail
+      "notification" -> :notification
+      _ -> :default
+    end
+  end
+
+  defp log_name_to_cache_type(_), do: :default
 end

@@ -82,11 +82,15 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp extract_kill_context(killmail) do
+    system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
+
     system_name =
       killmail.system_name ||
-        Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
-
-    system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
+        Map.get(killmail.esi_data || %{}, "solar_system_name") ||
+        if(system_id,
+          do: WandererNotifier.Killmail.Cache.get_system_name(system_id),
+          else: "Unknown"
+        )
 
     security_status = get_system_security_status(system_id)
     security_formatted = format_security_status(security_status)

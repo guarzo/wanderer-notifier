@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -111,7 +112,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Gets the latest killmails for notification.
   """
   def get_latest_killmails do
-    case Cachex.get(@cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, kill_ids} when is_list(kill_ids) ->
         get_kills_by_ids(kill_ids)
 
@@ -123,7 +124,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Private helper functions
 
   defp get_recent_kill do
-    case Cachex.get(@cache_name, CacheKeys.zkill_recent_kills()) do
+    case Adapter.get(@cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
       _ -> {:error, :no_recent_kills}
     end
@@ -336,7 +337,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
     results =
       Enum.map(keys, fn key ->
-        case Cachex.get(@cache_name, key) do
+        case Adapter.get(@cache_name, key) do
           {:ok, value} -> {:ok, value}
           _ -> {:ok, nil}
         end
@@ -348,7 +349,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   defp process_kill_results(kill_ids, results) do
     for {id, {:ok, data}} <- Enum.zip(kill_ids, results),
         not is_nil(data) do
-      Map.put(data, "id", id)
+      Map.put(data, :id, id)
     end
   end
 end
