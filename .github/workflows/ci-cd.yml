@@ -150,7 +150,7 @@ jobs:
           cache-from: type=gha
           build-args: |
             VCS_REF=${{ github.sha }}
-            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
       - name: Test Docker image
         run: |
@@ -185,7 +185,7 @@ jobs:
             type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
           build-args: |
             VCS_REF=${{ github.sha }}
-            API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
   auto-tag:
     name: Auto Tag Version

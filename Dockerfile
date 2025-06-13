@@ -43,6 +43,9 @@ FROM deps AS build
 
 WORKDIR /app
 
+# Accept build arguments
+ARG NOTIFIER_API_TOKEN
+
 # Copy source code
 COPY . .
 
@@ -84,9 +87,13 @@ RUN apt-get update \
 # Copy release from build stage
 COPY --from=build --chown=app:app /app/release ./
 
+# Accept build arguments in runtime stage
+ARG NOTIFIER_API_TOKEN
+
 # Runtime configuration
 ENV REPLACE_OS_VARS=true \
-    HOME=/app
+    HOME=/app \
+    NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
 
 # Metadata
 ARG BUILD_DATE

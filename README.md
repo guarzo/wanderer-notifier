@@ -159,27 +159,17 @@ Environment variables now use simplified naming without redundant prefixes for c
 3. **License Configuration**
    - `LICENSE_KEY`: Your license key for accessing premium features (required)
 
-4. **Notifier API Configuration**
-   - `NOTIFIER_API_TOKEN`: Authentication token for the notifier API (required)
-
-5. **Feature Control Flags**
+4. **Feature Control Flags**
    - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)
    - `KILLMAIL_NOTIFICATION_ENABLED`: Enable killmail notifications (default: true)
    - `SYSTEM_NOTIFICATION_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATION_ENABLED`: Enable character notifications (default: true)
    - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
 
-6. **Tracking Configuration**
+5. **Tracking Configuration**
    - `TRACK_KSPACE_ENABLED`: Include K-Space systems in tracking (default: true)
    - `SYSTEM_TRACKING_ENABLED`: Enable background system updates (default: true)
-   - `CHARACTER_TRACKING_ENABLED`: Enable background character updates (default: true)
    - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking
-
-7. **API and Performance Settings**
-   - `CACHE_DIR`: Directory for persistent cache files (default: /app/data/cache)
-   - `REDISQ_URL`: ZKillboard RedisQ endpoint (default: https://zkillredisq.stream/listen.php)
-   - `REDISQ_POLL_INTERVAL_MS`: Polling interval for RedisQ in milliseconds (default: 1000)
-   - `LICENSE_MANAGER_URL`: License validation service URL (default: https://lm.wanderer.ltd)
 
 ## Development
 
@@ -239,20 +229,3 @@ This project is licensed according to the terms in the LICENSE file.
 ## Support
 
 If you encounter issues or have questions, please open an issue on the project repository.
-
-## Notes
-
-```
-
-
- docker buildx build . \
-  --build-arg API_TOKEN=your_token_here \
-  --build-arg APP_VERSION=local \
-  -t notifier:local
-
-  docker run \
-    --publish=7474:7474 --publish=7687:7687 \
-    --volume=$HOME/neo4j/data:/data \
-    --volume=$HOME/neo4j/logs:/logs \
-    neo4j:latest
-```
