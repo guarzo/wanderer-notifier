@@ -40,7 +40,7 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
               },
               %{
                 type: 3,
-                # STRING  
+                # STRING
                 name: "action",
                 description: "Action to perform",
                 required: false,
@@ -187,6 +187,11 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
   """
   @spec extract_command_details(map()) :: {:ok, map()} | {:error, :invalid_interaction}
   def extract_command_details(interaction) do
+    AppLogger.processor_info("extract_command_details called",
+      interaction_data: inspect(interaction.data),
+      has_options: Map.has_key?(interaction.data, :options)
+    )
+
     if valid_interaction?(interaction) do
       %{data: %{options: [subcommand]}} = interaction
 
@@ -203,6 +208,10 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
       {:ok, details}
     else
+      AppLogger.processor_warn("Invalid interaction structure",
+        data_name: interaction.data.name,
+        options: inspect(interaction.data.options)
+      )
       {:error, :invalid_interaction}
     end
   end
@@ -257,7 +266,11 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   # Extracts options from a subcommand
   defp extract_options(%{options: options}) when is_list(options) do
-    Map.new(options, fn %{name: name, value: value} -> {name, value} end)
+    Map.new(options, fn opt -> 
+      name = Map.get(opt, :name)
+      value = Map.get(opt, :value)
+      {name, value}
+    end)
   end
 
   defp extract_options(_), do: %{}

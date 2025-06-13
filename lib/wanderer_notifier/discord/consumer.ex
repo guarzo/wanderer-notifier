@@ -46,10 +46,10 @@ defmodule WandererNotifier.Discord.Consumer do
     AppLogger.processor_info("INTERACTION_CREATE event received",
       interaction_id: interaction.id,
       type: interaction.type,
-      command_name: get_in(interaction.data, [:name])
+      command_name: interaction.data.name
     )
 
-    case CommandRegistrar.extract_command_details(interaction) do
+    result = case CommandRegistrar.extract_command_details(interaction) do
       {:ok, command} ->
         handle_notifier_command(command, interaction)
 
@@ -58,7 +58,13 @@ defmodule WandererNotifier.Discord.Consumer do
           interaction_id: interaction.id,
           data: inspect(interaction.data)
         )
+        respond_to_interaction(interaction, "❌ Invalid interaction format")
     end
+    
+    AppLogger.processor_debug("Interaction handling result",
+      interaction_id: interaction.id,
+      result: inspect(result)
+    )
 
     :noop
   end
@@ -86,6 +92,11 @@ defmodule WandererNotifier.Discord.Consumer do
 
   # Handles the `/notifier` command based on subcommand type
   defp handle_notifier_command(command, interaction) do
+    AppLogger.processor_info("handle_notifier_command called",
+      command_type: command.type,
+      interaction_id: interaction.id
+    )
+    
     # Log the command interaction
     log_command(command)
 
