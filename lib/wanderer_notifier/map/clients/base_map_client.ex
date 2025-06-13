@@ -67,7 +67,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def cache_put(cache_key, data, ttl) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
-    AppLogger.api_info("Caching fetched data",
+    AppLogger.api_debug("Caching fetched data",
       count: length(data),
       key: cache_key,
       ttl: ttl
