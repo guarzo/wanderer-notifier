@@ -79,7 +79,10 @@ defmodule WandererNotifier.Config.Utils do
         @default_port
 
       :error ->
-        Logger.warning(fn -> "Failed to parse port string '#{port}'. Using default #{@default_port}." end)
+        Logger.warning(fn ->
+          "Failed to parse port string '#{port}'. Using default #{@default_port}."
+        end)
+
         @default_port
     end
   end

@@ -327,6 +327,7 @@ defmodule WandererNotifier.Killmail.Killmail do
 
   @spec fetch_system_name_from_cache(integer() | nil) :: String.t() | nil
   defp fetch_system_name_from_cache(nil), do: nil
+
   defp fetch_system_name_from_cache(system_id) do
     WandererNotifier.Killmail.Cache.get_system_name(system_id)
   end

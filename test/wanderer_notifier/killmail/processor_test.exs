@@ -122,7 +122,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       # Set system tracking to return true for this test
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
-      
+
       # Set character tracking expectation
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)

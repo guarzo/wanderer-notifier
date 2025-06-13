@@ -184,7 +184,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
     Mox.stub(ClientMock, :get_system, fn _id, _opts ->
       {:ok, %{"name" => "Test System", "security_status" => 0.5}}
     end)
-    
+
     # Stub ServiceMock for get_system_name calls
     Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
       {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}

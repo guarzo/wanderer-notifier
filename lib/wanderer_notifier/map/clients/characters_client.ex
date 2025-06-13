@@ -67,14 +67,15 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   @impl true
   def enrich_item(character) do
     case MapCharacter.new_safe(character) do
-      {:ok, struct} -> 
+      {:ok, struct} ->
         struct
-      
+
       {:error, reason} ->
         AppLogger.api_error("Failed to create MapCharacter struct",
           error: reason,
           character: inspect(character)
         )
+
         character
     end
   end

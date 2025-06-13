@@ -404,7 +404,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         # Add system name to esi_data
         new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
         %{killmail | esi_data: new_esi_data}
-        
+
       _ ->
         killmail
     end

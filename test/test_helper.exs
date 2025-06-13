@@ -145,9 +145,11 @@ Mox.stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id -> {:ok, %{}} 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_universe_type, fn _id, _opts -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts -> 
+
+Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
   {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
 end)
+
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id -> {:ok, %{}} end)
 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system_kills, fn _id, _limit, _opts ->

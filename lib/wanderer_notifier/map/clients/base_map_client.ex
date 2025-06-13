@@ -93,9 +93,9 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
   defp perform_cache_set(cache_name, cache_key, data, ttl) do
     case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl) do
-      {:ok, _} -> 
+      {:ok, _} ->
         {:ok, data}
-      
+
       error ->
         AppLogger.api_error("Failed to cache data", error: inspect(error))
         {:error, :cache_error}
