@@ -1,17 +1,19 @@
 # Wanderer Notifier
 
-Wanderer Notifier is an Elixir-based application that monitors EVE Online kill data and notifies designated Discord channels about significant events. It integrates with multiple external services to retrieve, enrich, and filter kill information before sending alerts.
+Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-time EVE Online killmail monitoring and Discord notifications. It connects to ZKillboard's RedisQ API to track ship destructions in specific systems and sends rich, detailed notifications to Discord channels.
 
 ## Features
 
-- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
-- **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process kills originating from systems you care about
-- **Character Tracking:** Monitors specific characters and notifies on their activities
-- **Periodic Maintenance:** Automatically updates system data, processes backup kills, and sends heartbeat notifications
-- **Caching:** Implements efficient caching with Cachex to minimize redundant API calls
-- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for robust, resilient operation
-- **Containerized Deployment:** Easy setup using Docker and docker-compose
+- **Real-Time Kill Monitoring:** Consumes live killmail data via ZKillboard's RedisQ API
+- **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
+- **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
+- **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
+- **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
+- **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
+- **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information
+- **Map Integration:** Connects to Wanderer map API for system and character tracking
+- **Robust Architecture:** Built on Elixir's OTP supervision trees for fault tolerance and reliability
+- **Production Ready:** Comprehensive logging, telemetry, Docker deployment, and health checks
 
 ## Notification System
 
@@ -59,10 +61,12 @@ If a kill involves both tracked systems and tracked characters, notifications wi
 
 ## Requirements
 
-- Elixir (>= 1.14 recommended)
+- Elixir (>= 1.18 required)
 - Erlang/OTP (compatible version)
 - [Docker](https://www.docker.com/) (recommended for deployment)
 - Discord Bot Token (with proper permissions)
+- Wanderer map access and API token
+- Valid license key for premium features
 
 ## Quick Start with Docker
 
@@ -140,54 +144,42 @@ Environment variables now use simplified naming without redundant prefixes for c
 ### Key Configuration Options
 
 1. **Discord Configuration**
+   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token (required)
+   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications (required)
+   - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications (optional)
+   - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications (optional)
+   - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (optional)
+   - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications (optional)
 
-   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
-   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
-   - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
-   - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+2. **Map API Configuration**
+   - `MAP_URL`: Base URL for the Wanderer map API (required, e.g., "https://wanderer.ltd")
+   - `MAP_NAME`: Name of your specific map (required)
+   - `MAP_API_KEY`: Authentication token for map API access (required)
 
-2. **License Configuration**
-
-   - `LICENSE_KEY`: Your license key for accessing premium features
-
-3. **Map API Configuration**
-
-   - `MAP_URL`: Base URL for the wanderer map API
-   - `MAP_NAME`: Name of your specific map
-   - `MAP_API_KEY`: Authentication token for map API
-
-   > **Note:** The application will automatically combine `MAP_URL` and `MAP_NAME` to create the full map URL with name parameter. For backward compatibility, you can still use `MAP_URL_WITH_NAME` with the full URL including the name parameter.
+3. **License Configuration**
+   - `LICENSE_KEY`: Your license key for accessing premium features (required)
 
 4. **Notifier API Configuration**
+   - `NOTIFIER_API_TOKEN`: Authentication token for the notifier API (required)
 
-   - `NOTIFIER_API_TOKEN`: Authentication token for the notifier API
-
-5. **Feature Flags**
-
-   - `NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
-   - `KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
-   - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
-   - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
+5. **Feature Control Flags**
+   - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)
+   - `KILLMAIL_NOTIFICATION_ENABLED`: Enable killmail notifications (default: true)
+   - `SYSTEM_NOTIFICATION_ENABLED`: Enable system notifications (default: true)
+   - `CHARACTER_NOTIFICATION_ENABLED`: Enable character notifications (default: true)
    - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
-   - `TRACK_KSPACE_ENABLED`: Track K-Space systems in addition to wormholes (default: true)
-   - `SYSTEM_TRACKING_ENABLED`: Enable system data tracking scheduler (default: true)
-   - `CHARACTER_TRACKING_ENABLED`: Enable character data tracking scheduler (default: true)
 
-6. **Character Configuration**
+6. **Tracking Configuration**
+   - `TRACK_KSPACE_ENABLED`: Include K-Space systems in tracking (default: true)
+   - `SYSTEM_TRACKING_ENABLED`: Enable background system updates (default: true)
+   - `CHARACTER_TRACKING_ENABLED`: Enable background character updates (default: true)
+   - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking
 
-   - `CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
-
-7. **Cache and RedisQ Configuration**
-
-   - `CACHE_DIR`: Directory for cache files (default: /app/data/cache)
-   - `REDISQ_URL`: ZKillboard RedisQ URL (default: [https://zkillredisq.stream/listen.php](https://zkillredisq.stream/listen.php))
-   - `REDISQ_POLL_INTERVAL_MS`: RedisQ polling interval in milliseconds (default: 1000)
-
-8. **License Manager Configuration**
-
-   - `LICENSE_MANAGER_URL`: License manager API URL (default: [https://lm.wanderer.ltd](https://lm.wanderer.ltd))
+7. **API and Performance Settings**
+   - `CACHE_DIR`: Directory for persistent cache files (default: /app/data/cache)
+   - `REDISQ_URL`: ZKillboard RedisQ endpoint (default: https://zkillredisq.stream/listen.php)
+   - `REDISQ_POLL_INTERVAL_MS`: Polling interval for RedisQ in milliseconds (default: 1000)
+   - `LICENSE_MANAGER_URL`: License validation service URL (default: https://lm.wanderer.ltd)
 
 ## Development
 
@@ -214,12 +206,31 @@ The Makefile provides shortcuts for common tasks:
 
 ## Architecture
 
-Wanderer Notifier follows an event-driven, functional, and component-based architecture:
+Wanderer Notifier follows a domain-driven, event-driven architecture built on Elixir/OTP principles:
 
-- The application receives real-time data via WebSocket from ZKillboard
-- Data is enriched with information from EVE ESI API
-- Notifications are determined based on configured rules
-- Messages are formatted and sent to Discord channels
+### Core Data Flow
+1. **RedisQ Consumer**: Polls ZKillboard's RedisQ API for new killmail events
+2. **Killmail Pipeline**: Processes incoming kills through enrichment and filtering stages
+3. **ESI Integration**: Enriches killmail data with character, corporation, and alliance details
+4. **Notification Engine**: Determines eligibility and formats messages based on tracking rules
+5. **Discord Delivery**: Sends rich embed or text notifications to configured channels
+
+### Key Components
+- **Supervision Tree**: Robust fault tolerance with supervisor hierarchies
+- **Cache System**: Multi-adapter caching (Cachex/ETS) with unified key management
+- **HTTP Client**: Centralized client with retry logic, rate limiting, and structured logging
+- **Schedulers**: Background tasks for character/system updates and maintenance
+- **License Service**: Controls premium features and notification formatting
+- **Map Integration**: Tracks wormhole systems and character locations via external API
+
+### Technology Stack
+- **Elixir 1.18+** with OTP supervision trees
+- **Nostrum** for Discord bot functionality
+- **HTTPoison/Req** for HTTP API interactions
+- **Cachex** for distributed caching
+- **Jason** for JSON handling
+- **WebSockex** for WebSocket connections
+- **Docker** for containerized deployment
 
 ## License
 

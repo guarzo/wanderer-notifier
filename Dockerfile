@@ -46,8 +46,16 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
+# Ensure Hex and Rebar are available in build stage
+RUN --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
+    mix local.hex --force \
+ && mix local.rebar --force
+
 # Compile and release with cache mount for build artifacts
 RUN --mount=type=cache,target=/app/_build,sharing=locked \
+    --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.mix \
     mix compile --warnings-as-errors \
  && mix release --overwrite \
  && cp -r /app/_build/prod/rel/wanderer_notifier /app/release
