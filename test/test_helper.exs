@@ -8,6 +8,9 @@ ExUnit.start()
 # Configure Mox
 Application.ensure_all_started(:mox)
 
+# Set global mode for mocks that are used in async processes
+Mox.set_mox_global()
+
 # Set up Mox mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
@@ -142,7 +145,9 @@ Mox.stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id -> {:ok, %{}} 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id -> {:ok, %{}} end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_universe_type, fn _id, _opts -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn _id -> {:ok, %{}} end)
+Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts -> 
+  {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
+end)
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id -> {:ok, %{}} end)
 
 Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system_kills, fn _id, _limit, _opts ->

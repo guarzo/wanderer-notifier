@@ -305,11 +305,15 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Utilities —————————————————————————————————————————————————————————
 
-  defp get_reason_emoji(:duplicate), do: "♻️"
-  defp get_reason_emoji(:no_tracked_entities), do: "🚫"
-  defp get_reason_emoji(:notifications_disabled), do: "⏸️"
-  defp get_reason_emoji(:system_notifications_disabled), do: "🗺️❌"
-  defp get_reason_emoji(:kill_notifications_disabled), do: "💀❌"
+  @reason_emojis %{
+    duplicate: "♻️",
+    no_tracked_entities: "🚫",
+    notifications_disabled: "⏸️",
+    system_notifications_disabled: "🗺️❌",
+    kill_notifications_disabled: "💀❌"
+  }
+
+  defp get_reason_emoji(reason), do: Map.get(@reason_emojis, reason, "❓")
 
   defp get_reason_text(reason),
     do: reason |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()

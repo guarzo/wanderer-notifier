@@ -13,6 +13,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   alias WandererNotifier.Utils.TimeUtils
 
   setup :verify_on_exit!
+  setup :set_mox_from_context
 
   setup do
     # Set up application environment
@@ -118,9 +119,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
+      # Set system tracking to return true for this test
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
-
+      
+      # Set character tracking expectation
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
@@ -147,9 +150,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
+      # Override default system tracking (true) to return false for this test
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
+      # Override default character tracking (false) to return true for this test  
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
 
@@ -176,9 +181,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
+      # Override default system tracking to return false for this test
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
+      # Character tracking expectation 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
@@ -223,11 +230,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
+      # Override default system tracking (true) to return false for this test
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
-      MockCharacter
-      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
+      # Character tracking already returns false by default from test_helper.exs
 
       MockDeduplication
       |> stub(:check, fn :kill, _id -> {:ok, :new} end)

@@ -147,6 +147,19 @@ defmodule WandererNotifier.Map.MapCharacter do
     raise ArgumentError, "Missing required character identification (eve_id or character_id)"
   end
 
+  @doc """
+  Safely creates a new MapCharacter struct, returning {:ok, struct} or {:error, reason}.
+  """
+  @spec new_safe(map()) :: {:ok, t()} | {:error, String.t()}
+  def new_safe(attrs) do
+    try do
+      {:ok, new(attrs)}
+    rescue
+      e in ArgumentError ->
+        {:error, Exception.message(e)}
+    end
+  end
+
   defp normalize_character_id(eve_id) when is_binary(eve_id), do: eve_id
   defp normalize_character_id(eve_id) when is_integer(eve_id), do: Integer.to_string(eve_id)
 

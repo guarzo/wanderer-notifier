@@ -161,7 +161,7 @@ defmodule WandererNotifier.Killmail.Cache do
   def get_system_name(system_id) when is_integer(system_id) do
     # Use the central cache adapter with TTL
     cache_name = CacheConfig.cache_name()
-    cache_key = "system_name:#{system_id}"
+    cache_key = CacheKeys.esi_data("system_name", system_id)
 
     case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
       {:ok, name} when is_binary(name) ->

@@ -302,14 +302,35 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   end
 
   defp iso8601_datetime_generator do
-    # Generate a simple ISO-8601 datetime string
-    one_of([
-      constant("2024-01-15T10:30:45Z"),
-      constant("2023-12-25T14:20:30Z"),
-      constant("2024-06-30T08:15:22Z"),
-      constant("2023-08-10T16:45:18Z"),
-      constant("2024-03-01T12:00:00Z")
-    ])
+    # Generate dynamic ISO-8601 datetime strings
+    gen all(
+          date <- date_generator(),
+          time <- time_generator()
+        ) do
+      "#{date}T#{time}Z"
+    end
+  end
+
+  defp date_generator do
+    gen all(
+          year <- integer(2020..2025),
+          month <- integer(1..12),
+          day <- integer(1..28)
+        ) do
+      :io_lib.format("~4..0B-~2..0B-~2..0B", [year, month, day])
+      |> IO.iodata_to_binary()
+    end
+  end
+
+  defp time_generator do
+    gen all(
+          hour <- integer(0..23),
+          minute <- integer(0..59),
+          second <- integer(0..59)
+        ) do
+      :io_lib.format("~2..0B:~2..0B:~2..0B", [hour, minute, second])
+      |> IO.iodata_to_binary()
+    end
   end
 
   defp esi_data_generator do

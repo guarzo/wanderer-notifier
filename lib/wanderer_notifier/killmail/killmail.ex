@@ -176,12 +176,7 @@ defmodule WandererNotifier.Killmail.Killmail do
     value = get_in(zkb, ["totalValue"]) || 0
     system_id = get_in(enriched_data, ["solar_system_id"])
 
-    system_name =
-      get_in(enriched_data, ["solar_system_name"]) ||
-        if(system_id,
-          do: WandererNotifier.Killmail.Cache.get_system_name(system_id),
-          else: "Unknown"
-        )
+    system_name = get_system_name_with_fallback(enriched_data, system_id)
 
     %__MODULE__{
       killmail_id: kill_id,
@@ -207,12 +202,7 @@ defmodule WandererNotifier.Killmail.Killmail do
     value = get_in(map, ["zkb", "totalValue"]) || 0
     system_id = get_in(map, ["esi_data", "solar_system_id"])
 
-    system_name =
-      get_in(map, ["esi_data", "solar_system_name"]) ||
-        if(system_id,
-          do: WandererNotifier.Killmail.Cache.get_system_name(system_id),
-          else: "Unknown"
-        )
+    system_name = get_system_name_with_fallback(map["esi_data"] || %{}, system_id)
 
     %__MODULE__{
       killmail_id: map["killmail_id"],
@@ -324,5 +314,20 @@ defmodule WandererNotifier.Killmail.Killmail do
   @spec get_hash(t()) :: String.t() | nil
   def get_hash(killmail) do
     if killmail.zkb, do: killmail.zkb["hash"], else: nil
+  end
+
+  # Private helper functions
+
+  @spec get_system_name_with_fallback(map(), integer() | nil) :: String.t()
+  defp get_system_name_with_fallback(enriched_data, system_id) do
+    get_in(enriched_data, ["solar_system_name"]) ||
+      fetch_system_name_from_cache(system_id) ||
+      "Unknown"
+  end
+
+  @spec fetch_system_name_from_cache(integer() | nil) :: String.t() | nil
+  defp fetch_system_name_from_cache(nil), do: nil
+  defp fetch_system_name_from_cache(system_id) do
+    WandererNotifier.Killmail.Cache.get_system_name(system_id)
   end
 end

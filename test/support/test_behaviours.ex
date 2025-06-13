@@ -26,7 +26,7 @@ defmodule WandererNotifier.Test.TrackingBehaviour do
   @moduledoc """
   Test behaviour definition for entity tracking services (characters and systems).
   """
-  @callback is_tracked?(String.t() | integer()) :: {:ok, boolean()} | {:error, any()}
+  @callback is_tracked?(non_neg_integer()) :: {:ok, boolean()} | {:error, any()}
 end
 
 defmodule WandererNotifier.ESI.Service.Behaviour do

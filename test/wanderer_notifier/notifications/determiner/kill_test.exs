@@ -28,11 +28,11 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
     Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
 
-    # Set up default mock responses
+    # Default mock responses are now set up in test_helper.exs
+    # System tracking returns true by default
+    # Character tracking returns false by default
+    # Override system default to return false for these tests
     WandererNotifier.MockSystem
-    |> stub(:is_tracked?, fn _id -> {:ok, false} end)
-
-    WandererNotifier.MockCharacter
     |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
     :ok

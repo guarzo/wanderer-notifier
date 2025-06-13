@@ -137,6 +137,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   end
 
   setup :verify_on_exit!
+  setup :set_mox_from_context
 
   setup do
     previous_env = Application.get_env(:wanderer_notifier, :env)
@@ -177,10 +178,16 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
     # Set the ESI client module
     Application.put_env(:wanderer_notifier, :esi_client, ClientMock)
+    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 
     # Implement all required functions for the mock
     Mox.stub(ClientMock, :get_system, fn _id, _opts ->
       {:ok, %{"name" => "Test System", "security_status" => 0.5}}
+    end)
+    
+    # Stub ServiceMock for get_system_name calls
+    Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
+      {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
     end)
 
     Mox.stub(ClientMock, :get_killmail, fn _id, _hash, _opts ->

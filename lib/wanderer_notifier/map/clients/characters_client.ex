@@ -9,6 +9,9 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
 
+  # Use runtime configuration to avoid dialyzer issues with compile-time config
+  @compile {:inline, requires_slug?: 0}
+
   @impl true
   def endpoint, do: "user-characters"
 
@@ -20,12 +23,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   @impl true
   def requires_slug? do
-    # Defaults to true, but you can override in config
-    Application.get_env(
-      :wanderer_notifier,
-      :map_requires_slug?,
-      true
-    )
+    Application.get_env(:wanderer_notifier, :map_requires_slug?, true)
   end
 
   @impl true
@@ -68,15 +66,15 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   @impl true
   def enrich_item(character) do
-    try do
-      MapCharacter.new(character)
-    rescue
-      e in ArgumentError ->
+    case MapCharacter.new_safe(character) do
+      {:ok, struct} -> 
+        struct
+      
+      {:error, reason} ->
         AppLogger.api_error("Failed to create MapCharacter struct",
-          error: Exception.message(e),
+          error: reason,
           character: inspect(character)
         )
-
         character
     end
   end
