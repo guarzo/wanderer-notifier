@@ -33,7 +33,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     * `id` - The ID of the entity being fetched
     * `opts` - Options including:
       * `:cache_name` - Override the default cache name
-      * `:ttl_override` - Override the default TTL (in seconds or :infinity)
+      * `:ttl` - Override the default TTL (in seconds or :infinity)
       * Any other options to pass to the fetch function
     * `fetch_fn` - Function to call when data is not in cache
     * `log_name` - Human-readable name for logging (e.g., "character", "corporation")
@@ -239,7 +239,10 @@ defmodule WandererNotifier.Cache.CacheHelper do
       cache_key: cache_key
     )
 
-    case fetch_fn.(id, opts) do
+    # Sanitize options by removing internal cache keys
+    sanitized_opts = Keyword.drop(opts, [:cache_name, :ttl, :ttl_override])
+
+    case fetch_fn.(id, sanitized_opts) do
       {:ok, data} = success ->
         # Cache the successful result with appropriate TTL
         ttl = get_ttl_from_opts(opts, log_name)

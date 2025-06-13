@@ -18,6 +18,7 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     @moduledoc false
     defstruct [
       :parent,
+      :parent_monitor_ref,
       :queue_id,
       :poll_interval,
       :poll_timer,
@@ -65,12 +66,13 @@ defmodule WandererNotifier.Killmail.RedisQClient do
     ttw = Keyword.get(opts, :ttw, 3) |> min(10) |> max(1)
 
     # Monitor the parent process
-    Process.monitor(parent)
+    parent_monitor_ref = Process.monitor(parent)
 
     # Initialize state
     state = %State{
       queue_id: queue_id,
       parent: parent,
+      parent_monitor_ref: parent_monitor_ref,
       poll_interval: poll_interval,
       url: url,
       startup_time: TimeUtils.now(),
@@ -106,9 +108,20 @@ defmodule WandererNotifier.Killmail.RedisQClient do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
-    AppLogger.api_error("Parent process died, stopping RedisQ client", reason: inspect(reason))
-    {:stop, :parent_died, state}
+  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
+    if ref == state.parent_monitor_ref do
+      AppLogger.api_error("Parent process died, stopping RedisQ client", reason: inspect(reason))
+      {:stop, :parent_died, state}
+    else
+      # This is a task failure, log it but don't crash the client
+      AppLogger.processor_debug("Background task failed",
+        ref: inspect(ref),
+        pid: inspect(pid),
+        reason: inspect(reason)
+      )
+
+      {:noreply, state}
+    end
   end
 
   @impl true

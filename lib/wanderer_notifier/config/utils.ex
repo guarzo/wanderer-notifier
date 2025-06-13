@@ -7,6 +7,8 @@ defmodule WandererNotifier.Config.Utils do
 
   require Logger
 
+  @default_port 4000
+
   @doc """
   Parses an integer from a string value with error handling.
   Returns the default value if parsing fails.
@@ -65,20 +67,20 @@ defmodule WandererNotifier.Config.Utils do
   def parse_port(port) when is_binary(port) do
     case port |> String.trim() |> Integer.parse() do
       {int_port, _} -> validate_port_range(int_port)
-      :error -> 4000
+      :error -> @default_port
     end
   end
 
-  def parse_port(_), do: 4000
+  def parse_port(_), do: @default_port
 
   defp validate_port_range(port) when port >= 1 and port <= 65_535, do: port
 
   defp validate_port_range(port) do
     Logger.warning(
-      "Invalid port number #{port}, must be between 1 and 65535. Using default 4000."
+      "Invalid port number #{port}, must be between 1 and 65535. Using default #{@default_port}."
     )
 
-    4000
+    @default_port
   end
 
   @doc """

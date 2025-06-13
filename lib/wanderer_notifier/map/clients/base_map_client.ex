@@ -8,6 +8,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   require Logger
   alias WandererNotifier.HTTP
+  alias MapSet
 
   @callback endpoint() :: String.t()
   @callback extract_data(map()) :: {:ok, list()} | {:error, term()}
@@ -72,7 +73,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     )
 
     # Convert ttl to milliseconds for the adapter
-    ttl_ms = :timer.seconds(ttl)
+    ttl_ms =
+      case ttl do
+        :infinity -> :infinity
+        seconds -> :timer.seconds(seconds)
+      end
 
     case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl_ms) do
       {:ok, _} ->

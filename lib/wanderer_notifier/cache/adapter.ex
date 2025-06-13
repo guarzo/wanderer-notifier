@@ -59,7 +59,9 @@ defmodule WandererNotifier.Cache.Adapter do
   defp normalize_ttl(ttl_val), do: ttl_val
 
   defp do_set(Cachex, cache_name, key, value, ttl) do
-    Cachex.put(cache_name, key, value, ttl: ttl)
+    # Convert :infinity to nil for Cachex (nil means no expiry)
+    cachex_ttl = if ttl == :infinity, do: nil, else: ttl
+    Cachex.put(cache_name, key, value, ttl: cachex_ttl)
   end
 
   defp do_set(ETSCache, cache_name, key, value, :infinity) do

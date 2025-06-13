@@ -37,8 +37,10 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     * `:jitter` - Whether to add random jitter to backoff (default: true)
     * `:on_retry` - Callback function called on each retry attempt
     * `:context` - Context string for logging (default: "operation")
-    * `:async` - Whether to handle retries asynchronously (default: false)
-                When true, returns `{:async, task_ref}` instead of blocking
+    * `:async` - Whether to handle delays and retries asynchronously (default: false)
+                When true, the function executes immediately but any delays
+                (rate limiting or retries) happen asynchronously. Returns
+                `{:async, task_ref}` for retry cases instead of blocking.
 
   ## Examples
       # Simple rate limiting with defaults

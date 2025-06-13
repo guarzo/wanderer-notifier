@@ -77,11 +77,11 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libncurses6=6.4-2 \
-      libstdc++6 \
-      openssl \
-      ca-certificates \
-      libgcc-s1 \
-      wget \
+      libstdc++6=13.2.0-* \
+      openssl=3.0.* \
+      ca-certificates=20230311 \
+      libgcc-s1=13.2.0-* \
+      wget=1.21.* \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app

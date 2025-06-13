@@ -26,23 +26,45 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
   def init(_opts) do
     AppLogger.processor_info("Starting Pipeline Worker")
     state = %State{}
-    {:ok, state}
+
+    # Start RedisQ client if enabled
+    if Config.redisq_enabled?() do
+      case start_redisq_client() do
+        {:ok, pid} ->
+          AppLogger.processor_info("RedisQ client started", pid: inspect(pid))
+          {:ok, Map.put(state, :redisq_pid, pid)}
+
+        {:error, reason} ->
+          AppLogger.processor_error("Failed to start RedisQ client", reason: inspect(reason))
+          # Don't crash the worker, just continue without RedisQ
+          {:ok, state}
+      end
+    else
+      AppLogger.processor_info("RedisQ disabled, starting worker without client")
+      {:ok, state}
+    end
   end
 
   @impl true
   def handle_info({:zkill_message, data}, state) do
     AppLogger.processor_debug("Received zkill message", data: inspect(data))
 
-    # Process asynchronously using Task.Supervisor to avoid blocking the GenServer
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-      case Processor.process_zkill_message(data, state) do
-        {:ok, result} ->
-          AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
+    # Process asynchronously using async_nolink to enable monitoring without linking
+    task =
+      Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+        case Processor.process_zkill_message(data, state) do
+          {:ok, result} ->
+            AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
+            result
 
-        {:error, reason} ->
-          AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
-      end
-    end)
+          {:error, reason} ->
+            AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
+            {:error, reason}
+        end
+      end)
+
+    # Store task reference for monitoring (optional - we could track processing tasks)
+    _task_ref = task.ref
 
     {:noreply, state}
   end
@@ -88,14 +110,24 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
   end
 
   @impl true
-  def handle_info({ref, _result}, state) when is_reference(ref) do
-    # Ignore Task replies since we're using start_child (fire and forget)
+  def handle_info({ref, result}, state) when is_reference(ref) do
+    # Task completed successfully
+    AppLogger.processor_debug("Task completed", ref: inspect(ref), result: inspect(result))
+    Process.demonitor(ref, [:flush])
     {:noreply, state}
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state) do
-    # Ignore normal task termination
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref) do
+    # Task failed - log the failure but don't crash the worker
+    case reason do
+      :normal ->
+        AppLogger.processor_debug("Task terminated normally", ref: inspect(ref))
+
+      _ ->
+        AppLogger.processor_warn("Task failed", ref: inspect(ref), reason: inspect(reason))
+    end
+
     {:noreply, state}
   end
 

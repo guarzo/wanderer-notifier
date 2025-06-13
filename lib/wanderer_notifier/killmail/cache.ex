@@ -159,14 +159,27 @@ defmodule WandererNotifier.Killmail.Cache do
   - system_id: The ID of the system to get name for
 
   ## Returns
-  - System name or nil if not found
+  - System name string or "System [ID]" if not found
   """
-  def get_system_name(_system_id) do
-    # @todo Move system name lookup from KillProcessor to this module
-    # It would handle looking up system names from the cache
-    # and falling back to the API if not found
-    nil
+  def get_system_name(nil), do: "unknown"
+
+  def get_system_name(system_id) when is_integer(system_id) do
+    case esi_service().get_system_info(system_id, []) do
+      {:ok, %{"name" => name}} when is_binary(name) -> name
+      _ -> "System #{system_id}"
+    end
   end
+
+  def get_system_name(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, ""} -> get_system_name(id)
+      _ -> "System #{system_id}"
+    end
+  end
+
+  # Dependency injection helper
+  defp esi_service,
+    do: Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
 
   # Private functions
 

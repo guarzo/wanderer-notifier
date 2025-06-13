@@ -319,14 +319,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     do: reason |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
 
   defp get_system_name(nil), do: "unknown"
-  defp get_system_name(system_id), do: resolve_system_name(system_id)
-
-  defp resolve_system_name(system_id) do
-    case esi_service().get_system_info(system_id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "System #{system_id}"
-    end
-  end
+  defp get_system_name(system_id), do: WandererNotifier.Killmail.Cache.get_system_name(system_id)
 
   defp get_system_name_from_killmail(%Killmail{system_name: name})
        when is_binary(name) and name != "" do
@@ -334,7 +327,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp get_system_name_from_killmail(%Killmail{system_id: sid}),
-    do: resolve_system_name(sid)
+    do: WandererNotifier.Killmail.Cache.get_system_name(sid)
 
   # — Dependencies ——————————————————————————————————————————————————————
 
