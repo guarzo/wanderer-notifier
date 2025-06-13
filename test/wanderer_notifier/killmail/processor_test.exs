@@ -119,7 +119,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> true end)
+      |> expect(:is_tracked?, fn _id -> {:ok, true} end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
@@ -148,7 +148,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> false end)
+      |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
@@ -177,7 +177,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> expect(:is_tracked?, fn _id -> false end)
+      |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
@@ -224,7 +224,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
 
       MockSystem
-      |> stub(:is_tracked?, fn _id -> false end)
+      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
       MockCharacter
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)

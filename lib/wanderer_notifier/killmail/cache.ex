@@ -11,15 +11,10 @@ defmodule WandererNotifier.Killmail.Cache do
   alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  # System name cache - process dictionary for performance
-  @system_names_cache_key :system_names_cache
-
   @doc """
   Initializes the killmail cache system.
   """
   def init do
-    # Initialize the system names cache in the process dictionary
-    Process.put(@system_names_cache_key, %{})
     AppLogger.kill_debug("Kill cache initialized")
     :ok
   end
@@ -165,7 +160,7 @@ defmodule WandererNotifier.Killmail.Cache do
 
   def get_system_name(system_id) when is_integer(system_id) do
     # Use the central cache adapter with TTL
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_name = CacheConfig.cache_name()
     cache_key = "system_name:#{system_id}"
 
     case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
@@ -176,8 +171,8 @@ defmodule WandererNotifier.Killmail.Cache do
         # No cached name, fetch from ESI
         case esi_service().get_system(system_id, []) do
           {:ok, %{"name" => name}} when is_binary(name) ->
-            # Cache the name with a 24-hour TTL
-            ttl_ms = :timer.hours(24)
+            # Cache the name with configurable TTL
+            ttl_ms = CacheConfig.ttl_for(:system) |> :timer.seconds()
             WandererNotifier.Cache.Adapter.set(cache_name, cache_key, name, ttl_ms)
             name
 

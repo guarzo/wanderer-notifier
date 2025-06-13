@@ -19,6 +19,16 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
 
   @impl true
+  def requires_slug? do
+    # Defaults to true, but you can override in config
+    Application.get_env(
+      :wanderer_notifier,
+      :map_requires_slug?,
+      true
+    )
+  end
+
+  @impl true
   def extract_data(%{"data" => data}) when is_list(data) do
     # Flatten the nested structure to get all characters
     characters =
@@ -38,6 +48,8 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     if Enum.all?(items, &valid_character?/1), do: :ok, else: {:error, :invalid_data}
   end
 
+  def validate_data(_), do: {:error, :invalid_data}
+
   defp valid_character?(%{"eve_id" => eve_id, "name" => name})
        when is_binary(eve_id) and is_binary(name),
        do: true
@@ -56,18 +68,15 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   @impl true
   def enrich_item(character) do
-    # Convert the plain map to a MapCharacter struct
-    # This ensures the notification function receives the expected struct type
     try do
       MapCharacter.new(character)
     rescue
-      e ->
+      e in ArgumentError ->
         AppLogger.api_error("Failed to create MapCharacter struct",
           error: Exception.message(e),
           character: inspect(character)
         )
 
-        # Return the original character if struct creation fails
         character
     end
   end

@@ -301,12 +301,23 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
     )
   end
 
+  defp iso8601_datetime_generator do
+    # Generate a simple ISO-8601 datetime string
+    one_of([
+      constant("2024-01-15T10:30:45Z"),
+      constant("2023-12-25T14:20:30Z"),
+      constant("2024-06-30T08:15:22Z"),
+      constant("2023-08-10T16:45:18Z"),
+      constant("2024-03-01T12:00:00Z")
+    ])
+  end
+
   defp esi_data_generator do
     gen all(
           victim <- one_of([nil, victim_generator()]),
           attackers <- list_of(attacker_generator(), max_length: 5),
           solar_system_id <- positive_integer(),
-          killmail_time <- string(:alphanumeric),
+          killmail_time <- iso8601_datetime_generator(),
           solar_system_name <- string(:alphanumeric, min_length: 1)
         ) do
       %{

@@ -19,6 +19,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   @callback should_notify?(term(), term()) :: boolean()
   @callback send_notification(term()) :: :ok | {:error, term()}
   @callback enrich_item(term()) :: term()
+  @callback requires_slug?() :: boolean()
 
   # Extract shared functions out of the macro
   def fetch_and_decode(url, headers) do
@@ -72,15 +73,26 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       ttl: ttl
     )
 
-    # Convert ttl to milliseconds for the adapter
-    ttl_ms =
-      case ttl do
-        :infinity -> :infinity
-        seconds when is_integer(seconds) and seconds > 0 -> :timer.seconds(seconds)
-        _ -> 0
-      end
+    case convert_ttl_to_ms(ttl) do
+      :error ->
+        AppLogger.api_error("Invalid TTL provided, skipping cache write", ttl: ttl)
+        {:ok, data}
 
-    case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl_ms) do
+      valid_ttl ->
+        perform_cache_set(cache_name, cache_key, data, valid_ttl)
+    end
+  end
+
+  defp convert_ttl_to_ms(ttl) do
+    case ttl do
+      :infinity -> :infinity
+      seconds when is_integer(seconds) and seconds > 0 -> :timer.seconds(seconds)
+      _ -> :error
+    end
+  end
+
+  defp perform_cache_set(cache_name, cache_key, data, ttl) do
+    case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl) do
       {:ok, _} ->
         {:ok, data}
 
@@ -133,7 +145,9 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         WandererNotifier.Map.Clients.BaseMapClient.auth_headers()
       end
 
-      defoverridable api_url: 0, headers: 0
+      def requires_slug?, do: false
+
+      defoverridable api_url: 0, headers: 0, requires_slug?: 0
 
       def get_all do
         case WandererNotifier.Map.Clients.BaseMapClient.cache_get(cache_key()) do
@@ -143,22 +157,28 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       def get_by_id(id) do
-        with {:ok, items} <- get_all(),
-             item when not is_nil(item) <- Enum.find(items, &(&1["id"] == id)) do
-          {:ok, item}
-        else
-          {:error, reason} -> {:error, reason}
-          nil -> {:error, :not_found}
+        case get_all() do
+          {:ok, items} ->
+            case Enum.find(items, &(&1["id"] == id)) do
+              nil -> {:error, :not_found}
+              item -> {:ok, item}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
         end
       end
 
       def get_by_name(name) do
-        with {:ok, items} <- get_all(),
-             item when not is_nil(item) <- Enum.find(items, &(&1["name"] == name)) do
-          {:ok, item}
-        else
-          {:error, reason} -> {:error, reason}
-          nil -> {:error, :not_found}
+        case get_all() do
+          {:ok, items} ->
+            case Enum.find(items, &(&1["name"] == name)) do
+              nil -> {:error, :not_found}
+              item -> {:ok, item}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
         end
       end
 
@@ -293,15 +313,18 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp add_query_params(url) do
-        # Only user-characters endpoint needs slug as query parameter
-        if String.contains?(endpoint(), "user-characters") do
-          url <> "?slug=" <> Config.map_slug()
+        if requires_slug?() do
+          case Config.map_slug() do
+            nil -> url
+            slug when is_binary(slug) -> url <> "?slug=" <> slug
+            _ -> url
+          end
         else
           url
         end
       end
 
-      defp fallback(cached, reason) when is_list(cached) and cached != [] do
+      defp fallback([_ | _] = cached, reason) do
         AppLogger.api_info("Using cached data as fallback",
           count: length(cached),
           reason: inspect(reason)
@@ -318,7 +341,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         {:error, reason}
       end
 
-      defp fallback(nil, reason) do
+      defp fallback(nil, reason) when reason != nil do
         AppLogger.api_error("Fallback with nil cache",
           reason: inspect(reason)
         )

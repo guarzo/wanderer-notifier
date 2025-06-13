@@ -66,8 +66,15 @@ defmodule WandererNotifier.Config.Utils do
 
   def parse_port(port) when is_binary(port) do
     case port |> String.trim() |> Integer.parse() do
-      {int_port, _} ->
+      {int_port, ""} ->
         validate_port_range(int_port)
+
+      {_int_port, _rest} ->
+        Logger.warning(
+          "Port string '#{port}' contains non-numeric trailing characters – using default #{@default_port}."
+        )
+
+        @default_port
 
       :error ->
         Logger.warning("Failed to parse port string '#{port}'. Using default #{@default_port}.")

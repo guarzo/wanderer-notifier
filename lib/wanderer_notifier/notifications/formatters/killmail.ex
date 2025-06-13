@@ -87,7 +87,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     system_name =
       killmail.system_name ||
         Map.get(killmail.esi_data || %{}, "solar_system_name") ||
-        WandererNotifier.Killmail.Cache.get_system_name(system_id)
+        if(system_id,
+          do: WandererNotifier.Killmail.Cache.get_system_name(system_id),
+          else: "Unknown"
+        )
 
     security_status = get_system_security_status(system_id)
     security_formatted = format_security_status(security_status)

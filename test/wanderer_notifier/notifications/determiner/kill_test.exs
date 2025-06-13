@@ -30,7 +30,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
 
     # Set up default mock responses
     WandererNotifier.MockSystem
-    |> stub(:is_tracked?, fn _id -> false end)
+    |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
     WandererNotifier.MockCharacter
     |> stub(:is_tracked?, fn _id -> {:ok, false} end)
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       end)
 
       WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> true end)
+      |> expect(:is_tracked?, fn 30_000_142 -> {:ok, true} end)
 
       WandererNotifier.MockCharacter
       |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
@@ -127,7 +127,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       }
 
       WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> true end)
+      |> expect(:is_tracked?, fn 30_000_142 -> {:ok, true} end)
 
       WandererNotifier.MockCharacter
       |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
@@ -158,7 +158,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       }
 
       WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> false end)
+      |> expect(:is_tracked?, fn 30_000_142 -> {:ok, false} end)
 
       WandererNotifier.MockCharacter
       |> expect(:is_tracked?, fn 93_345_033 -> {:ok, true} end)
@@ -189,7 +189,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       }
 
       WandererNotifier.MockSystem
-      |> expect(:is_tracked?, fn 30_000_142 -> false end)
+      |> expect(:is_tracked?, fn 30_000_142 -> {:ok, false} end)
 
       WandererNotifier.MockCharacter
       |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)

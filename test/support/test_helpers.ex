@@ -119,7 +119,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     end)
 
     # System tracking defaults
-    stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> false end)
+    stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
 
     # Character tracking defaults  
     stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
@@ -296,7 +296,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     tracked_characters = Keyword.get(opts, :tracked_characters, [])
 
     stub(WandererNotifier.MockSystem, :is_tracked?, fn id ->
-      id in tracked_systems
+      {:ok, id in tracked_systems}
     end)
 
     stub(WandererNotifier.MockCharacter, :is_tracked?, fn id ->

@@ -107,10 +107,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp check_system_tracking(nil), do: {:ok, false}
 
   defp check_system_tracking(id) do
-    case system_module().is_tracked?(id) do
-      b when is_boolean(b) -> {:ok, b}
-      o -> {:error, {:invalid_system_response, o}}
-    end
+    system_module().is_tracked?(id)
   end
 
   defp check_character_tracking(data) do

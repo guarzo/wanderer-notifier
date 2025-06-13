@@ -10,8 +10,8 @@ Application.ensure_all_started(:mox)
 
 # Set up Mox mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
-Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.SystemBehaviour)
-Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.CharacterBehaviour)
+Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
+Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
 Mox.defmock(WandererNotifier.MockDeduplication,
   for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
@@ -120,7 +120,7 @@ end)
 Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)
 
 # Set up default stubs for system mock
-Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> false end)
+Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
 
 # Set up default stubs for character mock
 Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)

@@ -29,7 +29,7 @@ defmodule WandererNotifier.Map.MapCharacter do
   """
 
   @behaviour Access
-  @behaviour WandererNotifier.Map.CharacterBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys
 

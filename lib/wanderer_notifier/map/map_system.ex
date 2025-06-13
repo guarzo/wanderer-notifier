@@ -25,7 +25,7 @@ defmodule WandererNotifier.Map.MapSystem do
   - constellation_name: Name of the system's constellation
   """
 
-  @behaviour WandererNotifier.Map.SystemBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias Cachex
@@ -67,17 +67,20 @@ defmodule WandererNotifier.Map.MapSystem do
 
     case Cachex.get(cache_name, CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
-        Enum.any?(systems, fn system ->
-          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-          to_string(id) == system_id_str
-        end)
+        result =
+          Enum.any?(systems, fn system ->
+            id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+            to_string(id) == system_id_str
+          end)
+
+        {:ok, result}
 
       _ ->
-        false
+        {:ok, false}
     end
   end
 
-  def is_tracked?(_), do: false
+  def is_tracked?(_), do: {:error, :invalid_system_id}
 
   @type t :: %__MODULE__{
           solar_system_id: String.t() | integer(),

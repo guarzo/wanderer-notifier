@@ -74,7 +74,10 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    MapSystem.is_tracked?(system_id_str)
+    case MapSystem.is_tracked?(system_id_str) do
+      {:ok, result} -> result
+      {:error, _} -> false
+    end
   end
 
   def tracked_system?(_), do: false

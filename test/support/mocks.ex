@@ -406,17 +406,17 @@ defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """
   Mock module for system tracking functionality.
   """
-  @behaviour WandererNotifier.Map.SystemBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   @impl true
-  def is_tracked?(_system_id), do: false
+  def is_tracked?(_system_id), do: {:ok, false}
 end
 
 defmodule WandererNotifier.Map.MapCharacterMock do
   @moduledoc """
   Mock module for character tracking functionality.
   """
-  @behaviour WandererNotifier.Map.CharacterBehaviour
+  @behaviour WandererNotifier.Map.TrackingBehaviour
 
   @impl true
   def is_tracked?(_character_id), do: {:ok, false}
