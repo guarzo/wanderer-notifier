@@ -80,6 +80,9 @@ RUN apt-get update \
       libgcc-s1 \
       wget \
       procps \
+      locales \
+ && echo "C.UTF-8 UTF-8" > /etc/locale.gen \
+ && locale-gen \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app
@@ -93,7 +96,10 @@ ARG NOTIFIER_API_TOKEN
 # Runtime configuration
 ENV REPLACE_OS_VARS=true \
     HOME=/app \
-    NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
+    NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    ELIXIR_ERL_OPTIONS="+fnu"
 
 # Metadata
 ARG BUILD_DATE

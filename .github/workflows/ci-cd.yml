@@ -89,108 +89,9 @@ jobs:
       - name: Generate test coverage
         run: mix test --cover
 
-  docker:
-    name: Build and Push Docker Image
-    needs: test
-    runs-on: ubuntu-latest
-    # Run on push to main or on version tags
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Need full history to get all tags
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: guarzo
-          password: ${{ secrets.DOCKERHUB_PAT }}
-
-      - name: Get current version tag
-        id: get_tag
-        run: |
-          # Get the current tag on this commit
-          CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
-          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_OUTPUT
-          echo "Current tag: '$CURRENT_TAG'"
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: guarzo/wanderer-notifier
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
-            type=raw,value=${{ steps.get_tag.outputs.CURRENT_TAG }},enable=${{ steps.get_tag.outputs.CURRENT_TAG != '' }}
-
-      - name: Build Docker image for testing
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: guarzo/wanderer-notifier:test
-          cache-from: type=gha
-          build-args: |
-            VCS_REF=${{ github.sha }}
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-
-      - name: Test Docker image
-        run: |
-          chmod +x ./scripts/test_docker_image.sh
-          timeout 300 ./scripts/test_docker_image.sh -i guarzo/wanderer-notifier -t test -d ${{ secrets.FAKE_DISCORD_TOKEN }} \
-            -e "MAP_URL=http://test.example.com" \
-            -e "MAP_NAME=test_map" \
-            -e "MAP_API_KEY=test_key" \
-            -e "LICENSE_KEY=test_license" \
-            -e "NOTIFIER_API_TOKEN=test_token" || {
-            echo "Docker image test failed or timed out"
-            # Clean up any remaining containers
-            docker ps -a | grep "test_container" | awk '{print $1}' | xargs -r docker rm -f || true
-            exit 1
-          }
-        env:
-          DOCKER_BUILDKIT: 1
-
-      - name: Build and push to registry
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha
-            type=registry,ref=guarzo/wanderer-notifier:buildcache
-          cache-to: |
-            type=gha,mode=max
-            type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
-          build-args: |
-            VCS_REF=${{ github.sha }}
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-
   auto-tag:
     name: Auto Tag Version
-    needs: docker
+    needs: test
     runs-on: ubuntu-latest
     # Only run on main branch pushes (not tags)
     if: github.ref == 'refs/heads/main'
@@ -255,13 +156,125 @@ jobs:
           fi
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
+  docker:
+    name: Build and Push Docker Image
+    needs: [test, auto-tag]
+    runs-on: ubuntu-latest
+    # Run on push to main (after auto-tag) or on version tags
+    if: |
+      (github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history to get all tags
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Get version information
+        id: get_version_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # We're running on a tag push
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+            echo "Running on tag: $VERSION_TAG"
+          else
+            # We're running after auto-tag created new tags
+            VERSION_TAG="${{ needs.auto-tag.outputs.tag }}"
+            echo "Using auto-created tag: $VERSION_TAG"
+            
+            # Fetch the newly created tags
+            git fetch --tags
+          fi
+          
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Final version tag: $VERSION_TAG"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: guarzo/wanderer-notifier
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=semver,pattern={{major}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=raw,value=${{ steps.get_version_info.outputs.VERSION_TAG }},enable=${{ steps.get_version_info.outputs.VERSION_TAG != '' }}
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:test
+          cache-from: type=gha
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
+      - name: Test Docker image
+        run: |
+          chmod +x ./scripts/test_docker_image.sh
+          timeout 300 ./scripts/test_docker_image.sh -i guarzo/wanderer-notifier -t test -d ${{ secrets.FAKE_DISCORD_TOKEN }} \
+            -e "MAP_URL=http://test.example.com" \
+            -e "MAP_NAME=test_map" \
+            -e "MAP_API_KEY=test_key" \
+            -e "LICENSE_KEY=test_license" \
+            -e "NOTIFIER_API_TOKEN=test_token" || {
+            echo "Docker image test failed or timed out"
+            # Clean up any remaining containers
+            docker ps -a | grep "test_container" | awk '{print $1}' | xargs -r docker rm -f || true
+            exit 1
+          }
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Build and push to registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha
+            type=registry,ref=guarzo/wanderer-notifier:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
   release:
     name: Create Release
     needs: [docker, auto-tag]
     runs-on: ubuntu-latest
     # Run when auto-tag creates a new tag OR when a version tag is pushed manually
     if: |
-      (needs.auto-tag.outputs.new_tag_created == 'true') ||
+      (github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true') ||
       (startsWith(github.ref, 'refs/tags/v'))
 
     permissions:

@@ -19,9 +19,6 @@ defmodule WandererNotifier.Supervisors.ExternalAdaptersSupervisor do
       # HTTP client pool supervisor
       {Task.Supervisor, name: WandererNotifier.HttpTaskSupervisor},
 
-      # Discord consumer (required by Nostrum)
-      {WandererNotifier.NoopConsumer, []},
-
       # License service for premium features
       {WandererNotifier.License.Service, []}
     ]

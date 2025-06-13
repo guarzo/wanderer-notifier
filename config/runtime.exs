@@ -96,6 +96,10 @@ config :wanderer_notifier,
 
   # Set discord_channel_id explicitly
   discord_channel_id: System.get_env("DISCORD_CHANNEL_ID") || "",
+  discord_application_id: System.get_env("DISCORD_APPLICATION_ID"),
+
+  # Priority systems only mode
+  priority_systems_only: Helpers.parse_bool(System.get_env("PRIORITY_SYSTEMS_ONLY"), false),
 
   # Explicitly set config module
   config: WandererNotifier.Config,
