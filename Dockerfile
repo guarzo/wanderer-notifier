@@ -71,6 +71,7 @@ WORKDIR /app
 # - ca-certificates for HTTPS
 # - libgcc-s1 for runtime C dependencies
 # - wget for HEALTHCHECK
+# - procps for ps command (used in testing)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libncurses6 \
@@ -79,6 +80,7 @@ RUN apt-get update \
       ca-certificates \
       libgcc-s1 \
       wget \
+      procps \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app
