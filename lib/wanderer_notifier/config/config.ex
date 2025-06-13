@@ -182,16 +182,7 @@ defmodule WandererNotifier.Config do
   def discord_webhook_url, do: get(:discord_webhook_url)
 
   def discord_application_id do
-    case get(:discord_application_id) do
-      nil ->
-        raise """
-        DISCORD_APPLICATION_ID is required but not configured.
-        Please set the DISCORD_APPLICATION_ID environment variable.
-        """
-
-      id ->
-        id
-    end
+    get(:discord_application_id)
   end
 
   def notification_features, do: get(:features, %{})

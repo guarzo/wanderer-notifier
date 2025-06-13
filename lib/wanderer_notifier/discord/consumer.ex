@@ -28,6 +28,12 @@ defmodule WandererNotifier.Discord.Consumer do
       :ok ->
         AppLogger.startup_info("Slash commands registered successfully")
 
+      {:error, :missing_application_id} ->
+        AppLogger.startup_warn(
+          "Discord slash commands not registered: DISCORD_APPLICATION_ID not configured. " <>
+            "Bot will work for notifications but slash commands won't be available."
+        )
+
       {:error, reason} ->
         AppLogger.startup_error("Failed to register slash commands", error: inspect(reason))
     end

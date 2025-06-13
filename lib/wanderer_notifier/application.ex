@@ -89,15 +89,8 @@ defmodule WandererNotifier.Application do
       Application.put_env(:wanderer_notifier, :schedulers_enabled, true)
     end
 
-    # Ensure Discord Application ID is configured for slash commands
-    discord_app_id = System.get_env("DISCORD_APPLICATION_ID")
-
-    if is_nil(discord_app_id) or String.trim(discord_app_id) == "" do
-      raise """
-      DISCORD_APPLICATION_ID environment variable is required for Discord slash commands.
-      Please set this to your Discord application ID from the Discord Developer Portal.
-      """
-    end
+    # Discord Application ID is only required if slash commands are enabled
+    # We'll validate this later when CommandRegistrar actually tries to register commands
   end
 
   @doc """
