@@ -207,7 +207,7 @@ jobs:
       - name: Extract version from mix.exs
         id: extract_version
         run: |
-          VERSION=$(grep -E 'version:' mix.exs | grep -o '"[^"]*"' | tr -d '"')
+          VERSION=$(grep -E '^\s+version:' mix.exs | head -1 | grep -o '"[^"]*"' | tr -d '"')
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Found version: $VERSION"
       
