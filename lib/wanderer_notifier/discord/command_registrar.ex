@@ -212,6 +212,7 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
         data_name: interaction.data.name,
         options: inspect(interaction.data.options)
       )
+
       {:error, :invalid_interaction}
     end
   end
@@ -266,7 +267,7 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   # Extracts options from a subcommand
   defp extract_options(%{options: options}) when is_list(options) do
-    Map.new(options, fn opt -> 
+    Map.new(options, fn opt ->
       name = Map.get(opt, :name)
       value = Map.get(opt, :value)
       {name, value}

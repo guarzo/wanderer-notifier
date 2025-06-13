@@ -49,18 +49,20 @@ defmodule WandererNotifier.Discord.Consumer do
       command_name: interaction.data.name
     )
 
-    result = case CommandRegistrar.extract_command_details(interaction) do
-      {:ok, command} ->
-        handle_notifier_command(command, interaction)
+    result =
+      case CommandRegistrar.extract_command_details(interaction) do
+        {:ok, command} ->
+          handle_notifier_command(command, interaction)
 
-      {:error, :invalid_interaction} ->
-        AppLogger.processor_warn("Received invalid interaction",
-          interaction_id: interaction.id,
-          data: inspect(interaction.data)
-        )
-        respond_to_interaction(interaction, "❌ Invalid interaction format")
-    end
-    
+        {:error, :invalid_interaction} ->
+          AppLogger.processor_warn("Received invalid interaction",
+            interaction_id: interaction.id,
+            data: inspect(interaction.data)
+          )
+
+          respond_to_interaction(interaction, "❌ Invalid interaction format")
+      end
+
     AppLogger.processor_debug("Interaction handling result",
       interaction_id: interaction.id,
       result: inspect(result)
@@ -96,7 +98,7 @@ defmodule WandererNotifier.Discord.Consumer do
       command_type: command.type,
       interaction_id: interaction.id
     )
-    
+
     # Log the command interaction
     log_command(command)
 
