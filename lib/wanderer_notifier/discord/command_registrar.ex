@@ -211,18 +211,22 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   # Gets the Discord application ID from configuration
   defp get_application_id do
-    case Config.discord_application_id() do
-      nil ->
-        nil
+    try do
+      case Config.discord_application_id() do
+        nil ->
+          nil
 
-      id when is_binary(id) ->
-        case Integer.parse(id) do
-          {int_id, ""} -> int_id
-          _ -> nil
-        end
+        id when is_binary(id) ->
+          case Integer.parse(id) do
+            {int_id, ""} -> int_id
+            _ -> nil
+          end
 
-      id when is_integer(id) ->
-        id
+        id when is_integer(id) ->
+          id
+      end
+    rescue
+      _ -> nil
     end
   end
 

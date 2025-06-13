@@ -182,7 +182,8 @@ defmodule WandererNotifier.Config do
   def discord_webhook_url, do: get(:discord_webhook_url)
 
   def discord_application_id do
-    get(:discord_application_id)
+    get(:discord_application_id) ||
+      raise "discord_application_id/0 called but :discord_application_id not configured"
   end
 
   def notification_features, do: get(:features, %{})
@@ -303,6 +304,19 @@ defmodule WandererNotifier.Config do
       cached_value ->
         cached_value
     end
+  end
+
+  @doc """
+  Refreshes the cached value for priority_systems_only.
+  
+  Call this function whenever the configuration changes to ensure
+  the cached value stays in sync.
+  """
+  @spec refresh_priority_systems_only!() :: :ok
+  def refresh_priority_systems_only! do
+    value = get(:priority_systems_only, false)
+    :persistent_term.put({__MODULE__, :priority_systems_only}, value)
+    :ok
   end
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)

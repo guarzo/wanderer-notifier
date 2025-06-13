@@ -186,14 +186,9 @@ defmodule WandererNotifier.Discord.Consumer do
     • Kill: #{Config.kill_notifications_enabled?()}
 
     **Features:**
-    • System Tracking: #{feature_enabled?(:system_tracking_enabled)}
-    • Character Tracking: #{feature_enabled?(:character_tracking_enabled)}
+    • System Tracking: #{Config.feature_enabled?(:system_tracking_enabled)}
+    • Character Tracking: #{Config.feature_enabled?(:character_tracking_enabled)}
     """
-  end
-
-  defp feature_enabled?(feature) do
-    Config.notification_features()
-    |> Map.get(feature, false)
   end
 
   # Command logging

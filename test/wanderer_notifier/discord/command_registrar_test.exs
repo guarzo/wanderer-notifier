@@ -1,18 +1,26 @@
 defmodule WandererNotifier.Discord.CommandRegistrarTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Discord.CommandRegistrar
 
   describe "register/0" do
-    test "returns error when DISCORD_APPLICATION_ID is not set" do
-      # Temporarily clear the application ID
+    setup do
+      # Save original value
       original_value = Application.get_env(:wanderer_notifier, :discord_application_id)
+      
+      on_exit(fn ->
+        # Restore original value after test
+        Application.put_env(:wanderer_notifier, :discord_application_id, original_value)
+      end)
+      
+      {:ok, original_value: original_value}
+    end
+
+    test "returns error when DISCORD_APPLICATION_ID is not set", _context do
+      # Clear the application ID
       Application.put_env(:wanderer_notifier, :discord_application_id, nil)
 
       assert {:error, :missing_application_id} = CommandRegistrar.register()
-
-      # Restore original value
-      Application.put_env(:wanderer_notifier, :discord_application_id, original_value)
     end
   end
 

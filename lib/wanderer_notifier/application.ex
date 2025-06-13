@@ -31,8 +31,8 @@ defmodule WandererNotifier.Application do
       {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
       create_cache_child_spec(),
       # Add persistent storage modules before Discord consumer
-      WandererNotifier.PersistentValues,
-      WandererNotifier.CommandLog,
+      {WandererNotifier.PersistentValues, []},
+      {WandererNotifier.CommandLog, []},
       # Enhanced Discord consumer that handles slash commands
       {WandererNotifier.Discord.Consumer, []},
       {WandererNotifier.Core.Stats, []},
