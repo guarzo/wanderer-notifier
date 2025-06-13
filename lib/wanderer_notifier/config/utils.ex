@@ -58,16 +58,28 @@ defmodule WandererNotifier.Config.Utils do
       4000
   """
   @spec parse_port(integer() | String.t() | any()) :: integer()
-  def parse_port(port) when is_integer(port), do: port
+  def parse_port(port) when is_integer(port) do
+    validate_port_range(port)
+  end
 
   def parse_port(port) when is_binary(port) do
     case port |> String.trim() |> Integer.parse() do
-      {int_port, _} -> int_port
+      {int_port, _} -> validate_port_range(int_port)
       :error -> 4000
     end
   end
 
   def parse_port(_), do: 4000
+
+  defp validate_port_range(port) when port >= 1 and port <= 65_535, do: port
+
+  defp validate_port_range(port) do
+    Logger.warning(
+      "Invalid port number #{port}, must be between 1 and 65535. Using default 4000."
+    )
+
+    4000
+  end
 
   @doc """
   Checks if a string value is nil or empty.

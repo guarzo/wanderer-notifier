@@ -25,7 +25,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
           async: boolean()
         ]
 
-  @type rate_limit_result(success) :: {:ok, success} | {:error, term()}
+  @type rate_limit_result(success) :: {:ok, success} | {:error, term()} | {:async, Task.t()}
 
   @doc """
   Executes a function with rate limiting and exponential backoff.
@@ -37,6 +37,8 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     * `:jitter` - Whether to add random jitter to backoff (default: true)
     * `:on_retry` - Callback function called on each retry attempt
     * `:context` - Context string for logging (default: "operation")
+    * `:async` - Whether to handle retries asynchronously (default: false)
+                When true, returns `{:async, task_ref}` instead of blocking
 
   ## Examples
       # Simple rate limiting with defaults
@@ -58,6 +60,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     jitter = Keyword.get(opts, :jitter, true)
     on_retry = Keyword.get(opts, :on_retry, &default_retry_callback/3)
     context = Keyword.get(opts, :context, "operation")
+    async = Keyword.get(opts, :async, false)
 
     execute_with_rate_limit(fun, %{
       max_retries: max_retries,
@@ -66,6 +69,7 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       jitter: jitter,
       on_retry: on_retry,
       context: context,
+      async: async,
       attempt: 1
     })
   end
@@ -100,8 +104,10 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       result = fun.()
 
       if async do
-        # Non-blocking: don't wait
-        :ok
+        # Non-blocking: schedule delay asynchronously
+        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(interval_ms)
+        end)
       else
         # Blocking: maintain existing behavior for backward compatibility
         Process.sleep(interval_ms)
@@ -130,8 +136,10 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
       delay = div(window_ms, max_operations)
 
       if async do
-        # Non-blocking: spawn a task to handle the delay
-        Task.start(fn -> :timer.sleep(delay) end)
+        # Non-blocking: schedule delay asynchronously
+        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(delay)
+        end)
       else
         # Blocking: maintain existing behavior for backward compatibility
         :timer.sleep(delay)
@@ -177,12 +185,22 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, :rate_limited, retry_after)
 
-    # Sleep for the retry_after duration
-    Process.sleep(retry_after)
+    if Map.get(state, :async, false) do
+      # Async: return task reference for the caller to handle
+      {:ok, task_ref} =
+        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(retry_after)
+          new_state = %{state | attempt: state.attempt + 1}
+          execute_with_rate_limit(fun, new_state)
+        end)
 
-    # Retry with incremented attempt counter
-    new_state = %{state | attempt: state.attempt + 1}
-    execute_with_rate_limit(fun, new_state)
+      {:async, task_ref}
+    else
+      # Blocking: maintain existing behavior
+      Process.sleep(retry_after)
+      new_state = %{state | attempt: state.attempt + 1}
+      execute_with_rate_limit(fun, new_state)
+    end
   end
 
   defp handle_retry(fun, state, error) do
@@ -191,12 +209,22 @@ defmodule WandererNotifier.Http.Utils.RateLimiter do
     # Call the retry callback
     state.on_retry.(state.attempt, error, delay)
 
-    # Sleep for the calculated delay
-    Process.sleep(delay)
+    if Map.get(state, :async, false) do
+      # Async: return task reference for the caller to handle
+      {:ok, task_ref} =
+        Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+          :timer.sleep(delay)
+          new_state = %{state | attempt: state.attempt + 1}
+          execute_with_rate_limit(fun, new_state)
+        end)
 
-    # Retry with incremented attempt counter
-    new_state = %{state | attempt: state.attempt + 1}
-    execute_with_rate_limit(fun, new_state)
+      {:async, task_ref}
+    else
+      # Blocking: maintain existing behavior
+      Process.sleep(delay)
+      new_state = %{state | attempt: state.attempt + 1}
+      execute_with_rate_limit(fun, new_state)
+    end
   end
 
   defp calculate_backoff(attempt, base_backoff, max_backoff, jitter) do

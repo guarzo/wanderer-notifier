@@ -47,7 +47,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def cache_get(cache_key) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
-    case Cachex.get(cache_name, cache_key) do
+    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
       {:ok, data} when is_list(data) and length(data) > 0 ->
         AppLogger.api_info("Retrieved data from cache",
           count: length(data),
@@ -71,8 +71,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       ttl: ttl
     )
 
-    case Cachex.put(cache_name, cache_key, data, ttl: :timer.seconds(ttl)) do
-      {:ok, true} ->
+    # Convert ttl to milliseconds for the adapter
+    ttl_ms = :timer.seconds(ttl)
+
+    case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl_ms) do
+      {:ok, _} ->
         {:ok, data}
 
       error ->

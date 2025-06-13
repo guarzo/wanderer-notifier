@@ -86,15 +86,7 @@ defmodule WandererNotifier.ConfigProvider do
   # Private helper functions
 
   defp parse_port do
-    port_str = System.get_env("PORT")
-    parsed_port = WandererNotifier.Config.Utils.parse_int(port_str, nil)
-
-    # Return default if parsing returned nil
-    if is_nil(parsed_port) do
-      4000
-    else
-      parsed_port
-    end
+    System.get_env("PORT") |> WandererNotifier.Config.Utils.parse_port()
   end
 
   defp parse_bool(key, default) do

@@ -5,7 +5,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   """
   require Logger
   alias WandererNotifier.Killmail.Enrichment
-  alias WandererNotifier.Logger.Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Utils.TimeUtils
 
@@ -36,22 +36,25 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         raise ArgumentError, "System must have a name"
 
       {:exception, exception, stacktrace} ->
-        WandererNotifier.Logger.Logger.processor_error(
-          "[SystemFormatter] Error formatting system notification",
-          system: system.name,
-          error: Exception.message(exception),
-          struct: inspect(system),
-          fields: inspect(Map.from_struct(system)),
-          stacktrace: Exception.format_stacktrace(stacktrace)
-        )
-
-        reraise exception, stacktrace
+        handle_formatting_exception(system, exception, stacktrace)
     end
+  end
+
+  defp handle_formatting_exception(system, exception, stacktrace) do
+    AppLogger.processor_error(
+      "[SystemFormatter] Error formatting system notification",
+      system: system.name,
+      error: Exception.message(exception),
+      struct: inspect(system, limit: 500, printable_limit: 500),
+      fields: inspect(Map.from_struct(system), limit: 500, printable_limit: 500),
+      stacktrace: Exception.format_stacktrace(stacktrace) |> String.slice(0, 1000)
+    )
+
+    reraise exception, stacktrace
   end
 
   defp safe_format_system(system) do
     is_wormhole = MapSystem.wormhole?(system)
-    # Only use the system name for the title
     display_name = system.name
 
     formatted_statics =
@@ -70,22 +73,25 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         system_name_with_link
       )
 
-    {:ok,
-     %{
-       type: :system_notification,
-       title: title,
-       description: description,
-       color: color,
-       timestamp: TimeUtils.log_timestamp(),
-       thumbnail: %{url: icon_url},
-       fields: fields,
-       footer: %{
-         text: "System ID: #{system.solar_system_id}"
-       }
-     }}
+    {:ok, build_notification_map(title, description, color, icon_url, fields, system)}
   rescue
     exception ->
       {:exception, exception, __STACKTRACE__}
+  end
+
+  defp build_notification_map(title, description, color, icon_url, fields, system) do
+    %{
+      type: :system_notification,
+      title: title,
+      description: description,
+      color: color,
+      timestamp: TimeUtils.log_timestamp(),
+      thumbnail: %{url: icon_url},
+      fields: fields,
+      footer: %{
+        text: "System ID: #{system.solar_system_id}"
+      }
+    }
   end
 
   defp validate_system_fields(system) do
@@ -166,7 +172,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
         "#{name} (#{dest})"
 
       other ->
-        inspect(other)
+        inspect(other, limit: 100, printable_limit: 100)
     end)
   end
 
@@ -197,7 +203,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   # Ensure a value is safely converted to a string
   defp safe_to_string(nil), do: ""
   defp safe_to_string(val) when is_binary(val), do: val
-  defp safe_to_string(val), do: inspect(val)
+  defp safe_to_string(val), do: inspect(val, limit: 100, printable_limit: 100)
 
   defp build_rich_system_notification_fields(
          system,
@@ -256,7 +262,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       end
     rescue
       e ->
-        Logger.processor_warn("Error adding kills field",
+        AppLogger.processor_warn("Error adding kills field",
           error: Exception.message(e),
           system_id: system_id
         )

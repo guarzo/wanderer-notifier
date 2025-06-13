@@ -6,6 +6,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   require Logger
 
   alias WandererNotifier.Telemetry
+  alias WandererNotifier.Cache.Adapter, as: Cache
   alias WandererNotifier.Killmail.{Context, Killmail, Enrichment, Notification, Schema}
   alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -135,39 +136,31 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Killmail ID Extraction ————————————————————————————————————————————
 
-  defp extract_killmail_id(%Killmail{killmail_id: id}) when is_integer(id) do
-    {:ok, to_string(id)}
-  end
-
-  defp extract_killmail_id(%Killmail{killmail_id: id}) when is_binary(id) and id != "" do
-    {:ok, id}
-  end
-
-  defp extract_killmail_id(%Killmail{} = killmail) do
-    ErrorLogger.log_kill_error("Invalid killmail ID in struct",
-      data: inspect(killmail),
-      module: __MODULE__
-    )
-
-    {:error, :invalid_killmail_id}
+  defp extract_killmail_id(%Killmail{killmail_id: id}) do
+    validate_killmail_id(id, "Invalid killmail ID in struct")
   end
 
   defp extract_killmail_id(%{} = data) do
     case get_kill_id(data) do
-      id when is_integer(id) ->
-        {:ok, to_string(id)}
-
-      id when is_binary(id) and id != "" ->
-        {:ok, id}
-
-      _ ->
-        ErrorLogger.log_kill_error("Invalid killmail ID",
-          data: inspect(data),
-          module: __MODULE__
-        )
-
-        {:error, :invalid_killmail_id}
+      id -> validate_killmail_id(id, "Invalid killmail ID")
     end
+  end
+
+  defp validate_killmail_id(id, _error_message) when is_integer(id) do
+    {:ok, to_string(id)}
+  end
+
+  defp validate_killmail_id(id, _error_message) when is_binary(id) and id != "" do
+    {:ok, id}
+  end
+
+  defp validate_killmail_id(invalid_id, error_message) do
+    ErrorLogger.log_kill_error(error_message,
+      data: inspect(invalid_id),
+      module: __MODULE__
+    )
+
+    {:error, :invalid_killmail_id}
   end
 
   # — Build & Enrich ——————————————————————————————————————————————————
@@ -185,7 +178,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     cache = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     key = "killmail:#{id}"
 
-    case Cachex.get(cache, key) do
+    case Cache.get(cache, key) do
       {:ok, cached} when not is_nil(cached) ->
         {:ok, Killmail.new(id, Map.get(data, "zkb", %{}), cached)}
 
@@ -197,7 +190,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp fetch_from_esi(id, hash, data, cache, key) do
     case esi_service().get_killmail(id, hash, []) do
       {:ok, %{} = esi} ->
-        Cachex.put(cache, key, esi)
+        Cache.set(cache, key, esi, :timer.hours(24))
         {:ok, Killmail.new(id, Map.get(data, "zkb", %{}), esi)}
 
       {:ok, nil} ->
@@ -292,29 +285,26 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — Error Handling ——————————————————————————————————————————————————
 
   defp handle_error(data, ctx, reason) do
-    kill_id =
-      case extract_killmail_id(data) do
-        {:ok, id} -> id
-        _ -> "unknown"
-      end
+    kill_id = safe_extract_killmail_id(data)
 
     Telemetry.processing_error(kill_id, reason)
-    log_error(data, ctx, reason)
+    log_error(kill_id, ctx, reason)
     {:error, reason}
   end
 
-  defp log_error(data, ctx, reason) do
-    kill_id =
-      case extract_killmail_id(data) do
-        {:ok, id} -> id
-        _ -> "unknown"
-      end
-
+  defp log_error(kill_id, ctx, reason) do
     ErrorLogger.log_kill_error("Pipeline error",
       kill_id: kill_id,
       context: ctx,
       error: inspect(reason)
     )
+  end
+
+  defp safe_extract_killmail_id(data) do
+    case extract_killmail_id(data) do
+      {:ok, id} -> id
+      _ -> "unknown"
+    end
   end
 
   # — Utilities —————————————————————————————————————————————————————————
@@ -329,8 +319,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
     do: reason |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
 
   defp get_system_name(nil), do: "unknown"
+  defp get_system_name(system_id), do: resolve_system_name(system_id)
 
-  defp get_system_name(system_id) do
+  defp resolve_system_name(system_id) do
     case esi_service().get_system_info(system_id, []) do
       {:ok, %{"name" => name}} -> name
       _ -> "System #{system_id}"
@@ -343,7 +334,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp get_system_name_from_killmail(%Killmail{system_id: sid}),
-    do: get_system_name(sid)
+    do: resolve_system_name(sid)
 
   # — Dependencies ——————————————————————————————————————————————————————
 

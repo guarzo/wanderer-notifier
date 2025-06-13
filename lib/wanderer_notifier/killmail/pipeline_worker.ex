@@ -1,11 +1,10 @@
 defmodule WandererNotifier.Killmail.PipelineWorker do
   @moduledoc """
-  Worker process that manages the killmail processing pipeline.
+  Worker process that handles killmail processing pipeline.
 
   This GenServer:
-  - Acts as the parent process for the RedisQ client
   - Receives zkill messages from the RedisQ client
-  - Processes them through the killmail pipeline
+  - Processes them asynchronously through the killmail pipeline
   """
 
   use GenServer
@@ -16,7 +15,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
 
   defmodule State do
     @moduledoc false
-    defstruct [:redisq_pid, :stats]
+    defstruct []
   end
 
   def start_link(opts \\ []) do
@@ -26,53 +25,26 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
   @impl true
   def init(_opts) do
     AppLogger.processor_info("Starting Pipeline Worker")
-
-    # Start the RedisQ client if enabled
-    state = %State{stats: %{processed: 0, errors: 0}}
-
-    if Config.redisq_enabled?() do
-      case start_redisq_client() do
-        {:ok, pid} ->
-          AppLogger.processor_info("RedisQ client started successfully", pid: inspect(pid))
-          {:ok, %{state | redisq_pid: pid}}
-
-        {:error, reason} ->
-          AppLogger.processor_error("Failed to start RedisQ client", error: inspect(reason))
-          # Continue without RedisQ - it can be started later
-          {:ok, state}
-      end
-    else
-      AppLogger.processor_info("RedisQ disabled, skipping client startup")
-      {:ok, state}
-    end
+    state = %State{}
+    {:ok, state}
   end
 
   @impl true
   def handle_info({:zkill_message, data}, state) do
     AppLogger.processor_debug("Received zkill message", data: inspect(data))
 
-    # Capture the current process PID to send stats updates back
-    worker_pid = self()
-
     # Process asynchronously using Task.Supervisor to avoid blocking the GenServer
     Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
       case Processor.process_zkill_message(data, state) do
         {:ok, result} ->
           AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
-          send(worker_pid, {:update_stats, :processed})
 
         {:error, reason} ->
           AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
-          send(worker_pid, {:update_stats, :errors})
       end
     end)
 
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:update_stats, stat_type}, state) do
-    {:noreply, update_stats(state, stat_type)}
   end
 
   @impl true
@@ -83,7 +55,7 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     case start_redisq_client() do
       {:ok, new_pid} ->
         AppLogger.processor_info("RedisQ client restarted successfully", pid: inspect(new_pid))
-        {:noreply, %{state | redisq_pid: new_pid}}
+        {:noreply, Map.put(state, :redisq_pid, new_pid)}
 
       {:error, restart_reason} ->
         AppLogger.processor_error("Failed to restart RedisQ client",
@@ -92,17 +64,17 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
 
         # Schedule a retry
         Process.send_after(self(), :retry_redisq_start, 30_000)
-        {:noreply, %{state | redisq_pid: nil}}
+        {:noreply, Map.put(state, :redisq_pid, nil)}
     end
   end
 
   @impl true
   def handle_info(:retry_redisq_start, state) do
-    if Config.redisq_enabled?() and is_nil(state.redisq_pid) do
+    if Config.redisq_enabled?() and is_nil(Map.get(state, :redisq_pid)) do
       case start_redisq_client() do
         {:ok, pid} ->
           AppLogger.processor_info("RedisQ client started on retry", pid: inspect(pid))
-          {:noreply, %{state | redisq_pid: pid}}
+          {:noreply, Map.put(state, :redisq_pid, pid)}
 
         {:error, reason} ->
           AppLogger.processor_error("Retry failed to start RedisQ client", error: inspect(reason))
@@ -151,10 +123,5 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
       error ->
         error
     end
-  end
-
-  defp update_stats(state, type) do
-    stats = Map.update(state.stats, type, 1, &(&1 + 1))
-    %{state | stats: stats}
   end
 end

@@ -73,13 +73,15 @@ WORKDIR /app
 # - openssl for crypto operations
 # - ca-certificates for HTTPS
 # - libgcc-s1 for runtime C dependencies
+# - wget for HEALTHCHECK
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      libncurses6 \
+      libncurses6=6.4-2 \
       libstdc++6 \
       openssl \
       ca-certificates \
       libgcc-s1 \
+      wget \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app

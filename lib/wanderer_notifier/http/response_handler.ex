@@ -109,6 +109,23 @@ defmodule WandererNotifier.Http.ResponseHandler do
     format_error(:connect_timeout, opts)
   end
 
+  # Handle the new HTTP error format from WandererNotifier.HTTP
+  def handle_response({:error, {:http_error, status_code, body}}, opts) do
+    log_context = Keyword.get(opts, :log_context, %{})
+    custom_handlers = Keyword.get(opts, :custom_handlers, [])
+
+    # Check if there's a custom handler for this status code
+    if handler = find_custom_handler(status_code, custom_handlers) do
+      handler.(status_code, body)
+    else
+      Logger.warning("HTTP error response",
+        context: Map.merge(log_context, %{status_code: status_code})
+      )
+
+      handle_http_error(status_code, body, opts)
+    end
+  end
+
   def handle_response({:error, reason}, opts) do
     log_context = Keyword.get(opts, :log_context, %{})
 

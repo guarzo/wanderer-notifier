@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.ApiPipeline
   use WandererNotifier.Api.Controllers.ControllerHelpers
 
+  alias WandererNotifier.Config
   alias WandererNotifier.Web.Server
   alias WandererNotifier.Utils.TimeUtils
 
@@ -13,7 +14,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     send_success(conn, %{
       status: "OK",
       timestamp: TimeUtils.log_timestamp(),
-      server_version: WandererNotifier.Config.version()
+      server_version: Config.version()
     })
   end
 
@@ -36,8 +37,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
       status: "OK",
       web_server: %{
         running: web_server_status,
-        port: WandererNotifier.Config.port(),
-        bind_address: WandererNotifier.Config.host()
+        port: Config.port(),
+        bind_address: Config.host()
       },
       system: %{
         uptime_seconds: uptime_seconds,
@@ -52,7 +53,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
         node_name: Node.self() |> to_string()
       },
       timestamp: TimeUtils.log_timestamp(),
-      server_version: WandererNotifier.Config.version()
+      server_version: Config.version()
     }
 
     send_success(conn, detailed_status)
