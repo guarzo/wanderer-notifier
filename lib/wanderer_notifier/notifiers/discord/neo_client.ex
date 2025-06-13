@@ -1,9 +1,8 @@
 defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   @moduledoc """
   Nostrum-based Discord client implementation.
-  Leverages the Nostrum library for interaction with Discord API and event handling.
+  Leverages the Nostrum library for interaction with Discord API.
   """
-  use Nostrum.Consumer
 
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
@@ -413,26 +412,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   end
 
   # -- EVENT HANDLING --
-
-  @doc """
-  Handle interaction events from Discord.
-  This allows responding to button clicks, select menu choices, etc.
-  """
-  @impl true
-  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    AppLogger.api_info("Received Discord interaction",
-      type: interaction.type,
-      guild_id: interaction.guild_id,
-      channel_id: interaction.channel_id
-    )
-
-    :noop
-  end
-
-  @impl true
-  def handle_event(_event) do
-    :noop
-  end
 
   # -- HELPERS --
 

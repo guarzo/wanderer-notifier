@@ -89,27 +89,6 @@ config :logger, :module_levels, %{
   "WandererNotifier.Cache" => :warn
 }
 
-# Nostrum compile-time configuration
-config :nostrum,
-  token: "intentionally invalid for runtime config only",
-  gateway_intents: [
-    :guilds,
-    :guild_messages
-  ],
-  cache_guilds: false,
-  cache_users: false,
-  cache_channels: false,
-  caches: [],
-  # Disable ffmpeg warnings since we're not using voice features
-  ffmpeg: false
-
-# Add backoff configuration to help with rate limiting
-config :nostrum, :gateway,
-  backoff: [
-    initial: 5000,
-    max: 300_000
-  ]
-
 # Configure cache
 config :wanderer_notifier,
   cache_name: :wanderer_cache

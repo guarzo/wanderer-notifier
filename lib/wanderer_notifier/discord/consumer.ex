@@ -43,6 +43,12 @@ defmodule WandererNotifier.Discord.Consumer do
 
   @impl true
   def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
+    AppLogger.processor_info("INTERACTION_CREATE event received",
+      interaction_id: interaction.id,
+      type: interaction.type,
+      command_name: get_in(interaction.data, [:name])
+    )
+
     case CommandRegistrar.extract_command_details(interaction) do
       {:ok, command} ->
         handle_notifier_command(command, interaction)
@@ -67,7 +73,14 @@ defmodule WandererNotifier.Discord.Consumer do
   def handle_event({:MESSAGE_CREATE, %{author: %{bot: true}}, _ws_state}), do: :noop
 
   @impl true
-  def handle_event(_event), do: :noop
+  def handle_event({event_type, _data, _ws_state}) do
+    # Log all other events for debugging
+    AppLogger.processor_debug("Discord event received",
+      event_type: event_type
+    )
+
+    :noop
+  end
 
   # Private Functions
 

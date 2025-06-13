@@ -39,8 +39,11 @@ config :nostrum,
   token: System.get_env("DISCORD_BOT_TOKEN") || "missing_token",
   gateway_intents: [
     :guilds,
-    :guild_messages
-  ]
+    :guild_messages,
+    :message_content
+  ],
+  # Disable ffmpeg since we don't use voice features
+  ffmpeg: false
 
 # Configure scheduler intervals
 config :wanderer_notifier,
