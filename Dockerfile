@@ -76,13 +76,12 @@ WORKDIR /app
 # - wget for HEALTHCHECK
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      libncurses6=6.4-2 \
+      libncurses6 \
       libstdc++6 \
       openssl \
-      ca-certificates=20230311 \
+      ca-certificates \
       libgcc-s1 \
       wget \
- && apt-mark hold libncurses6 ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
  && useradd -r -g app app
