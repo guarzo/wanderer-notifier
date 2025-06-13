@@ -91,6 +91,7 @@ defmodule WandererNotifier.Application do
 
     # Ensure Discord Application ID is configured for slash commands
     discord_app_id = System.get_env("DISCORD_APPLICATION_ID")
+
     if is_nil(discord_app_id) or String.trim(discord_app_id) == "" do
       raise """
       DISCORD_APPLICATION_ID environment variable is required for Discord slash commands.

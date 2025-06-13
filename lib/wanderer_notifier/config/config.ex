@@ -180,16 +180,20 @@ defmodule WandererNotifier.Config do
   def discord_charts_channel_id, do: get(:discord_charts_channel_id)
   def discord_bot_token, do: get(:discord_bot_token)
   def discord_webhook_url, do: get(:discord_webhook_url)
+
   def discord_application_id do
     case get(:discord_application_id) do
-      nil -> 
+      nil ->
         raise """
         DISCORD_APPLICATION_ID is required but not configured.
         Please set the DISCORD_APPLICATION_ID environment variable.
         """
-      id -> id
+
+      id ->
+        id
     end
   end
+
   def notification_features, do: get(:features, %{})
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
   def min_kill_value, do: get(:min_kill_value, 0)
@@ -294,7 +298,7 @@ defmodule WandererNotifier.Config do
   Returns true if only priority systems should generate notifications.
   When enabled, regular (non-priority) systems will not generate notifications
   regardless of the system_notifications_enabled setting.
-  
+
   This value is cached using persistent_term for performance.
   """
   @spec priority_systems_only?() :: boolean()
@@ -304,6 +308,7 @@ defmodule WandererNotifier.Config do
         value = get(:priority_systems_only, false)
         :persistent_term.put({__MODULE__, :priority_systems_only}, value)
         value
+
       cached_value ->
         cached_value
     end

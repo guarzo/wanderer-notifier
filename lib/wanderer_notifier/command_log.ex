@@ -232,6 +232,7 @@ defmodule WandererNotifier.CommandLog do
     case missing_fields do
       [] ->
         :ok
+
       fields ->
         raise ArgumentError,
               "Missing required fields: #{inspect(fields)}. Got: #{inspect(entry)}"
