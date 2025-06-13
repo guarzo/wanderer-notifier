@@ -458,6 +458,14 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
     end
 
     test "handles exceptions gracefully", %{killmail: killmail} do
+      # Save the previous formatter
+      previous_formatter = Application.get_env(:wanderer_notifier, :killmail_formatter)
+
+      # Ensure cleanup happens even if test fails
+      on_exit(fn ->
+        Application.put_env(:wanderer_notifier, :killmail_formatter, previous_formatter)
+      end)
+
       # Create a killmail that will cause an exception
       error_killmail = %{killmail | victim_name: nil, system_name: nil}
 
@@ -469,7 +477,6 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
       end
 
       # Replace the formatter temporarily
-      previous_formatter = Application.get_env(:wanderer_notifier, :killmail_formatter)
       Application.put_env(:wanderer_notifier, :killmail_formatter, ExceptionFormatter)
 
       # Execute and expect it to handle the error
@@ -492,9 +499,6 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
         # Unexpected response
         other -> assert other in [:ok, nil, {:ok, :sent}, {:error, :some_reason}]
       end
-
-      # Clean up
-      Application.put_env(:wanderer_notifier, :killmail_formatter, previous_formatter)
     end
   end
 

@@ -16,6 +16,8 @@ config :wanderer_notifier,
     bot_token: "test_token",
     channel_id: "123456789"
   },
+  discord_application_id: "test_app_id",
+  discord_bot_token: "test_token",
   map_url: "https://example.com",
   map_name: "testmap",
   map_token: "test_map_api_key",

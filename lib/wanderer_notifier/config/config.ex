@@ -180,6 +180,12 @@ defmodule WandererNotifier.Config do
   def discord_charts_channel_id, do: get(:discord_charts_channel_id)
   def discord_bot_token, do: get(:discord_bot_token)
   def discord_webhook_url, do: get(:discord_webhook_url)
+
+  def discord_application_id do
+    get(:discord_application_id) ||
+      raise "discord_application_id/0 called but :discord_application_id not configured"
+  end
+
   def notification_features, do: get(:features, %{})
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
   def min_kill_value, do: get(:min_kill_value, 0)
@@ -279,6 +285,39 @@ defmodule WandererNotifier.Config do
   @impl true
   @spec character_notifications_enabled?() :: boolean()
   def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
+
+  @doc """
+  Returns true if only priority systems should generate notifications.
+  When enabled, regular (non-priority) systems will not generate notifications
+  regardless of the system_notifications_enabled setting.
+
+  This value is cached using persistent_term for performance.
+  """
+  @spec priority_systems_only?() :: boolean()
+  def priority_systems_only? do
+    case :persistent_term.get({__MODULE__, :priority_systems_only}, :not_cached) do
+      :not_cached ->
+        value = get(:priority_systems_only, false)
+        :persistent_term.put({__MODULE__, :priority_systems_only}, value)
+        value
+
+      cached_value ->
+        cached_value
+    end
+  end
+
+  @doc """
+  Refreshes the cached value for priority_systems_only.
+
+  Call this function whenever the configuration changes to ensure
+  the cached value stays in sync.
+  """
+  @spec refresh_priority_systems_only!() :: :ok
+  def refresh_priority_systems_only! do
+    value = get(:priority_systems_only, false)
+    :persistent_term.put({__MODULE__, :priority_systems_only}, value)
+    :ok
+  end
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
   def track_kspace?, do: feature_enabled?(:track_kspace)

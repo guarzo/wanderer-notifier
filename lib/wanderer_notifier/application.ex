@@ -1,14 +1,3 @@
-defmodule WandererNotifier.NoopConsumer do
-  @moduledoc """
-  A minimal Discord consumer that ignores all events.
-  Used during application startup and testing to satisfy Nostrum requirements.
-  """
-  use Nostrum.Consumer
-
-  @impl true
-  def handle_event(_event), do: :ok
-end
-
 defmodule WandererNotifier.Application do
   @moduledoc """
   Application module for WandererNotifier.
@@ -40,8 +29,12 @@ defmodule WandererNotifier.Application do
       {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       # Add Registry for cache process naming
       {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
-      {WandererNotifier.NoopConsumer, []},
       create_cache_child_spec(),
+      # Add persistent storage modules before Discord consumer
+      {WandererNotifier.PersistentValues, []},
+      {WandererNotifier.CommandLog, []},
+      # Enhanced Discord consumer that handles slash commands
+      {WandererNotifier.Discord.Consumer, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
@@ -95,6 +88,9 @@ defmodule WandererNotifier.Application do
     if Application.get_env(:wanderer_notifier, :schedulers_enabled) == nil do
       Application.put_env(:wanderer_notifier, :schedulers_enabled, true)
     end
+
+    # Discord Application ID is only required if slash commands are enabled
+    # We'll validate this later when CommandRegistrar actually tries to register commands
   end
 
   @doc """
