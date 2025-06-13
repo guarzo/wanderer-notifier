@@ -291,13 +291,15 @@ defmodule WandererNotifier.NotificationService do
   end
 
   # Sends content to Discord channel
-  defp send_to_discord(content, _channel_id) do
+  defp send_to_discord(content, channel_id) do
     if Application.get_env(:wanderer_notifier, :env) == :test do
-      AppLogger.processor_info("TEST MODE: System notification", content: content)
+      AppLogger.processor_info("TEST MODE: System notification", 
+        content: content, 
+        channel_id: channel_id)
       :ok
     else
       # Use the existing Discord notifier infrastructure
-      case DiscordNotifier.send_message(content) do
+      case DiscordNotifier.send_message(content, channel_id) do
         :ok -> :ok
         error -> error
       end

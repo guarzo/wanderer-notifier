@@ -148,7 +148,7 @@ export DISCORD_CHARACTER_CHANNEL_ID="character_channel" # Character notification
 
 ### Commands not appearing in Discord
 - ✅ Bot needs "applications.commands" scope
-- ✅ Wait 1-2 minutes for Discord to sync commands globally
+- ✅ Wait 1–2 minutes for Discord to sync commands globally
 - ✅ Try logging out and back into Discord
 
 ### Permission errors

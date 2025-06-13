@@ -98,59 +98,47 @@ jobs:
     permissions:
       contents: write
     outputs:
-      new_tag_created: ${{ steps.check_tag.outputs.NEW_TAG_CREATED }}
-      tag: ${{ steps.check_tag.outputs.TAG }}
+      new_tag_created: ${{ steps.version_and_tags.outputs.NEW_TAG_CREATED }}
+      tag: ${{ steps.version_and_tags.outputs.TAG }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Extract version from mix.exs
-        id: extract_version
+      - name: Extract version and create tags
+        id: version_and_tags
         run: |
+          # Extract version from mix.exs
           VERSION=$(grep -E '^\s+version:' mix.exs | head -1 | grep -o '"[^"]*"' | tr -d '"')
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Found version: $VERSION"
-      
-      - name: Check if tag exists and create tags
-        id: check_tag
-        run: |
-          VERSION="${{ steps.extract_version.outputs.VERSION }}"
           TAG="v$VERSION"
-          
           # Parse semantic version (e.g., "2.0.1" -> major=2, minor=0, patch=1)
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
           MAJOR_TAG="v$MAJOR"
           MINOR_TAG="v$MAJOR.$MINOR"
-          
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists"
             echo "NEW_TAG_CREATED=false" >> $GITHUB_OUTPUT
           else
             echo "Tag $TAG does not exist, creating it"
             echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
-            
             git config user.name "GitHub Actions"
             git config user.email "actions@github.com"
-            
             # Create the main version tag
             git tag -a "$TAG" -m "Release $TAG - Auto-tagged from mix.exs version"
-            
             # Force update major tag (delete if exists, then create)
             if git rev-parse "$MAJOR_TAG" >/dev/null 2>&1; then
               git tag -d "$MAJOR_TAG"
               git push origin ":refs/tags/$MAJOR_TAG" || true
             fi
             git tag -a "$MAJOR_TAG" -m "Release $MAJOR_TAG (latest $TAG)"
-            
             # Force update minor tag (delete if exists, then create)
             if git rev-parse "$MINOR_TAG" >/dev/null 2>&1; then
               git tag -d "$MINOR_TAG"
               git push origin ":refs/tags/$MINOR_TAG" || true
             fi
             git tag -a "$MINOR_TAG" -m "Release $MINOR_TAG (latest $TAG)"
-            
             # Push all tags
             git push origin "$TAG" "$MAJOR_TAG" "$MINOR_TAG"
           fi
@@ -160,10 +148,14 @@ jobs:
     name: Build and Push Docker Image
     needs: [test, auto-tag]
     runs-on: ubuntu-latest
-    # Run on push to main (after auto-tag) or on version tags
+    # Run when: new tag created on main OR manual tag push
     if: |
-      (github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true') ||
+      (needs.auto-tag.outputs.new_tag_created == 'true') ||
       startsWith(github.ref, 'refs/tags/v')
+    env:
+      # Named conditions for clarity
+      IS_NEW_TAG_FROM_MAIN: ${{ needs.auto-tag.outputs.new_tag_created == 'true' }}
+      IS_VERSION_TAG_PUSH: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -195,13 +187,11 @@ jobs:
             echo "Running on tag: $VERSION_TAG"
           else
             # We're running after auto-tag created new tags
-            VERSION_TAG="${{ needs.auto-tag.outputs.tag }}"
+            VERSION_TAG="${{ needs.auto-tag.outputs.TAG }}"
             echo "Using auto-created tag: $VERSION_TAG"
-            
             # Fetch the newly created tags
             git fetch --tags
           fi
-          
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
           echo "Final version tag: $VERSION_TAG"
 
@@ -276,6 +266,10 @@ jobs:
     if: |
       (github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true') ||
       (startsWith(github.ref, 'refs/tags/v'))
+    env:
+      # Named conditions for clarity
+      IS_NEW_TAG_ON_MAIN: ${{ github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true' }}
+      IS_MANUAL_VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
     permissions:
       contents: write
@@ -293,7 +287,7 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/}"
           else
             # We're running because auto-tag created a new tag
-            VERSION="${{ needs.auto-tag.outputs.tag }}"
+            VERSION="${{ needs.auto-tag.outputs.TAG }}"
           fi
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Creating release for version: $VERSION"
@@ -303,7 +297,6 @@ jobs:
         run: |
           # Get the previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
           echo "Current tag: ${GITHUB_REF#refs/tags/}"
           echo "Previous tag: ${PREV_TAG:-none}"
 

@@ -60,7 +60,7 @@ defmodule WandererNotifier.PersistentValues do
   @spec put(key(), vals()) :: :ok
   def put(key, vals) when is_atom(key) and is_list(vals) do
     # Validate that all values are integers
-    if !Enum.all?(vals, &is_integer/1) do
+    if Enum.any?(vals, &(not is_integer(&1))) do
       raise ArgumentError, "All values must be integers, got: #{inspect(vals)}"
     end
 
@@ -74,6 +74,7 @@ defmodule WandererNotifier.PersistentValues do
   @doc """
   Adds a value to the list for the given key.
 
+  Values are prepended to the list, creating LIFO (Last In, First Out) ordering.
   Creates the key if it doesn't exist. Does nothing if value already exists.
   """
   @spec add(key(), integer()) :: :ok

@@ -70,7 +70,7 @@ FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies in one layer
+# Install runtime dependencies, configure locale, and create user in one layer
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libncurses6 \
@@ -83,9 +83,9 @@ RUN apt-get update \
       locales \
  && echo "C.UTF-8 UTF-8" > /etc/locale.gen \
  && locale-gen \
- && rm -rf /var/lib/apt/lists/* \
  && groupadd -r app \
- && useradd -r -g app app
+ && useradd -r -g app app \
+ && rm -rf /var/lib/apt/lists/*
 
 # Copy release from build stage
 COPY --from=build --chown=app:app /app/release ./

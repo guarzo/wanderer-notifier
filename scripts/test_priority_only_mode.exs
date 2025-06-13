@@ -1,4 +1,7 @@
 # Test script for priority-only mode functionality
+# Start the application to ensure supervisors are running
+Application.ensure_all_started(:wanderer_notifier)
+
 alias WandererNotifier.{NotificationService, Config, PersistentValues}
 
 IO.puts("🧪 Testing Priority-Only Mode Logic")

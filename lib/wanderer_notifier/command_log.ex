@@ -82,22 +82,17 @@ defmodule WandererNotifier.CommandLog do
     # Validate required fields
     validate_entry!(entry)
 
-    # Ensure timestamp is present
+    # Ensure timestamp is present and valid
     complete_entry =
       entry
-      |> Map.put_new(:timestamp, DateTime.utc_now())
+      |> ensure_valid_timestamp()
       |> normalize_entry()
 
     Agent.update(__MODULE__, fn state ->
       new_state = [complete_entry | state]
 
       # Trim to max entries to prevent unbounded growth
-      trimmed_state =
-        if length(new_state) > @max_entries do
-          Enum.take(new_state, @max_entries)
-        else
-          new_state
-        end
+      trimmed_state = Enum.take(new_state, @max_entries)
 
       persist_state(trimmed_state)
       trimmed_state
@@ -155,8 +150,8 @@ defmodule WandererNotifier.CommandLog do
   def by_date_range(start_date, end_date) do
     Agent.get(__MODULE__, fn state ->
       Enum.filter(state, fn entry ->
-        DateTime.compare(entry.timestamp, start_date) != :lt and
-          DateTime.compare(entry.timestamp, end_date) != :gt
+        DateTime.compare(entry.timestamp, start_date) in [:gt, :eq] and
+          DateTime.compare(entry.timestamp, end_date) in [:lt, :eq]
       end)
     end)
   end
@@ -234,9 +229,12 @@ defmodule WandererNotifier.CommandLog do
       required_fields
       |> Enum.reject(&Map.has_key?(entry, &1))
 
-    if !Enum.empty?(missing_fields) do
-      raise ArgumentError,
-            "Missing required fields: #{inspect(missing_fields)}. Got: #{inspect(entry)}"
+    case missing_fields do
+      [] ->
+        :ok
+      fields ->
+        raise ArgumentError,
+              "Missing required fields: #{inspect(fields)}. Got: #{inspect(entry)}"
     end
 
     # Validate field types
@@ -250,6 +248,14 @@ defmodule WandererNotifier.CommandLog do
 
     if not is_integer(entry.user_id) do
       raise ArgumentError, "user_id must be an integer, got: #{inspect(entry.user_id)}"
+    end
+  end
+
+  # Ensures timestamp is present and valid, replacing invalid ones
+  defp ensure_valid_timestamp(entry) do
+    case Map.get(entry, :timestamp) do
+      %DateTime{} = timestamp -> Map.put(entry, :timestamp, timestamp)
+      _ -> Map.put(entry, :timestamp, DateTime.utc_now())
     end
   end
 
