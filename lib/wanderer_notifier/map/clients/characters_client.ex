@@ -66,7 +66,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
           error: Exception.message(e),
           character: inspect(character)
         )
-        
+
         # Return the original character if struct creation fails
         character
     end

@@ -293,12 +293,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp add_query_params(url) do
-        case endpoint() do
-          "map/user_characters" ->
-            url <> "?slug=" <> Config.map_slug()
-
-          _ ->
-            url
+        # Only user-characters endpoint needs slug as query parameter
+        if String.contains?(endpoint(), "user-characters") do
+          url <> "?slug=" <> Config.map_slug()
+        else
+          url
         end
       end
 

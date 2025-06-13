@@ -83,7 +83,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp extract_kill_context(killmail) do
     system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
-    
+
     system_name =
       killmail.system_name ||
         Map.get(killmail.esi_data || %{}, "solar_system_name") ||

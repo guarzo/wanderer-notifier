@@ -161,7 +161,7 @@ defmodule WandererNotifier.Killmail.Cache do
   ## Returns
   - System name string or "System [ID]" if not found
   """
-  def get_system_name(nil), do: "unknown"
+  def get_system_name(nil), do: "Unknown"
 
   def get_system_name(system_id) when is_integer(system_id) do
     # Use the central cache adapter with TTL

@@ -88,7 +88,11 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
     property "victim data in esi_data is preserved" do
       check all(victim <- victim_generator()) do
-        esi_data = %{"victim" => victim, "solar_system_id" => 30_000_142}
+        esi_data = %{
+          "victim" => victim,
+          "solar_system_id" => 30_000_142,
+          "solar_system_name" => "Jita"
+        }
 
         killmail = %Killmail{
           killmail_id: "123456",
@@ -105,7 +109,11 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
 
     property "attackers list is properly encoded" do
       check all(attackers <- list_of(attacker_generator(), min_length: 0, max_length: 10)) do
-        esi_data = %{"attackers" => attackers, "solar_system_id" => 30_000_142}
+        esi_data = %{
+          "attackers" => attackers,
+          "solar_system_id" => 30_000_142,
+          "solar_system_name" => "Jita"
+        }
 
         killmail = %Killmail{
           killmail_id: "123456",
@@ -298,12 +306,14 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
           victim <- one_of([nil, victim_generator()]),
           attackers <- list_of(attacker_generator(), max_length: 5),
           solar_system_id <- positive_integer(),
-          killmail_time <- string(:alphanumeric)
+          killmail_time <- string(:alphanumeric),
+          solar_system_name <- string(:alphanumeric, min_length: 1)
         ) do
       %{
         "victim" => victim,
         "attackers" => attackers,
         "solar_system_id" => solar_system_id,
+        "solar_system_name" => solar_system_name,
         "killmail_time" => killmail_time
       }
     end

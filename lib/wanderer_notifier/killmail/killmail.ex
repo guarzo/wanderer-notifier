@@ -175,8 +175,10 @@ defmodule WandererNotifier.Killmail.Killmail do
   def new(kill_id, zkb, enriched_data) do
     value = get_in(zkb, ["totalValue"]) || 0
     system_id = get_in(enriched_data, ["solar_system_id"])
-    system_name = get_in(enriched_data, ["solar_system_name"]) || 
-                  WandererNotifier.Killmail.Cache.get_system_name(system_id)
+
+    system_name =
+      get_in(enriched_data, ["solar_system_name"]) ||
+        WandererNotifier.Killmail.Cache.get_system_name(system_id)
 
     %__MODULE__{
       killmail_id: kill_id,
@@ -201,8 +203,10 @@ defmodule WandererNotifier.Killmail.Killmail do
   def from_map(map) when is_map(map) do
     value = get_in(map, ["zkb", "totalValue"]) || 0
     system_id = get_in(map, ["esi_data", "solar_system_id"])
-    system_name = get_in(map, ["esi_data", "solar_system_name"]) || 
-                  WandererNotifier.Killmail.Cache.get_system_name(system_id)
+
+    system_name =
+      get_in(map, ["esi_data", "solar_system_name"]) ||
+        WandererNotifier.Killmail.Cache.get_system_name(system_id)
 
     %__MODULE__{
       killmail_id: map["killmail_id"],

@@ -251,7 +251,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:characters)
-      
+
       # Log successful character notification
       character_name = character.name || "Unknown Character"
       character_id = character.character_id || "Unknown ID"
@@ -279,12 +279,12 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       end
 
       Stats.increment(:systems)
-      
+
       # Log successful system notification
       system_name = system.name || "Unknown System"
       system_id = system.solar_system_id || "Unknown ID"
       AppLogger.processor_info("🗺️ ✅ System #{system_name} (#{system_id}) notified")
-      
+
       {:ok, :sent}
     rescue
       e ->

@@ -66,11 +66,11 @@ defmodule WandererNotifier.Config.Utils do
 
   def parse_port(port) when is_binary(port) do
     case port |> String.trim() |> Integer.parse() do
-      {int_port, _} -> validate_port_range(int_port)
-      :error -> 
-        Logger.warning(
-          "Failed to parse port string '#{port}'. Using default #{@default_port}."
-        )
+      {int_port, _} ->
+        validate_port_range(int_port)
+
+      :error ->
+        Logger.warning("Failed to parse port string '#{port}'. Using default #{@default_port}.")
         @default_port
     end
   end
@@ -79,6 +79,7 @@ defmodule WandererNotifier.Config.Utils do
     Logger.warning(
       "Unsupported data type for port (#{inspect(port)}). Using default #{@default_port}."
     )
+
     @default_port
   end
 
