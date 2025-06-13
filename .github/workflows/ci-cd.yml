@@ -41,6 +41,9 @@ jobs:
           path: |
             deps
             _build
+            ~/.hex
+            ~/.mix
+            ~/.cache/rebar3
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
 
@@ -103,6 +106,10 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -170,18 +177,68 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=guarzo/wanderer-notifier:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
           build-args: |
             VCS_REF=${{ github.sha }}
             API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
-  release:
-    name: Create Release
+  auto-tag:
+    name: Auto Tag Version
     needs: docker
     runs-on: ubuntu-latest
-    # Run when a tag is pushed
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Only run on main branch pushes (not tags)
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    outputs:
+      new_tag_created: ${{ steps.check_tag.outputs.NEW_TAG_CREATED }}
+      tag: ${{ steps.check_tag.outputs.TAG }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract version from mix.exs
+        id: extract_version
+        run: |
+          VERSION=$(grep -E '^\s*version:\s*"[^"]*"' mix.exs | sed -E 's/.*version:\s*"([^"]*)".*/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Found version: $VERSION"
+      
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          VERSION="${{ steps.extract_version.outputs.VERSION }}"
+          TAG="v$VERSION"
+          
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+            echo "NEW_TAG_CREATED=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $TAG does not exist, creating it"
+            echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
+            
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git tag -a "$TAG" -m "Release $TAG - Auto-tagged from mix.exs version"
+            git push origin "$TAG"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+  release:
+    name: Create Release
+    needs: [docker, auto-tag]
+    runs-on: ubuntu-latest
+    # Run when auto-tag creates a new tag OR when a version tag is pushed manually
+    if: |
+      (needs.auto-tag.outputs.new_tag_created == 'true') ||
+      (startsWith(github.ref, 'refs/tags/v'))
 
     permissions:
       contents: write
@@ -191,39 +248,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for version tag
-        id: check_tag
-        run: |
-          # Get the current tag on this commit
-          CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
-          if [[ "$CURRENT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "VERSION=$CURRENT_TAG" >> $GITHUB_OUTPUT
-            echo "HAS_VERSION_TAG=true" >> $GITHUB_OUTPUT
-            echo "Found version tag: '$CURRENT_TAG'"
-          else
-            echo "HAS_VERSION_TAG=false" >> $GITHUB_OUTPUT
-            echo "No version tag found on current commit"
-          fi
-
-      # Skip remaining steps if no version tag
-      - name: Exit if no version tag
-        if: steps.check_tag.outputs.HAS_VERSION_TAG != 'true'
-        run: |
-          echo "No version tag found, skipping release creation"
-          exit 0
-
       - name: Get version from tag
         id: get_version
-        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
         run: |
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "Creating release for version: ${GITHUB_REF#refs/tags/}"
 
       - name: Generate release notes
         id: release_notes
-        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
         run: |
           # Get the previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          echo "Current tag: ${GITHUB_REF#refs/tags/}"
+          echo "Previous tag: ${PREV_TAG:-none}"
 
           # Generate changelog between tags
           if [ -z "$PREV_TAG" ]; then
@@ -236,7 +274,6 @@ jobs:
           fi
 
       - name: Create Release
-        if: steps.check_tag.outputs.HAS_VERSION_TAG == 'true'
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ steps.get_version.outputs.VERSION }}
