@@ -203,9 +203,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=semver,pattern={{version}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=semver,pattern={{major}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=semver,pattern=v{{version}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
+            type=semver,pattern=v{{major}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
             type=raw,value=${{ steps.get_version_info.outputs.VERSION_TAG }},enable=${{ steps.get_version_info.outputs.VERSION_TAG != '' }}

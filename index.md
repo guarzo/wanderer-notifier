@@ -64,14 +64,11 @@ DISCORD_CHANNEL_ID=your_discord_channel_id
 
 # Map Configuration
 MAP_URL="https://wanderer.ltd"
-MAP_NAME="yourmap"
+MAP_NAME="your map slug"
 MAP_API_KEY=your_map_api_key
 
 # License Configuration
 LICENSE_KEY=your_license_key  # Provided with your map subscription
-
-# Notifier API Configuration
-NOTIFIER_API_TOKEN=your_notifier_api_token
 
 # Feature Flags (default values shown below)
 # General Settings

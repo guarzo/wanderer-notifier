@@ -183,7 +183,7 @@ Environment variables now use simplified naming without redundant prefixes for c
 
 2. **Map API Configuration**
    - `MAP_URL`: Base URL for the Wanderer map API (required, e.g., "https://wanderer.ltd")
-   - `MAP_NAME`: Name of your specific map (required)
+   - `MAP_NAME`: Slug of your specific map (required)
    - `MAP_API_KEY`: Authentication token for map API access (required)
 
 3. **License Configuration**
