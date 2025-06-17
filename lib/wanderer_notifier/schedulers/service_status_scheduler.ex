@@ -95,7 +95,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     alias WandererNotifier.Notifications.Deduplication
 
     # First check if status messages are disabled
-    if WandererNotifier.Config.status_messages_disabled?() do
+    if !WandererNotifier.Config.status_messages_enabled?() do
       AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
     else
       uptime_seconds = calculate_uptime()

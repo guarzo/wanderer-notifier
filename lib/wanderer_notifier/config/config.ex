@@ -233,14 +233,7 @@ defmodule WandererNotifier.Config do
     system_notifications_enabled: true,
     character_notifications_enabled: true,
     status_messages_enabled: false,
-    track_kspace: false,
-    tracked_systems_notifications_enabled: false,
-    tracked_characters_notifications_enabled: false,
-    character_tracking_enabled: false,
-    system_tracking_enabled: false,
-    track_kspace_systems: false,
-    test_mode_enabled: false,
-    should_load_tracking_data: false
+    test_mode_enabled: false
   ]
 
   def features do
@@ -261,7 +254,7 @@ defmodule WandererNotifier.Config do
   ## Examples
       iex> feature_enabled?(:notifications_enabled)
       true
-      
+
       iex> feature_enabled?(:unknown_feature)
       false
   """
@@ -319,19 +312,10 @@ defmodule WandererNotifier.Config do
   end
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
-  def track_kspace?, do: feature_enabled?(:track_kspace)
 
-  def tracked_systems_notifications_enabled?,
-    do: feature_enabled?(:tracked_systems_notifications_enabled)
-
-  def tracked_characters_notifications_enabled?,
-    do: feature_enabled?(:tracked_characters_notifications_enabled)
-
-  def character_tracking_enabled?, do: feature_enabled?(:character_tracking_enabled)
-  def system_tracking_enabled?, do: feature_enabled?(:system_tracking_enabled)
-
-  def status_messages_disabled?, do: feature_enabled?(:status_messages_disabled)
-  def track_kspace_systems?, do: feature_enabled?(:track_kspace_systems)
+  # Tracking is always enabled - users can only control notifications
+  def character_tracking_enabled?, do: true
+  def system_tracking_enabled?, do: true
 
   # --- RedisQ ---
   def redisq_config, do: get(:redisq, %{})
@@ -481,10 +465,6 @@ defmodule WandererNotifier.Config do
   def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
   def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
 
-  # --- Tracking Data Feature ---
-  @doc "Returns true if tracking data should be loaded."
-  def should_load_tracking_data?, do: feature_enabled?(:should_load_tracking_data)
-
   # --- Map Debug Settings ---
   @doc """
   Returns a map of debug-related map config.
@@ -527,8 +507,7 @@ defmodule WandererNotifier.Config do
       map_slug_present: !Utils.nil_or_empty?(map_slug()),
       base_map_url: base_map_url(),
       base_map_url_present: !Utils.nil_or_empty?(base_map_url()),
-      system_tracking_enabled: system_tracking_enabled?(),
-      track_kspace_systems: track_kspace_systems?()
+      system_tracking_enabled: system_tracking_enabled?()
     }
   end
 

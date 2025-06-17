@@ -174,8 +174,8 @@ Environment variables now use simplified naming without redundant prefixes for c
 
 1. **Discord Configuration**
    - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token (required)
-   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications (required)
    - `DISCORD_APPLICATION_ID`: Discord application ID for slash commands (optional)
+   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications (required)
    - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications (optional)
    - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications (optional)
    - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (optional)
@@ -191,15 +191,13 @@ Environment variables now use simplified naming without redundant prefixes for c
 
 4. **Feature Control Flags**
    - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)
-   - `KILLMAIL_NOTIFICATION_ENABLED`: Enable killmail notifications (default: true)
-   - `SYSTEM_NOTIFICATION_ENABLED`: Enable system notifications (default: true)
-   - `CHARACTER_NOTIFICATION_ENABLED`: Enable character notifications (default: true)
+   - `KILL_NOTIFICATIONS_ENABLED`: Enable killmail notifications (default: true)
+   - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
+   - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
    - `ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: false)
    - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
-5. **Tracking Configuration**
-   - `TRACK_KSPACE_ENABLED`: Include K-Space systems in tracking (default: true)
-   - `SYSTEM_TRACKING_ENABLED`: Enable background system updates (default: true)
+5. **Additional Configuration**
    - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking
 
 ## Development

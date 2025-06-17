@@ -53,8 +53,8 @@ Create a `.env` file in your working directory with the following content. Repla
 ```dotenv
 # Discord Configuration
 DISCORD_BOT_TOKEN=your_discord_bot_token
+DISCORD_APPLICATION_ID=your_discord_application_id # Optional
 DISCORD_CHANNEL_ID=your_discord_channel_id
-# DISCORD_APPLICATION_ID=your_discord_application_id  # Optional: Required for slash commands
 
 # Optional Discord Channel Configuration
 # DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
@@ -75,15 +75,10 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
 # ENABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
 
-# Notification-Related Flags
+# Notification Control (tracking is always enabled)
 # KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
 # SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
 # CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
-
-# Tracking-Related Flags
-# TRACK_KSPACE_ENABLED=true  # Controls whether K-Space systems are tracked
-# SYSTEM_TRACKING_ENABLED=true  # Controls system data tracking scheduler
-# CHARACTER_TRACKING_ENABLED=true  # Controls character data tracking scheduler
 
 # Character Configuration
 # CHARACTER_EXCLUDE_LIST=character_id1,character_id2
@@ -91,13 +86,6 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # Priority Systems Configuration
 # PRIORITY_SYSTEMS_ONLY=false  # Only send notifications for priority systems
 
-# Cache and RedisQ Configuration
-# CACHE_DIR=/app/data/cache
-# REDISQ_URL=https://zkillredisq.stream/listen.php
-# REDISQ_POLL_INTERVAL_MS=1000
-
-# License Manager Configuration
-# LICENSE_MANAGER_URL=https://lm.wanderer.ltd
 
 ```
 

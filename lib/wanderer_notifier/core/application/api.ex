@@ -171,40 +171,16 @@ defmodule WandererNotifier.Core.Application.API do
   def status_messages_enabled?, do: Config.status_messages_enabled?()
 
   @doc """
-  Gets the current track kspace status.
-  """
-  def track_kspace?, do: Config.track_kspace?()
-
-  @doc """
-  Gets the current tracked systems notifications enabled status.
-  """
-  def tracked_systems_notifications_enabled?, do: Config.tracked_systems_notifications_enabled?()
-
-  @doc """
-  Gets the current tracked characters notifications enabled status.
-  """
-  def tracked_characters_notifications_enabled?,
-    do: Config.tracked_characters_notifications_enabled?()
-
-  @doc """
   Gets the current character tracking enabled status.
+  Tracking is always enabled - users can only control notifications.
   """
   def character_tracking_enabled?, do: Config.character_tracking_enabled?()
 
   @doc """
   Gets the current system tracking enabled status.
+  Tracking is always enabled - users can only control notifications.
   """
   def system_tracking_enabled?, do: Config.system_tracking_enabled?()
-
-  @doc """
-  Gets the current status messages disabled status.
-  """
-  def status_messages_disabled?, do: Config.status_messages_disabled?()
-
-  @doc """
-  Gets the current track kspace systems status.
-  """
-  def track_kspace_systems?, do: Config.track_kspace_systems?()
 
   # --- Cache Configuration ---
 

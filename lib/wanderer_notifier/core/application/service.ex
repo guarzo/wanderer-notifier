@@ -106,16 +106,8 @@ defmodule WandererNotifier.Core.Application.Service do
   defdelegate features(), to: WandererNotifier.Core.Application.API
   defdelegate feature_enabled?(flag), to: WandererNotifier.Core.Application.API
   defdelegate status_messages_enabled?(), to: WandererNotifier.Core.Application.API
-  defdelegate track_kspace?(), to: WandererNotifier.Core.Application.API
-  defdelegate tracked_systems_notifications_enabled?(), to: WandererNotifier.Core.Application.API
-
-  defdelegate tracked_characters_notifications_enabled?(),
-    to: WandererNotifier.Core.Application.API
-
   defdelegate character_tracking_enabled?(), to: WandererNotifier.Core.Application.API
   defdelegate system_tracking_enabled?(), to: WandererNotifier.Core.Application.API
-  defdelegate status_messages_disabled?(), to: WandererNotifier.Core.Application.API
-  defdelegate track_kspace_systems?(), to: WandererNotifier.Core.Application.API
   defdelegate cache_dir(), to: WandererNotifier.Core.Application.API
   defdelegate cache_name(), to: WandererNotifier.Core.Application.API
   defdelegate port(), to: WandererNotifier.Core.Application.API
