@@ -160,6 +160,7 @@ config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/a
 
 # Configure API token for non-production environments
 # In production, this is set at compile time in prod.exs
-if Mix.env() != :prod do
+# Use MIX_ENV environment variable since Mix.env() is not available at runtime
+if System.get_env("MIX_ENV") != "prod" do
   config :wanderer_notifier, api_token: System.get_env("NOTIFIER_API_TOKEN") || "missing_token"
 end
