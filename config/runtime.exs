@@ -122,8 +122,7 @@ config :wanderer_notifier,
           Helpers.parse_bool(System.get_env("SYSTEM_NOTIFICATIONS_ENABLED"), true),
         character_notifications_enabled:
           Helpers.parse_bool(System.get_env("CHARACTER_NOTIFICATIONS_ENABLED"), true),
-        status_messages_disabled:
-          Helpers.parse_bool(System.get_env("DISABLE_STATUS_MESSAGES"), true),
+        status_messages_disabled: true,
         track_kspace: Helpers.parse_bool(System.get_env("TRACK_KSPACE_ENABLED"), true),
         system_tracking_enabled:
           Helpers.parse_bool(System.get_env("SYSTEM_TRACKING_ENABLED"), true),

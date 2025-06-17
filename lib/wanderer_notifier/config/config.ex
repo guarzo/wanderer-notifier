@@ -346,7 +346,7 @@ defmodule WandererNotifier.Config do
 
   # --- License ---
   def license_key, do: get(:license_key)
-  def license_manager_api_url, do: get(:license_manager_api_url)
+  def license_manager_api_url, do: get(:license_manager_api_url, "https://lm.wanderer.ltd")
   def license_manager_api_key, do: get(:license_manager_api_key)
 
   # --- Web/server ---

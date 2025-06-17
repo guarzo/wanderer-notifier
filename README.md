@@ -260,3 +260,7 @@ This project is licensed according to the terms in the LICENSE file.
 ## Support
 
 If you encounter issues or have questions, please open an issue on the project repository.
+
+## Notes
+
+mix archive.install hex bunt
