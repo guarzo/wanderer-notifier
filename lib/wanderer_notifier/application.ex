@@ -127,6 +127,10 @@ defmodule WandererNotifier.Application do
   def log_application_config do
     AppLogger.startup_info("Application configuration:")
 
+    # Log version first
+    version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
+    AppLogger.startup_info("  version: #{version}")
+
     # Log critical config values from the application environment
     for {key, env_key} <- [
           {:features, :features},
