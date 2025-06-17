@@ -94,10 +94,8 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   defp generate_service_status_report do
     alias WandererNotifier.Notifications.Deduplication
 
-    # First check if status messages are disabled
-    if !WandererNotifier.Config.status_messages_enabled?() do
-      AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
-    else
+    # First check if status messages are enabled
+    if WandererNotifier.Config.status_messages_enabled?() do
       uptime_seconds = calculate_uptime()
       days = div(uptime_seconds, 86_400)
       hours = div(rem(uptime_seconds, 86_400), 3600)
@@ -119,6 +117,8 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
         {:ok, :duplicate} ->
           AppLogger.maintenance_info("📊 Status report skipped - duplicate")
       end
+    else
+      AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
     end
   rescue
     e ->
