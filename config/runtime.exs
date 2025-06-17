@@ -88,7 +88,6 @@ map_url_with_name =
 config :wanderer_notifier,
   # Required settings (will raise at runtime if not set in production)
   map_token: System.get_env("MAP_API_KEY") || "missing_token",
-  api_token: System.get_env("NOTIFIER_API_TOKEN") || "missing_token",
   license_key: System.get_env("LICENSE_KEY") || "missing_key",
   map_url_with_name: map_url_with_name,
   map_url: System.get_env("MAP_URL"),
@@ -158,3 +157,9 @@ config :wanderer_notifier, :redisq, %{
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"
+
+# Configure API token for non-production environments
+# In production, this is set at compile time in prod.exs
+if Mix.env() != :prod do
+  config :wanderer_notifier, api_token: System.get_env("NOTIFIER_API_TOKEN") || "missing_token"
+end

@@ -31,4 +31,8 @@ config :logger, :module_levels, %{
   "WandererNotifier.Notifiers.Discord" => :warn
 }
 
+# Configure API token at compile time to prevent runtime override
+config :wanderer_notifier,
+  api_token: System.get_env("NOTIFIER_API_TOKEN") || "missing_token"
+
 # Runtime configuration should be in runtime.exs
