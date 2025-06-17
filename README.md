@@ -194,7 +194,7 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `KILLMAIL_NOTIFICATION_ENABLED`: Enable killmail notifications (default: true)
    - `SYSTEM_NOTIFICATION_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATION_ENABLED`: Enable character notifications (default: true)
-   - `DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: false)
    - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
 5. **Tracking Configuration**

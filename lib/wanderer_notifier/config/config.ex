@@ -238,7 +238,6 @@ defmodule WandererNotifier.Config do
     tracked_characters_notifications_enabled: false,
     character_tracking_enabled: false,
     system_tracking_enabled: false,
-    status_messages_disabled: false,
     track_kspace_systems: false,
     test_mode_enabled: false,
     should_load_tracking_data: false
