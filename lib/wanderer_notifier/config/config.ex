@@ -181,10 +181,7 @@ defmodule WandererNotifier.Config do
   def discord_bot_token, do: get(:discord_bot_token)
   def discord_webhook_url, do: get(:discord_webhook_url)
 
-  def discord_application_id do
-    get(:discord_application_id) ||
-      raise "discord_application_id/0 called but :discord_application_id not configured"
-  end
+  def discord_application_id, do: get(:discord_application_id)
 
   def notification_features, do: get(:features, %{})
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
