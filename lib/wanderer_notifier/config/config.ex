@@ -233,6 +233,8 @@ defmodule WandererNotifier.Config do
     system_notifications_enabled: true,
     character_notifications_enabled: true,
     status_messages_enabled: false,
+    character_tracking_enabled: true,
+    system_tracking_enabled: true,
     test_mode_enabled: false
   ]
 
