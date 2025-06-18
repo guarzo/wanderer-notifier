@@ -33,10 +33,9 @@ Enum.each(env_vars, fn {k, v} ->
   end
 end)
 
-# Base configuration with defaults
-# These will be used in dev/test and as fallbacks in production
+# Discord bot configuration
 config :nostrum,
-  token: System.get_env("DISCORD_BOT_TOKEN") || "missing_token",
+  token: System.get_env("DISCORD_BOT_TOKEN"),
   gateway_intents: [
     :guilds,
     :guild_messages
@@ -68,30 +67,25 @@ feature_env_vars =
   end)
   |> Enum.into(%{})
 
-# Helper function to build map_url_with_name from separate components
+# Build map_url_with_name from required MAP_URL and MAP_NAME
+map_url = System.get_env("MAP_URL")
+map_name = System.get_env("MAP_NAME")
+
 map_url_with_name =
-  case {System.get_env("MAP_URL"), System.get_env("MAP_NAME")} do
-    {base_url, map_name} when not is_nil(base_url) and not is_nil(map_name) ->
-      # Build the full URL with name parameter
-      base_url = String.trim_trailing(base_url, "/")
-      "#{base_url}/?name=#{map_name}"
-
-    {base_url, nil} when not is_nil(base_url) ->
-      # Just the base URL without name (for backward compatibility)
-      base_url
-
-    {nil, _} ->
-      # Fall back to old combined MAP_URL_WITH_NAME if new variables aren't set
-      System.get_env("MAP_URL_WITH_NAME") || "missing_url"
+  if map_url && map_name do
+    base_url = String.trim_trailing(map_url, "/")
+    "#{base_url}/?name=#{map_name}"
+  else
+    nil
   end
 
 config :wanderer_notifier,
-  # Required settings (will raise at runtime if not set in production)
-  map_token: System.get_env("MAP_API_KEY") || "missing_token",
-  license_key: System.get_env("LICENSE_KEY") || "missing_key",
+  # Required settings
+  map_token: System.get_env("MAP_API_KEY"),
+  license_key: System.get_env("LICENSE_KEY"),
   map_url_with_name: map_url_with_name,
-  map_url: System.get_env("MAP_URL"),
-  map_name: System.get_env("MAP_NAME"),
+  map_url: map_url,
+  map_name: map_name,
 
   # Set discord_channel_id explicitly
   discord_channel_id: System.get_env("DISCORD_CHANNEL_ID") || "",

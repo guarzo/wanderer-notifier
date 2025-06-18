@@ -43,6 +43,11 @@ trap 'rm -f "$ENV_FILE"' EXIT
 cat > "$ENV_FILE" <<EOF
 ENV=test
 DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token}
+LICENSE_KEY=test_license
+MAP_URL=http://test.example.com
+MAP_NAME=test-map
+MAP_API_KEY=test_api_key
+DISCORD_CHANNEL_ID=123456789
 EOF
 
 # Append any extras

@@ -22,6 +22,7 @@ defmodule WandererNotifier.ConfigProvider do
     config
     |> normalize_config()
     |> add_base_config()
+    |> add_nostrum_config()
     |> add_discord_config()
     |> add_map_config()
     |> add_api_config()
@@ -29,6 +30,11 @@ defmodule WandererNotifier.ConfigProvider do
     |> add_port_config()
     |> add_features_config()
     |> add_character_exclude_list()
+    |> add_scheduler_config()
+    |> add_additional_config()
+    |> add_web_endpoint_config()
+    |> add_redisq_config()
+    |> add_cache_config()
   end
 
   @doc """
@@ -178,9 +184,24 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp add_map_config(config) do
+    map_url = System.get_env("MAP_URL")
+    map_name = System.get_env("MAP_NAME")
+    
+    # Build map_url_with_name from required MAP_URL and MAP_NAME
+    map_url_with_name = 
+      if map_url && map_name do
+        base_url = String.trim_trailing(map_url, "/")
+        "#{base_url}/?name=#{map_name}"
+      else
+        nil
+      end
+
     config
     |> put_in([:wanderer_notifier, :map_token], System.get_env("MAP_API_KEY"))
-    |> put_in([:wanderer_notifier, :map_url_with_name], System.get_env("MAP_URL_WITH_NAME"))
+    |> put_in([:wanderer_notifier, :map_url_with_name], map_url_with_name)
+    |> put_in([:wanderer_notifier, :map_url], map_url)
+    |> put_in([:wanderer_notifier, :map_name], map_name)
+    |> put_in([:wanderer_notifier, :map_api_key], System.get_env("MAP_API_KEY"))
   end
 
   defp add_api_config(config) do
@@ -221,5 +242,67 @@ defmodule WandererNotifier.ConfigProvider do
       [:wanderer_notifier, :character_exclude_list],
       parse_character_exclude_list()
     )
+  end
+
+  defp add_nostrum_config(config) do
+    config
+    |> put_in([:nostrum, :token], System.get_env("DISCORD_BOT_TOKEN"))
+    |> put_in([:nostrum, :gateway_intents], [:guilds, :guild_messages])
+  end
+
+  defp add_scheduler_config(config) do
+    config
+    |> put_in([:wanderer_notifier, :system_update_scheduler_interval], 30_000)
+    |> put_in([:wanderer_notifier, :character_update_scheduler_interval], 30_000)
+  end
+
+  defp add_additional_config(config) do
+    config
+    |> put_in([:wanderer_notifier, :priority_systems_only], parse_bool("PRIORITY_SYSTEMS_ONLY", false))
+    |> put_in([:wanderer_notifier, :license_manager_api_url], System.get_env("LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd")
+    |> put_in([:wanderer_notifier, :cache_dir], System.get_env("CACHE_DIR") || "/app/data/cache")
+    |> put_in([:wanderer_notifier, :public_url], System.get_env("PUBLIC_URL"))
+    |> put_in([:wanderer_notifier, :host], System.get_env("HOST") || "localhost")
+    |> put_in([:wanderer_notifier, :scheme], System.get_env("SCHEME") || "http")
+  end
+
+  defp add_web_endpoint_config(config) do
+    port = parse_port()
+    host = System.get_env("HOST") || "localhost"
+    
+    # Get existing config and ensure it's a keyword list
+    wanderer_config = Keyword.get(config, :wanderer_notifier, [])
+    
+    # Add endpoint config
+    updated_wanderer_config = Keyword.put(wanderer_config, WandererNotifierWeb.Endpoint, [
+      url: [host: host],
+      http: [port: port],
+      server: true
+    ])
+    
+    # Put it back
+    Keyword.put(config, :wanderer_notifier, updated_wanderer_config)
+  end
+
+  defp add_redisq_config(config) do
+    put_in(config, [:wanderer_notifier, :redisq], %{
+      enabled: true,
+      url: System.get_env("REDISQ_URL") || "https://zkillredisq.stream/listen.php",
+      poll_interval: parse_int(System.get_env("REDISQ_POLL_INTERVAL_MS"), 1000)
+    })
+  end
+
+  defp add_cache_config(config) do
+    put_in(config, [:wanderer_notifier, :cache], %{
+      directory: System.get_env("CACHE_DIR") || "/app/data/cache"
+    })
+  end
+
+  defp parse_int(nil, default), do: default
+  defp parse_int(str, default) do
+    case Integer.parse(str) do
+      {num, _} -> num
+      :error -> default
+    end
   end
 end
