@@ -152,10 +152,28 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp add_discord_config(config) do
-    put_in(
-      config,
-      [:wanderer_notifier, :discord_channel_id],
-      System.get_env("DISCORD_CHANNEL_ID")
+    config
+    |> put_in([:wanderer_notifier, :discord_channel_id], System.get_env("DISCORD_CHANNEL_ID"))
+    |> put_in(
+      [:wanderer_notifier, :discord_application_id],
+      System.get_env("DISCORD_APPLICATION_ID")
+    )
+    |> put_in([:wanderer_notifier, :discord_bot_token], System.get_env("DISCORD_BOT_TOKEN"))
+    |> put_in(
+      [:wanderer_notifier, :discord_system_kill_channel_id],
+      System.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID")
+    )
+    |> put_in(
+      [:wanderer_notifier, :discord_character_kill_channel_id],
+      System.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID")
+    )
+    |> put_in(
+      [:wanderer_notifier, :discord_system_channel_id],
+      System.get_env("DISCORD_SYSTEM_CHANNEL_ID")
+    )
+    |> put_in(
+      [:wanderer_notifier, :discord_character_channel_id],
+      System.get_env("DISCORD_CHARACTER_CHANNEL_ID")
     )
   end
 
@@ -190,7 +208,10 @@ defmodule WandererNotifier.ConfigProvider do
       system_notifications_enabled: parse_bool("SYSTEM_NOTIFICATIONS_ENABLED", true),
       character_notifications_enabled: parse_bool("CHARACTER_NOTIFICATIONS_ENABLED", true),
       status_messages_enabled: parse_bool("ENABLE_STATUS_MESSAGES", false),
-      track_kspace: parse_bool("TRACK_KSPACE_ENABLED", true)
+      track_kspace: parse_bool("TRACK_KSPACE_ENABLED", true),
+      # Tracking is always enabled
+      character_tracking_enabled: true,
+      system_tracking_enabled: true
     )
   end
 

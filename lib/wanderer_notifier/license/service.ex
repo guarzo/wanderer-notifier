@@ -603,7 +603,7 @@ defmodule WandererNotifier.License.Service do
     log_message =
       if bot_assigned,
         do: "✅  Valid license with bot assigned",
-        else: "⚠️  Valid license but bot not assigned"
+        else: "✅  Valid license"
 
     AppLogger.config_info(log_message, state: inspect(valid_state))
     valid_state
