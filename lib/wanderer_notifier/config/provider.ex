@@ -186,9 +186,9 @@ defmodule WandererNotifier.ConfigProvider do
   defp add_map_config(config) do
     map_url = System.get_env("MAP_URL")
     map_name = System.get_env("MAP_NAME")
-    
+
     # Build map_url_with_name from required MAP_URL and MAP_NAME
-    map_url_with_name = 
+    map_url_with_name =
       if map_url && map_name do
         base_url = String.trim_trailing(map_url, "/")
         "#{base_url}/?name=#{map_name}"
@@ -246,8 +246,10 @@ defmodule WandererNotifier.ConfigProvider do
 
   defp add_nostrum_config(config) do
     config
-    |> put_in([:nostrum, :token], System.get_env("DISCORD_BOT_TOKEN"))
-    |> put_in([:nostrum, :gateway_intents], [:guilds, :guild_messages])
+    |> Keyword.put(:nostrum,
+      token: System.get_env("DISCORD_BOT_TOKEN"),
+      gateway_intents: [:guilds, :guild_messages]
+    )
   end
 
   defp add_scheduler_config(config) do
@@ -258,8 +260,14 @@ defmodule WandererNotifier.ConfigProvider do
 
   defp add_additional_config(config) do
     config
-    |> put_in([:wanderer_notifier, :priority_systems_only], parse_bool("PRIORITY_SYSTEMS_ONLY", false))
-    |> put_in([:wanderer_notifier, :license_manager_api_url], System.get_env("LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd")
+    |> put_in(
+      [:wanderer_notifier, :priority_systems_only],
+      parse_bool("PRIORITY_SYSTEMS_ONLY", false)
+    )
+    |> put_in(
+      [:wanderer_notifier, :license_manager_api_url],
+      System.get_env("LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd"
+    )
     |> put_in([:wanderer_notifier, :cache_dir], System.get_env("CACHE_DIR") || "/app/data/cache")
     |> put_in([:wanderer_notifier, :public_url], System.get_env("PUBLIC_URL"))
     |> put_in([:wanderer_notifier, :host], System.get_env("HOST") || "localhost")
@@ -269,17 +277,18 @@ defmodule WandererNotifier.ConfigProvider do
   defp add_web_endpoint_config(config) do
     port = parse_port()
     host = System.get_env("HOST") || "localhost"
-    
+
     # Get existing config and ensure it's a keyword list
     wanderer_config = Keyword.get(config, :wanderer_notifier, [])
-    
+
     # Add endpoint config
-    updated_wanderer_config = Keyword.put(wanderer_config, WandererNotifierWeb.Endpoint, [
-      url: [host: host],
-      http: [port: port],
-      server: true
-    ])
-    
+    updated_wanderer_config =
+      Keyword.put(wanderer_config, WandererNotifierWeb.Endpoint,
+        url: [host: host],
+        http: [port: port],
+        server: true
+      )
+
     # Put it back
     Keyword.put(config, :wanderer_notifier, updated_wanderer_config)
   end
@@ -299,6 +308,7 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_int(nil, default), do: default
+
   defp parse_int(str, default) do
     case Integer.parse(str) do
       {num, _} -> num
