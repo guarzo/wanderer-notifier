@@ -3,9 +3,9 @@ defmodule WandererNotifier.Web.Router do
   Web router for the WandererNotifier dashboard.
   """
   use Plug.Router
-  import Plug.Conn
 
   alias WandererNotifier.Api.Controllers.HealthController
+  alias WandererNotifier.Api.Controllers.DashboardController
 
   # Disable HTTP request/response logging 
   # plug(Plug.Logger, log: :debug)
@@ -38,12 +38,11 @@ defmodule WandererNotifier.Web.Router do
   plug(:match)
   plug(:dispatch)
 
-  # Health check endpoints
+  # Health check endpoints (must come before catch-all routes)
   forward("/health", to: HealthController)
   forward("/api/health", to: HealthController)
 
-  # 404 handler
-  match _ do
-    send_resp(conn, 404, "Not found")
-  end
+  # Dashboard endpoints - both root and /dashboard
+  forward("/dashboard", to: DashboardController)
+  forward("/", to: DashboardController)
 end
