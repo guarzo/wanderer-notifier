@@ -34,16 +34,16 @@ defmodule WandererNotifier.Web.Server do
 
     AppLogger.startup_debug("Starting web server", port: port)
 
-    {:ok, %{port: port}, {:continue, :start_server}}
+    {:ok, %{port: port, running: false, server_ref: nil}, {:continue, :start_server}}
   end
 
   @impl true
   def handle_continue(:start_server, state) do
     case start_server(state.port) do
-      {:ok, _} ->
+      {:ok, server_ref} ->
         AppLogger.startup_info("✅ Web server started on port #{state.port}")
         schedule_heartbeat()
-        {:noreply, state}
+        {:noreply, %{state | running: true, server_ref: server_ref}}
 
       {:error, reason} ->
         AppLogger.startup_error("❌ Failed to start web server",
@@ -77,13 +77,9 @@ defmodule WandererNotifier.Web.Server do
   end
 
   @impl true
-  def terminate(_reason, %{server_pid: pid} = _state) when is_pid(pid) do
+  def terminate(_reason, %{server_ref: ref} = _state) when not is_nil(ref) do
     AppLogger.startup_debug("Stopping web server")
-
-    if Process.alive?(pid) do
-      Process.exit(pid, :normal)
-    end
-
+    # Plug.Cowboy returns a reference, not a pid, so we just log the shutdown
     :ok
   end
 

@@ -5,16 +5,14 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.ApiPipeline
   use WandererNotifier.Api.Controllers.ControllerHelpers
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Web.Server
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Api.Controllers.SystemInfo
 
   # Health check endpoint - simple status
   get "/" do
     send_success(conn, %{
       status: "OK",
-      timestamp: TimeUtils.log_timestamp(),
-      server_version: Config.version()
+      timestamp: WandererNotifier.Utils.TimeUtils.log_timestamp(),
+      server_version: WandererNotifier.Config.version()
     })
   end
 
@@ -25,37 +23,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
 
   # Detailed health check with system information
   get "/details" do
-    web_server_status = Server.running?()
-
-    # Get memory information
-    memory_info = :erlang.memory()
-
-    # Calculate uptime in seconds using reliable system uptime
-    uptime_seconds = :erlang.system_info(:uptime)
-
-    detailed_status = %{
-      status: "OK",
-      web_server: %{
-        running: web_server_status,
-        port: Config.port(),
-        bind_address: Config.host()
-      },
-      system: %{
-        uptime_seconds: uptime_seconds,
-        memory: %{
-          total_kb: div(memory_info[:total], 1024),
-          processes_kb: div(memory_info[:processes], 1024),
-          system_kb: div(memory_info[:system], 1024),
-          processes_percent: Float.round(memory_info[:processes] / memory_info[:total] * 100, 1),
-          system_percent: Float.round(memory_info[:system] / memory_info[:total] * 100, 1)
-        },
-        scheduler_count: :erlang.system_info(:schedulers_online),
-        node_name: Node.self() |> to_string()
-      },
-      timestamp: TimeUtils.log_timestamp(),
-      server_version: Config.version()
-    }
-
+    detailed_status = SystemInfo.collect_detailed_status()
     send_success(conn, detailed_status)
   end
 
