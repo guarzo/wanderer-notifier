@@ -22,14 +22,13 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
 
   defp render_dashboard(data) do
     uptime_formatted = format_uptime(data.system.uptime_seconds)
+    refresh_interval = get_refresh_interval()
 
     """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Wanderer Notifier Dashboard</title>
+        #{render_head()}
         <style>
             * {
                 margin: 0;
@@ -141,6 +140,11 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 background-color: #7f1d1d;
                 color: #fca5a5;
             }
+            
+            .status-unknown {
+                background-color: #44403c;
+                color: #d6d3d1;
+            }
 
             .progress-bar {
                 width: 100%;
@@ -190,141 +194,30 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1>Wanderer Notifier Dashboard</h1>
-                <p>System Status Overview</p>
-            </div>
+            #{render_header()}
 
             <div class="grid">
-                <div class="card">
-                    <h2>System Status</h2>
-                    <div class="info-row">
-                        <span class="info-label">Status</span>
-                        <span class="info-value">
-                            <span class="status-badge status-ok">#{data.status}</span>
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Version</span>
-                        <span class="info-value">#{data.server_version}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Uptime</span>
-                        <span class="info-value">#{uptime_formatted}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Schedulers</span>
-                        <span class="info-value">#{data.system.scheduler_count}</span>
-                    </div>
-                </div>
+                #{render_system_status_card(data, uptime_formatted)}
 
-                <div class="card">
-                    <h2>Web Server</h2>
-                    <div class="info-row">
-                        <span class="info-label">Status</span>
-                        <span class="info-value">
-                            <span class="status-badge #{if data.web_server.running, do: "status-running", else: "status-stopped"}">
-                                #{if data.web_server.running, do: "Running", else: "Stopped"}
-                            </span>
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Bind Address</span>
-                        <span class="info-value">#{data.web_server.bind_address}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Port</span>
-                        <span class="info-value">#{data.web_server.port}</span>
-                    </div>
-                </div>
+                #{render_web_server_card(data)}
 
-                <div class="card">
-                    <h2>Memory Usage</h2>
-                    <div class="info-row">
-                        <span class="info-label">Total Memory</span>
-                        <span class="info-value">#{format_kb(data.system.memory.total_kb)}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Processes</span>
-                        <span class="info-value">
-                            #{format_kb(data.system.memory.processes_kb)} (#{data.system.memory.processes_percent}%)
-                        </span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill #{get_memory_class(data.system.memory.processes_percent)}"
-                             style="width: #{data.system.memory.processes_percent}%"></div>
-                    </div>
-                    <div class="info-row" style="margin-top: 1rem;">
-                        <span class="info-label">System</span>
-                        <span class="info-value">
-                            #{format_kb(data.system.memory.system_kb)} (#{data.system.memory.system_percent}%)
-                        </span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill #{get_memory_class(data.system.memory.system_percent)}"
-                             style="width: #{data.system.memory.system_percent}%"></div>
-                    </div>
-                </div>
+                #{render_memory_card(data)}
 
-                <div class="card">
-                    <h2>Tracking</h2>
-                    <div class="info-row">
-                        <span class="info-label">Systems Tracked</span>
-                        <span class="info-value">#{data.tracking.systems_count}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Characters Tracked</span>
-                        <span class="info-value">#{data.tracking.characters_count}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Killmails Received</span>
-                        <span class="info-value">#{data.tracking.killmails_received}</span>
-                    </div>
-                </div>
+                #{render_tracking_card(data)}
 
-                <div class="card">
-                    <h2>Notifications Sent</h2>
-                    <div class="info-row">
-                        <span class="info-label">Total</span>
-                        <span class="info-value">#{data.notifications.total}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Kill Notifications</span>
-                        <span class="info-value">#{data.notifications.kills}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">System Notifications</span>
-                        <span class="info-value">#{data.notifications.systems}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Character Notifications</span>
-                        <span class="info-value">#{data.notifications.characters}</span>
-                    </div>
-                </div>
+                #{render_notifications_card(data)}
 
-                <div class="card">
-                    <h2>Processing Stats</h2>
-                    <div class="info-row">
-                        <span class="info-label">Kills Processed</span>
-                        <span class="info-value">#{data.processing.kills_processed}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Kills Notified</span>
-                        <span class="info-value">#{data.processing.kills_notified}</span>
-                    </div>
-                </div>
+                #{render_processing_card(data)}
             </div>
 
-            <div class="footer">
-                <p>Last updated: #{data.timestamp}</p>
-            </div>
+            #{render_footer(data)}
         </div>
 
         <script>
-            // Auto-refresh every 5 seconds
+            // Auto-refresh at configurable interval
             setTimeout(function() {
                 location.reload();
-            }, 5000);
+            }, #{refresh_interval});
         </script>
     </body>
     </html>
@@ -365,6 +258,184 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   defp get_memory_class(percent) when percent >= 80, do: "high"
   defp get_memory_class(percent) when percent >= 60, do: "medium"
   defp get_memory_class(_), do: ""
+
+  defp get_refresh_interval do
+    Application.get_env(:wanderer_notifier, :dashboard_refresh_interval, 5000)
+  end
+
+  defp render_head do
+    """
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wanderer Notifier Dashboard</title>
+    """
+  end
+
+  defp render_header do
+    """
+    <div class="header">
+        <h1>Wanderer Notifier Dashboard</h1>
+        <p>System Status Overview</p>
+    </div>
+    """
+  end
+
+  defp render_system_status_card(data, uptime_formatted) do
+    """
+    <div class="card">
+        <h2>System Status</h2>
+        <div class="info-row">
+            <span class="info-label">Status</span>
+            <span class="info-value">
+                <span class="status-badge status-ok">#{data.status}</span>
+            </span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Version</span>
+            <span class="info-value">#{data.server_version}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Uptime</span>
+            <span class="info-value">#{uptime_formatted}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Schedulers</span>
+            <span class="info-value">#{data.system.scheduler_count}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_web_server_card(data) do
+    {status_class, status_text} =
+      case data.web_server.running do
+        true -> {"status-running", "Running"}
+        false -> {"status-stopped", "Stopped"}
+        :unknown -> {"status-unknown", "Unknown"}
+      end
+
+    """
+    <div class="card">
+        <h2>Web Server</h2>
+        <div class="info-row">
+            <span class="info-label">Status</span>
+            <span class="info-value">
+                <span class="status-badge #{status_class}">
+                    #{status_text}
+                </span>
+            </span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Bind Address</span>
+            <span class="info-value">#{data.web_server.bind_address}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Port</span>
+            <span class="info-value">#{data.web_server.port}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_memory_card(data) do
+    """
+    <div class="card">
+        <h2>Memory Usage</h2>
+        <div class="info-row">
+            <span class="info-label">Total Memory</span>
+            <span class="info-value">#{format_kb(data.system.memory.total_kb)}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Processes</span>
+            <span class="info-value">
+                #{format_kb(data.system.memory.processes_kb)} (#{data.system.memory.processes_percent}%)
+            </span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{get_memory_class(data.system.memory.processes_percent)}"
+                 style="width: #{data.system.memory.processes_percent}%"></div>
+        </div>
+        <div class="info-row" style="margin-top: 1rem;">
+            <span class="info-label">System</span>
+            <span class="info-value">
+                #{format_kb(data.system.memory.system_kb)} (#{data.system.memory.system_percent}%)
+            </span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{get_memory_class(data.system.memory.system_percent)}"
+                 style="width: #{data.system.memory.system_percent}%"></div>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_tracking_card(data) do
+    """
+    <div class="card">
+        <h2>Tracking</h2>
+        <div class="info-row">
+            <span class="info-label">Systems Tracked</span>
+            <span class="info-value">#{data.tracking.systems_count}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Characters Tracked</span>
+            <span class="info-value">#{data.tracking.characters_count}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Killmails Received</span>
+            <span class="info-value">#{data.tracking.killmails_received}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_notifications_card(data) do
+    """
+    <div class="card">
+        <h2>Notifications Sent</h2>
+        <div class="info-row">
+            <span class="info-label">Total</span>
+            <span class="info-value">#{data.notifications.total}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Kill Notifications</span>
+            <span class="info-value">#{data.notifications.kills}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">System Notifications</span>
+            <span class="info-value">#{data.notifications.systems}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Character Notifications</span>
+            <span class="info-value">#{data.notifications.characters}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_processing_card(data) do
+    """
+    <div class="card">
+        <h2>Processing Stats</h2>
+        <div class="info-row">
+            <span class="info-label">Kills Processed</span>
+            <span class="info-value">#{data.processing.kills_processed}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Kills Notified</span>
+            <span class="info-value">#{data.processing.kills_notified}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_footer(data) do
+    """
+    <div class="footer">
+        <p>Last updated: #{data.timestamp}</p>
+    </div>
+    """
+  end
 
   match _ do
     send_error(conn, 404, "not_found")

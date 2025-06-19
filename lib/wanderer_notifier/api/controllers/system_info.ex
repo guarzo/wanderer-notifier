@@ -6,19 +6,13 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   alias WandererNotifier.Config
   alias WandererNotifier.Web.Server
   alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
   """
   def collect_detailed_status do
-    web_server_status =
-      try do
-        Server.running?()
-      rescue
-        # Assume running if we can't check
-        _ -> true
-      end
-
+    web_server_status = check_server_status()
     memory_info = :erlang.memory()
 
     # Get uptime from stats which tracks startup time
@@ -34,13 +28,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       },
       system: %{
         uptime_seconds: uptime_seconds,
-        memory: %{
-          total_kb: div(memory_info[:total], 1024),
-          processes_kb: div(memory_info[:processes], 1024),
-          system_kb: div(memory_info[:system], 1024),
-          processes_percent: Float.round(memory_info[:processes] / memory_info[:total] * 100, 1),
-          system_percent: Float.round(memory_info[:system] / memory_info[:total] * 100, 1)
-        },
+        memory: build_memory_info(memory_info),
         scheduler_count: :erlang.system_info(:schedulers_online)
       },
       timestamp: TimeUtils.log_timestamp(),
@@ -90,5 +78,50 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       kills_processed: processing[:kills_processed] || 0,
       kills_notified: processing[:kills_notified] || 0
     }
+  end
+
+  defp build_memory_info(memory_info) do
+    total = memory_info[:total] || 0
+    processes = memory_info[:processes] || 0
+    system = memory_info[:system] || 0
+
+    %{
+      total_kb: safe_div(total, 1024),
+      processes_kb: safe_div(processes, 1024),
+      system_kb: safe_div(system, 1024),
+      processes_percent: safe_percentage(processes, total),
+      system_percent: safe_percentage(system, total)
+    }
+  end
+
+  defp safe_div(_, 0), do: 0
+  defp safe_div(numerator, denominator), do: div(numerator, denominator)
+
+  defp safe_percentage(_, 0), do: 0.0
+
+  defp safe_percentage(numerator, denominator) do
+    Float.round(numerator / denominator * 100, 1)
+  end
+
+  defp check_server_status do
+    try do
+      Server.running?()
+    rescue
+      error in [ArgumentError, KeyError] ->
+        AppLogger.error("Failed to check server status",
+          error: inspect(error),
+          module: __MODULE__
+        )
+
+        :unknown
+
+      error ->
+        AppLogger.error("Unexpected error checking server status",
+          error: inspect(error),
+          module: __MODULE__
+        )
+
+        :unknown
+    end
   end
 end
