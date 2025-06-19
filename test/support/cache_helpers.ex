@@ -27,8 +27,9 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   end
 
   defp ensure_ets_table_exists(cache_name) do
-    case :ets.info(cache_name) do
-      :undefined ->
+    # Check if the cache process is already running
+    case Registry.lookup(WandererNotifier.Cache.Registry, cache_name) do
+      [] ->
         # Start the ETS cache if not already started
         {:ok, _} = WandererNotifier.Cache.ETSCache.start_link(name: cache_name)
 

@@ -23,15 +23,6 @@ config :wanderer_notifier,
   default_connect_timeout: 5_000,
   default_pool_timeout: 5_000
 
-# Configure RedisQ client timeouts
-config :wanderer_notifier,
-  # Additional timeout buffer for RedisQ long-polling in milliseconds
-  redisq_timeout_buffer: 5000,
-  # Connection timeout for RedisQ requests in milliseconds
-  redisq_connect_timeout: 15_000,
-  # Pool timeout for RedisQ connection pool in milliseconds
-  redisq_pool_timeout: 5000
-
 # Configure MIME types
 config :mime, :types, %{
   "text/html" => ["html", "htm"],
@@ -114,9 +105,21 @@ config :nostrum, :gateway,
 config :wanderer_notifier,
   cache_name: :wanderer_cache
 
+# Configure WebSocket and WandererKills service
+config :wanderer_notifier,
+  # Enable/disable WebSocket client (useful for development/testing)
+  websocket_enabled: true,
+  # WebSocket URL for external killmail service
+  websocket_url: "ws://host.docker.internal:4004",
+  # Phoenix WebSocket protocol version ("1.0.0", "2.0.0", or nil for auto-negotiate)
+  phoenix_websocket_version: nil,
+  # WandererKills API base URL
+  wanderer_kills_base_url: "http://host.docker.internal:4004",
+  # Maximum retries for WandererKills API requests
+  wanderer_kills_max_retries: 3
+
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
-  zkill_client: WandererNotifier.Killmail.ZKillClient,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
   deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
@@ -124,4 +127,4 @@ config :wanderer_notifier,
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
-import_config "#{config_env()}.exs"
+import_config "#{config_env() |> to_string() |> String.downcase()}.exs"

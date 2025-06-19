@@ -116,16 +116,6 @@ defmodule WandererNotifier.Cache.Config do
   end
 
   @doc """
-  Returns cache-related statistics configuration.
-
-  This determines whether cache statistics should be collected.
-  """
-  @spec stats_enabled?() :: boolean()
-  def stats_enabled? do
-    Application.get_env(:wanderer_notifier, :cache_stats_enabled, true)
-  end
-
-  @doc """
   Returns the cache TTL (Time To Live) configuration for different types.
 
   ## Parameters

@@ -4,9 +4,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   """
 
   alias WandererNotifier.Config
-  alias WandererNotifier.Web.Server
   alias WandererNotifier.Utils.TimeUtils
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Web.Server
 
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
@@ -108,7 +107,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       Server.running?()
     rescue
       error in [ArgumentError, KeyError] ->
-        AppLogger.error("Failed to check server status",
+        WandererNotifier.Logger.Logger.error("Failed to check server status",
           error: inspect(error),
           module: __MODULE__
         )
@@ -116,7 +115,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
         :unknown
 
       error ->
-        AppLogger.error("Unexpected error checking server status",
+        WandererNotifier.Logger.Logger.error("Unexpected error checking server status",
           error: inspect(error),
           module: __MODULE__
         )

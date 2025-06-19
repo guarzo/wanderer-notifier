@@ -137,12 +137,13 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
   ],
   server: true
 
-# Configure RedisQ settings
-config :wanderer_notifier, :redisq, %{
-  enabled: true,
-  url: System.get_env("REDISQ_URL") || "https://zkillredisq.stream/listen.php",
-  poll_interval: Helpers.parse_int(System.get_env("REDISQ_POLL_INTERVAL_MS"), 1000)
-}
+# Configure WebSocket and WandererKills settings
+config :wanderer_notifier,
+  websocket_enabled: Helpers.parse_bool(System.get_env("WEBSOCKET_ENABLED"), true),
+  websocket_url: System.get_env("WEBSOCKET_URL") || "ws://host.docker.internal:4004",
+  phoenix_websocket_version: System.get_env("PHOENIX_WEBSOCKET_VERSION"),
+  wanderer_kills_base_url:
+    System.get_env("WANDERER_KILLS_BASE_URL") || "http://host.docker.internal:4004"
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"

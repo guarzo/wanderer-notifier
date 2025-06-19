@@ -7,7 +7,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Adapter
-  alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
@@ -131,10 +130,8 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   defp enrich_killmail(killmail) do
-    case Enrichment.enrich_killmail_data(killmail) do
-      {:ok, enriched} -> {:ok, enriched}
-      error -> error
-    end
+    # WebSocket killmails come pre-enriched, no need for ESI calls
+    {:ok, killmail}
   end
 
   # Helper function to extract kill ID from various data structures

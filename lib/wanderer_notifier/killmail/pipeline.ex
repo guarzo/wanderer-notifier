@@ -6,16 +6,12 @@ defmodule WandererNotifier.Killmail.Pipeline do
   require Logger
 
   alias WandererNotifier.Telemetry
-  alias WandererNotifier.Cache.Adapter, as: Cache
-  alias WandererNotifier.Killmail.{Context, Killmail, Enrichment, Notification, Schema}
+  alias WandererNotifier.Killmail.{Context, Killmail, Notification, Schema}
   alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
-
-  @timeout_error WandererNotifier.ESI.Service.TimeoutError
-  @api_error WandererNotifier.ESI.Service.ApiError
 
   @spec process_killmail(zkb_data, Context.t()) :: result
   def process_killmail(zkb_data, context) do
@@ -43,12 +39,14 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp get_kill_id(data) do
-    Map.get(data, Schema.killmail_id()) ||
-      Map.get(data, Schema.kill_id())
+    # Try atom key first (WebSocket format), then string key
+    Map.get(data, :killmail_id) || Map.get(data, Schema.killmail_id())
   end
 
   defp get_system_id(data) do
-    get_in(data, ["killmail", Schema.solar_system_id()]) ||
+    # Try atom key first (WebSocket format), then string keys
+    Map.get(data, :system_id) ||
+      get_in(data, ["killmail", Schema.solar_system_id()]) ||
       get_in(data, [Schema.solar_system_id()])
   end
 
@@ -75,6 +73,8 @@ defmodule WandererNotifier.Killmail.Pipeline do
         handle_error(zkb_data, ctx, reason)
     end
   end
+
+  defp dedupe(nil), do: {:error, :missing_kill_id}
 
   defp dedupe(kill_id) do
     case deduplication_module().check(:kill, kill_id) do
@@ -111,15 +111,54 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp check_character_tracking(data) do
-    victim =
-      get_in(data, ["killmail", Schema.victim()]) ||
-        get_in(data, [Schema.victim()])
+    victim = extract_victim(data)
+    attackers = extract_attackers(data)
 
-    with %{"character_id" => id} when not is_nil(id) <- victim,
-         {:ok, tracked} <- character_module().is_tracked?(id) do
-      {:ok, tracked}
-    else
-      _ -> {:ok, false}
+    victim_tracked = victim_tracked?(victim)
+    attacker_tracked = any_attacker_tracked?(attackers)
+
+    {:ok, victim_tracked or attacker_tracked}
+  end
+
+  defp extract_victim(data) do
+    Map.get(data, :victim) ||
+      get_in(data, ["killmail", Schema.victim()]) ||
+      get_in(data, [Schema.victim()])
+  end
+
+  defp extract_attackers(data) do
+    Map.get(data, :attackers) ||
+      get_in(data, ["killmail", "attackers"]) ||
+      get_in(data, ["attackers"]) || []
+  end
+
+  defp victim_tracked?(%{character_id: id}) when not is_nil(id) do
+    character_tracked?(id)
+  end
+
+  defp victim_tracked?(%{"character_id" => id}) when not is_nil(id) do
+    character_tracked?(id)
+  end
+
+  defp victim_tracked?(_), do: false
+
+  defp any_attacker_tracked?(attackers) when is_list(attackers) do
+    Enum.any?(attackers, &attacker_tracked?/1)
+  end
+
+  defp any_attacker_tracked?(_), do: false
+
+  defp attacker_tracked?(attacker) do
+    character_id = Map.get(attacker, :character_id) || Map.get(attacker, "character_id")
+    character_tracked?(character_id)
+  end
+
+  defp character_tracked?(nil), do: false
+
+  defp character_tracked?(character_id) do
+    case character_module().is_tracked?(character_id) do
+      {:ok, true} -> true
+      _ -> false
     end
   end
 
@@ -162,62 +201,87 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — Build & Enrich ——————————————————————————————————————————————————
 
   defp build_and_enrich(data) do
-    with {:ok, km} <- build_killmail(data),
-         {:ok, enriched} <- enrich(km) do
-      {:ok, enriched}
-    end
+    # All data should now be pre-enriched from WebSocket
+    build_websocket_killmail(data)
   end
 
-  defp build_killmail(data) when is_map(data) do
-    id = get_kill_id(data)
-    hash = get_in(data, ["zkb", "hash"])
-    cache = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    key = "killmail:#{id}"
+  # — WebSocket Killmail Building ——————————————————————————————————————
 
-    case Cache.get(cache, key) do
-      {:ok, cached} when not is_nil(cached) ->
-        {:ok, Killmail.new(id, Map.get(data, "zkb", %{}), cached)}
+  defp build_websocket_killmail(data) do
+    killmail_id = Map.get(data, :killmail_id) || Map.get(data, "killmail_id")
+    system_id = Map.get(data, :system_id) || Map.get(data, "system_id")
 
-      _ ->
-        fetch_from_esi(id, hash, data, cache, key)
-    end
+    # Build killmail struct from pre-enriched WebSocket data
+    killmail = %WandererNotifier.Killmail.Killmail{
+      killmail_id: to_string(killmail_id),
+      system_id: system_id,
+      system_name: get_system_name(system_id),
+      victim: transform_websocket_victim(Map.get(data, :victim) || Map.get(data, "victim")),
+      attackers:
+        transform_websocket_attackers(Map.get(data, :attackers) || Map.get(data, "attackers", [])),
+      zkb: Map.get(data, :zkb) || Map.get(data, "zkb", %{}),
+      esi_data: %{
+        "killmail_id" => killmail_id,
+        "solar_system_id" => system_id,
+        "killmail_time" => Map.get(data, :kill_time) || Map.get(data, "kill_time")
+      },
+      # Mark as enriched since it came from WebSocket
+      enriched?: true
+    }
+
+    {:ok, killmail}
   end
 
-  defp fetch_from_esi(id, hash, data, cache, key) do
-    case esi_service().get_killmail(id, hash, []) do
-      {:ok, %{} = esi} ->
-        Cache.set(cache, key, esi, :timer.hours(24))
-        {:ok, Killmail.new(id, Map.get(data, "zkb", %{}), esi)}
+  defp transform_websocket_victim(nil), do: %{}
 
-      {:ok, nil} ->
-        {:error, :esi_data_missing}
+  defp transform_websocket_victim(victim) when is_map(victim) do
+    fields = [
+      "character_id",
+      "character_name",
+      "corporation_id",
+      "corporation_name",
+      "alliance_id",
+      "alliance_name",
+      "ship_type_id",
+      "ship_name",
+      "damage_taken"
+    ]
 
-      {:ok, _invalid} ->
-        {:error, :invalid_esi_data}
-
-      _ ->
-        {:error, :create_failed}
-    end
+    Map.new(fields, fn field ->
+      atom_field = String.to_atom(field)
+      {field, Map.get(victim, atom_field) || Map.get(victim, field)}
+    end)
   end
 
-  defp enrich(km) do
-    Enrichment.enrich_killmail_data(km)
-    |> case do
-      {:ok, enriched} -> restore_system_id(enriched, km)
-      other -> other
-    end
-  rescue
-    _ in @timeout_error -> {:error, :timeout}
-    _ in @api_error -> {:error, :api_error}
+  defp transform_websocket_attackers(nil), do: []
+
+  defp transform_websocket_attackers(attackers) when is_list(attackers) do
+    Enum.map(attackers, &transform_attacker/1)
   end
 
-  defp restore_system_id(enriched, original) do
-    if is_nil(enriched.system_id) do
-      id = get_in(original.esi_data, ["solar_system_id"])
-      {:ok, %{enriched | system_id: id}}
-    else
-      {:ok, enriched}
-    end
+  defp transform_websocket_attackers(_), do: []
+
+  defp transform_attacker(attacker) do
+    fields = [
+      {"character_id", nil},
+      {"character_name", nil},
+      {"corporation_id", nil},
+      {"corporation_name", nil},
+      {"alliance_id", nil},
+      {"alliance_name", nil},
+      {"ship_type_id", nil},
+      {"ship_name", nil},
+      {"damage_done", nil},
+      {"final_blow", false},
+      {"security_status", nil},
+      {"weapon_type_id", nil}
+    ]
+
+    Map.new(fields, fn {field, default} ->
+      atom_field = String.to_atom(field)
+      value = Map.get(attacker, atom_field) || Map.get(attacker, field, default)
+      {field, value}
+    end)
   end
 
   # — Notification-enabled Filter ——————————————————————————————————————
@@ -331,7 +395,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Dependencies ——————————————————————————————————————————————————————
 
-  defp esi_service, do: WandererNotifier.Core.Dependencies.esi_service()
   defp system_module, do: WandererNotifier.Core.Dependencies.system_module()
   defp character_module, do: WandererNotifier.Core.Dependencies.character_module()
   defp config_module, do: WandererNotifier.Core.Dependencies.config_module()

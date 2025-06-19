@@ -437,6 +437,10 @@ defmodule WandererNotifier.Config do
   @doc "Returns the RedisQ connect timeout in ms."
   def redisq_connect_timeout, do: get(:redisq_connect_timeout, 10_000)
 
+  # --- WebSocket Configuration ---
+  @doc "Returns the WebSocket URL for the external killmail service."
+  def websocket_url, do: fetch("WEBSOCKET_URL", "ws://host.docker.internal:4004")
+
   # --- Service URLs ---
   @doc "Returns the notification service base URL."
   def notification_service_base_url, do: get(:notification_service_base_url)

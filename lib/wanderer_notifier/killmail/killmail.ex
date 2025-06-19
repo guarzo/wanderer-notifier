@@ -16,7 +16,9 @@ defmodule WandererNotifier.Killmail.Killmail do
     :system_name,
     :system_id,
     :attackers,
-    :value
+    :victim,
+    :value,
+    enriched?: false
   ]
 
   @type killmail_id :: String.t() | integer()
@@ -35,7 +37,9 @@ defmodule WandererNotifier.Killmail.Killmail do
           system_name: String.t() | nil,
           system_id: integer() | nil,
           attackers: list(map()) | nil,
-          value: number() | nil
+          victim: map() | nil,
+          value: number() | nil,
+          enriched?: boolean()
         }
 
   @doc """

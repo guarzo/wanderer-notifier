@@ -6,13 +6,10 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
 
   alias WandererNotifier.{
-    HTTP,
     ESI.Client,
+    HTTP,
     Notifiers.Discord.NeoClient
   }
-
-  alias WandererNotifier.License.Client, as: LicenseClient
-  alias WandererNotifier.Notifications.NeoClient, as: NotificationClient
 
   # ──────────────────────────────────────────────────────────────────────────────
   # HTTP Client
@@ -135,7 +132,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   defdelegate validate_license(api_token, license_key),
-    to: LicenseClient,
+    to: WandererNotifier.License.Client,
     as: :validate_bot
 
   @doc """
@@ -159,6 +156,6 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   @spec send_notification(map(), keyword()) :: {:ok, any()} | {:error, term()}
   def send_notification(notification, opts \\ []) do
     channel_id = Keyword.get(opts, :channel_id, WandererNotifier.Config.discord_channel_id())
-    NotificationClient.send_embed(notification, channel_id)
+    WandererNotifier.Notifications.NeoClient.send_embed(notification, channel_id)
   end
 end
