@@ -80,15 +80,18 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     }
   end
 
+  defp safe_div(numerator, denominator) when denominator != 0, do: div(numerator, denominator)
+  defp safe_div(_, _), do: 0
+
   defp build_memory_info(memory_info) do
     total = memory_info[:total] || 0
     processes = memory_info[:processes] || 0
     system = memory_info[:system] || 0
 
     %{
-      total_kb: div(total, 1024),
-      processes_kb: div(processes, 1024),
-      system_kb: div(system, 1024),
+      total_kb: safe_div(total, 1024),
+      processes_kb: safe_div(processes, 1024),
+      system_kb: safe_div(system, 1024),
       processes_percent: safe_percentage(processes, total),
       system_percent: safe_percentage(system, total)
     }
