@@ -367,28 +367,28 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   # Transform external service killmail format to internal format
   defp transform_killmail(external_killmail) do
     %{
-      killmail_id: external_killmail["killmail_id"],
-      kill_time: external_killmail["kill_time"],
-      system_id: external_killmail["system_id"],
-      victim: transform_victim(external_killmail["victim"]),
-      attackers: transform_attackers(external_killmail["attackers"] || []),
-      zkb: external_killmail["zkb"] || %{},
+      "killmail_id" => external_killmail["killmail_id"],
+      "kill_time" => external_killmail["kill_time"],
+      "system_id" => external_killmail["system_id"],
+      "victim" => transform_victim(external_killmail["victim"]),
+      "attackers" => transform_attackers(external_killmail["attackers"] || []),
+      "zkb" => external_killmail["zkb"] || %{},
       # Mark as pre-enriched so pipeline knows to skip ESI calls
-      enriched: true
+      "enriched" => true
     }
   end
 
   defp transform_victim(victim) when is_map(victim) do
     %{
-      character_id: victim["character_id"],
-      character_name: victim["character_name"],
-      corporation_id: victim["corporation_id"],
-      corporation_name: victim["corporation_name"],
-      alliance_id: victim["alliance_id"],
-      alliance_name: victim["alliance_name"],
-      ship_type_id: victim["ship_type_id"],
-      ship_name: victim["ship_name"],
-      damage_taken: victim["damage_taken"]
+      "character_id" => victim["character_id"],
+      "character_name" => victim["character_name"],
+      "corporation_id" => victim["corporation_id"],
+      "corporation_name" => victim["corporation_name"],
+      "alliance_id" => victim["alliance_id"],
+      "alliance_name" => victim["alliance_name"],
+      "ship_type_id" => victim["ship_type_id"],
+      "ship_name" => victim["ship_name"],
+      "damage_taken" => victim["damage_taken"]
     }
   end
 
@@ -397,18 +397,18 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   defp transform_attackers(attackers) when is_list(attackers) do
     Enum.map(attackers, fn attacker ->
       %{
-        character_id: attacker["character_id"],
-        character_name: attacker["character_name"],
-        corporation_id: attacker["corporation_id"],
-        corporation_name: attacker["corporation_name"],
-        alliance_id: attacker["alliance_id"],
-        alliance_name: attacker["alliance_name"],
-        ship_type_id: attacker["ship_type_id"],
-        ship_name: attacker["ship_name"],
-        damage_done: attacker["damage_done"],
-        final_blow: attacker["final_blow"] || false,
-        security_status: attacker["security_status"],
-        weapon_type_id: attacker["weapon_type_id"]
+        "character_id" => attacker["character_id"],
+        "character_name" => attacker["character_name"],
+        "corporation_id" => attacker["corporation_id"],
+        "corporation_name" => attacker["corporation_name"],
+        "alliance_id" => attacker["alliance_id"],
+        "alliance_name" => attacker["alliance_name"],
+        "ship_type_id" => attacker["ship_type_id"],
+        "ship_name" => attacker["ship_name"],
+        "damage_done" => attacker["damage_done"],
+        "final_blow" => attacker["final_blow"] || false,
+        "security_status" => attacker["security_status"],
+        "weapon_type_id" => attacker["weapon_type_id"]
       }
     end)
   end

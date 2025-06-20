@@ -39,13 +39,14 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp get_kill_id(data) do
-    # Try atom key first (WebSocket format), then string key
-    Map.get(data, :killmail_id) || Map.get(data, Schema.killmail_id())
+    # Try string key first (WebSocket format), then atom key for backward compatibility
+    Map.get(data, "killmail_id") || Map.get(data, :killmail_id) || Map.get(data, Schema.killmail_id())
   end
 
   defp get_system_id(data) do
-    # Try atom key first (WebSocket format), then string keys
-    Map.get(data, :system_id) ||
+    # Try string key first (WebSocket format), then atom key for backward compatibility
+    Map.get(data, "system_id") ||
+      Map.get(data, :system_id) ||
       get_in(data, ["killmail", Schema.solar_system_id()]) ||
       get_in(data, [Schema.solar_system_id()])
   end
@@ -121,22 +122,24 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp extract_victim(data) do
-    Map.get(data, :victim) ||
+    Map.get(data, "victim") ||
+      Map.get(data, :victim) ||
       get_in(data, ["killmail", Schema.victim()]) ||
       get_in(data, [Schema.victim()])
   end
 
   defp extract_attackers(data) do
-    Map.get(data, :attackers) ||
+    Map.get(data, "attackers") ||
+      Map.get(data, :attackers) ||
       get_in(data, ["killmail", "attackers"]) ||
       get_in(data, ["attackers"]) || []
   end
 
-  defp victim_tracked?(%{character_id: id}) when not is_nil(id) do
+  defp victim_tracked?(%{"character_id" => id}) when not is_nil(id) do
     character_tracked?(id)
   end
 
-  defp victim_tracked?(%{"character_id" => id}) when not is_nil(id) do
+  defp victim_tracked?(%{character_id: id}) when not is_nil(id) do
     character_tracked?(id)
   end
 
@@ -149,7 +152,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp any_attacker_tracked?(_), do: false
 
   defp attacker_tracked?(attacker) do
-    character_id = Map.get(attacker, :character_id) || Map.get(attacker, "character_id")
+    character_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
     character_tracked?(character_id)
   end
 
@@ -208,22 +211,22 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — WebSocket Killmail Building ——————————————————————————————————————
 
   defp build_websocket_killmail(data) do
-    killmail_id = Map.get(data, :killmail_id) || Map.get(data, "killmail_id")
-    system_id = Map.get(data, :system_id) || Map.get(data, "system_id")
+    killmail_id = Map.get(data, "killmail_id") || Map.get(data, :killmail_id)
+    system_id = Map.get(data, "system_id") || Map.get(data, :system_id)
 
     # Build killmail struct from pre-enriched WebSocket data
     killmail = %WandererNotifier.Killmail.Killmail{
       killmail_id: to_string(killmail_id),
       system_id: system_id,
       system_name: get_system_name(system_id),
-      victim: transform_websocket_victim(Map.get(data, :victim) || Map.get(data, "victim")),
+      victim: transform_websocket_victim(Map.get(data, "victim") || Map.get(data, :victim)),
       attackers:
-        transform_websocket_attackers(Map.get(data, :attackers) || Map.get(data, "attackers", [])),
-      zkb: Map.get(data, :zkb) || Map.get(data, "zkb", %{}),
+        transform_websocket_attackers(Map.get(data, "attackers") || Map.get(data, :attackers, [])),
+      zkb: Map.get(data, "zkb") || Map.get(data, :zkb, %{}),
       esi_data: %{
         "killmail_id" => killmail_id,
         "solar_system_id" => system_id,
-        "killmail_time" => Map.get(data, :kill_time) || Map.get(data, "kill_time")
+        "killmail_time" => Map.get(data, "kill_time") || Map.get(data, :kill_time)
       },
       # Mark as enriched since it came from WebSocket
       enriched?: true
