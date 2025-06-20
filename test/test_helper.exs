@@ -71,6 +71,7 @@ Mox.stub(WandererNotifier.MockConfig, :character_notifications_enabled?, fn -> t
 
 Mox.stub(WandererNotifier.MockConfig, :get_notification_setting, fn _type, _key -> {:ok, true} end)
 
+# Traditional stub for backward compatibility
 Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
   {:ok,
    %{
@@ -192,6 +193,7 @@ Application.put_env(:wanderer_notifier, :character_tracking_enabled, false)
 Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
 Application.put_env(:wanderer_notifier, :schedulers_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_supervisor_enabled, false)
+Application.put_env(:wanderer_notifier, :pipeline_worker_enabled, false)
 
 # Disable RedisQ client in tests to prevent HTTP calls
 Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
@@ -201,6 +203,7 @@ Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
 # Load shared test mocks
 Code.require_file("support/test_mocks.ex", __DIR__)
+Code.require_file("support/global_mock_config.ex", __DIR__)
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")

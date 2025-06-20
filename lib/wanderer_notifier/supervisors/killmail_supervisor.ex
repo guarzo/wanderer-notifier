@@ -19,11 +19,7 @@ defmodule WandererNotifier.Supervisors.KillmailSupervisor do
       # Killmail-specific task supervisor for processing tasks
       {Task.Supervisor, name: WandererNotifier.KillmailTaskSupervisor},
 
-      # RedisQ client for receiving killmail stream
-      # Now properly supervised instead of being started by PipelineWorker
-      {WandererNotifier.Killmail.RedisQClient, []},
-
-      # Pipeline worker for processing killmails
+      # Pipeline worker for processing killmails with WebSocket client
       {WandererNotifier.Killmail.PipelineWorker, []}
     ]
 

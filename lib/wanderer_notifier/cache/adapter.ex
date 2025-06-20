@@ -7,9 +7,8 @@ defmodule WandererNotifier.Cache.Adapter do
   and ETSCache (testing) transparently.
   """
 
+  alias WandererNotifier.Cache.Config
   alias WandererNotifier.Cache.ETSCache
-  alias WandererNotifier.Cache.SimpleETSCache
-  alias WandererNotifier.Cache.Config, as: CacheConfig
 
   @doc """
   Gets the configured cache adapter.
@@ -29,12 +28,6 @@ defmodule WandererNotifier.Cache.Adapter do
       ETSCache ->
         ETSCache.get(key, table: cache_name)
 
-      SimpleETSCache ->
-        case SimpleETSCache.get(key) do
-          {:expired} -> {:ok, nil}
-          other -> other
-        end
-
       other ->
         {:error, {:unknown_adapter, other}}
     end
@@ -49,7 +42,7 @@ defmodule WandererNotifier.Cache.Adapter do
   end
 
   defp normalize_ttl(nil) do
-    case CacheConfig.ttl_for(:default) do
+    case Config.ttl_for(:default) do
       :infinity -> :infinity
       ttl_ms -> :timer.seconds(ttl_ms)
     end
@@ -64,22 +57,8 @@ defmodule WandererNotifier.Cache.Adapter do
     Cachex.put(cache_name, key, value, ttl: cachex_ttl)
   end
 
-  defp do_set(ETSCache, cache_name, key, value, :infinity) do
-    # For ETS caches, we'll use a very long TTL (100 years) instead of infinity
-    ETSCache.set(key, value, 3_153_600_000, table: cache_name)
-  end
-
-  defp do_set(ETSCache, cache_name, key, value, ttl) when is_integer(ttl) do
-    ETSCache.set(key, value, div(ttl, 1000), table: cache_name)
-  end
-
-  defp do_set(SimpleETSCache, _cache_name, key, value, :infinity) do
-    # For ETS caches, we'll use a very long TTL (100 years) instead of infinity
-    SimpleETSCache.set(key, value, 3_153_600_000)
-  end
-
-  defp do_set(SimpleETSCache, _cache_name, key, value, ttl) when is_integer(ttl) do
-    SimpleETSCache.set(key, value, div(ttl, 1000))
+  defp do_set(ETSCache, cache_name, key, value, ttl) do
+    ETSCache.set(key, value, ttl, table: cache_name)
   end
 
   defp do_set(other, _cache_name, _key, _value, _ttl) do
@@ -96,9 +75,6 @@ defmodule WandererNotifier.Cache.Adapter do
 
       ETSCache ->
         ETSCache.put(key, value, table: cache_name)
-
-      SimpleETSCache ->
-        SimpleETSCache.put(key, value)
 
       other ->
         {:error, {:unknown_adapter, other}}
@@ -119,12 +95,6 @@ defmodule WandererNotifier.Cache.Adapter do
           error -> error
         end
 
-      SimpleETSCache ->
-        case SimpleETSCache.delete(key) do
-          :ok -> {:ok, true}
-          error -> error
-        end
-
       other ->
         {:error, {:unknown_adapter, other}}
     end
@@ -140,12 +110,6 @@ defmodule WandererNotifier.Cache.Adapter do
 
       ETSCache ->
         case ETSCache.clear(table: cache_name) do
-          :ok -> {:ok, true}
-          error -> error
-        end
-
-      SimpleETSCache ->
-        case SimpleETSCache.clear() do
           :ok -> {:ok, true}
           error -> error
         end

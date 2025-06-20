@@ -24,6 +24,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     check_killmail_notification(killmail_id, system_id, victim_character_id)
   end
 
+  # Handle WebSocket killmail format with atom keys
+  def should_notify?(%{killmail_id: id, system_id: system_id, victim: victim} = _data) do
+    victim_character_id = Map.get(victim, :character_id)
+    check_killmail_notification(id, system_id, victim_character_id)
+  end
+
   def should_notify?(%{"killmail_id" => id} = data) do
     system_id = get_in(data, ["solar_system_id"])
     victim_character_id = get_in(data, ["victim", "character_id"])
@@ -247,18 +253,27 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_tracked or attacker_tracked
   end
 
+  # Handle WebSocket killmail format with atom keys
+  def has_tracked_character?(%{victim: victim, attackers: attackers}) do
+    victim_tracked = tracked_character?(Map.get(victim, :character_id))
+    attacker_tracked = any_attacker_tracked?(attackers)
+    victim_tracked or attacker_tracked
+  end
+
   @doc """
   Gets the system ID from a killmail.
   """
   @spec get_kill_system_id(Killmail.t() | map()) :: any()
   def get_kill_system_id(%Killmail{} = killmail), do: Killmail.get_system_id(killmail)
   def get_kill_system_id(%{"solar_system_id" => id}), do: id
+  def get_kill_system_id(%{system_id: id}), do: id
   def get_kill_system_id(_), do: "unknown"
 
   @spec any_attacker_tracked?(list(map()) | any()) :: boolean()
   defp any_attacker_tracked?(attackers) when is_list(attackers) do
     Enum.any?(attackers, fn attacker ->
-      tracked_character?(get_in(attacker, ["character_id"]))
+      character_id = get_in(attacker, ["character_id"]) || Map.get(attacker, :character_id)
+      tracked_character?(character_id)
     end)
   end
 

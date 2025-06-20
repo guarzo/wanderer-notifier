@@ -51,7 +51,7 @@ config :logger, :console,
 # Configure the cache - all cache settings in one place
 config :wanderer_notifier,
   cache_name: :wanderer_test_cache,
-  cache_adapter: WandererNotifier.Cache.SimpleETSCache
+  cache_adapter: WandererNotifier.Cache.ETSCache
 
 # Configure the ESI service
 config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock

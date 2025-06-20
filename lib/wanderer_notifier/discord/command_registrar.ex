@@ -13,7 +13,6 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   require Logger
   alias Nostrum.Api.ApplicationCommand
-  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Config
 
   @doc """
@@ -40,7 +39,7 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
               },
               %{
                 type: 3,
-                # STRING  
+                # STRING
                 name: "action",
                 description: "Action to perform",
                 required: false,
@@ -78,10 +77,6 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
     if application_id do
       register_commands_with_retry(application_id)
     else
-      AppLogger.startup_error(
-        "Cannot register Discord commands: DISCORD_APPLICATION_ID not configured"
-      )
-
       {:error, :missing_application_id}
     end
   end
@@ -90,27 +85,37 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
   defp register_commands_with_retry(application_id, retries \\ 3) do
     case ApplicationCommand.bulk_overwrite_global_commands(application_id, commands()) do
       {:ok, _commands} ->
-        AppLogger.startup_info("Successfully registered Discord slash commands")
+        WandererNotifier.Logger.Logger.startup_info(
+          "Successfully registered Discord slash commands"
+        )
+
         log_registered_commands()
         :ok
 
       {:error, %{status_code: 429} = error} when retries > 0 ->
         # Rate limited, wait and retry
         wait_time = extract_retry_after(error)
-        AppLogger.startup_warn("Rate limited registering commands, retrying in #{wait_time}ms")
+
+        WandererNotifier.Logger.Logger.startup_warn(
+          "Rate limited registering commands, retrying in #{wait_time}ms"
+        )
+
         Process.sleep(wait_time)
         register_commands_with_retry(application_id, retries - 1)
 
       {:error, %{status_code: 401}} ->
-        AppLogger.startup_error("Invalid Discord bot token for command registration")
+        WandererNotifier.Logger.Logger.startup_error(
+          "Invalid Discord bot token for command registration"
+        )
+
         {:error, :invalid_token}
 
       {:error, %{status_code: 403}} ->
-        AppLogger.startup_error("Bot lacks permissions to register commands")
+        WandererNotifier.Logger.Logger.startup_error("Bot lacks permissions to register commands")
         {:error, :insufficient_permissions}
 
       {:error, error} ->
-        AppLogger.startup_error("Failed to register Discord commands",
+        WandererNotifier.Logger.Logger.startup_error("Failed to register Discord commands",
           error: inspect(error),
           application_id: application_id
         )
@@ -131,11 +136,17 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
     if application_id do
       case ApplicationCommand.bulk_overwrite_global_commands(application_id, []) do
         {:ok, _} ->
-          AppLogger.config_info("Successfully unregistered all Discord slash commands")
+          WandererNotifier.Logger.Logger.config_info(
+            "Successfully unregistered all Discord slash commands"
+          )
+
           :ok
 
         {:error, error} ->
-          AppLogger.config_error("Failed to unregister Discord commands", error: inspect(error))
+          WandererNotifier.Logger.Logger.config_error("Failed to unregister Discord commands",
+            error: inspect(error)
+          )
+
           {:error, error}
       end
     else
@@ -155,11 +166,17 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
     if application_id do
       case ApplicationCommand.global_commands(application_id) do
         {:ok, commands} ->
-          AppLogger.config_info("Retrieved #{length(commands)} registered commands")
+          WandererNotifier.Logger.Logger.config_info(
+            "Retrieved #{length(commands)} registered commands"
+          )
+
           {:ok, commands}
 
         {:error, error} ->
-          AppLogger.config_error("Failed to list registered commands", error: inspect(error))
+          WandererNotifier.Logger.Logger.config_error("Failed to list registered commands",
+            error: inspect(error)
+          )
+
           {:error, error}
       end
     else
@@ -249,7 +266,7 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
     |> Enum.each(fn command ->
       subcommands = Enum.map(command.options, & &1.name)
 
-      AppLogger.startup_info("Registered command: /#{command.name}",
+      WandererNotifier.Logger.Logger.startup_info("Registered command: /#{command.name}",
         subcommands: subcommands
       )
     end)

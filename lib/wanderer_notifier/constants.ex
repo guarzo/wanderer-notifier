@@ -39,6 +39,9 @@ defmodule WandererNotifier.Constants do
   @doc "ZKill retry backoff in milliseconds"
   def zkill_retry_backoff, do: 2_000
 
+  @doc "WandererKills retry backoff in milliseconds"
+  def wanderer_kills_retry_backoff, do: 1_500
+
   # ── Cache & TTL Values ──────────────────────────────────────────────────────
 
   @doc "Default cache TTL in seconds"

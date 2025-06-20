@@ -4,10 +4,8 @@ defmodule WandererNotifier.Killmail.Schema do
   Provides a single source of truth for all field names used in killmail processing.
   """
 
-  # Core killmail fields (only keeping actually used ones)
+  # Core killmail fields 
   @killmail_id "killmail_id"
-  # Alternative field name used by RedisQ
-  @kill_id "killID"
   @victim "victim"
   @solar_system_id "solar_system_id"
   @package "package"
@@ -17,7 +15,6 @@ defmodule WandererNotifier.Killmail.Schema do
   Core killmail field names
   """
   def killmail_id, do: @killmail_id
-  def kill_id, do: @kill_id
   def victim, do: @victim
   def solar_system_id, do: @solar_system_id
   def package, do: @package

@@ -7,6 +7,16 @@ on:
       - "v*"
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      update_latest:
+        description: 'Update the "latest" Docker tag'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   test:
@@ -93,8 +103,8 @@ jobs:
     name: Auto Tag Version
     needs: test
     runs-on: ubuntu-latest
-    # Only run on main branch pushes (not tags)
-    if: github.ref == 'refs/heads/main'
+    # Only run on main branch pushes (not tags or workflow_dispatch)
+    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
     permissions:
       contents: write
     outputs:
@@ -146,16 +156,26 @@ jobs:
 
   docker:
     name: Build and Push Docker Image
-    needs: [test, auto-tag]
+    needs:
+      - test
+      - auto-tag
     runs-on: ubuntu-latest
-    # Run when: new tag created on main OR manual tag push
+    # Run when: new tag created on main OR manual tag push OR workflow_dispatch
     if: |
-      (needs.auto-tag.outputs.new_tag_created == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      always() &&
+      needs.test.result == 'success' &&
+      (needs.auto-tag.result == 'skipped' || needs.auto-tag.result == 'success') &&
+      (
+        (needs.auto-tag.outputs.new_tag_created == 'true') ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'workflow_dispatch'
+      )
     env:
       # Named conditions for clarity
       IS_NEW_TAG_FROM_MAIN: ${{ needs.auto-tag.outputs.new_tag_created == 'true' }}
       IS_VERSION_TAG_PUSH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      IS_WORKFLOW_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+      UPDATE_LATEST: ${{ github.event.inputs.update_latest || 'false' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +226,7 @@ jobs:
             type=semver,pattern=v{{version}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
             type=semver,pattern=v{{major}}.{{minor}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
             type=semver,pattern=v{{major}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_latest == 'true' }}
             type=sha,format=short
             type=raw,value=${{ steps.get_version_info.outputs.VERSION_TAG }},enable=${{ steps.get_version_info.outputs.VERSION_TAG != '' }}
 

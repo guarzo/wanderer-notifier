@@ -6,8 +6,6 @@ defmodule WandererNotifier.Application do
 
   use Application
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
   @doc """
   Starts the WandererNotifier application.
   """
@@ -15,14 +13,14 @@ defmodule WandererNotifier.Application do
     # Ensure critical configuration exists to prevent startup failures
     ensure_critical_configuration()
 
-    AppLogger.startup_info("Starting WandererNotifier")
+    WandererNotifier.Logger.Logger.startup_info("Starting WandererNotifier")
 
     # Log all environment variables to help diagnose config issues
     log_environment_variables()
 
     # Log scheduler configuration
     schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
-    AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
+    WandererNotifier.Logger.Logger.startup_info("Schedulers enabled: #{schedulers_enabled}")
 
     base_children = [
       # Add Task.Supervisor first to prevent initialization races
@@ -43,7 +41,7 @@ defmodule WandererNotifier.Application do
 
     # Add Killmail processing pipeline if RedisQ is enabled
     redisq_enabled = WandererNotifier.Config.redisq_enabled?()
-    AppLogger.startup_info("RedisQ enabled: #{redisq_enabled}")
+    WandererNotifier.Logger.Logger.startup_info("RedisQ enabled: #{redisq_enabled}")
 
     killmail_children =
       if redisq_enabled do
@@ -57,7 +55,7 @@ defmodule WandererNotifier.Application do
 
     children = base_children ++ killmail_children ++ scheduler_children
 
-    AppLogger.startup_info("Starting children: #{inspect(children)}")
+    WandererNotifier.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     {:ok, _} = Supervisor.start_link(children, opts)
@@ -98,7 +96,7 @@ defmodule WandererNotifier.Application do
   Sensitive values are redacted.
   """
   def log_environment_variables do
-    AppLogger.startup_info("Environment variables at startup:")
+    WandererNotifier.Logger.Logger.startup_info("Environment variables at startup:")
 
     sensitive_keys = ~w(
       WANDERER_DISCORD_BOT_TOKEN
@@ -114,7 +112,7 @@ defmodule WandererNotifier.Application do
     |> Enum.each(fn {key, value} ->
       # Redact sensitive values
       safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-      AppLogger.startup_info("  #{key}: #{safe_value}")
+      WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
     end)
 
     # Log app config as well
@@ -125,11 +123,11 @@ defmodule WandererNotifier.Application do
   Logs key application configuration settings.
   """
   def log_application_config do
-    AppLogger.startup_info("Application configuration:")
+    WandererNotifier.Logger.Logger.startup_info("Application configuration:")
 
     # Log version first
     version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
-    AppLogger.startup_info("  version: #{version}")
+    WandererNotifier.Logger.Logger.startup_info("  version: #{version}")
 
     # Log critical config values from the application environment
     for {key, env_key} <- [
@@ -140,7 +138,7 @@ defmodule WandererNotifier.Application do
           {:schedulers_enabled, :schedulers_enabled}
         ] do
       value = Application.get_env(:wanderer_notifier, env_key)
-      AppLogger.startup_info("  #{key}: #{inspect(value)}")
+      WandererNotifier.Logger.Logger.startup_info("  #{key}: #{inspect(value)}")
     end
   end
 
@@ -155,9 +153,6 @@ defmodule WandererNotifier.Application do
 
       WandererNotifier.Cache.ETSCache ->
         {WandererNotifier.Cache.ETSCache, name: cache_name}
-
-      WandererNotifier.Cache.SimpleETSCache ->
-        {WandererNotifier.Cache.SimpleETSCache, name: cache_name}
 
       other ->
         raise "Unknown cache adapter: #{inspect(other)}"
@@ -185,7 +180,7 @@ defmodule WandererNotifier.Application do
     if get_env() == :prod do
       {:error, :not_allowed_in_production}
     else
-      AppLogger.config_info("Reloading modules", modules: inspect(modules))
+      WandererNotifier.Logger.Logger.config_info("Reloading modules", modules: inspect(modules))
 
       # Save current compiler options
       original_compiler_options = Code.compiler_options()
@@ -200,11 +195,14 @@ defmodule WandererNotifier.Application do
           :code.load_file(module)
         end)
 
-        AppLogger.config_info("Module reload complete")
+        WandererNotifier.Logger.Logger.config_info("Module reload complete")
         {:ok, modules}
       rescue
         error ->
-          AppLogger.config_error("Error reloading modules", error: inspect(error))
+          WandererNotifier.Logger.Logger.config_error("Error reloading modules",
+            error: inspect(error)
+          )
+
           {:error, error}
       after
         # Restore original compiler options

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. It integrates with ZKillboard, EVE Swagger Interface (ESI), and custom map APIs to track wormhole systems and character activities.
+Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. It integrates with an external WandererKills service via WebSocket for real-time pre-enriched killmail data, EVE Swagger Interface (ESI) for legacy data enrichment, and custom map APIs to track wormhole systems and character activities.
 
 ## Common Development Commands
 
@@ -50,14 +50,17 @@ docker-compose up -d  # Run locally with Docker
 The application follows a domain-driven design with these core components:
 
 ### Data Flow
-1. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/`) - Consumes kill data from ZKillboard WebSocket
-2. **ESI Service** (`lib/wanderer_notifier/esi/`) - Enriches killmail data with character/corp/alliance info from EVE API
-3. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via custom map API
-4. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
-5. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
+1. **WebSocket Client** (`lib/wanderer_notifier/killmail/websocket_client.ex`) - Connects to external WandererKills service for real-time pre-enriched killmail data
+2. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy ZKillboard data
+3. **ESI Service** (`lib/wanderer_notifier/esi/`) - Provides legacy enrichment for ZKillboard data (bypassed for WebSocket killmails)
+4. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via custom map API
+5. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
+6. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
 
 ### Key Services
-- **Cache Layer**: Uses Cachex to minimize API calls with configurable TTLs
+- **WebSocket Client**: Real-time connection to WandererKills service for pre-enriched killmail data
+- **WandererKills HTTP Client** (`lib/wanderer_notifier/killmail/wanderer_kills_client.ex`): REST API client for recent kills lookup
+- **Cache Layer**: Uses Cachex to minimize API calls with configurable TTLs  
 - **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic character/system updates
 - **License Service**: Controls feature availability (premium embeds vs free text notifications)
 - **HTTP Client**: Centralized HTTP client with retry logic and rate limiting
@@ -66,6 +69,8 @@ The application follows a domain-driven design with these core components:
 - Environment variables are loaded without the WANDERER_ prefix (e.g., `DISCORD_BOT_TOKEN` instead of `WANDERER_DISCORD_BOT_TOKEN`)
 - Configuration layers: `config/config.exs` (compile-time) → `config/runtime.exs` (runtime with env vars)
 - Local development uses `.env` file via Dotenvy
+- **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004")
+- **WandererKills Configuration**: `WANDERER_KILLS_BASE_URL` (default: "http://host.docker.internal:4004")
 
 ### Testing Approach
 - Heavy use of Mox for behavior-based mocking

@@ -6,10 +6,9 @@ defmodule WandererNotifier.Cache.CacheHelper do
   providing a consistent interface for cache operations with built-in logging and error handling.
   """
 
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Config, as: CacheConfig
   alias WandererNotifier.Cache.Adapter
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Config
+  alias WandererNotifier.Cache.Keys
 
   @type cache_key_type :: atom()
   @type id :: String.t() | integer()
@@ -21,7 +20,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   Fetches data with caching, using a standardized pattern.
 
   This is the primary caching abstraction that handles:
-  - Cache key generation using the CacheKeys module
+  - Cache key generation using the Keys module
   - Cache lookups with configurable cache names
   - Automatic cache population on misses
   - Logging of cache hits/misses
@@ -75,12 +74,12 @@ defmodule WandererNotifier.Cache.CacheHelper do
         ) :: {:ok, term()} | {:error, term()}
   def fetch_with_cache(cache_type, id, opts, fetch_fn, log_name, validator \\ nil) do
     cache_name = get_cache_name(opts)
-    cache_key = apply(CacheKeys, cache_type, [id])
+    cache_key = apply(Keys, cache_type, [id])
 
     case get_from_cache(cache_name, cache_key) do
       {:ok, cached_data} when cached_data != nil ->
         if validate_cached_data(cached_data, validator) do
-          AppLogger.cache_debug("Cache hit for #{log_name}",
+          WandererNotifier.Logger.Logger.cache_debug("Cache hit for #{log_name}",
             id: id,
             cache_key: cache_key
           )
@@ -131,7 +130,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
     case get_from_cache(cache_name, custom_key) do
       {:ok, cached_data} when cached_data != nil ->
         if validate_cached_data(cached_data, validator) do
-          AppLogger.cache_debug(
+          WandererNotifier.Logger.Logger.cache_debug(
             "Cache hit",
             Map.merge(log_context, %{cache_key: custom_key})
           )
@@ -206,7 +205,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   @spec invalidate(cache_key_type(), id(), opts()) :: :ok | {:error, term()}
   def invalidate(cache_type, id, opts \\ []) do
     cache_name = get_cache_name(opts)
-    cache_key = apply(CacheKeys, cache_type, [id])
+    cache_key = apply(Keys, cache_type, [id])
 
     case Adapter.del(cache_name, cache_key) do
       {:ok, _} -> :ok
@@ -217,7 +216,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   # Private functions
 
   defp get_cache_name(opts) do
-    CacheConfig.cache_name(opts)
+    Config.cache_name(opts)
   end
 
   defp get_from_cache(cache_name, cache_key) do
@@ -234,7 +233,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   end
 
   defp fetch_and_cache(cache_name, cache_key, id, opts, fetch_fn, log_name) do
-    AppLogger.cache_debug("Cache miss for #{log_name}, fetching from API",
+    WandererNotifier.Logger.Logger.cache_debug("Cache miss for #{log_name}, fetching from API",
       id: id,
       cache_key: cache_key
     )
@@ -255,7 +254,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   end
 
   defp fetch_and_cache_custom(cache_name, cache_key, opts, fetch_fn, log_context) do
-    AppLogger.cache_debug(
+    WandererNotifier.Logger.Logger.cache_debug(
       "Cache miss, fetching fresh data",
       Map.merge(log_context, %{cache_key: cache_key})
     )
@@ -285,7 +284,7 @@ defmodule WandererNotifier.Cache.CacheHelper do
   defp get_config_ttl(log_name) do
     cache_type = log_name_to_cache_type(log_name)
 
-    case CacheConfig.ttl_for(cache_type) do
+    case Config.ttl_for(cache_type) do
       :infinity -> :infinity
       seconds -> :timer.seconds(seconds)
     end

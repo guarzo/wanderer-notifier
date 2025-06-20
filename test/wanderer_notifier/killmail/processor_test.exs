@@ -234,7 +234,9 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Character tracking already returns false by default from test_helper.exs
+      # Set character tracking to return false for this test
+      MockCharacter
+      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
       MockDeduplication
       |> stub(:check, fn :kill, _id -> {:ok, :new} end)

@@ -51,7 +51,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
     case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
       {:ok, data} when is_list(data) and length(data) > 0 ->
-        AppLogger.api_info("Retrieved data from cache",
+        AppLogger.api_debug("Retrieved data from cache",
           count: length(data),
           key: cache_key
         )
