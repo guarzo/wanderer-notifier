@@ -70,7 +70,6 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
-  setup :set_mox_from_context
 
   setup do
     # Set up Mox for ESI.Service

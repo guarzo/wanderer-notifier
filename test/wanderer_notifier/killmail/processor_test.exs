@@ -230,11 +230,16 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
+      # Set mocks to global for this async test since it spawns Tasks
+      set_mox_global()
+
       # Override default system tracking (true) to return false for this test
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Character tracking already returns false by default from test_helper.exs
+      # Set character tracking to return false for this test
+      MockCharacter
+      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
       MockDeduplication
       |> stub(:check, fn :kill, _id -> {:ok, :new} end)

@@ -210,6 +210,10 @@ jobs:
             type=sha,format=short
             type=raw,value=${{ steps.get_version_info.outputs.VERSION_TAG }},enable=${{ steps.get_version_info.outputs.VERSION_TAG != '' }}
 
+      - name: Create secrets file for build
+        run: |
+          echo "${{ secrets.NOTIFIER_API_TOKEN }}" > /tmp/notifier_token
+          
       - name: Build Docker image for testing
         uses: docker/build-push-action@v5
         with:
@@ -219,9 +223,10 @@ jobs:
           load: true
           tags: guarzo/wanderer-notifier:test
           cache-from: type=gha
+          secrets: |
+            notifier_token=/tmp/notifier_token
           build-args: |
             VCS_REF=${{ github.sha }}
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
       - name: Test Docker image
         run: |
@@ -239,6 +244,11 @@ jobs:
           }
         env:
           DOCKER_BUILDKIT: 1
+          
+      - name: Clean up secrets file
+        if: always()
+        run: |
+          rm -f /tmp/notifier_token
 
       - name: Build and push to registry
         uses: docker/build-push-action@v5
@@ -254,9 +264,10 @@ jobs:
           cache-to: |
             type=gha,mode=max
             type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
+          secrets: |
+            notifier_token=/tmp/notifier_token
           build-args: |
             VCS_REF=${{ github.sha }}
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
   release:
     name: Create Release

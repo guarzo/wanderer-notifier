@@ -76,7 +76,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     end
   end
 
-  defp dedupe(nil), do: {:error, :missing_kill_id}
+  defp dedupe(nil), do: {:error, {:missing_kill_id, "Killmail ID cannot be nil"}}
 
   defp dedupe(kill_id) do
     case deduplication_module().check(:kill, kill_id) do
@@ -213,8 +213,20 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp build_websocket_killmail(data) do
     killmail_id = Map.get(data, "killmail_id") || Map.get(data, :killmail_id)
-    system_id = Map.get(data, "system_id") || Map.get(data, :system_id)
+    # Handle both WebSocket format ("system_id") and ZKillboard format ("solar_system_id")
+    system_id =
+      Map.get(data, "system_id") || Map.get(data, :system_id) ||
+        Map.get(data, "solar_system_id") || Map.get(data, :solar_system_id)
 
+    # Validate required fields
+    cond do
+      is_nil(killmail_id) -> {:error, :missing_killmail_id}
+      is_nil(system_id) -> {:error, :missing_system_id}
+      true -> build_validated_websocket_killmail(killmail_id, system_id, data)
+    end
+  end
+
+  defp build_validated_websocket_killmail(killmail_id, system_id, data) do
     # Build killmail struct from pre-enriched WebSocket data
     killmail = %WandererNotifier.Killmail.Killmail{
       killmail_id: to_string(killmail_id),
@@ -266,26 +278,32 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp transform_websocket_attackers(_), do: []
 
   defp transform_attacker(attacker) do
-    fields = [
-      {"character_id", nil},
-      {"character_name", nil},
-      {"corporation_id", nil},
-      {"corporation_name", nil},
-      {"alliance_id", nil},
-      {"alliance_name", nil},
-      {"ship_type_id", nil},
-      {"ship_name", nil},
-      {"damage_done", nil},
-      {"final_blow", false},
-      {"security_status", nil},
-      {"weapon_type_id", nil}
+    string_fields = [
+      "character_id",
+      "character_name",
+      "corporation_id",
+      "corporation_name",
+      "alliance_id",
+      "alliance_name",
+      "ship_type_id",
+      "ship_name",
+      "damage_done",
+      "security_status",
+      "weapon_type_id"
     ]
 
-    Map.new(fields, fn {field, default} ->
-      atom_field = String.to_atom(field)
-      value = Map.get(attacker, atom_field) || Map.get(attacker, field, default)
-      {field, value}
-    end)
+    # Take existing string keys first, then atom keys, with defaults
+    base = Map.take(attacker, string_fields)
+
+    atom_values =
+      string_fields
+      |> Enum.filter(&(not Map.has_key?(base, &1)))
+      |> Map.new(fn field ->
+        {field, Map.get(attacker, String.to_atom(field))}
+      end)
+
+    Map.merge(base, atom_values)
+    |> Map.put_new("final_blow", false)
   end
 
   # — Notification-enabled Filter ——————————————————————————————————————

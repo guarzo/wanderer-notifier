@@ -208,18 +208,26 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     tracked_systems = get_tracked_systems()
     tracked_characters = get_tracked_characters()
 
-    log_subscription_data(tracked_systems, tracked_characters)
+    # Apply configurable limits to prevent overwhelming WebSocket server
+    max_systems = Application.get_env(:wanderer_notifier, :websocket_max_systems, 1000)
+    max_characters = Application.get_env(:wanderer_notifier, :websocket_max_characters, 500)
 
-    # Return all tracked systems and characters without limiting
-    {tracked_systems, tracked_characters}
+    limited_systems = Enum.take(tracked_systems, max_systems)
+    limited_characters = Enum.take(tracked_characters, max_characters)
+
+    log_subscription_data(tracked_systems, tracked_characters, limited_systems, limited_characters)
+
+    {limited_systems, limited_characters}
   end
 
-  defp log_subscription_data(systems, characters) do
+  defp log_subscription_data(all_systems, all_characters, limited_systems, limited_characters) do
     WandererNotifier.Logger.Logger.debug("WebSocket channel join data preparation",
-      raw_systems_count: length(systems),
-      raw_characters_count: length(characters),
-      sample_systems: Enum.take(systems, 3),
-      sample_characters: Enum.take(characters, 3)
+      total_systems_count: length(all_systems),
+      total_characters_count: length(all_characters),
+      limited_systems_count: length(limited_systems),
+      limited_characters_count: length(limited_characters),
+      sample_systems: Enum.take(limited_systems, 3),
+      sample_characters: Enum.take(limited_characters, 3)
     )
   end
 
@@ -366,8 +374,14 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Transform external service killmail format to internal format
   defp transform_killmail(external_killmail) do
+    # Validate required fields
+    killmail_id = external_killmail["killmail_id"]
+    unless killmail_id do
+      raise ArgumentError, "Missing required killmail_id in external killmail"
+    end
+
     %{
-      "killmail_id" => external_killmail["killmail_id"],
+      "killmail_id" => killmail_id,
       "kill_time" => external_killmail["kill_time"],
       "system_id" => external_killmail["system_id"],
       "victim" => transform_victim(external_killmail["victim"]),
@@ -512,7 +526,7 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   defp normalize_character_id(_), do: nil
 
   defp valid_character_id?(char_id) do
-    is_integer(char_id) && char_id > 90_000_000
+    is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000
   end
 
   # Build the WebSocket URL with proper Phoenix socket path
