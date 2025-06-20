@@ -5,10 +5,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      # NOTIFIER_API_TOKEN should be provided via .env file or environment
-      # Token is no longer baked into the image for security
-      - NOTIFIER_API_TOKEN=${NOTIFIER_API_TOKEN}
     ports:
       - "${PORT:-4000}:4000"
     deploy:

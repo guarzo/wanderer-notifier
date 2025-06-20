@@ -58,22 +58,6 @@ docker.build:
 docker.test:
 	@./scripts/test_docker_image.sh
 
-# Test Docker secrets implementation
-docker.test.secrets:
-	@./scripts/test_docker_secrets.sh
-
-# Build secure Docker image (with secrets)
-docker.build.secure:
-	@echo "Building secure Docker image..."
-	@mkdir -p secrets && echo "test_token_123" > secrets/notifier_token.txt
-	@docker build -f Dockerfile.secure --secret id=notifier_token,src=secrets/notifier_token.txt -t guarzo/wanderer-notifier:secure .
-	@rm -f secrets/notifier_token.txt
-
-# Test secure Docker build
-docker.test.secure: docker.build.secure
-	@echo "Testing secure Docker implementation..."
-	@docker history --no-trunc guarzo/wanderer-notifier:secure | grep -q "test_token" && echo "❌ Token found in history!" || echo "✅ Token not found in history"
-
 # Build and test Docker image
 docker: docker.build docker.test
 

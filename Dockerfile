@@ -43,8 +43,8 @@ FROM deps AS build
 
 WORKDIR /app
 
-# Build arguments (VCS_REF still needed for build metadata)
-# NOTIFIER_API_TOKEN now handled via BuildKit secrets
+# Accept build arguments
+ARG NOTIFIER_API_TOKEN
 
 # Copy source code
 COPY . .
@@ -56,12 +56,9 @@ RUN --mount=type=cache,target=/root/.hex \
  && mix local.rebar --force
 
 # Compile and release with cache mount for build artifacts
-# Use secret mount to access token without storing in layers
 RUN --mount=type=cache,target=/app/_build,sharing=locked \
     --mount=type=cache,target=/root/.hex \
     --mount=type=cache,target=/root/.mix \
-    --mount=type=secret,id=notifier_token,target=/run/secrets/notifier_token \
-    export NOTIFIER_API_TOKEN=$(cat /run/secrets/notifier_token) && \
     mix compile --warnings-as-errors \
  && mix release --overwrite \
  && cp -r /app/_build/prod/rel/wanderer_notifier /app/release
@@ -93,9 +90,13 @@ RUN apt-get update \
 # Copy release from build stage
 COPY --from=build --chown=app:app /app/release ./
 
-# Runtime configuration - NOTIFIER_API_TOKEN should be provided at runtime
+# Accept build arguments in runtime stage
+ARG NOTIFIER_API_TOKEN
+
+# Runtime configuration
 ENV REPLACE_OS_VARS=true \
     HOME=/app \
+    NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     ELIXIR_ERL_OPTIONS="+fnu"
