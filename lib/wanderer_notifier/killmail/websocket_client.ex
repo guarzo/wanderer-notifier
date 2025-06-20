@@ -215,7 +215,12 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     limited_systems = Enum.take(tracked_systems, max_systems)
     limited_characters = Enum.take(tracked_characters, max_characters)
 
-    log_subscription_data(tracked_systems, tracked_characters, limited_systems, limited_characters)
+    log_subscription_data(
+      tracked_systems,
+      tracked_characters,
+      limited_systems,
+      limited_characters
+    )
 
     {limited_systems, limited_characters}
   end
@@ -376,7 +381,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   defp transform_killmail(external_killmail) do
     # Validate required fields
     killmail_id = external_killmail["killmail_id"]
-    unless killmail_id do
+
+    if !killmail_id do
       raise ArgumentError, "Missing required killmail_id in external killmail"
     end
 

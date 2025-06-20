@@ -6,7 +6,7 @@ defmodule WandererNotifier.Test.Support.GlobalMockConfig do
   @behaviour WandererNotifier.Config.ConfigBehaviour
 
   def notifications_enabled?, do: true
-  def kill_notifications_enabled?, do: true  
+  def kill_notifications_enabled?, do: true
   def system_notifications_enabled?, do: true
   def character_notifications_enabled?, do: true
 
