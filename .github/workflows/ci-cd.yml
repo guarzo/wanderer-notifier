@@ -156,13 +156,13 @@ jobs:
 
   docker:
     name: Build and Push Docker Image
-    needs: 
+    needs:
       - test
       - auto-tag
     runs-on: ubuntu-latest
     # Run when: new tag created on main OR manual tag push OR workflow_dispatch
     if: |
-      always() && 
+      always() &&
       needs.test.result == 'success' &&
       (needs.auto-tag.result == 'skipped' || needs.auto-tag.result == 'success') &&
       (
