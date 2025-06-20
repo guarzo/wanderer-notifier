@@ -40,7 +40,8 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp get_kill_id(data) do
     # Try string key first (WebSocket format), then atom key for backward compatibility
-    Map.get(data, "killmail_id") || Map.get(data, :killmail_id) || Map.get(data, Schema.killmail_id())
+    Map.get(data, "killmail_id") || Map.get(data, :killmail_id) ||
+      Map.get(data, Schema.killmail_id())
   end
 
   defp get_system_id(data) do

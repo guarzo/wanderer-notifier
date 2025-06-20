@@ -299,7 +299,8 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     )
 
     # Convert channel ID to integer for Nostrum API
-    channel_id = if is_binary(target_channel), do: String.to_integer(target_channel), else: target_channel
+    channel_id =
+      if is_binary(target_channel), do: String.to_integer(target_channel), else: target_channel
 
     case Message.create(channel_id, content: message) do
       {:ok, _response} ->
