@@ -50,15 +50,68 @@ defmodule WandererNotifier.Application do
         []
       end
 
+    # Add MapEvents WebSocket client if configured
+    map_events_children = build_map_events_children()
+
     # Add scheduler supervisor last to ensure all dependencies are started
     scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
 
-    children = base_children ++ killmail_children ++ scheduler_children
+    children = base_children ++ killmail_children ++ map_events_children ++ scheduler_children
 
     WandererNotifier.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     {:ok, _} = Supervisor.start_link(children, opts)
+  end
+
+  # Build MapEvents children if WebSocket map events are enabled
+  defp build_map_events_children do
+    # Check if we have the required configuration
+    map_name = Application.get_env(:wanderer_notifier, :map_name)
+    map_id = Application.get_env(:wanderer_notifier, :map_id)
+    # This is what runtime.exs sets
+    map_api_key = Application.get_env(:wanderer_notifier, :map_token)
+    websocket_map_url = Application.get_env(:wanderer_notifier, :websocket_map_url)
+
+    WandererNotifier.Logger.Logger.startup_info(
+      "MapEvents configuration check",
+      map_name: inspect(map_name),
+      map_id: inspect(map_id),
+      map_api_key: if(map_api_key, do: "present", else: "missing"),
+      websocket_map_url: inspect(websocket_map_url)
+    )
+
+    # Use map_id if available, otherwise fall back to map_name
+    map_identifier = map_id || map_name
+
+    if map_identifier && map_api_key && websocket_map_url do
+      WandererNotifier.Logger.Logger.startup_info(
+        "Starting MapEvents WebSocket client",
+        map_identifier: map_identifier,
+        url: websocket_map_url
+      )
+
+      # Use the MapEvents supervisor which handles connection failures gracefully
+      [
+        {WandererNotifier.MapEvents.Supervisor,
+         [
+           map_identifier: map_identifier,
+           api_key: map_api_key
+         ]}
+      ]
+    else
+      missing = []
+      missing = if is_nil(map_identifier), do: ["map_id or map_name" | missing], else: missing
+      missing = if is_nil(map_api_key), do: ["map_api_key" | missing], else: missing
+      missing = if is_nil(websocket_map_url), do: ["websocket_map_url" | missing], else: missing
+
+      WandererNotifier.Logger.Logger.startup_info(
+        "MapEvents WebSocket client NOT started - missing configuration",
+        missing: missing
+      )
+
+      []
+    end
   end
 
   # Ensures critical configuration exists to prevent startup failures

@@ -254,6 +254,20 @@ defmodule WandererNotifier.Core.Stats do
     GenServer.cast(__MODULE__, {:set_tracked_count, type, count})
   end
 
+  @doc """
+  Sets the tracked systems count.
+  """
+  def set_tracked_systems_count(count) when is_integer(count) do
+    set_tracked_count(:systems, count)
+  end
+
+  @doc """
+  Sets the tracked characters count.
+  """
+  def set_tracked_characters_count(count) when is_integer(count) do
+    set_tracked_count(:characters, count)
+  end
+
   # Server Implementation
 
   @killmail_metrics [

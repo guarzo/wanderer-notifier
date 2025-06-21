@@ -20,9 +20,9 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     Logger.info("Schedulers enabled: #{schedulers_enabled}")
 
     if schedulers_enabled do
+      # Only include non-polling schedulers
+      # SystemUpdateScheduler and CharacterUpdateScheduler have been replaced by WebSocket events
       children = [
-        {WandererNotifier.Schedulers.SystemUpdateScheduler, []},
-        {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
         {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
       ]
 

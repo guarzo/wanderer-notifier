@@ -86,6 +86,7 @@ config :wanderer_notifier,
   map_url_with_name: map_url_with_name,
   map_url: map_url,
   map_name: map_name,
+  map_id: System.get_env("MAP_ID"),
 
   # Set discord_channel_id explicitly
   discord_channel_id: System.get_env("DISCORD_CHANNEL_ID") || "",
@@ -141,12 +142,20 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 config :wanderer_notifier,
   websocket_enabled: Helpers.parse_bool(System.get_env("WEBSOCKET_ENABLED"), true),
   websocket_url: System.get_env("WEBSOCKET_URL") || "ws://host.docker.internal:4004",
+  websocket_map_url: System.get_env("WEBSOCKET_MAP_URL") || "ws://host.docker.internal:4444",
   phoenix_websocket_version: System.get_env("PHOENIX_WEBSOCKET_VERSION"),
   wanderer_kills_base_url:
     System.get_env("WANDERER_KILLS_BASE_URL") || "http://host.docker.internal:4004"
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"
+
+# Configure RedisQ
+config :wanderer_notifier, :redisq, %{
+  enabled: Helpers.parse_bool(System.get_env("REDISQ_ENABLED"), true),
+  url: System.get_env("REDISQ_URL") || "https://zkillredisq.stream/listen.php",
+  poll_interval: Helpers.parse_int(System.get_env("REDISQ_POLL_INTERVAL"), 1000)
+}
 
 # Configure API token for non-production environments
 # In production, this is set at compile time in prod.exs

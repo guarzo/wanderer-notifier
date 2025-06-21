@@ -8,8 +8,6 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   use WebSockex
 
-  alias WandererNotifier.Contexts.ExternalAdapters
-
   @reconnect_delay 5_000
   @heartbeat_interval 30_000
   # 5 minutes
@@ -451,10 +449,12 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     end
   end
 
-  # Get tracked systems from ExternalAdapters
+  # Get tracked systems from cache (populated by MapEvents WebSocket)
   defp get_tracked_systems do
-    case ExternalAdapters.get_tracked_systems() do
-      {:ok, systems} ->
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case WandererNotifier.Cache.Adapter.get(cache_name, "map:systems") do
+      {:ok, systems} when is_list(systems) ->
         systems
         |> Enum.map(fn system ->
           # Extract EVE Online solar system ID (integer), not the map UUID
@@ -466,23 +466,23 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
         end)
         |> Enum.uniq()
 
-      {:error, _} ->
+      _ ->
+        # No systems in cache yet - MapEvents will populate this
         []
     end
   end
 
-  # Get tracked characters from ExternalAdapters
+  # Get tracked characters from cache (populated by MapEvents WebSocket)
   defp get_tracked_characters do
-    case ExternalAdapters.get_tracked_characters() do
-      {:ok, characters} ->
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case WandererNotifier.Cache.Adapter.get(cache_name, "map:characters") do
+      {:ok, characters} when is_list(characters) ->
         log_raw_characters(characters)
         process_character_list(characters)
 
-      {:error, reason} ->
-        WandererNotifier.Logger.Logger.debug("Failed to get tracked characters",
-          error: inspect(reason)
-        )
-
+      _ ->
+        # No characters in cache yet - MapEvents will populate this
         []
     end
   end
