@@ -29,7 +29,7 @@ There are two ways to install Wanderer Notifier: a **Quick Install** option usin
 For a streamlined installation that creates the necessary directory and files automatically, run:
 
 ```bash
-curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
+curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/33cba423f27c12a09ec3054d4eb76b283da66ab4/wanderer-notifier-setup.sh | bash
 ```
 
 Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container.
@@ -43,7 +43,7 @@ If you'd rather set up everything manually, follow these steps:
 Pull the latest Docker image:
 
 ```bash
-docker pull guarzo/wanderer-notifier:v2
+docker pull guarzo/wanderer-notifier:latest
 ```
 
 #### 2. Configure Your Environment
