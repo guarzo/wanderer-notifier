@@ -52,9 +52,12 @@ defmodule WandererNotifier.Application do
         []
       end
 
+    # Check if SSE is enabled once
+    sse_enabled = WandererNotifier.Config.get(:sse_enabled, true)
+
     # Add SSE supervisor if enabled
     sse_children =
-      if WandererNotifier.Config.get(:sse_enabled, true) do
+      if sse_enabled do
         [{WandererNotifier.Map.SSESupervisor, []}]
       else
         []
@@ -73,11 +76,33 @@ defmodule WandererNotifier.Application do
     result = Supervisor.start_link(children, opts)
 
     # Initialize SSE clients after supervisors are started
-    if WandererNotifier.Config.get(:sse_enabled, true) do
-      Task.start(fn -> WandererNotifier.Map.SSESupervisor.initialize_sse_clients() end)
+    if sse_enabled do
+      initialize_sse_clients()
     end
 
     result
+  end
+
+  # Initialize SSE clients with proper error handling
+  defp initialize_sse_clients do
+    task = Task.async(fn -> WandererNotifier.Map.SSESupervisor.initialize_sse_clients() end)
+
+    try do
+      # 10 second timeout
+      Task.await(task, 10_000)
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.startup_error("Failed to initialize SSE clients",
+          error: Exception.message(error)
+        )
+
+        :error
+    catch
+      :exit, {:timeout, _} ->
+        WandererNotifier.Logger.Logger.startup_error("SSE client initialization timed out")
+        Task.shutdown(task, :brutal_kill)
+        :timeout
+    end
   end
 
   # Ensures critical configuration exists to prevent startup failures

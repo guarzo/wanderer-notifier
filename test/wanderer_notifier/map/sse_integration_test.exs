@@ -8,14 +8,13 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
 
   setup do
     # Start Registry for SSE client naming
-    {:ok, registry} = Registry.start_link(keys: :unique, name: WandererNotifier.Registry)
+    case Registry.start_link(keys: :unique, name: WandererNotifier.Registry) do
+      {:ok, registry} -> registry
+      {:error, {:already_started, registry}} -> registry
+    end
 
     # Start HTTPoison/hackney
     HTTPoison.start()
-
-    on_exit(fn ->
-      GenServer.stop(registry)
-    end)
 
     :ok
   end
@@ -46,7 +45,11 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
 
     test "SSE supervisor can manage clients" do
       # Test that supervisor can be started
-      {:ok, supervisor_pid} = SSESupervisor.start_link([])
+      supervisor_pid =
+        case SSESupervisor.start_link([]) do
+          {:ok, pid} -> pid
+          {:error, {:already_started, pid}} -> pid
+        end
 
       # Verify supervisor is running
       assert Process.alive?(supervisor_pid)

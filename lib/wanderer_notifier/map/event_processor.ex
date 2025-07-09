@@ -178,12 +178,12 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `id` - Unique event identifier (ULID)
   - `type` - Event type string
   - `map_id` - Map UUID
-  - `ts` - ISO 8601 timestamp
+  - `timestamp` - ISO 8601 timestamp
   - `payload` - Event-specific data
   """
   @spec validate_event(map()) :: :ok | {:error, term()}
   def validate_event(event) when is_map(event) do
-    required_fields = ["id", "type", "map_id", "ts", "payload"]
+    required_fields = ["id", "type", "map_id", "timestamp", "payload"]
 
     case find_missing_fields(event, required_fields) do
       [] ->
@@ -221,7 +221,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       id: Map.get(event, "id"),
       type: Map.get(event, "type"),
       map_id: Map.get(event, "map_id"),
-      timestamp: Map.get(event, "ts"),
+      timestamp: Map.get(event, "timestamp"),
       payload_keys: event |> Map.get("payload", %{}) |> Map.keys()
     }
   end

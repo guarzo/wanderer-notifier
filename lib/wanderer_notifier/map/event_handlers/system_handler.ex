@@ -144,7 +144,7 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
 
   defp enrich_system(system) do
     try do
-      # SystemStaticInfo.enrich_system already returns {:ok, enriched_system}
+      # SystemStaticInfo.enrich_system returns {:ok, enriched_system}
       SystemStaticInfo.enrich_system(system)
     rescue
       error ->
@@ -160,15 +160,11 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
   defp update_system_cache(system) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     cache_key = CacheKeys.map_systems()
-    actual_system = unwrap_system(system)
 
     cache_name
     |> Cachex.get(cache_key)
-    |> handle_cache_result(cache_name, cache_key, actual_system)
+    |> handle_cache_result(cache_name, cache_key, system)
   end
-
-  defp unwrap_system({:ok, s}), do: s
-  defp unwrap_system(s), do: s
 
   defp handle_cache_result({:ok, cached_systems}, cache_name, cache_key, system)
        when is_list(cached_systems) do
@@ -223,32 +219,18 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
   end
 
   defp update_system_in_list(systems, new_system) do
-    # Add debug logging to catch the issue
-    AppLogger.api_info("update_system_in_list called",
-      new_system_type: inspect(new_system),
-      is_tuple: is_tuple(new_system),
-      is_map: is_map(new_system)
-    )
-
-    # Handle case where new_system might be wrapped in a tuple
-    actual_system =
-      case new_system do
-        {:ok, system} -> system
-        system -> system
-      end
-
-    system_id = actual_system.solar_system_id
+    system_id = new_system.solar_system_id
 
     case Enum.find_index(systems, fn system ->
            Map.get(system, :solar_system_id) == system_id
          end) do
       nil ->
         # System not found, add it
-        [actual_system | systems]
+        [new_system | systems]
 
       index ->
         # System found, update it
-        List.replace_at(systems, index, actual_system)
+        List.replace_at(systems, index, new_system)
     end
   end
 

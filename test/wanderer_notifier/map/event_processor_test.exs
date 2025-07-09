@@ -9,7 +9,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "id" => "test-123",
         "type" => "add_system",
         "map_id" => "map-123",
-        "ts" => "2024-01-01T12:00:00Z",
+        "timestamp" => "2024-01-01T12:00:00Z",
         "payload" => %{"test" => "data"}
       }
 
@@ -31,7 +31,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "id" => "test-123",
         "type" => "add_system",
         "map_id" => "map-123",
-        "ts" => "2024-01-01T12:00:00Z",
+        "timestamp" => "2024-01-01T12:00:00Z",
         "payload" => %{"system_id" => "sys-123", "name" => "Test System"}
       }
 

@@ -246,7 +246,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncChunk{chunk: chunk, id: async_id}, state) do
-    # Log raw chunk for debugging  
+    # Log raw chunk for debugging
     AppLogger.api_info("Received SSE chunk",
       map_slug: state.map_slug,
       chunk_size: byte_size(chunk),
