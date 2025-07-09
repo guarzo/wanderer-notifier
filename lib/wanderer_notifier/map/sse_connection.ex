@@ -50,31 +50,22 @@ defmodule WandererNotifier.Map.SSEConnection do
   - `connection` - The connection reference to close
   """
   @spec close(reference() | term()) :: :ok
-  def close(connection) when is_reference(connection) do
-    # Handle HTTPoison async response
-    try do
-      async_response = %HTTPoison.AsyncResponse{id: connection}
-      HTTPoison.stream_next(async_response)
-    rescue
-      _ -> :ok
-    end
+  def close(connection) do
+    # Handle HTTPoison async response - stream_next is safe to call
+    async_response = %HTTPoison.AsyncResponse{id: connection}
+    HTTPoison.stream_next(async_response)
+    :ok
   end
-
-  def close(_), do: :ok
 
   # Private functions
 
   defp build_url(map_slug, events_filter, last_event_id) do
     # Use the map URL from configuration, fallback to wanderer_api_base_url
-    base_url = Config.get(:map_url) || Config.get(:wanderer_api_base_url, "https://wanderer.ltd")
+    raw_base_url =
+      Config.get(:map_url) || Config.get(:wanderer_api_base_url, "https://wanderer.ltd")
 
-    # Remove any trailing path from map_url (like /maps/name)
-    base_url =
-      base_url
-      |> URI.parse()
-      |> Map.put(:path, nil)
-      |> Map.put(:query, nil)
-      |> URI.to_string()
+    # Normalize the base URL by removing path and query components
+    base_url = normalize_base_url(raw_base_url)
 
     # Build query params with events filter
     query_params = []
@@ -86,11 +77,13 @@ defmodule WandererNotifier.Map.SSEConnection do
     )
 
     query_params =
-      if events_filter && length(events_filter) > 0 do
-        events_string = Enum.join(events_filter, ",")
-        [{"events", events_string} | query_params]
-      else
-        query_params
+      case events_filter do
+        [_ | _] ->
+          events_string = Enum.join(events_filter, ",")
+          [{"events", events_string} | query_params]
+
+        _ ->
+          query_params
       end
 
     # Add last_event_id for backfill if available
@@ -152,6 +145,26 @@ defmodule WandererNotifier.Map.SSEConnection do
         AppLogger.api_error("SSE connection failed", reason: reason)
         {:error, {:connection_failed, reason}}
     end
+  end
+
+  # Normalizes a base URL by removing path and query components.
+  # 
+  # Takes a URL string and returns a normalized URL with only the scheme, host, and port.
+  # This ensures that the URL is in a consistent format for building API endpoints.
+  # 
+  # Examples:
+  #   normalize_base_url("https://example.com/some/path?param=value")
+  #   #=> "https://example.com"
+  #   
+  #   normalize_base_url("http://localhost:3000/maps/test")
+  #   #=> "http://localhost:3000"
+  @spec normalize_base_url(String.t()) :: String.t()
+  defp normalize_base_url(url) do
+    url
+    |> URI.parse()
+    |> Map.put(:path, nil)
+    |> Map.put(:query, nil)
+    |> URI.to_string()
   end
 
   # Helper function to intelligently truncate URLs at query parameter boundaries
