@@ -324,7 +324,6 @@ defmodule WandererNotifier.Map.SSEClient do
     )
   end
 
-
   defp close_connection(connection) do
     SSEConnection.close(connection)
   end
@@ -419,7 +418,6 @@ defmodule WandererNotifier.Map.SSEClient do
         status: :disconnected
     }
   end
-
 
   defp process_sse_events(events, state, async_id) do
     # Process multiple events from a single chunk

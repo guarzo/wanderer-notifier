@@ -13,12 +13,12 @@ defmodule WandererNotifier.Map.SSEConnectionTest do
     test "close/1 handles different connection types" do
       # Test with nil
       assert :ok = SSEConnection.close(nil)
-      
+
       # Test with reference (may return error from HTTPoison, but doesn't crash)
       ref = make_ref()
       result = SSEConnection.close(ref)
       assert result == :ok or match?({:error, _}, result)
-      
+
       # Test with other types
       assert :ok = SSEConnection.close("invalid")
     end

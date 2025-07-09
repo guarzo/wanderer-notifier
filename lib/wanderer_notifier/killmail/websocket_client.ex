@@ -465,7 +465,7 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
           is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
         end)
         |> Enum.uniq()
-        
+
       {:error, _reason} ->
         # Return empty list on error to prevent crashes
         []
