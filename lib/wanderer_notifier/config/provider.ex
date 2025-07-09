@@ -294,6 +294,8 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp add_redisq_config(config) do
+    # Legacy config name kept for backward compatibility
+    # Killmail processing is always enabled
     put_in(config, [:wanderer_notifier, :redisq], %{
       enabled: true,
       url: System.get_env("REDISQ_URL") || "https://zkillredisq.stream/listen.php",

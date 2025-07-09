@@ -453,38 +453,26 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    case ExternalAdapters.get_tracked_systems() do
-      {:ok, systems} ->
-        systems
-        |> Enum.map(fn system ->
-          # Extract EVE Online solar system ID (integer), not the map UUID
-          system["solar_system_id"] || system[:solar_system_id] ||
-            system["system_id"] || system[:system_id]
-        end)
-        |> Enum.filter(fn system_id ->
-          is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-        end)
-        |> Enum.uniq()
+    {:ok, systems} = ExternalAdapters.get_tracked_systems()
 
-      {:error, _} ->
-        []
-    end
+    systems
+    |> Enum.map(fn system ->
+      # Extract EVE Online solar system ID (integer), not the map UUID
+      system["solar_system_id"] || system[:solar_system_id] ||
+        system["system_id"] || system[:system_id]
+    end)
+    |> Enum.filter(fn system_id ->
+      is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
+    end)
+    |> Enum.uniq()
   end
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    case ExternalAdapters.get_tracked_characters() do
-      {:ok, characters} ->
-        log_raw_characters(characters)
-        process_character_list(characters)
+    {:ok, characters} = ExternalAdapters.get_tracked_characters()
 
-      {:error, reason} ->
-        WandererNotifier.Logger.Logger.debug("Failed to get tracked characters",
-          error: inspect(reason)
-        )
-
-        []
-    end
+    log_raw_characters(characters)
+    process_character_list(characters)
   end
 
   defp log_raw_characters(characters) do
@@ -561,23 +549,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   defp add_version_param(url) do
-    # Check if we should add version parameter or let Phoenix auto-negotiate
-    phoenix_version = Application.get_env(:wanderer_notifier, :phoenix_websocket_version, "1.0.0")
-
-    case phoenix_version do
-      nil ->
-        # No version - let Phoenix auto-negotiate
-        url
-
-      version when is_binary(version) ->
-        # Add specified version
-        separator = if String.contains?(url, "?"), do: "&", else: "?"
-        "#{url}#{separator}vsn=#{version}"
-
-      _ ->
-        # Default to 1.0.0 if invalid config
-        separator = if String.contains?(url, "?"), do: "&", else: "?"
-        "#{url}#{separator}vsn=1.0.0"
-    end
+    # Always use Phoenix WebSocket version 1.0.0
+    separator = if String.contains?(url, "?"), do: "&", else: "?"
+    "#{url}#{separator}vsn=1.0.0"
   end
 end

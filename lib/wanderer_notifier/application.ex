@@ -27,6 +27,8 @@ defmodule WandererNotifier.Application do
       {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       # Add Registry for cache process naming
       {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
+      # Add Registry for SSE client naming
+      {Registry, keys: :unique, name: WandererNotifier.Registry},
       create_cache_child_spec(),
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
@@ -39,26 +41,48 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Web.Server, []}
     ]
 
-    # Add Killmail processing pipeline if RedisQ is enabled
-    redisq_enabled = WandererNotifier.Config.redisq_enabled?()
-    WandererNotifier.Logger.Logger.startup_info("RedisQ enabled: #{redisq_enabled}")
+    # Add Killmail processing pipeline - always enabled
+    killmail_children = [{WandererNotifier.Killmail.Supervisor, []}]
 
-    killmail_children =
-      if redisq_enabled do
-        [{WandererNotifier.Killmail.Supervisor, []}]
-      else
-        []
-      end
+    # Add SSE supervisor - always enabled for system and character tracking
+    sse_children = [{WandererNotifier.Map.SSESupervisor, []}]
 
     # Add scheduler supervisor last to ensure all dependencies are started
     scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
 
-    children = base_children ++ killmail_children ++ scheduler_children
+    children = base_children ++ killmail_children ++ sse_children ++ scheduler_children
 
     WandererNotifier.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    {:ok, _} = Supervisor.start_link(children, opts)
+    result = Supervisor.start_link(children, opts)
+
+    # Initialize SSE clients after supervisors are started
+    initialize_sse_clients()
+
+    result
+  end
+
+  # Initialize SSE clients with proper error handling
+  defp initialize_sse_clients do
+    task = Task.async(fn -> WandererNotifier.Map.SSESupervisor.initialize_sse_clients() end)
+
+    try do
+      # 10 second timeout
+      Task.await(task, 10_000)
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.startup_error("Failed to initialize SSE clients",
+          error: Exception.message(error)
+        )
+
+        :error
+    catch
+      :exit, {:timeout, _} ->
+        WandererNotifier.Logger.Logger.startup_error("SSE client initialization timed out")
+        Task.shutdown(task, :brutal_kill)
+        :timeout
+    end
   end
 
   # Ensures critical configuration exists to prevent startup failures

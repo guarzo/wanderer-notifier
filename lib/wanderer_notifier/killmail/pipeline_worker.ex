@@ -27,27 +27,20 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
     AppLogger.processor_info("Starting Pipeline Worker with WebSocket client")
     state = %State{}
 
-    # Check if WebSocket is enabled
-    websocket_enabled = Application.get_env(:wanderer_notifier, :websocket_enabled, true)
+    # Always start WebSocket client for killmail processing
+    case start_websocket_client() do
+      {:ok, pid} ->
+        AppLogger.processor_info("WebSocket client started", pid: inspect(pid))
+        {:ok, %{state | websocket_pid: pid}}
 
-    if websocket_enabled do
-      case start_websocket_client() do
-        {:ok, pid} ->
-          AppLogger.processor_info("WebSocket client started", pid: inspect(pid))
-          {:ok, %{state | websocket_pid: pid}}
+      {:error, reason} ->
+        AppLogger.processor_warn("Failed to start WebSocket client, will retry",
+          reason: inspect(reason)
+        )
 
-        {:error, reason} ->
-          AppLogger.processor_warn("Failed to start WebSocket client, will retry",
-            reason: inspect(reason)
-          )
-
-          # Don't crash the worker, but schedule a retry
-          Process.send_after(self(), :retry_websocket_start, 15_000)
-          {:ok, state}
-      end
-    else
-      AppLogger.processor_info("WebSocket client disabled by configuration")
-      {:ok, state}
+        # Don't crash the worker, but schedule a retry
+        Process.send_after(self(), :retry_websocket_start, 15_000)
+        {:ok, state}
     end
   end
 
