@@ -21,8 +21,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
     if schedulers_enabled do
       children = [
-        {WandererNotifier.Schedulers.SystemUpdateScheduler, []},
-        {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
+        # Only keep non-polling schedulers
         {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
       ]
 
