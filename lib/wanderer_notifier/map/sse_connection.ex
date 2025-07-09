@@ -159,47 +159,69 @@ defmodule WandererNotifier.Map.SSEConnection do
     if String.length(url) <= max_length do
       url
     else
-      # Find the base URL and query string
-      case String.split(url, "?", parts: 2) do
-        [base_url] ->
-          # No query parameters, just truncate normally
-          String.slice(url, 0, max_length) <> "..."
-
-        [base_url, query_string] ->
-          # If base URL fits within limit, try to include complete query parameters
-          if String.length(base_url) >= max_length do
-            String.slice(base_url, 0, max_length) <> "..."
-          else
-            # -1 for the "?"
-            remaining_length = max_length - String.length(base_url) - 1
-
-            # Split query parameters and add them until we reach the limit
-            query_params = String.split(query_string, "&")
-
-            {truncated_params, _} =
-              Enum.reduce_while(query_params, {[], 0}, fn param, {acc, current_length} ->
-                param_with_separator = if acc == [], do: param, else: "&#{param}"
-                new_length = current_length + String.length(param_with_separator)
-
-                if new_length <= remaining_length do
-                  {:cont, {acc ++ [param], new_length}}
-                else
-                  {:halt, {acc, current_length}}
-                end
-              end)
-
-            case truncated_params do
-              [] ->
-                base_url <> "?..."
-
-              params ->
-                base_url <>
-                  "?" <>
-                  Enum.join(params, "&") <>
-                  if length(params) < length(query_params), do: "&...", else: ""
-            end
-          end
-      end
+      truncate_long_url(url, max_length)
     end
+  end
+
+  defp truncate_long_url(url, max_length) do
+    case String.split(url, "?", parts: 2) do
+      [_base_url] ->
+        # No query parameters, just truncate normally
+        String.slice(url, 0, max_length) <> "..."
+
+      [base_url, query_string] ->
+        truncate_url_with_query(base_url, query_string, max_length)
+    end
+  end
+
+  defp truncate_url_with_query(base_url, query_string, max_length) do
+    if String.length(base_url) >= max_length do
+      String.slice(base_url, 0, max_length) <> "..."
+    else
+      truncate_query_params(base_url, query_string, max_length)
+    end
+  end
+
+  defp truncate_query_params(base_url, query_string, max_length) do
+    # -1 for the "?"
+    remaining_length = max_length - String.length(base_url) - 1
+    query_params = String.split(query_string, "&")
+
+    truncated_params = collect_params_within_limit(query_params, remaining_length)
+
+    build_truncated_url(base_url, truncated_params, query_params)
+  end
+
+  defp collect_params_within_limit(query_params, remaining_length) do
+    {params, _} =
+      Enum.reduce_while(query_params, {[], 0}, fn param, {acc, current_length} ->
+        param_length = calculate_param_length(param, acc)
+        new_length = current_length + param_length
+
+        if new_length <= remaining_length do
+          {:cont, {acc ++ [param], new_length}}
+        else
+          {:halt, {acc, current_length}}
+        end
+      end)
+
+    params
+  end
+
+  defp calculate_param_length(param, acc) do
+    # "&" separator
+    separator_length = if acc == [], do: 0, else: 1
+    String.length(param) + separator_length
+  end
+
+  defp build_truncated_url(base_url, [], _all_params) do
+    base_url <> "?..."
+  end
+
+  defp build_truncated_url(base_url, truncated_params, all_params) do
+    truncated_query = Enum.join(truncated_params, "&")
+    ellipsis = if length(truncated_params) < length(all_params), do: "&...", else: ""
+
+    base_url <> "?" <> truncated_query <> ellipsis
   end
 end
