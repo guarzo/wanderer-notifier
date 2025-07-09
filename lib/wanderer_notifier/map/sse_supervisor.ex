@@ -142,25 +142,20 @@ defmodule WandererNotifier.Map.SSESupervisor do
   @doc """
   Initializes SSE clients based on application configuration.
 
-  This function should be called during application startup if SSE is enabled.
+  This function is called during application startup.
   """
   @spec initialize_sse_clients() :: :ok
   def initialize_sse_clients() do
-    if Config.get(:sse_enabled, true) and Config.get(:system_sse_enabled, true) do
-      case get_map_configuration() do
-        {:ok, map_config} ->
-          start_sse_client_from_config(map_config)
+    case get_map_configuration() do
+      {:ok, map_config} ->
+        start_sse_client_from_config(map_config)
 
-        {:error, reason} ->
-          AppLogger.api_error("Failed to initialize SSE clients",
-            error: inspect(reason)
-          )
+      {:error, reason} ->
+        AppLogger.api_error("Failed to initialize SSE clients",
+          error: inspect(reason)
+        )
 
-          :ok
-      end
-    else
-      AppLogger.api_info("SSE disabled, skipping client initialization")
-      :ok
+        :ok
     end
   end
 

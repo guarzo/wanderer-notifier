@@ -549,23 +549,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   defp add_version_param(url) do
-    # Check if we should add version parameter or let Phoenix auto-negotiate
-    phoenix_version = Application.get_env(:wanderer_notifier, :phoenix_websocket_version, "1.0.0")
-
-    case phoenix_version do
-      nil ->
-        # No version - let Phoenix auto-negotiate
-        url
-
-      version when is_binary(version) ->
-        # Add specified version
-        separator = if String.contains?(url, "?"), do: "&", else: "?"
-        "#{url}#{separator}vsn=#{version}"
-
-      _ ->
-        # Default to 1.0.0 if invalid config
-        separator = if String.contains?(url, "?"), do: "&", else: "?"
-        "#{url}#{separator}vsn=1.0.0"
-    end
+    # Always use Phoenix WebSocket version 1.0.0
+    separator = if String.contains?(url, "?"), do: "&", else: "?"
+    "#{url}#{separator}vsn=1.0.0"
   end
 end

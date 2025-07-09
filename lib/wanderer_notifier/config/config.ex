@@ -316,9 +316,9 @@ defmodule WandererNotifier.Config do
   def character_tracking_enabled?, do: true
   def system_tracking_enabled?, do: true
 
-  # --- RedisQ ---
+  # --- Killmail Processing (formerly RedisQ) ---
   def redisq_config, do: get(:redisq, %{})
-  def redisq_enabled?, do: Map.get(redisq_config(), :enabled, true)
+  def redisq_enabled?, do: true  # Always enabled
   def redisq_url, do: Map.get(redisq_config(), :url, "https://zkillredisq.stream/listen.php")
   def redisq_poll_interval, do: Map.get(redisq_config(), :poll_interval, 1000)
 

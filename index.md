@@ -75,7 +75,7 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
 # ENABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
 
-# Notification Control (tracking is always enabled)
+# Notification Control
 # KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
 # SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
 # CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
@@ -176,7 +176,8 @@ On startup, the application validates all configuration settings. If there are i
 
 ## Current Features
 
-- **Real-Time Kill Monitoring:** Consumes live killmail data via ZKillboard's RedisQ API
+- **Real-Time Kill Monitoring:** Receives pre-enriched killmail data via WebSocket connection to WandererKills service
+- **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the map
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
@@ -184,8 +185,8 @@ On startup, the application validates all configuration settings. If there are i
 - **Priority Systems:** Mark critical systems for special notifications with @here mentions
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
-- **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information
-- **Map Integration:** Connects to Wanderer map API for system and character tracking
+- **Data Enrichment:** Integrates with EVE's ESI API when needed (pre-enriched data used when available)
+- **Map Integration:** Real-time SSE connection to Wanderer map API for system and character tracking
 - **Robust Architecture:** Built on Elixir's OTP supervision trees for fault tolerance and reliability
 - **Production Ready:** Comprehensive logging, telemetry, Docker deployment, and health checks
 

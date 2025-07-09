@@ -51,17 +51,19 @@ The application follows a domain-driven design with these core components:
 
 ### Data Flow
 1. **WebSocket Client** (`lib/wanderer_notifier/killmail/websocket_client.ex`) - Connects to external WandererKills service for real-time pre-enriched killmail data
-2. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy ZKillboard data
-3. **ESI Service** (`lib/wanderer_notifier/esi/`) - Provides legacy enrichment for ZKillboard data (bypassed for WebSocket killmails)
-4. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via custom map API
-5. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
-6. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
+2. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time connection to map API for system and character updates
+3. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy ZKillboard data
+4. **ESI Service** (`lib/wanderer_notifier/esi/`) - Provides legacy enrichment for ZKillboard data (bypassed for WebSocket killmails)
+5. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via SSE real-time events
+6. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
+7. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
 
 ### Key Services
 - **WebSocket Client**: Real-time connection to WandererKills service for pre-enriched killmail data
+- **SSE Client**: Real-time Server-Sent Events connection to map API for system/character updates
 - **WandererKills HTTP Client** (`lib/wanderer_notifier/killmail/wanderer_kills_client.ex`): REST API client for recent kills lookup
 - **Cache Layer**: Uses Cachex to minimize API calls with configurable TTLs  
-- **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic character/system updates
+- **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic updates
 - **License Service**: Controls feature availability (premium embeds vs free text notifications)
 - **HTTP Client**: Centralized HTTP client with retry logic and rate limiting
 
@@ -69,8 +71,10 @@ The application follows a domain-driven design with these core components:
 - Environment variables are loaded without the WANDERER_ prefix (e.g., `DISCORD_BOT_TOKEN` instead of `WANDERER_DISCORD_BOT_TOKEN`)
 - Configuration layers: `config/config.exs` (compile-time) → `config/runtime.exs` (runtime with env vars)
 - Local development uses `.env` file via Dotenvy
-- **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004")
+- **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004") for killmail processing
 - **WandererKills Configuration**: `WANDERER_KILLS_BASE_URL` (default: "http://host.docker.internal:4004")
+- **SSE Configuration**: Automatically configured from MAP_URL/MAP_NAME/MAP_API_KEY
+- **Core Services**: Killmail processing via WebSocket and map synchronization via SSE are always enabled
 
 ### Testing Approach
 - Heavy use of Mox for behavior-based mocking
@@ -100,6 +104,6 @@ All HTTP requests go through the centralized `WandererNotifier.Http` module whic
 
 ### Feature Flags
 Features can be toggled via environment variables ending in `_ENABLED`:
-- `KILLMAIL_NOTIFICATION_ENABLED`
-- `SYSTEM_NOTIFICATION_ENABLED`
-- `CHARACTER_NOTIFICATION_ENABLED`
+- `KILL_NOTIFICATIONS_ENABLED` - Enable/disable kill notifications
+- `SYSTEM_NOTIFICATIONS_ENABLED` - Enable/disable system notifications
+- `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications

@@ -34,7 +34,6 @@ jobs:
       LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
       LICENSE_MANAGER_URL: ${{ secrets.LICENSE_MANAGER_URL }}
       ENV: test
-      DISABLE_WEBSOCKET: true
     steps:
       - uses: actions/checkout@v4
 

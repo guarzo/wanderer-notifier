@@ -54,7 +54,6 @@ defmodule WandererNotifier.Map.SSEClientTest do
       ]
 
       assert {:ok, pid} = SSEClient.start_link(opts)
-      assert Process.alive?(pid)
       # Just check that the process is alive since get_status function may not exist
       assert Process.alive?(pid)
     end
@@ -170,13 +169,6 @@ defmodule WandererNotifier.Map.SSEClientTest do
 
       assert WandererNotifier.Map.EventProcessor.validate_event(incomplete_event) ==
                {:error, {:missing_fields, ["id", "map_id", "timestamp", "payload"]}}
-    end
-
-    test "handles network errors during connection" do
-      # This would test reconnection logic
-      # Implementation depends on how the SSE client handles network errors
-      # Placeholder for now
-      assert true
     end
   end
 end

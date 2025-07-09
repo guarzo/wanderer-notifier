@@ -139,30 +139,20 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 
 # Configure WebSocket and WandererKills settings
 config :wanderer_notifier,
-  websocket_enabled: Helpers.parse_bool(System.get_env("WEBSOCKET_ENABLED"), true),
   websocket_url: System.get_env("WEBSOCKET_URL") || "ws://host.docker.internal:4004",
-  phoenix_websocket_version: System.get_env("PHOENIX_WEBSOCKET_VERSION"),
   wanderer_kills_base_url:
     System.get_env("WANDERER_KILLS_BASE_URL") || "http://host.docker.internal:4004"
 
 # Configure SSE settings
 config :wanderer_notifier,
-  # SSE Configuration
-  sse_enabled: Helpers.parse_bool(System.get_env("SSE_ENABLED"), true),
+  # SSE Configuration - always enabled, no toggles needed
   sse_reconnect_initial_delay:
     Helpers.parse_int(System.get_env("SSE_RECONNECT_INITIAL_DELAY"), 1000),
   sse_reconnect_max_delay: Helpers.parse_int(System.get_env("SSE_RECONNECT_MAX_DELAY"), 30000),
   sse_event_buffer_size: Helpers.parse_int(System.get_env("SSE_EVENT_BUFFER_SIZE"), 1000),
 
   # Wanderer API Configuration
-  wanderer_api_base_url: System.get_env("WANDERER_API_BASE_URL") || "https://wanderer.ltd",
-
-  # Fallback Configuration
-  fallback_to_polling: Helpers.parse_bool(System.get_env("FALLBACK_TO_POLLING"), true),
-
-  # Feature Flags for SSE
-  system_sse_enabled: Helpers.parse_bool(System.get_env("SYSTEM_SSE_ENABLED"), true),
-  character_sse_enabled: Helpers.parse_bool(System.get_env("CHARACTER_SSE_ENABLED"), true)
+  wanderer_api_base_url: System.get_env("WANDERER_API_BASE_URL") || "https://wanderer.ltd"
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"

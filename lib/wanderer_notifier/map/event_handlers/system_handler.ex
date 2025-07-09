@@ -30,21 +30,15 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
       system_data: inspect(payload)
     )
 
-    with {:ok, system} <- create_system_from_payload(payload, map_slug),
-         {:ok, enriched_system} <- enrich_system(system) do
-      case update_system_cache(enriched_system) do
-        :ok ->
-          maybe_send_notification(enriched_system, map_slug)
-
-        {:error, reason} = error ->
-          AppLogger.api_error("Failed to update system cache",
-            map_slug: map_slug,
-            error: inspect(reason)
-          )
-
-          error
-      end
+    with {:ok, system} <- create_system_from_payload(payload),
+         {:ok, enriched_system} <- enrich_system(system),
+         :ok <- handle_cache_update(enriched_system, map_slug) do
+      maybe_send_notification(enriched_system, map_slug)
     else
+      {:error, {:system_creation_failed, error, failed_payload}} ->
+        log_system_creation_error(map_slug, error, failed_payload)
+        {:error, {:system_creation_failed, error}}
+
       {:error, reason} = error ->
         AppLogger.api_error("Failed to process add_system event",
           map_slug: map_slug,
@@ -104,7 +98,7 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
       system_data: inspect(payload)
     )
 
-    with {:ok, system} <- create_system_from_payload(payload, map_slug),
+    with {:ok, system} <- create_system_from_payload(payload),
          {:ok, enriched_system} <- enrich_system(system),
          :ok <- update_system_cache(enriched_system) do
       AppLogger.api_info("System metadata updated",
@@ -114,6 +108,10 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
 
       :ok
     else
+      {:error, {:system_creation_failed, error, failed_payload}} ->
+        log_system_creation_error(map_slug, error, failed_payload)
+        {:error, {:system_creation_failed, error}}
+
       {:error, reason} = error ->
         AppLogger.api_error("Failed to process system_metadata_changed event",
           map_slug: map_slug,
@@ -126,19 +124,36 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
 
   # Private helper functions
 
-  defp create_system_from_payload(payload, map_slug) do
+  defp log_system_creation_error(map_slug, error, payload) do
+    AppLogger.api_error("Failed to create system from payload",
+      map_slug: map_slug,
+      payload: inspect(payload),
+      error: inspect(error)
+    )
+  end
+
+  defp handle_cache_update(enriched_system, map_slug) do
+    case update_system_cache(enriched_system) do
+      :ok ->
+        :ok
+
+      {:error, reason} = error ->
+        AppLogger.api_error("Failed to update system cache",
+          map_slug: map_slug,
+          error: inspect(reason)
+        )
+
+        error
+    end
+  end
+
+  defp create_system_from_payload(payload) do
     try do
       system = MapSystem.new(payload)
       {:ok, system}
     rescue
       error ->
-        AppLogger.api_error("Failed to create system from payload",
-          map_slug: map_slug,
-          payload: inspect(payload),
-          error: inspect(error)
-        )
-
-        {:error, {:system_creation_failed, error}}
+        {:error, {:system_creation_failed, error, payload}}
     end
   end
 
@@ -198,7 +213,7 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
 
         updated_systems =
           Enum.reject(cached_systems, fn system ->
-            Map.get(system, :id) == system_id
+            Map.get(system, :solar_system_id) == system_id
           end)
 
         case Cachex.put(cache_name, cache_key, updated_systems) do

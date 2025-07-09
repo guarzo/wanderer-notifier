@@ -349,8 +349,8 @@ defmodule WandererNotifier.Map.SSEClient do
     # Build query params with events filter
     query_params = []
 
-    # Add events filter if available
-    events_filter = state.events_filter || @default_events
+    # Add events filter if available (nil means no filtering)
+    events_filter = state.events_filter
 
     AppLogger.api_info("Building SSE URL with events filter",
       map_slug: state.map_slug,

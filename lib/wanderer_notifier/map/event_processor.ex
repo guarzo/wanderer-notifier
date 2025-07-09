@@ -4,6 +4,20 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   This module acts as the central dispatcher for all map events,
   routing them to appropriate handlers based on event type.
+
+  ## Event Categories
+
+  Events are organized into logical categories for better maintainability:
+
+  - **System Events**: Changes to wormhole systems (add/remove/update)
+  - **Connection Events**: Wormhole connection changes (future)
+  - **Signature Events**: Cosmic signature updates (future)
+  - **ACL Events**: Access control list changes for character tracking
+  - **Special Events**: Meta events like connection status
+
+  The event processor uses a two-stage routing approach:
+  1. Categorize the event based on its type
+  2. Delegate to the appropriate category handler
   """
 
   require Logger
@@ -71,87 +85,93 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   # Routes an event to the appropriate handler based on event type.
   # 
-  # ## System Events
-  # - `add_system` - New system added to map
-  # - `deleted_system` - System removed from map
-  # - `system_metadata_changed` - System properties updated
-  # 
-  # ## Connection Events (future)
-  # - `connection_added` - New wormhole connection
-  # - `connection_removed` - Connection closed
-  # - `connection_updated` - Connection properties changed
-  # 
-  # ## Signature Events (future)
-  # - `signature_added` - New signature detected
-  # - `signature_removed` - Signature cleared
-  # - `signatures_updated` - Signature properties changed
-  # 
-  # ## Kill Events (future)
-  # - `map_kill` - Kill occurred in mapped system
-  # 
-  # ## ACL Events
-  # - `acl_member_added` - Character added to map ACL
-  # - `acl_member_removed` - Character removed from map ACL
-  # - `acl_member_updated` - Character role updated in map ACL
+  # ## Event Categories
+  # - System Events: add_system, deleted_system, system_metadata_changed
+  # - Connection Events: connection_added, connection_removed, connection_updated
+  # - Signature Events: signature_added, signature_removed, signatures_updated
+  # - ACL Events: acl_member_added, acl_member_removed, acl_member_updated
+  # - Special Events: connected, map_kill
   @spec route_event(String.t(), map(), String.t()) :: :ok | {:error, term()} | :ignored
-  defp route_event("add_system", event, map_slug) do
+  defp route_event(event_type, event, map_slug) do
+    case categorize_event(event_type) do
+      :system -> handle_system_event(event_type, event, map_slug)
+      :connection -> handle_connection_event(event_type, event, map_slug)
+      :signature -> handle_signature_event(event_type, event, map_slug)
+      :acl -> handle_acl_event(event_type, event, map_slug)
+      :special -> handle_special_event(event_type, event, map_slug)
+      :unknown -> handle_unknown_event(event_type, event, map_slug)
+    end
+  end
+
+  # Categorizes events based on their type prefix or pattern
+  @spec categorize_event(String.t()) :: atom()
+  defp categorize_event(event_type) do
+    cond do
+      event_type in ["add_system", "deleted_system", "system_metadata_changed"] ->
+        :system
+
+      event_type in ["connection_added", "connection_removed", "connection_updated"] ->
+        :connection
+
+      event_type in ["signature_added", "signature_removed", "signatures_updated"] ->
+        :signature
+
+      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
+        :acl
+
+      event_type in ["connected", "map_kill"] ->
+        :special
+
+      true ->
+        :unknown
+    end
+  end
+
+  # System event handlers
+  @spec handle_system_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
+  defp handle_system_event("add_system", event, map_slug) do
     SystemHandler.handle_system_added(event, map_slug)
   end
 
-  defp route_event("deleted_system", event, map_slug) do
+  defp handle_system_event("deleted_system", event, map_slug) do
     SystemHandler.handle_system_deleted(event, map_slug)
   end
 
-  defp route_event("system_metadata_changed", event, map_slug) do
+  defp handle_system_event("system_metadata_changed", event, map_slug) do
     SystemHandler.handle_system_metadata_changed(event, map_slug)
   end
 
-  # Connection events (not implemented yet)
-  defp route_event("connection_added", _event, _map_slug) do
+  # Connection event handlers (not implemented yet)
+  @spec handle_connection_event(String.t(), map(), String.t()) :: :ignored
+  defp handle_connection_event(_event_type, _event, _map_slug) do
+    # Future implementation for wormhole connection events
     :ignored
   end
 
-  defp route_event("connection_removed", _event, _map_slug) do
+  # Signature event handlers (not implemented yet)
+  @spec handle_signature_event(String.t(), map(), String.t()) :: :ignored
+  defp handle_signature_event(_event_type, _event, _map_slug) do
+    # Future implementation for signature scanning events
     :ignored
   end
 
-  defp route_event("connection_updated", _event, _map_slug) do
-    :ignored
-  end
-
-  # Signature events (not implemented yet)
-  defp route_event("signature_added", _event, _map_slug) do
-    :ignored
-  end
-
-  defp route_event("signature_removed", _event, _map_slug) do
-    :ignored
-  end
-
-  defp route_event("signatures_updated", _event, _map_slug) do
-    :ignored
-  end
-
-  # Kill events (not implemented yet - handled by existing killmail pipeline)
-  defp route_event("map_kill", _event, _map_slug) do
-    :ignored
-  end
-
-  # ACL events for character tracking
-  defp route_event("acl_member_added", event, map_slug) do
+  # ACL event handlers for character tracking
+  @spec handle_acl_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
+  defp handle_acl_event("acl_member_added", event, map_slug) do
     AclHandler.handle_acl_member_added(event, map_slug)
   end
 
-  defp route_event("acl_member_removed", event, map_slug) do
+  defp handle_acl_event("acl_member_removed", event, map_slug) do
     AclHandler.handle_acl_member_removed(event, map_slug)
   end
 
-  defp route_event("acl_member_updated", event, map_slug) do
+  defp handle_acl_event("acl_member_updated", event, map_slug) do
     AclHandler.handle_acl_member_updated(event, map_slug)
   end
 
-  # Connection events (special system events)
-  defp route_event("connected", event, map_slug) do
+  # Special event handlers
+  @spec handle_special_event(String.t(), map(), String.t()) :: :ok | :ignored
+  defp handle_special_event("connected", event, map_slug) do
     AppLogger.api_info("SSE connection established",
       map_slug: map_slug,
       event_id: Map.get(event, "id"),
@@ -161,8 +181,14 @@ defmodule WandererNotifier.Map.EventProcessor do
     :ok
   end
 
-  # Unknown event types
-  defp route_event(unknown_type, _event, map_slug) do
+  defp handle_special_event("map_kill", _event, _map_slug) do
+    # Kill events are handled by the existing killmail pipeline
+    :ignored
+  end
+
+  # Unknown event handler
+  @spec handle_unknown_event(String.t(), map(), String.t()) :: :ignored
+  defp handle_unknown_event(unknown_type, _event, map_slug) do
     AppLogger.api_warn("Unknown event type received",
       map_slug: map_slug,
       event_type: unknown_type

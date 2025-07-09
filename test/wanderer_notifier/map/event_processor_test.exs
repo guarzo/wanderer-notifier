@@ -43,5 +43,28 @@ defmodule WandererNotifier.Map.EventProcessorTest do
       assert metadata.timestamp == "2024-01-01T12:00:00Z"
       assert metadata.payload_keys == ["name", "system_id"]
     end
+
+    test "processes different event categories correctly" do
+      # Test unknown event (returns :ok for ignored events)
+      unknown_event = %{
+        "id" => "test-789",
+        "type" => "future_event_type",
+        "map_id" => "map-123",
+        "timestamp" => "2024-01-01T12:00:00Z",
+        "payload" => %{}
+      }
+      assert EventProcessor.process_event(unknown_event, "test-map") == :ok
+      
+      # Test special event (connected)
+      connected_event = %{
+        "id" => "test-conn",
+        "type" => "connected",
+        "map_id" => "map-123",
+        "timestamp" => "2024-01-01T12:00:00Z",
+        "payload" => %{},
+        "server_time" => "2024-01-01T12:00:00Z"
+      }
+      assert EventProcessor.process_event(connected_event, "test-map") == :ok
+    end
   end
 end

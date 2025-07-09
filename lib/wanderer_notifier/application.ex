@@ -41,29 +41,11 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Web.Server, []}
     ]
 
-    # Add Killmail processing pipeline if RedisQ is enabled
-    redisq_enabled = WandererNotifier.Config.redisq_enabled?()
-    WandererNotifier.Logger.Logger.startup_info("RedisQ enabled: #{redisq_enabled}")
+    # Add Killmail processing pipeline - always enabled
+    killmail_children = [{WandererNotifier.Killmail.Supervisor, []}]
 
-    killmail_children =
-      if redisq_enabled do
-        [{WandererNotifier.Killmail.Supervisor, []}]
-      else
-        []
-      end
-
-    # Check if SSE is enabled once
-    sse_enabled = WandererNotifier.Config.get(:sse_enabled, true)
-
-    # Add SSE supervisor if enabled
-    sse_children =
-      if sse_enabled do
-        [{WandererNotifier.Map.SSESupervisor, []}]
-      else
-        []
-      end
-
-    # SSE is now the primary method for system and character tracking
+    # Add SSE supervisor - always enabled for system and character tracking
+    sse_children = [{WandererNotifier.Map.SSESupervisor, []}]
 
     # Add scheduler supervisor last to ensure all dependencies are started
     scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
@@ -76,9 +58,7 @@ defmodule WandererNotifier.Application do
     result = Supervisor.start_link(children, opts)
 
     # Initialize SSE clients after supervisors are started
-    if sse_enabled do
-      initialize_sse_clients()
-    end
+    initialize_sse_clients()
 
     result
   end
