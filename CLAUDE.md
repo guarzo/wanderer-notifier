@@ -104,6 +104,7 @@ All HTTP requests go through the centralized `WandererNotifier.Http` module whic
 
 ### Feature Flags
 Features can be toggled via environment variables ending in `_ENABLED`:
+
 - `KILL_NOTIFICATIONS_ENABLED` - Enable/disable kill notifications
 - `SYSTEM_NOTIFICATIONS_ENABLED` - Enable/disable system notifications
 - `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications

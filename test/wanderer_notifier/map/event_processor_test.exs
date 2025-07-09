@@ -53,8 +53,9 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "timestamp" => "2024-01-01T12:00:00Z",
         "payload" => %{}
       }
+
       assert EventProcessor.process_event(unknown_event, "test-map") == :ok
-      
+
       # Test special event (connected)
       connected_event = %{
         "id" => "test-conn",
@@ -64,6 +65,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "payload" => %{},
         "server_time" => "2024-01-01T12:00:00Z"
       }
+
       assert EventProcessor.process_event(connected_event, "test-map") == :ok
     end
   end

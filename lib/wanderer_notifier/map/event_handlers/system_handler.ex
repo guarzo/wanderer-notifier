@@ -213,7 +213,10 @@ defmodule WandererNotifier.Map.EventHandlers.SystemHandler do
 
         updated_systems =
           Enum.reject(cached_systems, fn system ->
-            Map.get(system, :solar_system_id) == system_id
+            # Handle both potential ID fields in cached systems
+            Map.get(system, :solar_system_id) == system_id || 
+            Map.get(system, :id) == system_id ||
+            Map.get(system, "id") == system_id
           end)
 
         case Cachex.put(cache_name, cache_key, updated_systems) do

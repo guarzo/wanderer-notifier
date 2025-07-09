@@ -9,9 +9,10 @@ defmodule WandererNotifier.Map.SSEClient do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.EventProcessor
+  alias WandererNotifier.Map.SSEParser
+  alias WandererNotifier.Map.SSEConnection
 
   @type state :: %{
           map_slug: String.t(),
@@ -247,14 +248,14 @@ defmodule WandererNotifier.Map.SSEClient do
   @impl GenServer
   def handle_info(%HTTPoison.AsyncChunk{chunk: chunk, id: async_id}, state) do
     # Log raw chunk for debugging
-    AppLogger.api_info("Received SSE chunk",
+    AppLogger.api_debug("Received SSE chunk",
       map_slug: state.map_slug,
       chunk_size: byte_size(chunk),
       chunk_preview: String.slice(chunk, 0, 200)
     )
 
     # Process SSE chunk
-    case parse_sse_chunk(chunk) do
+    case SSEParser.parse_chunk(chunk) do
       {:ok, events} ->
         AppLogger.api_info("Parsed SSE chunk into events",
           map_slug: state.map_slug,
@@ -315,128 +316,18 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp do_connect(state) do
-    url = build_sse_url(state)
-    headers = build_headers(state)
-
-    # Log the full URL without truncation
-    AppLogger.api_info("Connecting to SSE",
-      map_slug: state.map_slug,
-      # Show more of the URL
-      url: String.slice(url, 0..500)
+    SSEConnection.connect(
+      state.map_slug,
+      state.api_token,
+      state.events_filter,
+      state.last_event_id
     )
-
-    case start_sse_connection(url, headers) do
-      {:ok, connection} ->
-        {:ok, connection}
-
-      error ->
-        {:error, error}
-    end
   end
 
-  defp build_sse_url(state) do
-    # Use the map URL from configuration, fallback to wanderer_api_base_url
-    base_url = Config.get(:map_url) || Config.get(:wanderer_api_base_url, "https://wanderer.ltd")
 
-    # Remove any trailing path from map_url (like /maps/name)
-    base_url =
-      base_url
-      |> URI.parse()
-      |> Map.put(:path, nil)
-      |> Map.put(:query, nil)
-      |> URI.to_string()
-
-    # Build query params with events filter
-    query_params = []
-
-    # Add events filter if available (nil means no filtering)
-    events_filter = state.events_filter
-
-    AppLogger.api_info("Building SSE URL with events filter",
-      map_slug: state.map_slug,
-      state_events_filter: inspect(state.events_filter),
-      resolved_events_filter: inspect(events_filter),
-      default_events: inspect(@default_events)
-    )
-
-    query_params =
-      if events_filter && length(events_filter) > 0 do
-        events_string = Enum.join(events_filter, ",")
-        [{"events", events_string} | query_params]
-      else
-        query_params
-      end
-
-    # Add last_event_id for backfill if available
-    query_params =
-      if state.last_event_id do
-        [{"last_event_id", state.last_event_id} | query_params]
-      else
-        query_params
-      end
-
-    # Build the URL - try using map_slug instead of map_id
-    final_url =
-      if length(query_params) > 0 do
-        query_string = URI.encode_query(query_params)
-        "#{base_url}/api/maps/#{state.map_slug}/events/stream?#{query_string}"
-      else
-        # No query parameters at all - use map slug
-        "#{base_url}/api/maps/#{state.map_slug}/events/stream"
-      end
-
-    AppLogger.api_info("Final SSE URL",
-      map_slug: state.map_slug,
-      url: final_url,
-      query_params: inspect(query_params)
-    )
-
-    final_url
+  defp close_connection(connection) do
+    SSEConnection.close(connection)
   end
-
-  defp build_headers(state) do
-    [
-      {"Authorization", "Bearer #{state.api_token}"},
-      {"Accept", "text/event-stream"},
-      {"Cache-Control", "no-cache"},
-      {"Connection", "keep-alive"}
-    ]
-  end
-
-  defp start_sse_connection(url, headers) do
-    # Start real SSE connection using HTTPoison streaming
-    options = [
-      stream_to: self(),
-      async: :once,
-      recv_timeout: 60_000,
-      timeout: 30_000,
-      follow_redirect: true
-    ]
-
-    AppLogger.api_info("Starting SSE connection", url: url)
-
-    case HTTPoison.get(url, headers, options) do
-      {:ok, %HTTPoison.AsyncResponse{id: async_id}} ->
-        AppLogger.api_info("SSE connection established", async_id: async_id)
-        {:ok, async_id}
-
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        AppLogger.api_error("SSE connection failed", reason: reason)
-        {:error, {:connection_failed, reason}}
-    end
-  end
-
-  defp close_connection(connection) when is_reference(connection) do
-    # Handle HTTPoison async response
-    try do
-      async_response = %HTTPoison.AsyncResponse{id: connection}
-      HTTPoison.stream_next(async_response)
-    rescue
-      _ -> :ok
-    end
-  end
-
-  defp close_connection(_), do: :ok
 
   defp process_event(event_data, state) do
     with {:ok, parsed_event} <- parse_event(event_data),
@@ -529,79 +420,6 @@ defmodule WandererNotifier.Map.SSEClient do
     }
   end
 
-  defp parse_sse_chunk(chunk) do
-    # Parse SSE chunk according to SSE specification
-    # SSE format: "event: event_type\ndata: json_data\nid: event_id\n\n"
-
-    try do
-      events =
-        chunk
-        |> String.split("\n\n")
-        |> Enum.filter(fn event_str -> String.trim(event_str) != "" end)
-        |> Enum.map(&parse_single_sse_event/1)
-        |> Enum.filter(fn
-          {:ok, _} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn {:ok, event} -> event end)
-
-      {:ok, events}
-    rescue
-      error ->
-        {:error, {:parse_error, error}}
-    end
-  end
-
-  defp parse_single_sse_event(event_str) do
-    event_str
-    |> String.split("\n")
-    |> parse_sse_lines()
-    |> decode_event_data()
-  end
-
-  defp parse_sse_lines(lines) do
-    Enum.reduce(lines, %{}, fn line, acc ->
-      parse_sse_line(line, acc)
-    end)
-  end
-
-  defp parse_sse_line(line, acc) do
-    case String.split(line, ": ", parts: 2) do
-      ["data", data] -> Map.update(acc, "data", data, fn existing -> existing <> "\n" <> data end)
-      ["event", event_type] -> Map.put(acc, "event", event_type)
-      ["id", event_id] -> Map.put(acc, "id", event_id)
-      _ -> acc
-    end
-  end
-
-  defp decode_event_data(%{"data" => data_str} = event_data) do
-    case Jason.decode(data_str) do
-      {:ok, parsed_data} ->
-        event = build_event(parsed_data, event_data)
-        log_parsed_event(event)
-        {:ok, event}
-
-      {:error, _} ->
-        {:error, :invalid_json}
-    end
-  end
-
-  defp decode_event_data(_), do: {:error, :no_data}
-
-  defp build_event(parsed_data, event_data) do
-    Map.merge(parsed_data, %{
-      "type" => Map.get(event_data, "event", "unknown"),
-      "id" => Map.get(event_data, "id")
-    })
-  end
-
-  defp log_parsed_event(event) do
-    AppLogger.api_info("Parsed SSE event",
-      event_type: Map.get(event, "type"),
-      event_id: Map.get(event, "id"),
-      event_map_id: Map.get(event, "map_id")
-    )
-  end
 
   defp process_sse_events(events, state, async_id) do
     # Process multiple events from a single chunk

@@ -200,18 +200,34 @@ defmodule WandererNotifier.Map.SSESupervisor do
       # Don't pass events at all - let it use defaults or none
     ]
 
-    case start_sse_client(opts) do
-      {:ok, _pid} ->
-        AppLogger.api_info("SSE client initialized successfully",
-          map_slug: map_config.map_slug
-        )
+    # Use a timeout to prevent indefinite blocking during SSE client startup
+    # 30 seconds timeout
+    timeout = 30_000
 
-        :ok
+    try do
+      task = Task.async(fn -> start_sse_client(opts) end)
 
-      {:error, reason} ->
-        AppLogger.api_error("Failed to start SSE client",
+      case Task.await(task, timeout) do
+        {:ok, _pid} ->
+          AppLogger.api_info("SSE client initialized successfully",
+            map_slug: map_config.map_slug
+          )
+
+          :ok
+
+        {:error, reason} ->
+          AppLogger.api_error("Failed to start SSE client",
+            map_slug: map_config.map_slug,
+            error: inspect(reason)
+          )
+
+          :ok
+      end
+    catch
+      :exit, {:timeout, _} ->
+        AppLogger.api_error("SSE client initialization timed out",
           map_slug: map_config.map_slug,
-          error: inspect(reason)
+          timeout: timeout
         )
 
         :ok

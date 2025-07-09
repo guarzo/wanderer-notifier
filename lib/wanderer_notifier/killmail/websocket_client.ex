@@ -453,18 +453,23 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    {:ok, systems} = ExternalAdapters.get_tracked_systems()
-
-    systems
-    |> Enum.map(fn system ->
-      # Extract EVE Online solar system ID (integer), not the map UUID
-      system["solar_system_id"] || system[:solar_system_id] ||
-        system["system_id"] || system[:system_id]
-    end)
-    |> Enum.filter(fn system_id ->
-      is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-    end)
-    |> Enum.uniq()
+    case ExternalAdapters.get_tracked_systems() do
+      {:ok, systems} ->
+        systems
+        |> Enum.map(fn system ->
+          # Extract EVE Online solar system ID (integer), not the map UUID
+          system["solar_system_id"] || system[:solar_system_id] ||
+            system["system_id"] || system[:system_id]
+        end)
+        |> Enum.filter(fn system_id ->
+          is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
+        end)
+        |> Enum.uniq()
+        
+      {:error, _reason} ->
+        # Return empty list on error to prevent crashes
+        []
+    end
   end
 
   # Get tracked characters from ExternalAdapters
