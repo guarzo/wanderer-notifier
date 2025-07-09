@@ -152,45 +152,31 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       def get_all do
         case WandererNotifier.Map.Clients.BaseMapClient.cache_get(cache_key()) do
           {:ok, data} -> {:ok, data}
-          {:error, :cache_miss} -> fetch_and_cache()
+          # Return empty list if cache is empty
+          {:error, :cache_miss} -> {:ok, []}
         end
       end
 
       def get_by_id(id) do
-        case get_all() do
-          {:ok, items} ->
-            case Enum.find(items, &(&1["id"] == id)) do
-              nil -> {:error, :not_found}
-              item -> {:ok, item}
-            end
+        {:ok, items} = get_all()
 
-          {:error, reason} ->
-            {:error, reason}
+        case Enum.find(items, &(&1["id"] == id)) do
+          nil -> {:error, :not_found}
+          item -> {:ok, item}
         end
       end
 
       def get_by_name(name) do
-        case get_all() do
-          {:ok, items} ->
-            case Enum.find(items, &(&1["name"] == name)) do
-              nil -> {:error, :not_found}
-              item -> {:ok, item}
-            end
+        {:ok, items} = get_all()
 
-          {:error, reason} ->
-            {:error, reason}
+        case Enum.find(items, &(&1["name"] == name)) do
+          nil -> {:error, :not_found}
+          item -> {:ok, item}
         end
       end
 
-      def update_data(cached \\ [], opts \\ []) do
-        url = api_url()
-        headers = headers()
-
-        case fetch_and_process(url, headers, cached, opts) do
-          {:ok, _} = ok -> ok
-          {:error, reason} -> fallback(cached, reason)
-        end
-      end
+      # Polling has been removed in favor of SSE
+      # update_data is no longer needed
 
       defp fetch_and_process(url, headers, cached, opts) do
         with {:ok, decoded} <-

@@ -108,7 +108,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       @impl GenServer
       def handle_continue(:schedule, state) do
         # Use the Config module's feature_enabled? function which handles both maps and keyword lists
-        feature_enabled = WandererNotifier.Config.feature_enabled?(feature_flag())
+        feature_flag_value = feature_flag()
+        feature_enabled = WandererNotifier.Config.feature_enabled?(feature_flag_value)
+
+        AppLogger.scheduler_info("Scheduler feature check",
+          module: __MODULE__,
+          feature_flag: feature_flag_value,
+          feature_enabled: feature_enabled
+        )
 
         if feature_enabled do
           AppLogger.scheduler_info("Scheduling update",
@@ -121,11 +128,27 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           timer = Process.send_after(self(), :update, 0)
           {:noreply, %{state | timer: timer}}
         else
-          AppLogger.scheduler_info("Feature disabled",
-            module: __MODULE__,
-            feature: feature_flag(),
-            enabled: false
-          )
+          # Only log for actual feature disabling, not SSE-based disabling
+          # Check the module name to suppress logs for SSE-enabled schedulers
+          should_log =
+            case __MODULE__ do
+              WandererNotifier.Schedulers.SystemUpdateScheduler ->
+                not WandererNotifier.Config.feature_enabled?(:system_polling_disabled_for_sse)
+
+              WandererNotifier.Schedulers.CharacterUpdateScheduler ->
+                not WandererNotifier.Config.feature_enabled?(:character_polling_disabled_for_sse)
+
+              _ ->
+                true
+            end
+
+          if should_log do
+            AppLogger.scheduler_info("Feature disabled",
+              module: __MODULE__,
+              feature: feature_flag(),
+              enabled: false
+            )
+          end
 
           # Even if feature is disabled, we should still schedule the next check
           timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
