@@ -474,10 +474,15 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    {:ok, characters} = ExternalAdapters.get_tracked_characters()
+    case ExternalAdapters.get_tracked_characters() do
+      {:ok, characters} ->
+        log_raw_characters(characters)
+        process_character_list(characters)
 
-    log_raw_characters(characters)
-    process_character_list(characters)
+      {:error, _reason} ->
+        # Return empty list on error to prevent crashes
+        []
+    end
   end
 
   defp log_raw_characters(characters) do

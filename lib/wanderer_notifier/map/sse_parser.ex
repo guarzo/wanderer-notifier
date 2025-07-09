@@ -25,15 +25,10 @@ defmodule WandererNotifier.Map.SSEParser do
 
     try do
       events =
-        chunk
-        |> String.split("\n\n")
-        |> Enum.filter(fn event_str -> String.trim(event_str) != "" end)
-        |> Enum.map(&parse_single_event/1)
-        |> Enum.filter(fn
-          {:ok, _} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn {:ok, event} -> event end)
+        for event_str <- String.split(chunk, "\n\n"),
+            String.trim(event_str) != "",
+            {:ok, event} <- [parse_single_event(event_str)],
+            do: event
 
       {:ok, events}
     rescue

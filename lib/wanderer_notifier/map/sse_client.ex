@@ -91,10 +91,10 @@ defmodule WandererNotifier.Map.SSEClient do
   def init(opts) do
     map_slug = Keyword.fetch!(opts, :map_slug)
     api_token = Keyword.fetch!(opts, :api_token)
-    # If events is not provided, use nil (no filtering) instead of default events
-    events = Keyword.get(opts, :events, nil)
+    # If events is not provided, use default events for filtering
+    events = Keyword.get(opts, :events, @default_events)
 
-    AppLogger.api_info("SSE client init",
+    AppLogger.api_debug("SSE client init",
       map_slug: map_slug,
       opts: inspect(opts),
       events: inspect(events),
@@ -112,7 +112,7 @@ defmodule WandererNotifier.Map.SSEClient do
       status: :disconnected
     }
 
-    AppLogger.api_info("SSE client initialized",
+    AppLogger.api_debug("SSE client initialized",
       map_slug: map_slug,
       events_filter: inspect(state.events_filter)
     )
@@ -257,7 +257,7 @@ defmodule WandererNotifier.Map.SSEClient do
     # Process SSE chunk
     case SSEParser.parse_chunk(chunk) do
       {:ok, events} ->
-        AppLogger.api_info("Parsed SSE chunk into events",
+        AppLogger.api_debug("Parsed SSE chunk into events",
           map_slug: state.map_slug,
           event_count: length(events)
         )
@@ -442,7 +442,7 @@ defmodule WandererNotifier.Map.SSEClient do
       end)
 
     if processed_count > 0 do
-      AppLogger.api_info("Processed SSE events",
+      AppLogger.api_debug("Processed SSE events",
         map_slug: state.map_slug,
         count: processed_count,
         last_event_id: new_last_event_id

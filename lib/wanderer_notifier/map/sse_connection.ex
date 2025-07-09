@@ -28,11 +28,10 @@ defmodule WandererNotifier.Map.SSEConnection do
     url = build_url(map_slug, events_filter, last_event_id)
     headers = build_headers(api_token)
 
-    # Log the full URL without truncation
+    # Log the URL with intelligent truncation
     AppLogger.api_info("Connecting to SSE",
       map_slug: map_slug,
-      # Show more of the URL
-      url: String.slice(url, 0..500)
+      url: truncate_url_intelligently(url, 500)
     )
 
     case start_connection(url, headers) do
@@ -104,12 +103,14 @@ defmodule WandererNotifier.Map.SSEConnection do
 
     # Build the URL - try using map_slug instead of map_id
     final_url =
-      if length(query_params) > 0 do
-        query_string = URI.encode_query(query_params)
-        "#{base_url}/api/maps/#{map_slug}/events/stream?#{query_string}"
-      else
-        # No query parameters at all - use map slug
-        "#{base_url}/api/maps/#{map_slug}/events/stream"
+      case query_params do
+        [] ->
+          # No query parameters at all - use map slug
+          "#{base_url}/api/maps/#{map_slug}/events/stream"
+
+        _ ->
+          query_string = URI.encode_query(query_params)
+          "#{base_url}/api/maps/#{map_slug}/events/stream?#{query_string}"
       end
 
     AppLogger.api_info("Final SSE URL",
@@ -150,6 +151,55 @@ defmodule WandererNotifier.Map.SSEConnection do
       {:error, %HTTPoison.Error{reason: reason}} ->
         AppLogger.api_error("SSE connection failed", reason: reason)
         {:error, {:connection_failed, reason}}
+    end
+  end
+
+  # Helper function to intelligently truncate URLs at query parameter boundaries
+  defp truncate_url_intelligently(url, max_length \\ 500) do
+    if String.length(url) <= max_length do
+      url
+    else
+      # Find the base URL and query string
+      case String.split(url, "?", parts: 2) do
+        [base_url] ->
+          # No query parameters, just truncate normally
+          String.slice(url, 0, max_length) <> "..."
+
+        [base_url, query_string] ->
+          # If base URL fits within limit, try to include complete query parameters
+          if String.length(base_url) >= max_length do
+            String.slice(base_url, 0, max_length) <> "..."
+          else
+            # -1 for the "?"
+            remaining_length = max_length - String.length(base_url) - 1
+
+            # Split query parameters and add them until we reach the limit
+            query_params = String.split(query_string, "&")
+
+            {truncated_params, _} =
+              Enum.reduce_while(query_params, {[], 0}, fn param, {acc, current_length} ->
+                param_with_separator = if acc == [], do: param, else: "&#{param}"
+                new_length = current_length + String.length(param_with_separator)
+
+                if new_length <= remaining_length do
+                  {:cont, {acc ++ [param], new_length}}
+                else
+                  {:halt, {acc, current_length}}
+                end
+              end)
+
+            case truncated_params do
+              [] ->
+                base_url <> "?..."
+
+              params ->
+                base_url <>
+                  "?" <>
+                  Enum.join(params, "&") <>
+                  if length(params) < length(query_params), do: "&...", else: ""
+            end
+          end
+      end
     end
   end
 end
