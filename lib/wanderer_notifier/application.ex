@@ -153,6 +153,7 @@ defmodule WandererNotifier.Application do
     relevant_keys
     |> Enum.each(fn key ->
       value = System.get_env(key)
+
       if value do
         # Redact sensitive values
         safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
