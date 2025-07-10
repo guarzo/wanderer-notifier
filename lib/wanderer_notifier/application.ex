@@ -115,6 +115,18 @@ defmodule WandererNotifier.Application do
     # We'll validate this later when CommandRegistrar actually tries to register commands
   end
 
+  defp log_env_variable(key, sensitive_keys) do
+    case System.get_env(key) do
+      nil ->
+        :ok
+
+      value ->
+        # Redact sensitive values
+        safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
+        WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
+    end
+  end
+
   @doc """
   Logs all environment variables to help diagnose configuration issues.
   Sensitive values are redacted.
@@ -151,15 +163,7 @@ defmodule WandererNotifier.Application do
 
     # Log relevant environment variables
     relevant_keys
-    |> Enum.each(fn key ->
-      value = System.get_env(key)
-
-      if value do
-        # Redact sensitive values
-        safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-        WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
-      end
-    end)
+    |> Enum.each(&log_env_variable(&1, sensitive_keys))
 
     # Log app config as well
     log_application_config()
