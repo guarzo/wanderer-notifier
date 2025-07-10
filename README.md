@@ -200,7 +200,7 @@ Environment variables now use simplified naming without redundant prefixes for c
 
 5. **Service URLs (Optional)**
    - `WEBSOCKET_URL`: WebSocket URL for killmail data (default: "ws://host.docker.internal:4004")
-   - `WANDERER_KILLS_BASE_URL`: Base URL for WandererKills API (default: "http://host.docker.internal:4004")
+   - `WANDERER_KILLS_URL`: Base URL for WandererKills API (default: "http://host.docker.internal:4004")
 
 6. **Additional Configuration**
    - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking

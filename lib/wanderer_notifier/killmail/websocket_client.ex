@@ -16,8 +16,7 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   @subscription_update_interval 300_000
 
   def start_link(opts \\ []) do
-    websocket_url =
-      Application.get_env(:wanderer_notifier, :websocket_url, "ws://host.docker.internal:4004")
+    websocket_url = WandererNotifier.Config.websocket_url()
 
     name = Keyword.get(opts, :name, __MODULE__)
 

@@ -60,9 +60,8 @@ defmodule WandererNotifier.Map.SSEConnection do
   # Private functions
 
   defp build_url(map_slug, events_filter, last_event_id) do
-    # Use the map URL from configuration, fallback to wanderer_api_base_url
-    raw_base_url =
-      Config.get(:map_url) || Config.get(:wanderer_api_base_url, "https://wanderer.ltd")
+    # Use the map URL from configuration
+    raw_base_url = Config.get(:map_url)
 
     # Normalize the base URL by removing path and query components
     base_url = normalize_base_url(raw_base_url)

@@ -123,20 +123,41 @@ defmodule WandererNotifier.Application do
     WandererNotifier.Logger.Logger.startup_info("Environment variables at startup:")
 
     sensitive_keys = ~w(
-      WANDERER_DISCORD_BOT_TOKEN
-      WANDERER_MAP_TOKEN
-      WANDERER_NOTIFIER_API_TOKEN
-      WANDERER_LICENSE_KEY
+      DISCORD_BOT_TOKEN
+      MAP_API_KEY
+      NOTIFIER_API_TOKEN
+      LICENSE_KEY
     )
 
-    # Get all environment variables, sorted by key
-    System.get_env()
-    |> Enum.sort_by(fn {k, _} -> k end)
-    |> Enum.filter(fn {key, _} -> String.starts_with?(key, "WANDERER_") end)
-    |> Enum.each(fn {key, value} ->
-      # Redact sensitive values
-      safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-      WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
+    # List of environment variables we care about
+    relevant_keys = ~w(
+      DISCORD_BOT_TOKEN
+      DISCORD_APPLICATION_ID
+      DISCORD_CHANNEL_ID
+      LICENSE_KEY
+      MAP_URL
+      MAP_NAME
+      MAP_API_KEY
+      NOTIFIER_API_TOKEN
+      WEBSOCKET_URL
+      WANDERER_KILLS_URL
+      PORT
+      HOST
+      NOTIFICATIONS_ENABLED
+      KILL_NOTIFICATIONS_ENABLED
+      SYSTEM_NOTIFICATIONS_ENABLED
+      CHARACTER_NOTIFICATIONS_ENABLED
+    )
+
+    # Log relevant environment variables
+    relevant_keys
+    |> Enum.each(fn key ->
+      value = System.get_env(key)
+      if value do
+        # Redact sensitive values
+        safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
+        WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
+      end
     end)
 
     # Log app config as well

@@ -141,7 +141,7 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 config :wanderer_notifier,
   websocket_url: System.get_env("WEBSOCKET_URL") || "ws://host.docker.internal:4004",
   wanderer_kills_base_url:
-    System.get_env("WANDERER_KILLS_BASE_URL") || "http://host.docker.internal:4004"
+    System.get_env("WANDERER_KILLS_URL") || "http://host.docker.internal:4004"
 
 # Configure SSE settings
 config :wanderer_notifier,
@@ -149,10 +149,7 @@ config :wanderer_notifier,
   sse_reconnect_initial_delay:
     Helpers.parse_int(System.get_env("SSE_RECONNECT_INITIAL_DELAY"), 1000),
   sse_reconnect_max_delay: Helpers.parse_int(System.get_env("SSE_RECONNECT_MAX_DELAY"), 30000),
-  sse_event_buffer_size: Helpers.parse_int(System.get_env("SSE_EVENT_BUFFER_SIZE"), 1000),
-
-  # Wanderer API Configuration
-  wanderer_api_base_url: System.get_env("WANDERER_API_BASE_URL") || "https://wanderer.ltd"
+  sse_event_buffer_size: Helpers.parse_int(System.get_env("SSE_EVENT_BUFFER_SIZE"), 1000)
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"

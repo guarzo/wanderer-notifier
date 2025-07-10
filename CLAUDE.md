@@ -72,7 +72,7 @@ The application follows a domain-driven design with these core components:
 - Configuration layers: `config/config.exs` (compile-time) → `config/runtime.exs` (runtime with env vars)
 - Local development uses `.env` file via Dotenvy
 - **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004") for killmail processing
-- **WandererKills Configuration**: `WANDERER_KILLS_BASE_URL` (default: "http://host.docker.internal:4004")
+- **WandererKills Configuration**: `WANDERER_KILLS_URL` (default: "http://host.docker.internal:4004")
 - **SSE Configuration**: Automatically configured from MAP_URL/MAP_NAME/MAP_API_KEY
 - **Core Services**: Killmail processing via WebSocket and map synchronization via SSE are always enabled
 
