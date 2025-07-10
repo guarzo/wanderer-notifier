@@ -168,7 +168,7 @@ defmodule WandererNotifier.Map.SSEConnection do
   end
 
   # Helper function to intelligently truncate URLs at query parameter boundaries
-  defp truncate_url_intelligently(url, max_length \\ 500) do
+  defp truncate_url_intelligently(url, max_length) do
     if String.length(url) <= max_length do
       url
     else
