@@ -66,6 +66,6 @@ config :wanderer_notifier, :kill_determiner,
 # Configure Mox
 config :mox, :global, true
 
-# Configure the env provider for testing
+# Configure the env provider for testing - use real provider to avoid mocking issues
 config :wanderer_notifier,
-  env_provider: WandererNotifier.Config.EnvProviderMock
+  env_provider: WandererNotifier.Config.SystemEnvProvider

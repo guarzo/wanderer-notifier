@@ -16,6 +16,10 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
     # Start HTTPoison/hackney
     HTTPoison.start()
 
+    # Ensure MAP_URL is set for SSE connections
+    map_url = Application.get_env(:wanderer_notifier, :map_url) || "https://example.com"
+    Application.put_env(:wanderer_notifier, :map_url, map_url)
+
     :ok
   end
 

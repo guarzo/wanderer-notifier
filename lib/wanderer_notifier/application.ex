@@ -57,8 +57,10 @@ defmodule WandererNotifier.Application do
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     result = Supervisor.start_link(children, opts)
 
-    # Initialize SSE clients after supervisors are started
-    initialize_sse_clients()
+    # Initialize SSE clients after supervisors are started (skip in test mode)
+    unless get_env() == :test do
+      initialize_sse_clients()
+    end
 
     result
   end
@@ -213,7 +215,7 @@ defmodule WandererNotifier.Application do
   Gets the current environment.
   """
   def get_env do
-    Application.get_env(:wanderer_notifier, :environment, :dev)
+    Application.get_env(:wanderer_notifier, :env, :dev)
   end
 
   @doc """

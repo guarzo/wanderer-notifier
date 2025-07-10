@@ -35,6 +35,9 @@ defmodule WandererNotifier.Map.SSEClientTest do
         {:error, {:already_started, registry}} -> {:ok, registry}
       end
 
+      # Ensure MAP_URL is set for SSE connections
+      Application.put_env(:wanderer_notifier, :map_url, "https://example.com")
+
       on_exit(fn ->
         # Clean up any running processes
         case Registry.lookup(WandererNotifier.Registry, "test-map") do

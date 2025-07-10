@@ -63,6 +63,11 @@ defmodule WandererNotifier.Map.SSEConnection do
     # Use the map URL from configuration
     raw_base_url = Config.get(:map_url)
 
+    # Ensure we have a map URL
+    if is_nil(raw_base_url) do
+      raise "MAP_URL is required for SSE connections"
+    end
+
     # Normalize the base URL by removing path and query components
     base_url = normalize_base_url(raw_base_url)
 
