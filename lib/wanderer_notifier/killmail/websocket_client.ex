@@ -119,6 +119,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   defp cancel_timer(ref), do: Process.cancel_timer(ref)
 
   def handle_frame({:text, message}, state) do
+    WandererNotifier.Logger.Logger.debug("WebSocket message received",
+      message_size: byte_size(message),
+      message_preview: String.slice(message, 0, 200)
+    )
+
     case Jason.decode(message) do
       {:ok, data} ->
         handle_phoenix_message(data, state)
@@ -139,6 +144,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_info(:heartbeat, state) do
+    WandererNotifier.Logger.Logger.debug("Sending WebSocket heartbeat")
+
     # Send Phoenix heartbeat
     if state.channel_ref do
       heartbeat_message = %{
@@ -158,6 +165,7 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
            %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}}
       end
     else
+      WandererNotifier.Logger.Logger.warn("Heartbeat attempted but no channel_ref set")
       {:ok, %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}}
     end
   end

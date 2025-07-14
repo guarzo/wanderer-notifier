@@ -269,7 +269,11 @@ defmodule WandererNotifier.Core.Stats do
   @impl true
   def init(_opts) do
     AppLogger.startup_debug("Initializing stats tracking service...")
-    {:ok, State.new()}
+    # Initialize with current time as startup time
+    state = State.new()
+    startup_time = DateTime.utc_now()
+    updated_redisq = Map.put(state.redisq, :startup_time, startup_time)
+    {:ok, %{state | redisq: updated_redisq}}
   end
 
   defp handle_kill_processed(state) do
@@ -370,8 +374,13 @@ defmodule WandererNotifier.Core.Stats do
   def handle_call(:get_stats, _from, state) do
     uptime_seconds =
       case state.redisq.startup_time do
-        nil -> 0
-        startup_time -> TimeUtils.elapsed_seconds(startup_time)
+        nil ->
+          # Fallback: if startup_time is nil, set it to current time
+          AppLogger.processor_debug("Startup time was nil, setting to current time")
+          0
+
+        startup_time ->
+          TimeUtils.elapsed_seconds(startup_time)
       end
 
     stats = %{

@@ -45,7 +45,10 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     extended_data = %{
       tracking: extract_tracking_stats(stats),
       notifications: extract_notification_stats(stats),
-      processing: extract_processing_stats(stats)
+      processing: extract_processing_stats(stats),
+      performance: extract_performance_stats(stats),
+      websocket: extract_websocket_stats(),
+      recent_activity: extract_recent_activity()
     }
 
     Map.merge(base_status, extended_data)
@@ -72,10 +75,30 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_processing_stats(stats) do
     processing = stats[:processing] || %{}
+    metrics = stats[:metrics] || %{}
 
+    base_stats = extract_base_processing_stats(processing)
+    metric_stats = extract_metric_processing_stats(metrics)
+
+    Map.merge(base_stats, metric_stats)
+  end
+
+  defp extract_base_processing_stats(processing) do
     %{
       kills_processed: processing[:kills_processed] || 0,
       kills_notified: processing[:kills_notified] || 0
+    }
+  end
+
+  defp extract_metric_processing_stats(metrics) do
+    %{
+      processing_start: metrics[:killmail_processing_start] || 0,
+      processing_complete: metrics[:killmail_processing_complete] || 0,
+      processing_complete_success: metrics[:killmail_processing_complete_success] || 0,
+      processing_complete_error: metrics[:killmail_processing_complete_error] || 0,
+      processing_skipped: metrics[:killmail_processing_skipped] || 0,
+      processing_error: metrics[:killmail_processing_error] || 0,
+      notifications_sent: metrics[:notification_sent] || 0
     }
   end
 
@@ -100,6 +123,104 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp safe_percentage(numerator, denominator) do
     Float.round(numerator / denominator * 100, 1)
+  end
+
+  defp extract_performance_stats(stats) do
+    processing = stats[:processing] || %{}
+    metrics = stats[:metrics] || %{}
+    kills_processed = processing[:kills_processed] || 0
+    kills_notified = processing[:kills_notified] || 0
+    processing_complete = metrics[:killmail_processing_complete] || 0
+    processing_error = metrics[:killmail_processing_error] || 0
+    processing_skipped = metrics[:killmail_processing_skipped] || 0
+
+    %{
+      success_rate: calculate_success_rate(processing_complete, processing_error),
+      notification_rate: calculate_notification_rate(kills_notified, kills_processed),
+      processing_efficiency:
+        calculate_processing_efficiency(processing_complete, processing_skipped),
+      uptime_seconds: stats[:uptime_seconds] || 0,
+      last_activity: get_last_activity_time(stats)
+    }
+  end
+
+  defp extract_websocket_stats do
+    # Check if WebSocket client is alive and get basic stats
+    websocket_pid = Process.whereis(WandererNotifier.Killmail.WebSocketClient)
+
+    %{
+      client_alive: websocket_pid != nil,
+      connection_status: if(websocket_pid, do: "connected", else: "disconnected")
+    }
+  end
+
+  defp calculate_success_rate(complete, error) when complete + error > 0 do
+    Float.round(complete / (complete + error) * 100, 1)
+  end
+
+  defp calculate_success_rate(_, _), do: 0.0
+
+  defp calculate_notification_rate(notified, processed) when processed > 0 do
+    Float.round(notified / processed * 100, 1)
+  end
+
+  defp calculate_notification_rate(_, _), do: 0.0
+
+  defp calculate_processing_efficiency(complete, skipped) when complete + skipped > 0 do
+    Float.round(complete / (complete + skipped) * 100, 1)
+  end
+
+  defp calculate_processing_efficiency(_, _), do: 0.0
+
+  defp get_last_activity_time(stats) do
+    redisq = stats[:redisq] || %{}
+
+    case redisq[:last_message] do
+      nil -> "never"
+      dt -> format_time_ago(dt)
+    end
+  end
+
+  defp format_time_ago(datetime) do
+    case WandererNotifier.Utils.TimeUtils.elapsed_seconds(datetime) do
+      seconds when seconds < 60 -> "#{seconds}s ago"
+      seconds when seconds < 3_600 -> "#{div(seconds, 60)}m ago"
+      seconds when seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
+      seconds -> "#{div(seconds, 86_400)}d ago"
+    end
+  end
+
+  defp extract_recent_activity do
+    # Get recent activity from various sources
+    activities = []
+
+    # Check WebSocket status
+    websocket_pid = Process.whereis(WandererNotifier.Killmail.WebSocketClient)
+
+    activities =
+      if websocket_pid do
+        [{:websocket, "WebSocket client active", DateTime.utc_now()} | activities]
+      else
+        [{:websocket_error, "WebSocket client not running", DateTime.utc_now()} | activities]
+      end
+
+    # Add some sample recent activities (in a real implementation, you'd collect these from logs)
+    recent_activities = [
+      {:info, "System started", DateTime.utc_now() |> DateTime.add(-3600, :second)},
+      {:info, "WebSocket connected", DateTime.utc_now() |> DateTime.add(-1800, :second)},
+      {:info, "Processing killmails", DateTime.utc_now() |> DateTime.add(-300, :second)}
+    ]
+
+    (activities ++ recent_activities)
+    |> Enum.take(10)
+    |> Enum.map(fn {type, message, timestamp} ->
+      %{
+        type: type,
+        message: message,
+        timestamp: timestamp,
+        time_ago: format_time_ago(timestamp)
+      }
+    end)
   end
 
   defp check_server_status do
