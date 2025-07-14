@@ -152,10 +152,48 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     # Check if WebSocket client is alive and get basic stats
     websocket_pid = Process.whereis(WandererNotifier.Killmail.WebSocketClient)
 
+    {connection_uptime, uptime_formatted} =
+      if websocket_pid do
+        try do
+          # Get connection start time from WebSocket client state
+          stats = WandererNotifier.Core.Stats.get_stats()
+          websocket_stats = stats[:websocket] || %{}
+          connection_start = websocket_stats[:connection_start]
+
+          if connection_start do
+            uptime_seconds = System.system_time(:second) - connection_start
+            formatted = format_connection_duration(uptime_seconds)
+            {uptime_seconds, formatted}
+          else
+            {0, "Unknown"}
+          end
+        rescue
+          _ -> {0, "Unknown"}
+        end
+      else
+        {0, "Not connected"}
+      end
+
     %{
       client_alive: websocket_pid != nil,
-      connection_status: if(websocket_pid, do: "connected", else: "disconnected")
+      connection_status: if(websocket_pid, do: "connected", else: "disconnected"),
+      connection_uptime_seconds: connection_uptime,
+      connection_uptime_formatted: uptime_formatted
     }
+  end
+
+  defp format_connection_duration(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_connection_duration(seconds) when seconds < 3600 do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+    "#{minutes}m #{remaining_seconds}s"
+  end
+
+  defp format_connection_duration(seconds) do
+    hours = div(seconds, 3600)
+    remaining_minutes = div(rem(seconds, 3600), 60)
+    "#{hours}h #{remaining_minutes}m"
   end
 
   defp calculate_success_rate(complete, error) when complete + error > 0 do
@@ -322,8 +360,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       hits: stats.hits || 0,
       misses: stats.misses || 0,
       hit_rate: calculate_hit_rate(stats.hits, stats.misses),
-      evictions: stats.evictions || 0,
-      expirations: stats.expirations || 0,
+      evictions: Map.get(stats, :evictions, 0),
+      expirations: Map.get(stats, :expirations, 0),
       writes: stats.writes || 0,
       size: get_cache_size(cache_name)
     }
