@@ -524,7 +524,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     |> List.first()
   end
 
-
   defp get_refresh_interval do
     Application.get_env(:wanderer_notifier, :dashboard_refresh_interval, 5000)
   end
@@ -556,7 +555,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     </div>
     """
   end
-
 
   defp render_tracking_card(data) do
     """
@@ -602,7 +600,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-
   defp render_footer(data) do
     """
     <div class="footer">
@@ -620,9 +617,18 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     performance = data.performance
 
     # Format metrics with better display for zero values
-    success_rate = if performance.success_rate == 0.0, do: "No data", else: "#{performance.success_rate}%"
-    notification_rate = if performance.notification_rate == 0.0, do: "No data", else: "#{performance.notification_rate}%"
-    processing_efficiency = if performance.processing_efficiency == 0.0, do: "No data", else: "#{performance.processing_efficiency}%"
+    success_rate =
+      if performance.success_rate == 0.0, do: "No data", else: "#{performance.success_rate}%"
+
+    notification_rate =
+      if performance.notification_rate == 0.0,
+        do: "No data",
+        else: "#{performance.notification_rate}%"
+
+    processing_efficiency =
+      if performance.processing_efficiency == 0.0,
+        do: "No data",
+        else: "#{performance.processing_efficiency}%"
 
     """
     <div class="card">
@@ -647,21 +653,16 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-
-
-
-
-
-
   defp render_cache_stats_card(data) do
     cache = data.cache_stats
 
     # Add a note if cache stats are all zeros
-    stats_note = if cache.hits == 0 && cache.misses == 0 && cache.size == 0 do
-      "<div class=\"info-row\" style=\"background: rgba(245, 158, 11, 0.1); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem;\">\n            <span style=\"color: #f59e0b; font-size: 0.875rem;\">\u26a0️ Cache stats require app restart to enable</span>\n        </div>"
-    else
-      ""
-    end
+    stats_note =
+      if cache.hits == 0 && cache.misses == 0 && cache.size == 0 do
+        "<div class=\"info-row\" style=\"background: rgba(245, 158, 11, 0.1); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem;\">\n            <span style=\"color: #f59e0b; font-size: 0.875rem;\">\u26a0️ Cache stats require app restart to enable</span>\n        </div>"
+      else
+        ""
+      end
 
     """
     <div class="card">
@@ -695,7 +696,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-
   defp get_hit_rate_class(hit_rate) do
     cond do
       hit_rate >= 80 -> ""
@@ -712,18 +712,17 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     end
   end
 
-
-
   defp render_system_health_card(data) do
     # Use the higher of the two memory percentages, not the sum
     memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
 
     # Determine health status
-    health_class = cond do
-      memory_usage >= 80 -> "health-error"
-      memory_usage >= 60 -> "health-warning"
-      true -> "health-good"
-    end
+    health_class =
+      cond do
+        memory_usage >= 80 -> "health-error"
+        memory_usage >= 60 -> "health-warning"
+        true -> "health-good"
+      end
 
     memory_mb = Float.round((data.system.memory.total_kb || 0) / 1024, 1)
 
