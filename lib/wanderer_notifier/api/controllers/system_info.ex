@@ -48,7 +48,11 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       processing: extract_processing_stats(stats),
       performance: extract_performance_stats(stats),
       websocket: extract_websocket_stats(),
-      recent_activity: extract_recent_activity()
+      recent_activity: extract_recent_activity(),
+      memory_detailed: extract_detailed_memory_stats(),
+      processes: extract_process_stats(),
+      cache_stats: extract_cache_stats(),
+      gc_stats: extract_gc_stats()
     }
 
     Map.merge(base_status, extended_data)
@@ -206,8 +210,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
     # Add some sample recent activities (in a real implementation, you'd collect these from logs)
     recent_activities = [
-      {:info, "System started", DateTime.utc_now() |> DateTime.add(-3600, :second)},
-      {:info, "WebSocket connected", DateTime.utc_now() |> DateTime.add(-1800, :second)},
+      {:info, "System started", DateTime.utc_now() |> DateTime.add(-3_600, :second)},
+      {:info, "WebSocket connected", DateTime.utc_now() |> DateTime.add(-1_800, :second)},
       {:info, "Processing killmails", DateTime.utc_now() |> DateTime.add(-300, :second)}
     ]
 
@@ -221,6 +225,174 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
         time_ago: format_time_ago(timestamp)
       }
     end)
+  end
+
+  defp extract_detailed_memory_stats do
+    memory_info = :erlang.memory()
+    memory_data = extract_memory_data(memory_info)
+    system_data = extract_system_data()
+
+    Map.merge(memory_data, system_data)
+  end
+
+  defp extract_memory_data(memory_info) do
+    memory_keys = [
+      :total,
+      :processes,
+      :processes_used,
+      :system,
+      :atom,
+      :atom_used,
+      :binary,
+      :code,
+      :ets
+    ]
+
+    memory_keys
+    |> Enum.into(%{}, fn key ->
+      mb_key = String.to_atom("#{key}_mb")
+      {mb_key, bytes_to_mb(memory_info[key] || 0)}
+    end)
+  end
+
+  defp extract_system_data do
+    %{
+      max_processes: :erlang.system_info(:process_limit),
+      process_count: :erlang.system_info(:process_count),
+      port_count: :erlang.system_info(:port_count),
+      port_limit: :erlang.system_info(:port_limit),
+      atom_count: :erlang.system_info(:atom_count),
+      atom_limit: :erlang.system_info(:atom_limit)
+    }
+  end
+
+  defp extract_process_stats do
+    process_count = :erlang.system_info(:process_count)
+    process_limit = :erlang.system_info(:process_limit)
+
+    # Get information about key processes
+    key_processes = get_key_process_info()
+
+    %{
+      count: process_count,
+      limit: process_limit,
+      usage_percent: Float.round(process_count / process_limit * 100, 1),
+      key_processes: key_processes
+    }
+  end
+
+  defp extract_cache_stats do
+    try do
+      cache_name = WandererNotifier.Cache.Config.cache_name()
+
+      # Try to get Cachex stats if available
+      case Cachex.stats(cache_name) do
+        {:ok, stats} ->
+          %{
+            hits: stats.hits || 0,
+            misses: stats.misses || 0,
+            hit_rate: calculate_hit_rate(stats.hits, stats.misses),
+            evictions: stats.evictions || 0,
+            expirations: stats.expirations || 0,
+            writes: stats.writes || 0,
+            size: get_cache_size(cache_name)
+          }
+
+        _ ->
+          %{
+            hits: 0,
+            misses: 0,
+            hit_rate: 0.0,
+            evictions: 0,
+            expirations: 0,
+            writes: 0,
+            size: 0
+          }
+      end
+    rescue
+      _ ->
+        %{
+          hits: 0,
+          misses: 0,
+          hit_rate: 0.0,
+          evictions: 0,
+          expirations: 0,
+          writes: 0,
+          size: 0
+        }
+    end
+  end
+
+  defp extract_gc_stats do
+    # Get garbage collection statistics
+    gc_info = :erlang.statistics(:garbage_collection)
+
+    %{
+      total_collections: elem(gc_info, 0),
+      total_reclaimed_words: elem(gc_info, 1),
+      # words to bytes to MB
+      total_reclaimed_mb: bytes_to_mb(elem(gc_info, 1) * 8)
+    }
+  end
+
+  defp get_key_process_info do
+    processes = [
+      {"WebSocket Client", WandererNotifier.Killmail.WebSocketClient},
+      {"Stats Server", WandererNotifier.Core.Stats},
+      {"Pipeline Worker", WandererNotifier.Killmail.PipelineWorker},
+      {"Web Server", WandererNotifier.Web.Server},
+      {"Discord Consumer", WandererNotifier.Discord.Consumer}
+    ]
+
+    processes
+    |> Enum.map(fn {name, module} ->
+      pid = Process.whereis(module)
+
+      if pid do
+        info = Process.info(pid)
+        memory_kb = div(info[:memory] || 0, 1024)
+        message_queue_len = info[:message_queue_len] || 0
+
+        %{
+          name: name,
+          status: "running",
+          memory_kb: memory_kb,
+          message_queue_len: message_queue_len,
+          heap_size: info[:heap_size] || 0
+        }
+      else
+        %{
+          name: name,
+          status: "not_running",
+          memory_kb: 0,
+          message_queue_len: 0,
+          heap_size: 0
+        }
+      end
+    end)
+  end
+
+  defp bytes_to_mb(bytes) when is_integer(bytes) do
+    Float.round(bytes / 1_048_576, 2)
+  end
+
+  defp bytes_to_mb(_), do: 0.0
+
+  defp calculate_hit_rate(hits, misses) when hits + misses > 0 do
+    Float.round(hits / (hits + misses) * 100, 1)
+  end
+
+  defp calculate_hit_rate(_, _), do: 0.0
+
+  defp get_cache_size(cache_name) do
+    try do
+      case Cachex.size(cache_name) do
+        {:ok, size} -> size
+        _ -> 0
+      end
+    rescue
+      _ -> 0
+    end
   end
 
   defp check_server_status do

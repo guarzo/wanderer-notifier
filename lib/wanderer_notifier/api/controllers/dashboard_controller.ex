@@ -299,6 +299,87 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 font-size: 0.75rem;
             }
 
+            .memory-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-top: 1rem;
+            }
+
+            .memory-item {
+                background: #0f172a;
+                padding: 1rem;
+                border-radius: 8px;
+                border: 1px solid #334155;
+            }
+
+            .memory-label {
+                font-size: 0.875rem;
+                color: #94a3b8;
+                margin-bottom: 0.25rem;
+            }
+
+            .memory-value {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #e2e8f0;
+            }
+
+            .memory-warning {
+                color: #f59e0b !important;
+            }
+
+            .memory-critical {
+                color: #ef4444 !important;
+            }
+
+            .process-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 1rem;
+            }
+
+            .process-table th,
+            .process-table td {
+                padding: 0.75rem;
+                text-align: left;
+                border-bottom: 1px solid #334155;
+            }
+
+            .process-table th {
+                background: #0f172a;
+                color: #94a3b8;
+                font-weight: 600;
+                font-size: 0.875rem;
+            }
+
+            .process-table td {
+                color: #e2e8f0;
+                font-size: 0.875rem;
+            }
+
+            .process-status-running {
+                color: #10b981;
+            }
+
+            .process-status-not_running {
+                color: #ef4444;
+            }
+
+            .large-number {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #60a5fa;
+            }
+
+            .warning-threshold {
+                color: #f59e0b;
+            }
+
+            .critical-threshold {
+                color: #ef4444;
+            }
+
             .footer {
                 text-align: center;
                 color: #64748b;
@@ -350,6 +431,14 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 #{render_system_health_card(data)}
 
                 #{render_recent_activity_card(data)}
+
+                #{render_detailed_memory_card(data)}
+
+                #{render_process_monitoring_card(data)}
+
+                #{render_cache_stats_card(data)}
+
+                #{render_gc_stats_card(data)}
             </div>
 
             #{render_footer(data)}
@@ -753,7 +842,8 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   end
 
   defp render_system_health_card(data) do
-    memory_usage = data.system.memory.processes_percent + data.system.memory.system_percent
+    # Use the higher of the two memory percentages, not the sum
+    memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
     uptime_hours = div(data.system.uptime_seconds, 3600)
 
     """
@@ -799,8 +889,9 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     issues = []
 
     issues = check_websocket_health(data.websocket, issues)
-    issues = check_memory_health(data.system.memory, issues)
-    issues = check_processing_health(data.processing, issues)
+    issues = check_memory_health(data.system.memory, Map.get(data, :memory_detailed), issues)
+    issues = check_processing_health(data.processing, Map.get(data, :processes), issues)
+    issues = check_cache_health(Map.get(data, :cache_stats, %{}), issues)
 
     {status, message} = determine_overall_health(issues)
 
@@ -819,24 +910,85 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     end
   end
 
-  defp check_memory_health(memory, issues) do
-    memory_usage = memory.processes_percent + memory.system_percent
+  defp check_memory_health(memory, memory_detailed, issues) do
+    # Use the higher of the two memory percentages, not the sum
+    memory_usage = max(memory.processes_percent, memory.system_percent)
 
-    if memory_usage > 80 do
-      ["High memory usage (#{Float.round(memory_usage, 1)}%)" | issues]
+    issues =
+      if memory_usage > 80 do
+        ["High memory usage (#{Float.round(memory_usage, 1)}%)" | issues]
+      else
+        issues
+      end
+
+    # Check detailed memory stats if available
+    if memory_detailed do
+      issues =
+        cond do
+          memory_detailed.total_mb > 512 ->
+            ["Total memory usage exceeds 512MB (#{memory_detailed.total_mb}MB)" | issues]
+
+          memory_detailed.processes_mb > 256 ->
+            ["Process memory usage exceeds 256MB (#{memory_detailed.processes_mb}MB)" | issues]
+
+          memory_detailed.binary_mb > 64 ->
+            ["Binary memory usage exceeds 64MB (#{memory_detailed.binary_mb}MB)" | issues]
+
+          true ->
+            issues
+        end
+
+      # Check process limits
+      process_usage = memory_detailed.process_count / memory_detailed.max_processes * 100
+
+      if process_usage > 80 do
+        ["High process usage (#{Float.round(process_usage, 1)}%)" | issues]
+      else
+        issues
+      end
     else
       issues
     end
   end
 
-  defp check_processing_health(processing, issues) do
+  defp check_processing_health(processing, processes, issues) do
     processing_errors = processing.processing_complete_error
     processing_success = processing.processing_complete_success
 
-    if processing_errors > 0 and processing_success == 0 do
-      ["Processing errors detected" | issues]
+    issues =
+      if processing_errors > 0 and processing_success == 0 do
+        ["Processing errors detected" | issues]
+      else
+        issues
+      end
+
+    # Check for high message queue lengths in key processes
+    if processes && processes.key_processes do
+      high_queue_processes =
+        Enum.filter(processes.key_processes, fn p -> p.message_queue_len >= 100 end)
+
+      if length(high_queue_processes) > 0 do
+        process_names = Enum.map(high_queue_processes, & &1.name) |> Enum.join(", ")
+        ["High message queue in: #{process_names}" | issues]
+      else
+        issues
+      end
     else
       issues
+    end
+  end
+
+  defp check_cache_health(cache_stats, issues) do
+    cond do
+      (cache_stats[:hit_rate] && cache_stats.hit_rate < 50) and
+          cache_stats.hits + cache_stats.misses > 100 ->
+        ["Low cache hit rate (#{cache_stats.hit_rate}%)" | issues]
+
+      cache_stats[:evictions] && cache_stats.evictions > 1000 ->
+        ["High cache evictions (#{cache_stats.evictions})" | issues]
+
+      true ->
+        issues
     end
   end
 
@@ -913,6 +1065,217 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
       :error -> "#ef4444"
       :success -> "#10b981"
       _ -> "#94a3b8"
+    end
+  end
+
+  defp render_detailed_memory_card(data) do
+    memory = data.memory_detailed
+
+    """
+    <div class="card">
+        <h2>🧠 Detailed Memory Usage</h2>
+        <div class="memory-grid">
+            <div class="memory-item">
+                <div class="memory-label">Total Memory</div>
+                <div class="memory-value #{get_memory_class(memory.total_mb, 512)}">#{memory.total_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">Processes</div>
+                <div class="memory-value #{get_memory_class(memory.processes_mb, 256)}">#{memory.processes_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">System</div>
+                <div class="memory-value #{get_memory_class(memory.system_mb, 128)}">#{memory.system_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">Binary</div>
+                <div class="memory-value #{get_memory_class(memory.binary_mb, 64)}">#{memory.binary_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">ETS Tables</div>
+                <div class="memory-value #{get_memory_class(memory.ets_mb, 32)}">#{memory.ets_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">Code</div>
+                <div class="memory-value #{get_memory_class(memory.code_mb, 16)}">#{memory.code_mb} MB</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">Atoms</div>
+                <div class="memory-value">#{memory.atom_count}/#{memory.atom_limit}</div>
+            </div>
+            <div class="memory-item">
+                <div class="memory-label">Ports</div>
+                <div class="memory-value">#{memory.port_count}/#{memory.port_limit}</div>
+            </div>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_process_monitoring_card(data) do
+    processes = data.processes
+
+    process_rows =
+      processes.key_processes
+      |> Enum.map(fn process ->
+        status_class = "process-status-#{process.status}"
+        memory_class = get_memory_alert_class(process.memory_kb)
+        queue_class = get_queue_alert_class(process.message_queue_len)
+
+        """
+        <tr>
+            <td>#{process.name}</td>
+            <td class="#{status_class}">#{process.status}</td>
+            <td class="#{memory_class}">#{process.memory_kb} KB</td>
+            <td class="#{queue_class}">#{process.message_queue_len}</td>
+            <td>#{process.heap_size}</td>
+        </tr>
+        """
+      end)
+      |> Enum.join()
+
+    """
+    <div class="card">
+        <h2>⚙️ Process Monitoring</h2>
+        <div class="info-row">
+            <span class="info-label">Total Processes</span>
+            <span class="info-value #{get_process_usage_class(processes.usage_percent)}">#{processes.count}/#{processes.limit} (#{processes.usage_percent}%)</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{get_process_usage_class(processes.usage_percent)}"
+                 style="width: #{processes.usage_percent}%"></div>
+        </div>
+        
+        <table class="process-table">
+            <thead>
+                <tr>
+                    <th>Process</th>
+                    <th>Status</th>
+                    <th>Memory</th>
+                    <th>Queue</th>
+                    <th>Heap Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                #{process_rows}
+            </tbody>
+        </table>
+    </div>
+    """
+  end
+
+  defp render_cache_stats_card(data) do
+    cache = data.cache_stats
+
+    """
+    <div class="card">
+        <h2>💾 Cache Statistics</h2>
+        <div class="info-row">
+            <span class="info-label">Hit Rate</span>
+            <span class="info-value #{get_hit_rate_class(cache.hit_rate)}">#{cache.hit_rate}%</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{get_hit_rate_class(cache.hit_rate)}"
+                 style="width: #{cache.hit_rate}%"></div>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Cache Size</span>
+            <span class="info-value">#{cache.size} entries</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Hits / Misses</span>
+            <span class="info-value">#{cache.hits} / #{cache.misses}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Evictions</span>
+            <span class="info-value #{get_eviction_class(cache.evictions)}">#{cache.evictions}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Expirations</span>
+            <span class="info-value">#{cache.expirations}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_gc_stats_card(data) do
+    gc = data.gc_stats
+
+    """
+    <div class="card">
+        <h2>🗑️ Garbage Collection</h2>
+        <div class="info-row">
+            <span class="info-label">Total Collections</span>
+            <span class="info-value large-number">#{gc.total_collections}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Total Reclaimed</span>
+            <span class="info-value">#{gc.total_reclaimed_mb} MB</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Avg per Collection</span>
+            <span class="info-value">#{calculate_avg_gc_reclaim(gc)} MB</span>
+        </div>
+    </div>
+    """
+  end
+
+  # Helper functions for styling based on thresholds
+  defp get_memory_class(mb, warning_threshold) do
+    critical_threshold = warning_threshold * 2
+
+    cond do
+      mb >= critical_threshold -> "memory-critical"
+      mb >= warning_threshold -> "memory-warning"
+      true -> ""
+    end
+  end
+
+  defp get_memory_alert_class(kb) do
+    cond do
+      kb >= 50_000 -> "critical-threshold"
+      kb >= 20_000 -> "warning-threshold"
+      true -> ""
+    end
+  end
+
+  defp get_queue_alert_class(queue_len) do
+    cond do
+      queue_len >= 1000 -> "critical-threshold"
+      queue_len >= 100 -> "warning-threshold"
+      true -> ""
+    end
+  end
+
+  defp get_process_usage_class(usage_percent) do
+    cond do
+      usage_percent >= 80 -> "high"
+      usage_percent >= 60 -> "medium"
+      true -> ""
+    end
+  end
+
+  defp get_hit_rate_class(hit_rate) do
+    cond do
+      hit_rate >= 80 -> ""
+      hit_rate >= 60 -> "medium"
+      true -> "high"
+    end
+  end
+
+  defp get_eviction_class(evictions) do
+    cond do
+      evictions >= 1000 -> "critical-threshold"
+      evictions >= 100 -> "warning-threshold"
+      true -> ""
+    end
+  end
+
+  defp calculate_avg_gc_reclaim(gc) do
+    if gc.total_collections > 0 do
+      Float.round(gc.total_reclaimed_mb / gc.total_collections, 2)
+    else
+      0.0
     end
   end
 
