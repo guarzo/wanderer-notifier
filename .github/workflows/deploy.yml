@@ -45,6 +45,7 @@ jobs:
     
     permissions:
       contents: write
+      deployments: write
       
     steps:
       - name: Checkout code
@@ -102,19 +103,17 @@ jobs:
             # Navigate to the correct directory
             cd /app/wanderer
             
-            # Update the .env-notifier file with the new version
-            if [ -f ".env-notifier" ]; then
-              cp .env-notifier .env-notifier.backup
+            # Update the docker-compose-notifier.yml file with the new version
+            if [ -f "docker-compose-notifier.yml" ]; then
+              cp docker-compose-notifier.yml docker-compose-notifier.yml.backup
               
-              if grep -q "^NOTIFIER_VERSION=" .env-notifier; then
-                sed -i "s/^NOTIFIER_VERSION=.*/NOTIFIER_VERSION=$VERSION/" .env-notifier
-              else
-                echo "NOTIFIER_VERSION=$VERSION" >> .env-notifier
-              fi
+              # Update the image tag in the docker-compose file
+              # This assumes the image line format is like "image: guarzo/wanderer-notifier:TAG"
+              sed -i "s|image: guarzo/wanderer-notifier:.*|image: guarzo/wanderer-notifier:$VERSION|" docker-compose-notifier.yml
               
-              echo "✅ Updated NOTIFIER_VERSION to $VERSION in .env-notifier"
+              echo "✅ Updated NOTIFIER_VERSION to $VERSION in docker-compose-notifier.yml"
             else
-              echo "❌ .env-notifier file not found"
+              echo "❌ docker-compose-notifier.yml file not found"
               exit 1
             fi
             
