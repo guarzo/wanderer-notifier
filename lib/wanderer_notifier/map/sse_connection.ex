@@ -31,7 +31,9 @@ defmodule WandererNotifier.Map.SSEConnection do
     # Log the URL with intelligent truncation
     AppLogger.api_info("Connecting to SSE",
       map_slug: map_slug,
-      url: truncate_url_intelligently(url, 500)
+      url: truncate_url_intelligently(url, 500),
+      full_url_length: String.length(url),
+      events_count: if(is_list(events_filter), do: length(events_filter), else: 0)
     )
 
     case start_connection(url, headers) do
@@ -84,6 +86,11 @@ defmodule WandererNotifier.Map.SSEConnection do
       case events_filter do
         [_ | _] ->
           events_string = Enum.join(events_filter, ",")
+          AppLogger.api_debug("Building events query parameter",
+            events_filter: inspect(events_filter),
+            events_string: events_string,
+            events_string_length: String.length(events_string)
+          )
           [{"events", events_string} | query_params]
 
         _ ->
@@ -113,7 +120,10 @@ defmodule WandererNotifier.Map.SSEConnection do
     AppLogger.api_info("Final SSE URL",
       map_slug: map_slug,
       url: final_url,
-      query_params: inspect(query_params)
+      url_length: String.length(final_url),
+      query_params: inspect(query_params),
+      events_filter_input: inspect(events_filter),
+      events_count: if(is_list(events_filter), do: length(events_filter), else: 0)
     )
 
     final_url
