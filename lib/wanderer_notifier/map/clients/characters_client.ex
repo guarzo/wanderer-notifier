@@ -88,4 +88,13 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
     {:ok, new_characters}
   end
+
+  @doc """
+  Fetches characters from the API and populates the cache.
+  This is used during initialization to ensure we have character data.
+  """
+  def fetch_and_cache_characters do
+    AppLogger.api_info("Fetching characters from API")
+    fetch_and_cache()
+  end
 end

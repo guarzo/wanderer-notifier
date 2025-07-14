@@ -146,6 +146,16 @@ defmodule WandererNotifier.Map.SSESupervisor do
   """
   @spec initialize_sse_clients() :: :ok
   def initialize_sse_clients() do
+    # First, initialize map data to populate the cache
+    case initialize_map_data_safely() do
+      :ok ->
+        AppLogger.api_info("Map data initialized successfully")
+        
+      :error ->
+        AppLogger.api_warn("Map data initialization failed, continuing with SSE")
+    end
+    
+    # Then start SSE clients
     case get_map_configuration() do
       {:ok, map_config} ->
         start_sse_client_from_config(map_config)
@@ -156,6 +166,20 @@ defmodule WandererNotifier.Map.SSESupervisor do
         )
 
         :ok
+    end
+  end
+
+  defp initialize_map_data_safely do
+    try do
+      WandererNotifier.Map.Initializer.initialize_map_data()
+      :ok
+    rescue
+      error ->
+        AppLogger.api_error("Exception during map data initialization",
+          error: Exception.message(error),
+          stacktrace: __STACKTRACE__
+        )
+        :error
     end
   end
 

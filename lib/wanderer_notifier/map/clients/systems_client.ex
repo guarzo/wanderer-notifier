@@ -107,4 +107,13 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   defp valid_optional_string_field?(field) do
     is_binary(field) or is_nil(field)
   end
+
+  @doc """
+  Fetches systems from the API and populates the cache.
+  This is used during initialization to ensure we have system data.
+  """
+  def fetch_and_cache_systems do
+    AppLogger.api_info("Fetching systems from API")
+    fetch_and_cache()
+  end
 end
