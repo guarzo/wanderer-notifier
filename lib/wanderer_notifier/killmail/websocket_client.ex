@@ -179,6 +179,12 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     end
   end
 
+  def handle_info(:join_channel, state) do
+    {limited_systems, limited_characters} = prepare_subscription_data()
+    join_params = build_join_params(limited_systems, limited_characters)
+    send_join_message(join_params, limited_systems, limited_characters, state)
+  end
+
   defp check_and_update_subscriptions(state) do
     {current_systems, current_characters} = get_current_tracking_data()
 
@@ -254,18 +260,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   defp handle_subscription_error(error, state) do
     WandererNotifier.Logger.Logger.error("Subscription update check failed",
-      error: Exception.message(error),
-      stacktrace: __STACKTRACE__
+      error: Exception.message(error)
     )
 
     # Schedule next subscription update anyway to prevent hanging
     schedule_next_update(state)
-  end
-
-  def handle_info(:join_channel, state) do
-    {limited_systems, limited_characters} = prepare_subscription_data()
-    join_params = build_join_params(limited_systems, limited_characters)
-    send_join_message(join_params, limited_systems, limited_characters, state)
   end
 
   defp prepare_subscription_data do
