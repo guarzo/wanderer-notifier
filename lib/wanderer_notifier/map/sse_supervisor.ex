@@ -147,17 +147,40 @@ defmodule WandererNotifier.Map.SSESupervisor do
   @spec initialize_sse_clients() :: :ok
   def initialize_sse_clients() do
     # First, initialize map data to populate the cache
+    # This MUST complete before starting SSE to avoid notification spam
     case initialize_map_data_safely() do
       :ok ->
         AppLogger.api_info("Map data initialized successfully")
-        
+        # Only start SSE if we successfully loaded initial data
+        start_sse_after_initialization()
+
       :error ->
-        AppLogger.api_warn("Map data initialization failed, continuing with SSE")
+        AppLogger.api_error("Map data initialization failed - SSE will not start",
+          reason: "Cannot start SSE without initial data to prevent notification spam"
+        )
+
+        # Don't start SSE if we couldn't load initial data
+        :ok
     end
-    
-    # Then start SSE clients
+  end
+
+  defp start_sse_after_initialization do
+    # Add a small delay to ensure cache writes are complete
+    Process.sleep(1000)
+
+    # Signal the WebSocket client that it can start now
+    case Process.whereis(WandererNotifier.Killmail.PipelineWorker) do
+      nil ->
+        AppLogger.api_warn("PipelineWorker not found - cannot signal map initialization complete")
+
+      pid ->
+        AppLogger.api_info("Signaling PipelineWorker that map initialization is complete")
+        send(pid, :map_initialization_complete)
+    end
+
     case get_map_configuration() do
       {:ok, map_config} ->
+        AppLogger.api_info("Starting SSE client after successful data initialization")
         start_sse_client_from_config(map_config)
 
       {:error, reason} ->
@@ -179,6 +202,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
           error: Exception.message(error),
           stacktrace: __STACKTRACE__
         )
+
         :error
     end
   end

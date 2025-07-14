@@ -169,32 +169,56 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_info(:subscription_update, state) do
-    # Check if systems or characters have changed and update subscription if needed
-    current_systems = MapSet.new(get_tracked_systems())
-    current_characters = MapSet.new(get_tracked_characters())
+    WandererNotifier.Logger.Logger.info("Starting subscription update check")
 
-    systems_changed = not MapSet.equal?(current_systems, state.subscribed_systems)
-    characters_changed = not MapSet.equal?(current_characters, state.subscribed_characters)
+    try do
+      # Check if systems or characters have changed and update subscription if needed
+      current_systems = MapSet.new(get_tracked_systems())
+      current_characters = MapSet.new(get_tracked_characters())
 
-    if systems_changed or characters_changed do
-      WandererNotifier.Logger.Logger.debug("Subscription update needed",
+      systems_changed = not MapSet.equal?(current_systems, state.subscribed_systems)
+      characters_changed = not MapSet.equal?(current_characters, state.subscribed_characters)
+
+      WandererNotifier.Logger.Logger.info("Subscription update check completed",
         systems_changed: systems_changed,
         characters_changed: characters_changed,
         current_systems_count: MapSet.size(current_systems),
         current_characters_count: MapSet.size(current_characters),
         subscribed_systems_count: MapSet.size(state.subscribed_systems),
-        subscribed_characters_count: MapSet.size(state.subscribed_characters)
+        subscribed_characters_count: MapSet.size(state.subscribed_characters),
+        current_systems_sample: Enum.take(MapSet.to_list(current_systems), 5),
+        current_characters_sample: Enum.take(MapSet.to_list(current_characters), 5)
       )
 
-      # Trigger a new channel join with updated data
-      send(self(), :join_channel)
+      if systems_changed or characters_changed do
+        WandererNotifier.Logger.Logger.warn(
+          "Subscription update needed - triggering channel rejoin",
+          systems_changed: systems_changed,
+          characters_changed: characters_changed
+        )
+
+        # Trigger a new channel join with updated data
+        send(self(), :join_channel)
+      end
+
+      # Schedule next subscription update
+      subscription_update_ref =
+        Process.send_after(self(), :subscription_update, @subscription_update_interval)
+
+      {:ok, %{state | subscription_update_ref: subscription_update_ref}}
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.error("Subscription update check failed",
+          error: Exception.message(error),
+          stacktrace: __STACKTRACE__
+        )
+
+        # Schedule next subscription update anyway to prevent hanging
+        subscription_update_ref =
+          Process.send_after(self(), :subscription_update, @subscription_update_interval)
+
+        {:ok, %{state | subscription_update_ref: subscription_update_ref}}
     end
-
-    # Schedule next subscription update
-    subscription_update_ref =
-      Process.send_after(self(), :subscription_update, @subscription_update_interval)
-
-    {:ok, %{state | subscription_update_ref: subscription_update_ref}}
   end
 
   def handle_info(:join_channel, state) do
@@ -225,13 +249,13 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   defp log_subscription_data(all_systems, all_characters, limited_systems, limited_characters) do
-    WandererNotifier.Logger.Logger.debug("WebSocket channel join data preparation",
+    WandererNotifier.Logger.Logger.info("WebSocket channel join data preparation",
       total_systems_count: length(all_systems),
       total_characters_count: length(all_characters),
       limited_systems_count: length(limited_systems),
       limited_characters_count: length(limited_characters),
-      sample_systems: Enum.take(limited_systems, 3),
-      sample_characters: Enum.take(limited_characters, 3)
+      sample_systems: Enum.take(limited_systems, 5),
+      sample_characters: Enum.take(limited_characters, 5)
     )
   end
 
@@ -272,6 +296,21 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       payload: join_params,
       ref: channel_ref
     }
+
+    # Log the full subscription data being sent
+    WandererNotifier.Logger.Logger.info(
+      "WebSocket subscription data: #{length(systems)} systems, #{length(characters)} characters"
+    )
+
+    WandererNotifier.Logger.Logger.info("Systems sample: #{inspect(Enum.take(systems, 10))}")
+
+    WandererNotifier.Logger.Logger.info(
+      "Characters sample: #{inspect(Enum.take(characters, 10))}"
+    )
+
+    WandererNotifier.Logger.Logger.info(
+      "Full join params: #{inspect(join_params, limit: :infinity)}"
+    )
 
     case Jason.encode(join_message) do
       {:ok, json} ->
@@ -452,26 +491,90 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    {:ok, systems} = ExternalAdapters.get_tracked_systems()
+    case ExternalAdapters.get_tracked_systems() do
+      {:ok, systems} when is_list(systems) ->
+        systems
+        |> Enum.map(fn system ->
+          # Extract EVE Online solar system ID (integer), not the map UUID
+          # Handle both map and struct formats
+          cond do
+            is_map(system) and not is_struct(system) ->
+              # Plain map format
+              system["solar_system_id"] || system[:solar_system_id] ||
+                system["system_id"] || system[:system_id]
 
-    systems
-    |> Enum.map(fn system ->
-      # Extract EVE Online solar system ID (integer), not the map UUID
-      system["solar_system_id"] || system[:solar_system_id] ||
-        system["system_id"] || system[:system_id]
-    end)
-    |> Enum.filter(fn system_id ->
-      is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-    end)
-    |> Enum.uniq()
+            is_struct(system) ->
+              # Struct format (MapSystem) - access using dot notation
+              system.solar_system_id || system.id
+
+            true ->
+              nil
+          end
+        end)
+        |> Enum.filter(fn system_id ->
+          is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
+        end)
+        |> Enum.uniq()
+
+      {:ok, nil} ->
+        WandererNotifier.Logger.Logger.warn("get_tracked_systems returned nil")
+        []
+
+      {:error, reason} ->
+        WandererNotifier.Logger.Logger.error("Failed to get tracked systems",
+          error: inspect(reason)
+        )
+
+        []
+
+      other ->
+        WandererNotifier.Logger.Logger.error("Unexpected response from get_tracked_systems",
+          response: inspect(other)
+        )
+
+        []
+    end
+  rescue
+    error ->
+      WandererNotifier.Logger.Logger.error(
+        "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
+      )
+
+      []
   end
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    {:ok, characters} = ExternalAdapters.get_tracked_characters()
+    case ExternalAdapters.get_tracked_characters() do
+      {:ok, characters} when is_list(characters) ->
+        log_raw_characters(characters)
+        process_character_list(characters)
 
-    log_raw_characters(characters)
-    process_character_list(characters)
+      {:ok, nil} ->
+        WandererNotifier.Logger.Logger.warn("get_tracked_characters returned nil")
+        []
+
+      {:error, reason} ->
+        WandererNotifier.Logger.Logger.error("Failed to get tracked characters",
+          error: inspect(reason)
+        )
+
+        []
+
+      other ->
+        WandererNotifier.Logger.Logger.error("Unexpected response from get_tracked_characters",
+          response: inspect(other)
+        )
+
+        []
+    end
+  rescue
+    error ->
+      WandererNotifier.Logger.Logger.error(
+        "Exception in get_tracked_characters: #{Exception.message(error)} (#{inspect(error.__struct__)})"
+      )
+
+      []
   end
 
   defp log_raw_characters(characters) do

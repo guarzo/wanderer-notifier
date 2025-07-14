@@ -24,23 +24,29 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
 
   @impl true
   def init(_opts) do
-    AppLogger.processor_info("Starting Pipeline Worker with WebSocket client")
+    AppLogger.processor_info("Starting Pipeline Worker - waiting for map initialization")
     state = %State{}
 
-    # Always start WebSocket client for killmail processing
-    case start_websocket_client() do
-      {:ok, pid} ->
-        AppLogger.processor_info("WebSocket client started", pid: inspect(pid))
-        {:ok, %{state | websocket_pid: pid}}
+    # Don't start WebSocket immediately - wait for map initialization
+    # If in test mode, start immediately
+    if Application.get_env(:wanderer_notifier, :env) == :test do
+      case start_websocket_client() do
+        {:ok, pid} ->
+          AppLogger.processor_info("WebSocket client started (test mode)", pid: inspect(pid))
+          {:ok, %{state | websocket_pid: pid}}
 
-      {:error, reason} ->
-        AppLogger.processor_warn("Failed to start WebSocket client, will retry",
-          reason: inspect(reason)
-        )
+        {:error, reason} ->
+          AppLogger.processor_warn("Failed to start WebSocket client, will retry",
+            reason: inspect(reason)
+          )
 
-        # Don't crash the worker, but schedule a retry
-        Process.send_after(self(), :retry_websocket_start, 15_000)
-        {:ok, state}
+          Process.send_after(self(), :retry_websocket_start, 15_000)
+          {:ok, state}
+      end
+    else
+      # In normal mode, wait for map initialization signal
+      AppLogger.processor_info("Waiting for map initialization before starting WebSocket")
+      {:ok, state}
     end
   end
 
@@ -89,6 +95,33 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
         # Schedule a retry with longer delay
         Process.send_after(self(), :retry_websocket_start, 60_000)
         {:noreply, %{state | websocket_pid: nil}}
+    end
+  end
+
+  @impl true
+  def handle_info(:map_initialization_complete, state) do
+    AppLogger.processor_info("Map initialization complete signal received")
+
+    if is_nil(state.websocket_pid) do
+      case start_websocket_client() do
+        {:ok, pid} ->
+          AppLogger.processor_info("WebSocket client started after map initialization",
+            pid: inspect(pid)
+          )
+
+          {:noreply, %{state | websocket_pid: pid}}
+
+        {:error, reason} ->
+          AppLogger.processor_warn("Failed to start WebSocket client after map init, will retry",
+            reason: inspect(reason)
+          )
+
+          Process.send_after(self(), :retry_websocket_start, 15_000)
+          {:noreply, state}
+      end
+    else
+      # WebSocket client already running
+      {:noreply, state}
     end
   end
 

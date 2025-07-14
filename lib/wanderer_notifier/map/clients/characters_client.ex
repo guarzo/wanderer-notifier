@@ -6,6 +6,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.MapCharacter
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
 
@@ -16,7 +17,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   def endpoint, do: "user-characters"
 
   @impl true
-  def cache_key, do: "characters"
+  def cache_key, do: CacheKeys.character_list()
 
   @impl true
   def cache_ttl, do: WandererNotifier.Cache.Config.ttl_for(:map_data)
@@ -36,6 +37,13 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
         _ -> []
       end)
 
+    # Log sample character structure
+    if length(characters) > 0 do
+      AppLogger.api_info("Sample character from API",
+        first_character: inspect(List.first(characters))
+      )
+    end
+
     {:ok, characters}
   end
 
@@ -48,9 +56,13 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   def validate_data(_), do: {:error, :invalid_data}
 
-  defp valid_character?(%{"eve_id" => eve_id, "name" => name})
-       when is_binary(eve_id) and is_binary(name),
-       do: true
+  defp valid_character?(character) when is_map(character) do
+    # Check for either eve_id or character_eve_id (API might return either)
+    has_eve_id = Map.has_key?(character, "eve_id") or Map.has_key?(character, "character_eve_id")
+    has_name = Map.has_key?(character, "name")
+
+    has_eve_id and has_name
+  end
 
   defp valid_character?(_), do: false
 
@@ -66,18 +78,30 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   @impl true
   def enrich_item(character) do
-    case MapCharacter.new_safe(character) do
+    # Normalize the character data - ensure we have eve_id field
+    normalized = normalize_character_data(character)
+
+    case MapCharacter.new_safe(normalized) do
       {:ok, struct} ->
         struct
 
       {:error, reason} ->
         AppLogger.api_error("Failed to create MapCharacter struct",
           error: reason,
-          character: inspect(character)
+          character: inspect(normalized)
         )
 
-        character
+        normalized
     end
+  end
+
+  defp normalize_character_data(character) do
+    # Ensure we have eve_id field (might be character_eve_id in some responses)
+    eve_id = Map.get(character, "eve_id") || Map.get(character, "character_eve_id")
+
+    character
+    |> Map.put("eve_id", eve_id)
+    |> Map.put("character_eve_id", eve_id)
   end
 
   @impl true
@@ -94,7 +118,8 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   This is used during initialization to ensure we have character data.
   """
   def fetch_and_cache_characters do
-    AppLogger.api_info("Fetching characters from API")
-    fetch_and_cache()
+    AppLogger.api_info("Fetching characters from API for initialization")
+    # Fetch with empty cache to trigger the fetch, but suppress notifications
+    fetch_and_process(api_url(), headers(), [], suppress_notifications: true)
   end
 end

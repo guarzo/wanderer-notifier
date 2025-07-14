@@ -23,7 +23,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.EventHandlers.SystemHandler
-  alias WandererNotifier.Map.EventHandlers.AclHandler
+  alias WandererNotifier.Map.EventHandlers.CharacterHandler
 
   @doc """
   Processes a single event from the SSE stream.
@@ -97,6 +97,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       :system -> handle_system_event(event_type, event, map_slug)
       :connection -> handle_connection_event(event_type, event, map_slug)
       :signature -> handle_signature_event(event_type, event, map_slug)
+      :character -> handle_character_event(event_type, event, map_slug)
       :acl -> handle_acl_event(event_type, event, map_slug)
       :special -> handle_special_event(event_type, event, map_slug)
       :unknown -> handle_unknown_event(event_type, event, map_slug)
@@ -116,8 +117,10 @@ defmodule WandererNotifier.Map.EventProcessor do
       event_type in ["signature_added", "signature_removed", "signatures_updated"] ->
         :signature
 
-      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated",
-                     "character_added", "character_removed", "character_updated"] ->
+      event_type in ["character_added", "character_removed", "character_updated"] ->
+        :character
+
+      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
         :acl
 
       event_type in ["connected", "map_kill"] ->
@@ -156,31 +159,36 @@ defmodule WandererNotifier.Map.EventProcessor do
     :ignored
   end
 
-  # ACL event handlers for character tracking
-  @spec handle_acl_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
-  defp handle_acl_event("acl_member_added", event, map_slug) do
-    AclHandler.handle_acl_member_added(event, map_slug)
+  # Character event handlers
+  @spec handle_character_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
+  defp handle_character_event("character_added", event, map_slug) do
+    CharacterHandler.handle_character_added(event, map_slug)
   end
 
-  defp handle_acl_event("acl_member_removed", event, map_slug) do
-    AclHandler.handle_acl_member_removed(event, map_slug)
+  defp handle_character_event("character_removed", event, map_slug) do
+    CharacterHandler.handle_character_removed(event, map_slug)
   end
 
-  defp handle_acl_event("acl_member_updated", event, map_slug) do
-    AclHandler.handle_acl_member_updated(event, map_slug)
+  defp handle_character_event("character_updated", event, map_slug) do
+    # Add defensive logging to see what's in the event
+    payload = Map.get(event, "payload", %{})
+
+    if map_size(payload) == 0 do
+      AppLogger.api_warn("Character updated event has empty payload",
+        map_slug: map_slug,
+        event_id: Map.get(event, "id"),
+        event_keys: Map.keys(event)
+      )
+    end
+
+    CharacterHandler.handle_character_updated(event, map_slug)
   end
 
-  # Handle new character events using the same ACL handlers
-  defp handle_acl_event("character_added", event, map_slug) do
-    AclHandler.handle_acl_member_added(event, map_slug)
-  end
-
-  defp handle_acl_event("character_removed", event, map_slug) do
-    AclHandler.handle_acl_member_removed(event, map_slug)
-  end
-
-  defp handle_acl_event("character_updated", event, map_slug) do
-    AclHandler.handle_acl_member_updated(event, map_slug)
+  # ACL event handlers (legacy - keeping for compatibility)
+  @spec handle_acl_event(String.t(), map(), String.t()) :: :ignored
+  defp handle_acl_event(_event_type, _event, _map_slug) do
+    # ACL events are now handled by character events
+    :ignored
   end
 
   # Special event handlers

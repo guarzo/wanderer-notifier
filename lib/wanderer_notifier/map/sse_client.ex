@@ -105,7 +105,7 @@ defmodule WandererNotifier.Map.SSEClient do
       map_slug: map_slug,
       api_token: api_token,
       connection: nil,
-      last_event_id: "0",
+      last_event_id: nil,
       reconnect_attempts: 0,
       reconnect_timer: nil,
       events_filter: events,

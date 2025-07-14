@@ -113,7 +113,8 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   This is used during initialization to ensure we have system data.
   """
   def fetch_and_cache_systems do
-    AppLogger.api_info("Fetching systems from API")
-    fetch_and_cache()
+    AppLogger.api_info("Fetching systems from API for initialization")
+    # Fetch with empty cache to trigger the fetch, but suppress notifications
+    fetch_and_process(api_url(), headers(), [], suppress_notifications: true)
   end
 end

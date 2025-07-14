@@ -86,11 +86,13 @@ defmodule WandererNotifier.Map.SSEConnection do
       case events_filter do
         [_ | _] ->
           events_string = Enum.join(events_filter, ",")
+
           AppLogger.api_debug("Building events query parameter",
             events_filter: inspect(events_filter),
             events_string: events_string,
             events_string_length: String.length(events_string)
           )
+
           [{"events", events_string} | query_params]
 
         _ ->
