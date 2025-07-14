@@ -84,14 +84,20 @@ defmodule WandererNotifier.Cache.Config do
       iex> WandererNotifier.Cache.Config.cache_config()
       [
         name: :wanderer_cache,
-        stats: true,
-        ...
+        hooks: [{:hook, Cachex.Stats, nil, nil}],
+        compression: [threshold: 1024]
       ]
   """
   @spec cache_config(keyword()) :: keyword()
   def cache_config(opts \\ []) do
+    # Import the hook macro from Cachex.Spec
+    import Cachex.Spec
+
     base_config = [
-      stats: true,
+      # Add stats hook to enable statistics
+      hooks: [
+        hook(module: Cachex.Stats)
+      ],
       # Enable compression for larger values
       compression: [
         # Compress values larger than 1KB

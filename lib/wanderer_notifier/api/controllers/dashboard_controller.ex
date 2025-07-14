@@ -52,17 +52,46 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
             .header {
                 text-align: center;
                 margin-bottom: 3rem;
+                background-color: #1e293b;
+                border-radius: 12px;
+                padding: 2rem;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                border: 1px solid #334155;
             }
 
             .header h1 {
                 font-size: 2.5rem;
                 color: #60a5fa;
-                margin-bottom: 0.5rem;
+                margin-bottom: 1rem;
             }
 
-            .header p {
-                color: #94a3b8;
-                font-size: 1.1rem;
+            .header-status {
+                color: #e2e8f0;
+                font-size: 1rem;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 1.5rem;
+                margin-top: 1rem;
+            }
+
+            .status-item {
+                white-space: nowrap;
+                background: rgba(96, 165, 250, 0.1);
+                padding: 0.5rem 1rem;
+                border-radius: 6px;
+                border: 1px solid rgba(96, 165, 250, 0.3);
+                transition: all 0.3s ease;
+            }
+
+            .status-item:hover {
+                background: rgba(96, 165, 250, 0.2);
+                transform: translateY(-1px);
+            }
+
+            .status-divider {
+                display: none;
             }
 
             .grid {
@@ -78,6 +107,13 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 padding: 1.5rem;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
                 border: 1px solid #334155;
+                transition: all 0.3s ease;
+            }
+
+            .card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4);
+                border-color: #475569;
             }
 
             .card h2 {
@@ -405,40 +441,18 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     </head>
     <body>
         <div class="container">
-            #{render_header()}
-
-            #{render_health_overview(data)}
+            #{render_header(data, uptime_formatted)}
 
             <div class="grid">
-                #{render_system_status_card(data, uptime_formatted)}
-
-                #{render_web_server_card(data)}
-
-                #{render_memory_card(data)}
+                #{render_system_health_card(data)}
 
                 #{render_tracking_card(data)}
 
                 #{render_notifications_card(data)}
 
-                #{render_processing_card(data)}
-
                 #{render_performance_card(data)}
 
-                #{render_websocket_card(data)}
-
-                #{render_realtime_metrics_card(data)}
-
-                #{render_system_health_card(data)}
-
-                #{render_recent_activity_card(data)}
-
-                #{render_detailed_memory_card(data)}
-
-                #{render_process_monitoring_card(data)}
-
                 #{render_cache_stats_card(data)}
-
-                #{render_gc_stats_card(data)}
             </div>
 
             #{render_footer(data)}
@@ -501,23 +515,15 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     end
   end
 
-  defp format_kb(kb) when kb >= 1024 * 1024 do
-    gb = kb / (1024 * 1024)
-    "#{Float.round(gb, 2)} GB"
+  defp format_time(datetime) do
+    # Format time as HH:MM:SS
+    datetime
+    |> DateTime.to_time()
+    |> Time.to_string()
+    |> String.split(".")
+    |> List.first()
   end
 
-  defp format_kb(kb) when kb >= 1024 do
-    mb = kb / 1024
-    "#{Float.round(mb, 2)} MB"
-  end
-
-  defp format_kb(kb) do
-    "#{kb} KB"
-  end
-
-  defp get_memory_class(percent) when percent >= 80, do: "high"
-  defp get_memory_class(percent) when percent >= 60, do: "medium"
-  defp get_memory_class(_), do: ""
 
   defp get_refresh_interval do
     Application.get_env(:wanderer_notifier, :dashboard_refresh_interval, 5000)
@@ -531,121 +537,31 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-  defp render_header do
-    current_time = DateTime.utc_now() |> DateTime.to_string()
+  defp render_header(data, uptime_formatted) do
+    current_time = DateTime.utc_now()
+
+    # Determine WebSocket status
+    websocket_status = if data.websocket.client_alive, do: "🟢 Connected", else: "🔴 Disconnected"
 
     """
     <div class="header">
         <h1>🚀 Wanderer Notifier Dashboard</h1>
-        <p>System Status Overview • #{current_time} UTC</p>
-    </div>
-    """
-  end
-
-  defp render_system_status_card(data, uptime_formatted) do
-    # Get detailed version info from git
-    {git_version, git_commit} = get_git_version_info()
-
-    """
-    <div class="card">
-        <h2>System Status</h2>
-        <div class="info-row">
-            <span class="info-label">Status</span>
-            <span class="info-value">
-                <span class="status-badge status-ok">#{data.status}</span>
-            </span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">App Version</span>
-            <span class="info-value">#{data.server_version}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Git Version</span>
-            <span class="info-value">#{git_version}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Git Commit</span>
-            <span class="info-value">#{git_commit}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Uptime</span>
-            <span class="info-value">#{uptime_formatted}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Schedulers</span>
-            <span class="info-value">#{data.system.scheduler_count}</span>
+        <div class="header-status">
+            <span class="status-item">📦 v#{data.server_version}</span>
+            <span class="status-item">⏱️ Uptime: #{uptime_formatted}</span>
+            <span class="status-item">🔌 Port: #{data.web_server.port}</span>
+            <span class="status-item">#{websocket_status}</span>
+            <span class="status-item">🕐 #{format_time(current_time)}</span>
         </div>
     </div>
     """
   end
 
-  defp render_web_server_card(data) do
-    {status_class, status_text} =
-      case data.web_server.running do
-        true -> {"status-running", "Running"}
-        false -> {"status-stopped", "Stopped"}
-        :unknown -> {"status-unknown", "Unknown"}
-      end
-
-    """
-    <div class="card">
-        <h2>Web Server</h2>
-        <div class="info-row">
-            <span class="info-label">Status</span>
-            <span class="info-value">
-                <span class="status-badge #{status_class}">
-                    #{status_text}
-                </span>
-            </span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Bind Address</span>
-            <span class="info-value">#{data.web_server.bind_address}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Port</span>
-            <span class="info-value">#{data.web_server.port}</span>
-        </div>
-    </div>
-    """
-  end
-
-  defp render_memory_card(data) do
-    """
-    <div class="card">
-        <h2>Memory Usage</h2>
-        <div class="info-row">
-            <span class="info-label">Total Memory</span>
-            <span class="info-value">#{format_kb(data.system.memory.total_kb)}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processes</span>
-            <span class="info-value">
-                #{format_kb(data.system.memory.processes_kb)} (#{data.system.memory.processes_percent}%)
-            </span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_memory_class(data.system.memory.processes_percent)}"
-                 style="width: #{data.system.memory.processes_percent}%"></div>
-        </div>
-        <div class="info-row" style="margin-top: 1rem;">
-            <span class="info-label">System</span>
-            <span class="info-value">
-                #{format_kb(data.system.memory.system_kb)} (#{data.system.memory.system_percent}%)
-            </span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_memory_class(data.system.memory.system_percent)}"
-                 style="width: #{data.system.memory.system_percent}%"></div>
-        </div>
-    </div>
-    """
-  end
 
   defp render_tracking_card(data) do
     """
     <div class="card">
-        <h2>Tracking</h2>
+        <h2>📡 Tracking</h2>
         <div class="info-row">
             <span class="info-label">Systems Tracked</span>
             <span class="info-value">#{data.tracking.systems_count}</span>
@@ -665,7 +581,7 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   defp render_notifications_card(data) do
     """
     <div class="card">
-        <h2>Notifications Sent</h2>
+        <h2>📬 Notifications Sent</h2>
         <div class="info-row">
             <span class="info-label">Total</span>
             <span class="info-value">#{data.notifications.total}</span>
@@ -686,43 +602,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-  defp render_processing_card(data) do
-    processing = data.processing
-
-    """
-    <div class="card">
-        <h2>Processing Stats</h2>
-        <div class="info-row">
-            <span class="info-label">Kills Processed</span>
-            <span class="info-value">#{processing.kills_processed}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Kills Notified</span>
-            <span class="info-value">#{processing.kills_notified}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Started</span>
-            <span class="info-value">#{processing.processing_start}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Complete</span>
-            <span class="info-value">#{processing.processing_complete}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Success</span>
-            <span class="info-value">#{processing.processing_complete_success}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Errors</span>
-            <span class="info-value">#{processing.processing_complete_error}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Skipped</span>
-            <span class="info-value">#{processing.processing_skipped}</span>
-        </div>
-    </div>
-    """
-  end
 
   defp render_footer(data) do
     """
@@ -740,20 +619,25 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   defp render_performance_card(data) do
     performance = data.performance
 
+    # Format metrics with better display for zero values
+    success_rate = if performance.success_rate == 0.0, do: "No data", else: "#{performance.success_rate}%"
+    notification_rate = if performance.notification_rate == 0.0, do: "No data", else: "#{performance.notification_rate}%"
+    processing_efficiency = if performance.processing_efficiency == 0.0, do: "No data", else: "#{performance.processing_efficiency}%"
+
     """
     <div class="card">
-        <h2>Performance Metrics</h2>
+        <h2>📊 Performance Metrics</h2>
         <div class="info-row">
             <span class="info-label">Success Rate</span>
-            <span class="info-value">#{performance.success_rate}%</span>
+            <span class="info-value">#{success_rate}</span>
         </div>
         <div class="info-row">
             <span class="info-label">Notification Rate</span>
-            <span class="info-value">#{performance.notification_rate}%</span>
+            <span class="info-value">#{notification_rate}</span>
         </div>
         <div class="info-row">
             <span class="info-label">Processing Efficiency</span>
-            <span class="info-value">#{performance.processing_efficiency}%</span>
+            <span class="info-value">#{processing_efficiency}</span>
         </div>
         <div class="info-row">
             <span class="info-label">Last Activity</span>
@@ -763,422 +647,26 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-  defp render_websocket_card(data) do
-    websocket = data.websocket
 
-    {status_class, status_text} =
-      case websocket.client_alive do
-        true -> {"status-running", "Connected"}
-        false -> {"status-stopped", "Disconnected"}
-      end
 
-    health_class = if websocket.client_alive, do: "health-good", else: "health-error"
 
-    """
-    <div class="card">
-        <h2><span class="health-indicator #{health_class}"></span>WebSocket Client</h2>
-        <div class="info-row">
-            <span class="info-label">Status</span>
-            <span class="info-value">
-                <span class="status-badge #{status_class}">#{status_text}</span>
-            </span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Connection</span>
-            <span class="info-value">#{websocket.connection_status}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Killmails Received</span>
-            <span class="info-value">#{data.tracking.killmails_received}</span>
-        </div>
-    </div>
-    """
-  end
 
-  defp render_health_overview(data) do
-    system_health = calculate_system_health(data)
 
-    health_class =
-      case system_health.status do
-        :healthy -> "success-box"
-        :warning -> "alert-box"
-        :critical -> "alert-box"
-      end
-
-    """
-    <div class="#{health_class}">
-        <h3>System Health: #{String.upcase(to_string(system_health.status))}</h3>
-        <p>#{system_health.message}</p>
-        #{if system_health.issues != [], do: "<ul>#{Enum.map(system_health.issues, &"<li>#{&1}</li>") |> Enum.join()}</ul>", else: ""}
-    </div>
-    """
-  end
-
-  defp render_realtime_metrics_card(data) do
-    processing = data.processing
-
-    """
-    <div class="card">
-        <h2>Real-time Metrics</h2>
-        <div class="metric-box">
-            <div class="metric-value">#{processing.kills_processed}</div>
-            <div class="metric-label">Total Processed</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-value">#{processing.kills_notified}</div>
-            <div class="metric-label">Notifications Sent</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-value">#{data.performance.success_rate}%</div>
-            <div class="metric-label">Success Rate</div>
-        </div>
-        <div class="chart-container">
-            <div class="mini-chart">
-                #{render_activity_chart(data)}
-            </div>
-        </div>
-    </div>
-    """
-  end
-
-  defp render_system_health_card(data) do
-    # Use the higher of the two memory percentages, not the sum
-    memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
-    uptime_hours = div(data.system.uptime_seconds, 3600)
-
-    """
-    <div class="card">
-        <h2>System Health</h2>
-        <div class="info-row">
-            <span class="info-label">Memory Usage</span>
-            <span class="info-value">#{Float.round(memory_usage, 1)}%</span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_memory_health_class(memory_usage)}"
-                 style="width: #{memory_usage}%"></div>
-        </div>
-        <div class="info-row" style="margin-top: 1rem;">
-            <span class="info-label">Uptime</span>
-            <span class="info-value">#{uptime_hours} hours</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Health</span>
-            <span class="info-value">#{get_processing_health_status(data.processing)}</span>
-        </div>
-    </div>
-    """
-  end
-
-  defp render_activity_chart(data) do
-    # Simple visualization bars based on recent activity
-    kills_processed = data.processing.kills_processed
-    max_height = 50
-
-    # Create 10 bars with some sample data (in real implementation, you'd use actual time-series data)
-    bars =
-      for i <- 1..10 do
-        height = rem(kills_processed + i * 7, max_height) + 5
-        left_position = (i - 1) * 10
-        "<div class='chart-bar' style='left: #{left_position}%; height: #{height}px;'></div>"
-      end
-
-    Enum.join(bars)
-  end
-
-  defp calculate_system_health(data) do
-    issues = []
-
-    issues = check_websocket_health(data.websocket, issues)
-    issues = check_memory_health(data.system.memory, Map.get(data, :memory_detailed), issues)
-    issues = check_processing_health(data.processing, Map.get(data, :processes), issues)
-    issues = check_cache_health(Map.get(data, :cache_stats, %{}), issues)
-
-    {status, message} = determine_overall_health(issues)
-
-    %{
-      status: status,
-      message: message,
-      issues: issues
-    }
-  end
-
-  defp check_websocket_health(websocket, issues) do
-    if websocket.client_alive do
-      issues
-    else
-      ["WebSocket client disconnected" | issues]
-    end
-  end
-
-  defp check_memory_health(memory, memory_detailed, issues) do
-    # Use the higher of the two memory percentages, not the sum
-    memory_usage = max(memory.processes_percent, memory.system_percent)
-
-    issues =
-      if memory_usage > 80 do
-        ["High memory usage (#{Float.round(memory_usage, 1)}%)" | issues]
-      else
-        issues
-      end
-
-    # Check detailed memory stats if available
-    if memory_detailed do
-      issues =
-        cond do
-          memory_detailed.total_mb > 512 ->
-            ["Total memory usage exceeds 512MB (#{memory_detailed.total_mb}MB)" | issues]
-
-          memory_detailed.processes_mb > 256 ->
-            ["Process memory usage exceeds 256MB (#{memory_detailed.processes_mb}MB)" | issues]
-
-          memory_detailed.binary_mb > 64 ->
-            ["Binary memory usage exceeds 64MB (#{memory_detailed.binary_mb}MB)" | issues]
-
-          true ->
-            issues
-        end
-
-      # Check process limits
-      process_usage = memory_detailed.process_count / memory_detailed.max_processes * 100
-
-      if process_usage > 80 do
-        ["High process usage (#{Float.round(process_usage, 1)}%)" | issues]
-      else
-        issues
-      end
-    else
-      issues
-    end
-  end
-
-  defp check_processing_health(processing, processes, issues) do
-    processing_errors = processing.processing_complete_error
-    processing_success = processing.processing_complete_success
-
-    issues =
-      if processing_errors > 0 and processing_success == 0 do
-        ["Processing errors detected" | issues]
-      else
-        issues
-      end
-
-    # Check for high message queue lengths in key processes
-    if processes && processes.key_processes do
-      high_queue_processes =
-        Enum.filter(processes.key_processes, fn p -> p.message_queue_len >= 100 end)
-
-      if length(high_queue_processes) > 0 do
-        process_names = Enum.map(high_queue_processes, & &1.name) |> Enum.join(", ")
-        ["High message queue in: #{process_names}" | issues]
-      else
-        issues
-      end
-    else
-      issues
-    end
-  end
-
-  defp check_cache_health(cache_stats, issues) do
-    cond do
-      (cache_stats[:hit_rate] && cache_stats.hit_rate < 50) and
-          cache_stats.hits + cache_stats.misses > 100 ->
-        ["Low cache hit rate (#{cache_stats.hit_rate}%)" | issues]
-
-      cache_stats[:evictions] && cache_stats.evictions > 1000 ->
-        ["High cache evictions (#{cache_stats.evictions})" | issues]
-
-      true ->
-        issues
-    end
-  end
-
-  defp determine_overall_health(issues) do
-    case length(issues) do
-      0 -> {:healthy, "All systems operational"}
-      1 -> {:warning, "Minor issues detected"}
-      _ -> {:critical, "Multiple issues require attention"}
-    end
-  end
-
-  defp get_memory_health_class(usage) when usage >= 90, do: "high"
-  defp get_memory_health_class(usage) when usage >= 70, do: "medium"
-  defp get_memory_health_class(_), do: ""
-
-  defp get_processing_health_status(processing) do
-    success = processing.processing_complete_success
-    errors = processing.processing_complete_error
-
-    cond do
-      success == 0 and errors == 0 -> "No activity"
-      errors == 0 -> "Healthy"
-      success > errors * 10 -> "Good"
-      success > errors -> "Warning"
-      true -> "Critical"
-    end
-  end
-
-  defp render_recent_activity_card(data) do
-    activities = Map.get(data, :recent_activity, [])
-
-    activity_items =
-      activities
-      |> Enum.map(fn activity ->
-        icon = get_activity_icon(activity.type)
-        color = get_activity_color(activity.type)
-
-        """
-        <div class="activity-item">
-            <span style="color: #{color};">#{icon}</span>
-            #{activity.message}
-            <div class="activity-time">#{activity.time_ago}</div>
-        </div>
-        """
-      end)
-      |> Enum.join()
-
-    """
-    <div class="card">
-        <h2>Recent Activity</h2>
-        <div class="recent-activity">
-            #{if Enum.empty?(activities), do: "<p style='color: #64748b; text-align: center; padding: 2rem;'>No recent activity</p>", else: activity_items}
-        </div>
-    </div>
-    """
-  end
-
-  defp get_activity_icon(type) do
-    case type do
-      :info -> "📝"
-      :websocket -> "🔌"
-      :websocket_error -> "⚠️"
-      :error -> "❌"
-      :success -> "✅"
-      _ -> "📊"
-    end
-  end
-
-  defp get_activity_color(type) do
-    case type do
-      :info -> "#60a5fa"
-      :websocket -> "#10b981"
-      :websocket_error -> "#f59e0b"
-      :error -> "#ef4444"
-      :success -> "#10b981"
-      _ -> "#94a3b8"
-    end
-  end
-
-  defp render_detailed_memory_card(data) do
-    memory = data.memory_detailed
-
-    """
-    <div class="card">
-        <h2>🧠 Detailed Memory Usage</h2>
-        <div class="memory-grid">
-            <div class="memory-item">
-                <div class="memory-label">Total Memory</div>
-                <div class="memory-value #{get_memory_class(memory.total_mb, 512)}">#{memory.total_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">Processes</div>
-                <div class="memory-value #{get_memory_class(memory.processes_mb, 256)}">#{memory.processes_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">System</div>
-                <div class="memory-value #{get_memory_class(memory.system_mb, 128)}">#{memory.system_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">Binary</div>
-                <div class="memory-value #{get_memory_class(memory.binary_mb, 64)}">#{memory.binary_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">ETS Tables</div>
-                <div class="memory-value #{get_memory_class(memory.ets_mb, 32)}">#{memory.ets_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">Code</div>
-                <div class="memory-value #{get_memory_class(memory.code_mb, 16)}">#{memory.code_mb} MB</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">Atoms</div>
-                <div class="memory-value">#{memory.atom_count}/#{memory.atom_limit}</div>
-            </div>
-            <div class="memory-item">
-                <div class="memory-label">Ports</div>
-                <div class="memory-value">#{memory.port_count}/#{memory.port_limit}</div>
-            </div>
-        </div>
-    </div>
-    """
-  end
-
-  defp render_process_monitoring_card(data) do
-    processes = data.processes
-
-    process_rows =
-      processes.key_processes
-      |> Enum.map(fn process ->
-        status_class = "process-status-#{process.status}"
-        memory_class = get_memory_alert_class(process.memory_kb)
-
-        # Show queue length in memory column if high
-        memory_display =
-          if process.message_queue_len > 10 do
-            "#{process.memory_kb} KB (Q:#{process.message_queue_len})"
-          else
-            "#{process.memory_kb} KB"
-          end
-
-        """
-        <tr>
-            <td>#{process.name}</td>
-            <td class="#{status_class}">#{process.status}</td>
-            <td class="#{memory_class}">#{memory_display}</td>
-            <td>#{process.heap_size}</td>
-        </tr>
-        """
-      end)
-      |> Enum.join()
-
-    """
-    <div class="card">
-        <h2>⚙️ Process Monitoring</h2>
-        <div class="info-row">
-            <span class="info-label">Total Processes</span>
-            <span class="info-value #{get_process_usage_class(processes.usage_percent)}">#{processes.count}/#{processes.limit} (#{processes.usage_percent}%)</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">High Queue Processes</span>
-            <span class="info-value">#{count_high_queue_processes(processes.key_processes)}</span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_process_usage_class(processes.usage_percent)}"
-                 style="width: #{processes.usage_percent}%"></div>
-        </div>
-
-        <table class="process-table">
-            <thead>
-                <tr>
-                    <th>Process</th>
-                    <th>Status</th>
-                    <th>Memory</th>
-                    <th>Heap Size</th>
-                </tr>
-            </thead>
-            <tbody>
-                #{process_rows}
-            </tbody>
-        </table>
-    </div>
-    """
-  end
 
   defp render_cache_stats_card(data) do
     cache = data.cache_stats
 
+    # Add a note if cache stats are all zeros
+    stats_note = if cache.hits == 0 && cache.misses == 0 && cache.size == 0 do
+      "<div class=\"info-row\" style=\"background: rgba(245, 158, 11, 0.1); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem;\">\n            <span style=\"color: #f59e0b; font-size: 0.875rem;\">\u26a0️ Cache stats require app restart to enable</span>\n        </div>"
+    else
+      ""
+    end
+
     """
     <div class="card">
         <h2>💾 Cache Statistics</h2>
+        #{stats_note}
         <div class="info-row">
             <span class="info-label">Hit Rate</span>
             <span class="info-value #{get_hit_rate_class(cache.hit_rate)}">#{cache.hit_rate}%</span>
@@ -1207,59 +695,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
-  defp render_gc_stats_card(data) do
-    gc = data.gc_stats
-
-    """
-    <div class="card">
-        <h2>🗑️ Garbage Collection</h2>
-        <div class="info-row">
-            <span class="info-label">Total Collections</span>
-            <span class="info-value large-number">#{gc.total_collections}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Total Reclaimed</span>
-            <span class="info-value">#{gc.total_reclaimed_mb} MB</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Avg per Collection</span>
-            <span class="info-value">#{calculate_avg_gc_reclaim(gc)} MB</span>
-        </div>
-    </div>
-    """
-  end
-
-  # Helper functions for styling based on thresholds
-  defp get_memory_class(mb, warning_threshold) do
-    critical_threshold = warning_threshold * 2
-
-    cond do
-      mb >= critical_threshold -> "memory-critical"
-      mb >= warning_threshold -> "memory-warning"
-      true -> ""
-    end
-  end
-
-  defp get_memory_alert_class(kb) do
-    cond do
-      kb >= 50_000 -> "critical-threshold"
-      kb >= 20_000 -> "warning-threshold"
-      true -> ""
-    end
-  end
-
-  defp get_process_usage_class(usage_percent) do
-    cond do
-      usage_percent >= 80 -> "high"
-      usage_percent >= 60 -> "medium"
-      true -> ""
-    end
-  end
-
-  defp count_high_queue_processes(key_processes) do
-    key_processes
-    |> Enum.count(fn process -> process.message_queue_len > 10 end)
-  end
 
   defp get_hit_rate_class(hit_rate) do
     cond do
@@ -1277,89 +712,47 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     end
   end
 
-  defp calculate_avg_gc_reclaim(gc) do
-    if gc.total_collections > 0 do
-      Float.round(gc.total_reclaimed_mb / gc.total_collections, 2)
-    else
-      0.0
+
+
+  defp render_system_health_card(data) do
+    # Use the higher of the two memory percentages, not the sum
+    memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
+
+    # Determine health status
+    health_class = cond do
+      memory_usage >= 80 -> "health-error"
+      memory_usage >= 60 -> "health-warning"
+      true -> "health-good"
     end
+
+    memory_mb = Float.round((data.system.memory.total_kb || 0) / 1024, 1)
+
+    """
+    <div class="card">
+        <h2><span class="health-indicator #{health_class}"></span>System Health</h2>
+        <div class="info-row">
+            <span class="info-label">Memory Usage</span>
+            <span class="info-value">#{Float.round(memory_usage, 1)}%</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{get_memory_health_class(memory_usage)}"
+                 style="width: #{memory_usage}%"></div>
+        </div>
+        <div class="info-row" style="margin-top: 1rem;">
+            <span class="info-label">Total Memory</span>
+            <span class="info-value">#{memory_mb} MB</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">CPU Cores</span>
+            <span class="info-value">#{data.system.scheduler_count}</span>
+        </div>
+    </div>
+    """
   end
 
-  defp get_git_version_info do
-    # First try to get version from application environment or build info
-    version = get_build_version()
-    commit = get_build_commit()
-
-    # If we have build info, use it
-    if version != "unknown" or commit != "unknown" do
-      {version, commit}
-    else
-      # Fall back to git commands if available
-      get_git_info_from_commands()
-    end
-  end
-
-  defp get_build_version do
-    # Try multiple sources for version info
-    cond do
-      # Check for VERSION file (common in Docker builds)
-      File.exists?("VERSION") ->
-        case File.read("VERSION") do
-          {:ok, content} -> String.trim(content)
-          _ -> "unknown"
-        end
-
-      # Check environment variable
-      version = System.get_env("GIT_VERSION") ->
-        String.trim(version)
-
-      # Check application version
-      true ->
-        case Application.spec(:wanderer_notifier, :vsn) do
-          version when is_list(version) -> List.to_string(version)
-          version when is_binary(version) -> version
-          _ -> "unknown"
-        end
-    end
-  end
-
-  defp get_build_commit do
-    cond do
-      # Check for COMMIT file (common in Docker builds)
-      File.exists?("COMMIT") ->
-        case File.read("COMMIT") do
-          {:ok, content} -> String.trim(content)
-          _ -> "unknown"
-        end
-
-      # Check environment variable
-      commit = System.get_env("GIT_COMMIT") ->
-        String.trim(commit)
-
-      true ->
-        "unknown"
-    end
-  end
-
-  defp get_git_info_from_commands do
-    try do
-      # Try to get the latest git tag
-      {git_version, exit_code} =
-        System.cmd("git", ["describe", "--tags", "--abbrev=0"], stderr_to_stdout: true)
-
-      version = if exit_code == 0, do: String.trim(git_version), else: "unknown"
-
-      # Try to get the current commit hash
-      {git_commit, exit_code2} =
-        System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true)
-
-      commit = if exit_code2 == 0, do: String.trim(git_commit), else: "unknown"
-
-      {version, commit}
-    rescue
-      _ -> {"unknown", "unknown"}
-    end
-  end
+  defp get_memory_health_class(usage) when usage >= 90, do: "high"
+  defp get_memory_health_class(usage) when usage >= 70, do: "medium"
+  defp get_memory_health_class(_), do: ""
 
   match _ do
     send_error(conn, 404, "not_found")

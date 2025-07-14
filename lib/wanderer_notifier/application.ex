@@ -203,7 +203,7 @@ defmodule WandererNotifier.Application do
       Cachex ->
         # Use the cache config which includes stats: true
         cache_config = WandererNotifier.Cache.Config.cache_config()
-        Cachex.child_spec(cache_config)
+        {Cachex, cache_config}
 
       WandererNotifier.Cache.ETSCache ->
         {WandererNotifier.Cache.ETSCache, name: cache_name}
