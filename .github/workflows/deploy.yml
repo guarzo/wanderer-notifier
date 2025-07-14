@@ -124,7 +124,7 @@ jobs:
             fi
             
             echo "🚀 Running compose-manager.sh upgrade notifier"
-            ./compose-manager.sh upgrade notifier
+            ./compose-manager.sh upgrade wanderer_notifier
             
             echo "✅ Deployment completed successfully!"
           

@@ -116,7 +116,8 @@ defmodule WandererNotifier.Map.EventProcessor do
       event_type in ["signature_added", "signature_removed", "signatures_updated"] ->
         :signature
 
-      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
+      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated",
+                     "character_added", "character_removed", "character_updated"] ->
         :acl
 
       event_type in ["connected", "map_kill"] ->
@@ -166,6 +167,19 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   defp handle_acl_event("acl_member_updated", event, map_slug) do
+    AclHandler.handle_acl_member_updated(event, map_slug)
+  end
+
+  # Handle new character events using the same ACL handlers
+  defp handle_acl_event("character_added", event, map_slug) do
+    AclHandler.handle_acl_member_added(event, map_slug)
+  end
+
+  defp handle_acl_event("character_removed", event, map_slug) do
+    AclHandler.handle_acl_member_removed(event, map_slug)
+  end
+
+  defp handle_acl_event("character_updated", event, map_slug) do
     AclHandler.handle_acl_member_updated(event, map_slug)
   end
 

@@ -29,9 +29,9 @@ defmodule WandererNotifier.Map.SSEClient do
     "add_system",
     "deleted_system",
     "system_metadata_changed",
-    "acl_member_added",
-    "acl_member_removed",
-    "acl_member_updated"
+    "character_added",
+    "character_removed",
+    "character_updated"
   ]
   @initial_reconnect_delay 1000
   @max_reconnect_delay 30_000
