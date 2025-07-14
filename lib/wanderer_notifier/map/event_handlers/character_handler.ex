@@ -188,17 +188,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
 
     case Cachex.get(cache_name, CacheKeys.character_list()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
-        # Check if character already exists
-        eve_id = character["eve_id"]
-
-        if Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end) do
-          :ok
-        else
-          # Add new character
-          updated_characters = [character | cached_characters]
-          Cachex.put(cache_name, CacheKeys.character_list(), updated_characters)
-          :ok
-        end
+        add_to_existing_cache(cache_name, cached_characters, character)
 
       {:ok, nil} ->
         # No cached characters, create new list
@@ -207,6 +197,19 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp add_to_existing_cache(cache_name, cached_characters, character) do
+    eve_id = character["eve_id"]
+
+    if Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end) do
+      :ok
+    else
+      # Add new character
+      updated_characters = [character | cached_characters]
+      Cachex.put(cache_name, CacheKeys.character_list(), updated_characters)
+      :ok
     end
   end
 
@@ -235,58 +238,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
 
     case Cachex.get(cache_name, CacheKeys.character_list()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
-        # For updates without eve_id, try to match by name or id
-        {matched, updated_characters} =
-          if character["eve_id"] do
-            # Normal case - we have eve_id
-            eve_id = character["eve_id"]
-
-            updated =
-              Enum.map(cached_characters, fn c ->
-                if c["eve_id"] == eve_id do
-                  Map.merge(c, character)
-                else
-                  c
-                end
-              end)
-
-            matched = Enum.any?(updated, fn c -> c["eve_id"] == eve_id end)
-            {matched, updated}
-          else
-            # Fallback - match by name or id
-            name = character["name"]
-            id = character["id"]
-
-            updated =
-              Enum.map(cached_characters, fn c ->
-                if (name && c["name"] == name) || (id && c["id"] == id) do
-                  # Preserve the eve_id from cache and merge the update
-                  merged = Map.merge(c, character)
-                  # Ensure eve_id is preserved from the cached character
-                  Map.put(merged, "eve_id", c["eve_id"])
-                else
-                  c
-                end
-              end)
-
-            matched =
-              Enum.any?(cached_characters, fn c ->
-                (name && c["name"] == name) || (id && c["id"] == id)
-              end)
-
-            {matched, updated}
-          end
-
-        # If character wasn't found and we have eve_id, add it
-        final_characters =
-          if not matched and character["eve_id"] do
-            [character | updated_characters]
-          else
-            updated_characters
-          end
-
-        Cachex.put(cache_name, CacheKeys.character_list(), final_characters)
-        :ok
+        update_cached_characters(cache_name, cached_characters, character)
 
       {:ok, nil} ->
         # No cached characters, only create if we have eve_id
@@ -298,6 +250,65 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp update_cached_characters(cache_name, cached_characters, character) do
+    {matched, updated_characters} =
+      if character["eve_id"] do
+        update_by_eve_id(cached_characters, character)
+      else
+        update_by_name_or_id(cached_characters, character)
+      end
+
+    final_characters = add_if_new(updated_characters, character, matched)
+    Cachex.put(cache_name, CacheKeys.character_list(), final_characters)
+    :ok
+  end
+
+  defp update_by_eve_id(cached_characters, character) do
+    eve_id = character["eve_id"]
+
+    updated =
+      Enum.map(cached_characters, fn c ->
+        if c["eve_id"] == eve_id do
+          Map.merge(c, character)
+        else
+          c
+        end
+      end)
+
+    matched = Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end)
+    {matched, updated}
+  end
+
+  defp update_by_name_or_id(cached_characters, character) do
+    name = character["name"]
+    id = character["id"]
+
+    updated =
+      Enum.map(cached_characters, fn c ->
+        if matches_name_or_id?(c, name, id) do
+          # Preserve the eve_id from cache and merge the update
+          Map.merge(c, character) |> Map.put("eve_id", c["eve_id"])
+        else
+          c
+        end
+      end)
+
+    matched = Enum.any?(cached_characters, &matches_name_or_id?(&1, name, id))
+    {matched, updated}
+  end
+
+  defp matches_name_or_id?(character, name, id) do
+    (name && character["name"] == name) || (id && character["id"] == id)
+  end
+
+  defp add_if_new(characters, new_character, matched) do
+    if not matched and new_character["eve_id"] do
+      [new_character | characters]
+    else
+      characters
     end
   end
 

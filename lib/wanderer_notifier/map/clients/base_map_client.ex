@@ -50,26 +50,35 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
     case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
-      {:ok, {:ok, data}} when is_list(data) and length(data) > 0 ->
-        AppLogger.api_debug("Retrieved data from cache",
-          count: length(data),
-          key: cache_key
-        )
-
-        {:ok, data}
-
-      {:ok, data} when is_list(data) and length(data) > 0 ->
-        AppLogger.api_debug("Retrieved data from cache",
-          count: length(data),
-          key: cache_key
-        )
-
-        {:ok, data}
+      {:ok, data} ->
+        handle_cache_data(data, cache_key)
 
       _ ->
         AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
         {:error, :cache_miss}
     end
+  end
+
+  defp handle_cache_data({:ok, data}, cache_key) when is_list(data) and length(data) > 0 do
+    log_cache_hit(data, cache_key)
+    {:ok, data}
+  end
+
+  defp handle_cache_data(data, cache_key) when is_list(data) and length(data) > 0 do
+    log_cache_hit(data, cache_key)
+    {:ok, data}
+  end
+
+  defp handle_cache_data(_, cache_key) do
+    AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
+    {:error, :cache_miss}
+  end
+
+  defp log_cache_hit(data, cache_key) do
+    AppLogger.api_debug("Retrieved data from cache",
+      count: length(data),
+      key: cache_key
+    )
   end
 
   def cache_put(cache_key, data, ttl) do

@@ -172,53 +172,94 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     WandererNotifier.Logger.Logger.info("Starting subscription update check")
 
     try do
-      # Check if systems or characters have changed and update subscription if needed
-      current_systems = MapSet.new(get_tracked_systems())
-      current_characters = MapSet.new(get_tracked_characters())
-
-      systems_changed = not MapSet.equal?(current_systems, state.subscribed_systems)
-      characters_changed = not MapSet.equal?(current_characters, state.subscribed_characters)
-
-      WandererNotifier.Logger.Logger.info("Subscription update check completed",
-        systems_changed: systems_changed,
-        characters_changed: characters_changed,
-        current_systems_count: MapSet.size(current_systems),
-        current_characters_count: MapSet.size(current_characters),
-        subscribed_systems_count: MapSet.size(state.subscribed_systems),
-        subscribed_characters_count: MapSet.size(state.subscribed_characters),
-        current_systems_sample: Enum.take(MapSet.to_list(current_systems), 5),
-        current_characters_sample: Enum.take(MapSet.to_list(current_characters), 5)
-      )
-
-      if systems_changed or characters_changed do
-        WandererNotifier.Logger.Logger.warn(
-          "Subscription update needed - triggering channel rejoin",
-          systems_changed: systems_changed,
-          characters_changed: characters_changed
-        )
-
-        # Trigger a new channel join with updated data
-        send(self(), :join_channel)
-      end
-
-      # Schedule next subscription update
-      subscription_update_ref =
-        Process.send_after(self(), :subscription_update, @subscription_update_interval)
-
-      {:ok, %{state | subscription_update_ref: subscription_update_ref}}
+      check_and_update_subscriptions(state)
     rescue
       error ->
-        WandererNotifier.Logger.Logger.error("Subscription update check failed",
-          error: Exception.message(error),
-          stacktrace: __STACKTRACE__
-        )
-
-        # Schedule next subscription update anyway to prevent hanging
-        subscription_update_ref =
-          Process.send_after(self(), :subscription_update, @subscription_update_interval)
-
-        {:ok, %{state | subscription_update_ref: subscription_update_ref}}
+        handle_subscription_error(error, state)
     end
+  end
+
+  defp check_and_update_subscriptions(state) do
+    {current_systems, current_characters} = get_current_tracking_data()
+
+    {systems_changed, characters_changed} =
+      check_for_changes(
+        current_systems,
+        current_characters,
+        state
+      )
+
+    log_subscription_status(
+      systems_changed,
+      characters_changed,
+      current_systems,
+      current_characters,
+      state
+    )
+
+    if systems_changed or characters_changed do
+      trigger_rejoin(systems_changed, characters_changed)
+    end
+
+    schedule_next_update(state)
+  end
+
+  defp get_current_tracking_data do
+    current_systems = MapSet.new(get_tracked_systems())
+    current_characters = MapSet.new(get_tracked_characters())
+    {current_systems, current_characters}
+  end
+
+  defp check_for_changes(current_systems, current_characters, state) do
+    systems_changed = not MapSet.equal?(current_systems, state.subscribed_systems)
+    characters_changed = not MapSet.equal?(current_characters, state.subscribed_characters)
+    {systems_changed, characters_changed}
+  end
+
+  defp log_subscription_status(
+         systems_changed,
+         characters_changed,
+         current_systems,
+         current_characters,
+         state
+       ) do
+    WandererNotifier.Logger.Logger.info("Subscription update check completed",
+      systems_changed: systems_changed,
+      characters_changed: characters_changed,
+      current_systems_count: MapSet.size(current_systems),
+      current_characters_count: MapSet.size(current_characters),
+      subscribed_systems_count: MapSet.size(state.subscribed_systems),
+      subscribed_characters_count: MapSet.size(state.subscribed_characters),
+      current_systems_sample: Enum.take(MapSet.to_list(current_systems), 5),
+      current_characters_sample: Enum.take(MapSet.to_list(current_characters), 5)
+    )
+  end
+
+  defp trigger_rejoin(systems_changed, characters_changed) do
+    WandererNotifier.Logger.Logger.warn(
+      "Subscription update needed - triggering channel rejoin",
+      systems_changed: systems_changed,
+      characters_changed: characters_changed
+    )
+
+    send(self(), :join_channel)
+  end
+
+  defp schedule_next_update(state) do
+    subscription_update_ref =
+      Process.send_after(self(), :subscription_update, @subscription_update_interval)
+
+    {:ok, %{state | subscription_update_ref: subscription_update_ref}}
+  end
+
+  defp handle_subscription_error(error, state) do
+    WandererNotifier.Logger.Logger.error("Subscription update check failed",
+      error: Exception.message(error),
+      stacktrace: __STACKTRACE__
+    )
+
+    # Schedule next subscription update anyway to prevent hanging
+    schedule_next_update(state)
   end
 
   def handle_info(:join_channel, state) do
@@ -495,26 +536,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     {:ok, systems} = ExternalAdapters.get_tracked_systems()
 
     systems
-    |> Enum.map(fn system ->
-      # Extract EVE Online solar system ID (integer), not the map UUID
-      # Handle both map and struct formats
-      cond do
-        is_map(system) and not is_struct(system) ->
-          # Plain map format
-          system["solar_system_id"] || system[:solar_system_id] ||
-            system["system_id"] || system[:system_id]
-
-        is_struct(system) ->
-          # Struct format (MapSystem) - access using dot notation
-          system.solar_system_id || system.id
-
-        true ->
-          nil
-      end
-    end)
-    |> Enum.filter(fn system_id ->
-      is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-    end)
+    |> Enum.map(&extract_system_id/1)
+    |> Enum.filter(&valid_system_id?/1)
     |> Enum.uniq()
   rescue
     error ->
@@ -523,6 +546,23 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       )
 
       []
+  end
+
+  defp extract_system_id(system) when is_struct(system) do
+    # Struct format (MapSystem) - access using dot notation
+    system.solar_system_id || system.id
+  end
+
+  defp extract_system_id(system) when is_map(system) do
+    # Plain map format
+    system["solar_system_id"] || system[:solar_system_id] ||
+      system["system_id"] || system[:system_id]
+  end
+
+  defp extract_system_id(_), do: nil
+
+  defp valid_system_id?(system_id) do
+    is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
   end
 
   # Get tracked characters from ExternalAdapters
