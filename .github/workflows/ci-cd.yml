@@ -224,6 +224,39 @@ jobs:
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
           echo "Final version tag: $VERSION_TAG"
 
+      - name: Prepare Docker tags
+        id: prepare_tags
+        run: |
+          VERSION_TAG="${{ steps.get_version_info.outputs.VERSION_TAG }}"
+          BASE_TAG="${{ needs.auto-tag.outputs.BASE_TAG }}"
+          
+          # Start with the main version tag
+          DOCKER_TAGS="guarzo/wanderer-notifier:$VERSION_TAG"
+          
+          # If we have a base tag (semantic version), add semantic version tags
+          if [ -n "$BASE_TAG" ] && [ "$BASE_TAG" != "$VERSION_TAG" ]; then
+            echo "Adding semantic version tags based on $BASE_TAG"
+            # Parse semantic version (e.g., "v4.0.2" -> major=4, minor=0, patch=2)
+            if [[ $BASE_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              MAJOR="${BASH_REMATCH[1]}"
+              MINOR="${BASH_REMATCH[2]}"
+              PATCH="${BASH_REMATCH[3]}"
+              
+              # Add semantic version tags
+              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:$BASE_TAG"
+              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR.$MINOR"
+              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR"
+            fi
+          fi
+          
+          # Add latest tag if requested
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.update_latest }}" = "true" ]; then
+            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:latest"
+          fi
+          
+          echo "DOCKER_TAGS=$DOCKER_TAGS" >> $GITHUB_OUTPUT
+          echo "Docker tags: $DOCKER_TAGS"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -234,12 +267,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=semver,pattern=v{{version}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=semver,pattern=v{{major}}.{{minor}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=semver,pattern=v{{major}},value=${{ steps.get_version_info.outputs.VERSION_TAG }}
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_latest == 'true' }}
             type=sha,format=short
-            type=raw,value=${{ steps.get_version_info.outputs.VERSION_TAG }},enable=${{ steps.get_version_info.outputs.VERSION_TAG != '' }}
 
       - name: Build Docker image for testing
         uses: docker/build-push-action@v5
@@ -277,7 +305,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.prepare_tags.outputs.DOCKER_TAGS }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
             type=gha
