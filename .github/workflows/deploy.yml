@@ -1,0 +1,167 @@
+name: Deploy
+
+on:
+  # Manual deployment with environment selection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+      version:
+        description: 'Version tag (leave empty for latest)'
+        required: false
+        default: ''
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - rollback
+          
+  # Auto-deploy on successful CI to main
+  workflow_run:
+    workflows: ["CI/CD"]
+    branches: [main]
+    types: [completed]
+
+env:
+  DOCKER_IMAGE_NAME: guarzo/wanderer-notifier
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    
+    # Only run if CI passed or manual trigger
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+          
+      - name: Determine deployment parameters
+        id: params
+        run: |
+          # Set environment (default to production for auto-deploy)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+            ACTION="${{ github.event.inputs.action }}"
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            ENVIRONMENT="production"
+            ACTION="deploy"
+            # Get the latest version tag from the repository
+            VERSION=$(git describe --tags --abbrev=0 --match="v*" 2>/dev/null || echo "")
+          fi
+          
+          # If no version specified, use latest tag
+          if [ -z "$VERSION" ]; then
+            VERSION=$(git describe --tags --abbrev=0 --match="v*" 2>/dev/null || echo "latest")
+            echo "⚠️  No version specified, using: $VERSION"
+          fi
+          
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "ACTION=$ACTION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          echo "📋 Deployment Parameters:"
+          echo "  Environment: $ENVIRONMENT"
+          echo "  Action: $ACTION"
+          echo "  Version: $VERSION"
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: 22
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            
+            VERSION="${{ steps.params.outputs.VERSION }}"
+            ACTION="${{ steps.params.outputs.ACTION }}"
+            ENVIRONMENT="${{ steps.params.outputs.ENVIRONMENT }}"
+            
+            echo "🚀 Performing $ACTION to $ENVIRONMENT with version $VERSION"
+            
+            # Navigate to the correct directory
+            cd /app/wanderer
+            
+            # Update the .env-notifier file with the new version
+            if [ -f ".env-notifier" ]; then
+              cp .env-notifier .env-notifier.backup
+              
+              if grep -q "^NOTIFIER_VERSION=" .env-notifier; then
+                sed -i "s/^NOTIFIER_VERSION=.*/NOTIFIER_VERSION=$VERSION/" .env-notifier
+              else
+                echo "NOTIFIER_VERSION=$VERSION" >> .env-notifier
+              fi
+              
+              echo "✅ Updated NOTIFIER_VERSION to $VERSION in .env-notifier"
+            else
+              echo "❌ .env-notifier file not found"
+              exit 1
+            fi
+            
+            # Run the compose manager to upgrade
+            if [ "$ACTION" = "rollback" ]; then
+              echo "🔄 Rolling back to version $VERSION"
+            fi
+            
+            echo "🚀 Running compose-manager.sh upgrade notifier"
+            ./compose-manager.sh upgrade notifier
+            
+            echo "✅ Deployment completed successfully!"
+          
+      - name: Create deployment record
+        if: success() && steps.params.outputs.ACTION == 'deploy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Create a deployment record
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ steps.params.outputs.ENVIRONMENT }}',
+              description: 'Deployed version ${{ steps.params.outputs.VERSION }}',
+              auto_merge: false,
+              required_contexts: []
+            });
+            
+            // Mark deployment as successful
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment_url: 'https://wanderer.zoolanders.space',
+              description: 'Deployment completed successfully'
+            });
+          
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment to ${{ steps.params.outputs.ENVIRONMENT }} completed successfully!"
+            echo "📦 Version: ${{ steps.params.outputs.VERSION }}"
+            echo "🔗 Environment: ${{ steps.params.outputs.ENVIRONMENT }}"
+          else
+            echo "❌ Deployment to ${{ steps.params.outputs.ENVIRONMENT }} failed!"
+            echo "📦 Attempted version: ${{ steps.params.outputs.VERSION }}"
+          fi
