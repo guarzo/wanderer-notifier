@@ -491,49 +491,31 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    case ExternalAdapters.get_tracked_systems() do
-      {:ok, systems} when is_list(systems) ->
-        systems
-        |> Enum.map(fn system ->
-          # Extract EVE Online solar system ID (integer), not the map UUID
-          # Handle both map and struct formats
-          cond do
-            is_map(system) and not is_struct(system) ->
-              # Plain map format
-              system["solar_system_id"] || system[:solar_system_id] ||
-                system["system_id"] || system[:system_id]
+    # get_all() always returns {:ok, list()}, never an error
+    {:ok, systems} = ExternalAdapters.get_tracked_systems()
 
-            is_struct(system) ->
-              # Struct format (MapSystem) - access using dot notation
-              system.solar_system_id || system.id
+    systems
+    |> Enum.map(fn system ->
+      # Extract EVE Online solar system ID (integer), not the map UUID
+      # Handle both map and struct formats
+      cond do
+        is_map(system) and not is_struct(system) ->
+          # Plain map format
+          system["solar_system_id"] || system[:solar_system_id] ||
+            system["system_id"] || system[:system_id]
 
-            true ->
-              nil
-          end
-        end)
-        |> Enum.filter(fn system_id ->
-          is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-        end)
-        |> Enum.uniq()
+        is_struct(system) ->
+          # Struct format (MapSystem) - access using dot notation
+          system.solar_system_id || system.id
 
-      {:ok, nil} ->
-        WandererNotifier.Logger.Logger.warn("get_tracked_systems returned nil")
-        []
-
-      {:error, reason} ->
-        WandererNotifier.Logger.Logger.error("Failed to get tracked systems",
-          error: inspect(reason)
-        )
-
-        []
-
-      other ->
-        WandererNotifier.Logger.Logger.error("Unexpected response from get_tracked_systems",
-          response: inspect(other)
-        )
-
-        []
-    end
+        true ->
+          nil
+      end
+    end)
+    |> Enum.filter(fn system_id ->
+      is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
+    end)
+    |> Enum.uniq()
   rescue
     error ->
       WandererNotifier.Logger.Logger.error(
@@ -545,29 +527,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    case ExternalAdapters.get_tracked_characters() do
-      {:ok, characters} when is_list(characters) ->
-        log_raw_characters(characters)
-        process_character_list(characters)
+    # get_all() always returns {:ok, list()}, never an error
+    {:ok, characters} = ExternalAdapters.get_tracked_characters()
 
-      {:ok, nil} ->
-        WandererNotifier.Logger.Logger.warn("get_tracked_characters returned nil")
-        []
-
-      {:error, reason} ->
-        WandererNotifier.Logger.Logger.error("Failed to get tracked characters",
-          error: inspect(reason)
-        )
-
-        []
-
-      other ->
-        WandererNotifier.Logger.Logger.error("Unexpected response from get_tracked_characters",
-          response: inspect(other)
-        )
-
-        []
-    end
+    log_raw_characters(characters)
+    process_character_list(characters)
   rescue
     error ->
       WandererNotifier.Logger.Logger.error(

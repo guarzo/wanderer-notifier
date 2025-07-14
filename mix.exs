@@ -19,7 +19,8 @@ defmodule WandererNotifier.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.json": :test
-      ]
+      ],
+      dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"]
     ]
   end
 
