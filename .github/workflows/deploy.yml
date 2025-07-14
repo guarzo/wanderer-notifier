@@ -65,9 +65,18 @@ jobs:
           else
             ENVIRONMENT="production"
             ACTION="deploy"
-            # Get the latest semantic version tag from the repository (e.g., v4.0.2)
-            # This prefers the most specific version tag (with patch number)
-            VERSION=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1 || echo "")
+            # Get the latest tag - could be semantic version or dated version
+            # First try to get dated tags (e.g., v4.0.2.20240714123456)
+            DATED_VERSION=$(git tag -l "v*.*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1)
+            
+            if [ -n "$DATED_VERSION" ]; then
+              VERSION="$DATED_VERSION"
+              echo "Using dated version: $VERSION"
+            else
+              # Fall back to semantic version tag (e.g., v4.0.2)
+              VERSION=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1 || echo "")
+              echo "Using semantic version: $VERSION"
+            fi
           fi
           
           # If no semantic version found, try to find the most recent specific version tag

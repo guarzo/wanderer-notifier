@@ -126,14 +126,23 @@ jobs:
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
           MAJOR_TAG="v$MAJOR"
           MINOR_TAG="v$MAJOR.$MINOR"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists"
-            echo "NEW_TAG_CREATED=false" >> $GITHUB_OUTPUT
+            echo "Version tag $TAG already exists, creating dated tag"
+            # Create a dated tag when version hasn't changed
+            DATE=$(date +%Y%m%d%H%M%S)
+            DATED_TAG="${TAG}.${DATE}"
+            echo "Creating dated tag: $DATED_TAG"
+            git tag -a "$DATED_TAG" -m "Release $DATED_TAG - Build from $TAG at $(date)"
+            git push origin "$DATED_TAG"
+            echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
+            echo "TAG=$DATED_TAG" >> $GITHUB_OUTPUT
+            echo "BASE_TAG=$TAG" >> $GITHUB_OUTPUT
           else
             echo "Tag $TAG does not exist, creating it"
             echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
             # Create the main version tag
             git tag -a "$TAG" -m "Release $TAG - Auto-tagged from mix.exs version"
             # Force update major tag (delete if exists, then create)
@@ -150,8 +159,9 @@ jobs:
             git tag -a "$MINOR_TAG" -m "Release $MINOR_TAG (latest $TAG)"
             # Push all tags
             git push origin "$TAG" "$MAJOR_TAG" "$MINOR_TAG"
+            echo "TAG=$TAG" >> $GITHUB_OUTPUT
+            echo "BASE_TAG=$TAG" >> $GITHUB_OUTPUT
           fi
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
   docker:
     name: Build and Push Docker Image
