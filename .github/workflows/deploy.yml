@@ -65,14 +65,21 @@ jobs:
           else
             ENVIRONMENT="production"
             ACTION="deploy"
-            # Get the latest version tag from the repository
-            VERSION=$(git describe --tags --abbrev=0 --match="v*" 2>/dev/null || echo "")
+            # Get the latest semantic version tag from the repository (e.g., v4.0.2)
+            # This prefers the most specific version tag (with patch number)
+            VERSION=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1 || echo "")
           fi
           
-          # If no version specified, use latest tag
+          # If no semantic version found, try to find the most recent specific version tag
           if [ -z "$VERSION" ]; then
-            VERSION=$(git describe --tags --abbrev=0 --match="v*" 2>/dev/null || echo "latest")
-            echo "⚠️  No version specified, using: $VERSION"
+            # Try to get the most recent tag that looks like a version
+            VERSION=$(git tag -l "v*" | grep -E "^v[0-9]+(\.[0-9]+)*$" | sort -V | tail -1)
+            if [ -z "$VERSION" ]; then
+              echo "❌ No version tag found! Cannot deploy without a version tag."
+              echo "Please ensure the CI/CD pipeline has created version tags."
+              exit 1
+            fi
+            echo "⚠️  No three-part version found, using: $VERSION"
           fi
           
           echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT
