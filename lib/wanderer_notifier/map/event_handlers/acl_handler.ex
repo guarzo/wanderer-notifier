@@ -36,6 +36,13 @@ defmodule WandererNotifier.Map.EventHandlers.AclHandler do
   @spec handle_acl_member_added(map(), String.t()) :: :ok | {:error, term()}
   def handle_acl_member_added(event, map_slug) do
     payload = Map.get(event, "payload", %{})
+    
+    # Log the full payload to see the structure
+    AppLogger.api_debug("Full ACL member added event payload",
+      map_slug: map_slug,
+      payload: inspect(payload)
+    )
+    
     log_acl_event("Processing ACL member added event", payload, map_slug)
 
     with {:ok, character} <- extract_character_from_acl_event(payload),
@@ -105,6 +112,13 @@ defmodule WandererNotifier.Map.EventHandlers.AclHandler do
   @spec handle_acl_member_removed(map(), String.t()) :: :ok | {:error, term()}
   def handle_acl_member_removed(event, map_slug) do
     payload = Map.get(event, "payload", %{})
+    
+    # Log the full payload to see the structure
+    AppLogger.api_debug("Full ACL member removed event payload",
+      map_slug: map_slug,
+      payload: inspect(payload)
+    )
+    
     log_acl_removal_event(payload, map_slug)
 
     with {:ok, character} <- extract_character_from_acl_event(payload),
@@ -165,6 +179,13 @@ defmodule WandererNotifier.Map.EventHandlers.AclHandler do
   @spec handle_acl_member_updated(map(), String.t()) :: :ok | {:error, term()}
   def handle_acl_member_updated(event, map_slug) do
     payload = Map.get(event, "payload", %{})
+    
+    # Log the full payload to see the structure
+    AppLogger.api_debug("Full ACL member updated event payload",
+      map_slug: map_slug,
+      payload: inspect(payload)
+    )
+    
     log_acl_event("Processing ACL member updated event", payload, map_slug)
 
     with {:ok, character} <- extract_character_from_acl_event(payload),
