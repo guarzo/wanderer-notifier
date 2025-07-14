@@ -140,7 +140,7 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 background-color: #7f1d1d;
                 color: #fca5a5;
             }
-            
+
             .status-unknown {
                 background-color: #44403c;
                 color: #d6d3d1;
@@ -448,13 +448,13 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
             // Auto-refresh with visual countdown
             let refreshInterval = #{refresh_interval};
             let countdown = refreshInterval / 1000;
-            
+
             function updateCountdown() {
                 const countdownElement = document.getElementById('refresh-countdown');
                 if (countdownElement) {
                     countdownElement.textContent = `Refreshing in ${countdown}s`;
                 }
-                
+
                 if (countdown <= 0) {
                     location.reload();
                 } else {
@@ -462,15 +462,15 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                     setTimeout(updateCountdown, 1000);
                 }
             }
-            
+
             // Start countdown
             updateCountdown();
-            
+
             // Add manual refresh button functionality
             function manualRefresh() {
                 location.reload();
             }
-            
+
             // Add keyboard shortcuts
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
@@ -1120,14 +1120,20 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
       |> Enum.map(fn process ->
         status_class = "process-status-#{process.status}"
         memory_class = get_memory_alert_class(process.memory_kb)
-        queue_class = get_queue_alert_class(process.message_queue_len)
+
+        # Show queue length in memory column if high
+        memory_display =
+          if process.message_queue_len > 10 do
+            "#{process.memory_kb} KB (Q:#{process.message_queue_len})"
+          else
+            "#{process.memory_kb} KB"
+          end
 
         """
         <tr>
             <td>#{process.name}</td>
             <td class="#{status_class}">#{process.status}</td>
-            <td class="#{memory_class}">#{process.memory_kb} KB</td>
-            <td class="#{queue_class}">#{process.message_queue_len}</td>
+            <td class="#{memory_class}">#{memory_display}</td>
             <td>#{process.heap_size}</td>
         </tr>
         """
@@ -1141,18 +1147,21 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
             <span class="info-label">Total Processes</span>
             <span class="info-value #{get_process_usage_class(processes.usage_percent)}">#{processes.count}/#{processes.limit} (#{processes.usage_percent}%)</span>
         </div>
+        <div class="info-row">
+            <span class="info-label">High Queue Processes</span>
+            <span class="info-value">#{count_high_queue_processes(processes.key_processes)}</span>
+        </div>
         <div class="progress-bar">
             <div class="progress-fill #{get_process_usage_class(processes.usage_percent)}"
                  style="width: #{processes.usage_percent}%"></div>
         </div>
-        
+
         <table class="process-table">
             <thead>
                 <tr>
                     <th>Process</th>
                     <th>Status</th>
                     <th>Memory</th>
-                    <th>Queue</th>
                     <th>Heap Size</th>
                 </tr>
             </thead>
@@ -1239,20 +1248,17 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     end
   end
 
-  defp get_queue_alert_class(queue_len) do
-    cond do
-      queue_len >= 1000 -> "critical-threshold"
-      queue_len >= 100 -> "warning-threshold"
-      true -> ""
-    end
-  end
-
   defp get_process_usage_class(usage_percent) do
     cond do
       usage_percent >= 80 -> "high"
       usage_percent >= 60 -> "medium"
       true -> ""
     end
+  end
+
+  defp count_high_queue_processes(key_processes) do
+    key_processes
+    |> Enum.count(fn process -> process.message_queue_len > 10 end)
   end
 
   defp get_hit_rate_class(hit_rate) do
@@ -1280,20 +1286,76 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   end
 
   defp get_git_version_info do
+    # First try to get version from application environment or build info
+    version = get_build_version()
+    commit = get_build_commit()
+
+    # If we have build info, use it
+    if version != "unknown" or commit != "unknown" do
+      {version, commit}
+    else
+      # Fall back to git commands if available
+      get_git_info_from_commands()
+    end
+  end
+
+  defp get_build_version do
+    # Try multiple sources for version info
+    cond do
+      # Check for VERSION file (common in Docker builds)
+      File.exists?("VERSION") ->
+        case File.read("VERSION") do
+          {:ok, content} -> String.trim(content)
+          _ -> "unknown"
+        end
+
+      # Check environment variable
+      version = System.get_env("GIT_VERSION") ->
+        String.trim(version)
+
+      # Check application version
+      true ->
+        case Application.spec(:wanderer_notifier, :vsn) do
+          version when is_list(version) -> List.to_string(version)
+          version when is_binary(version) -> version
+          _ -> "unknown"
+        end
+    end
+  end
+
+  defp get_build_commit do
+    cond do
+      # Check for COMMIT file (common in Docker builds)
+      File.exists?("COMMIT") ->
+        case File.read("COMMIT") do
+          {:ok, content} -> String.trim(content)
+          _ -> "unknown"
+        end
+
+      # Check environment variable
+      commit = System.get_env("GIT_COMMIT") ->
+        String.trim(commit)
+
+      true ->
+        "unknown"
+    end
+  end
+
+  defp get_git_info_from_commands do
     try do
       # Try to get the latest git tag
-      {git_version, 0} =
+      {git_version, exit_code} =
         System.cmd("git", ["describe", "--tags", "--abbrev=0"], stderr_to_stdout: true)
 
-      git_version = String.trim(git_version)
+      version = if exit_code == 0, do: String.trim(git_version), else: "unknown"
 
       # Try to get the current commit hash
-      {git_commit, 0} =
+      {git_commit, exit_code2} =
         System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true)
 
-      git_commit = String.trim(git_commit)
+      commit = if exit_code2 == 0, do: String.trim(git_commit), else: "unknown"
 
-      {git_version, git_commit}
+      {version, commit}
     rescue
       _ -> {"unknown", "unknown"}
     end

@@ -49,7 +49,9 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_connect(_conn, state) do
-    WandererNotifier.Logger.Logger.startup_info("WebSocket connected successfully")
+    WandererNotifier.Logger.Logger.startup_info(
+      "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
+    )
 
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
@@ -79,39 +81,31 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   defp log_disconnect_reason({:error, {404, _headers, _body}}, state) do
     WandererNotifier.Logger.Logger.error(
-      "WebSocket endpoint not found (404). Please check if the WandererKills service is running and has the correct endpoint",
-      url: state.url
+      "WebSocket endpoint not found (404) at #{state.url}. Please check if the WandererKills service is running and has the correct endpoint. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:error, {:closed, :econnrefused}}, state) do
     WandererNotifier.Logger.Logger.error(
-      "WebSocket connection refused. Please check if the WandererKills service is running",
-      url: state.url
+      "WebSocket connection refused at #{state.url}. Please check if the WandererKills service is running. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:remote, :closed}, state) do
     WandererNotifier.Logger.Logger.error(
-      "WebSocket closed by remote server. This may indicate an issue with the channel join message or server-side validation",
-      url: state.url,
-      systems_count: MapSet.size(state.subscribed_systems),
-      characters_count: MapSet.size(state.subscribed_characters)
+      "WebSocket closed by remote server at #{state.url}. This may indicate an issue with the channel join message or server-side validation. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:remote, code, message}, state) when is_integer(code) do
-    WandererNotifier.Logger.Logger.error("WebSocket closed by remote server with code",
-      url: state.url,
-      close_code: code,
-      close_message: message
+    WandererNotifier.Logger.Logger.error(
+      "WebSocket closed by remote server with code #{code}. Message: #{inspect(message)}. Connected systems: #{MapSet.size(state.subscribed_systems)}, characters: #{MapSet.size(state.subscribed_characters)}. URL: #{state.url}"
     )
   end
 
   defp log_disconnect_reason(reason, state) do
-    WandererNotifier.Logger.Logger.error("WebSocket disconnected",
-      url: state.url,
-      reason: inspect(reason)
+    WandererNotifier.Logger.Logger.error(
+      "WebSocket disconnected from #{state.url} with reason: #{inspect(reason)}. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 

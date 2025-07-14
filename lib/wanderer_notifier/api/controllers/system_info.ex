@@ -284,43 +284,74 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp extract_cache_stats do
     try do
       cache_name = WandererNotifier.Cache.Config.cache_name()
-
-      # Try to get Cachex stats if available
-      case Cachex.stats(cache_name) do
-        {:ok, stats} ->
-          %{
-            hits: stats.hits || 0,
-            misses: stats.misses || 0,
-            hit_rate: calculate_hit_rate(stats.hits, stats.misses),
-            evictions: stats.evictions || 0,
-            expirations: stats.expirations || 0,
-            writes: stats.writes || 0,
-            size: get_cache_size(cache_name)
-          }
-
-        _ ->
-          %{
-            hits: 0,
-            misses: 0,
-            hit_rate: 0.0,
-            evictions: 0,
-            expirations: 0,
-            writes: 0,
-            size: 0
-          }
-      end
+      get_cache_stats_for_process(cache_name)
     rescue
-      _ ->
-        %{
-          hits: 0,
-          misses: 0,
-          hit_rate: 0.0,
-          evictions: 0,
-          expirations: 0,
-          writes: 0,
-          size: 0
-        }
+      error ->
+        WandererNotifier.Logger.Logger.error("Exception getting cache stats: #{inspect(error)}")
+        empty_cache_stats()
     end
+  end
+
+  defp get_cache_stats_for_process(cache_name) do
+    case Process.whereis(cache_name) do
+      nil ->
+        handle_missing_cache_process(cache_name)
+
+      _pid ->
+        fetch_cachex_stats(cache_name)
+    end
+  end
+
+  defp handle_missing_cache_process(cache_name) do
+    WandererNotifier.Logger.Logger.warn("Cache process not found: #{cache_name}")
+    empty_cache_stats()
+  end
+
+  defp fetch_cachex_stats(cache_name) do
+    case Cachex.stats(cache_name) do
+      {:ok, stats} ->
+        build_cache_stats_from_cachex(stats, cache_name)
+
+      {:error, reason} ->
+        handle_cachex_error(reason)
+
+      other ->
+        handle_unexpected_cachex_response(other)
+    end
+  end
+
+  defp build_cache_stats_from_cachex(stats, cache_name) do
+    %{
+      hits: stats.hits || 0,
+      misses: stats.misses || 0,
+      hit_rate: calculate_hit_rate(stats.hits, stats.misses),
+      evictions: stats.evictions || 0,
+      expirations: stats.expirations || 0,
+      writes: stats.writes || 0,
+      size: get_cache_size(cache_name)
+    }
+  end
+
+  defp handle_cachex_error(reason) do
+    WandererNotifier.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
+    empty_cache_stats()
+  end
+
+  defp handle_unexpected_cachex_response(response) do
+    WandererNotifier.Logger.Logger.warn("Unexpected cache stats response: #{inspect(response)}")
+    empty_cache_stats()
+  end
+
+  defp empty_cache_stats do
+    %{
+      hits: 0,
+      misses: 0,
+      hit_rate: 0.0,
+      evictions: 0,
+      expirations: 0,
+      writes: 0,
+      size: 0
+    }
   end
 
   defp extract_gc_stats do
