@@ -36,7 +36,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       subscription_update_ref: nil,
       subscribed_systems: MapSet.new(),
       subscribed_characters: MapSet.new(),
-      pipeline_worker: Keyword.get(opts, :pipeline_worker)
+      pipeline_worker: Keyword.get(opts, :pipeline_worker),
+      connected_at: nil
     }
 
     WebSockex.start_link(socket_url, __MODULE__, state,
@@ -49,6 +50,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_connect(_conn, state) do
+    connected_at = DateTime.utc_now()
+
     WandererNotifier.Logger.Logger.startup_info(
       "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
     )
@@ -64,7 +67,12 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     send(self(), :join_channel)
 
     {:ok,
-     %{state | heartbeat_ref: heartbeat_ref, subscription_update_ref: subscription_update_ref}}
+     %{
+       state
+       | heartbeat_ref: heartbeat_ref,
+         subscription_update_ref: subscription_update_ref,
+         connected_at: connected_at
+     }}
   end
 
   def handle_disconnect(%{reason: reason}, state) do
@@ -76,7 +84,15 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
     # Reconnect after delay
     Process.send_after(self(), :connect_delayed, @reconnect_delay)
-    {:ok, %{state | channel_ref: nil, heartbeat_ref: nil, subscription_update_ref: nil}}
+
+    {:ok,
+     %{
+       state
+       | channel_ref: nil,
+         heartbeat_ref: nil,
+         subscription_update_ref: nil,
+         connected_at: nil
+     }}
   end
 
   defp log_disconnect_reason({:error, {404, _headers, _body}}, state) do
@@ -113,13 +129,19 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   defp cancel_timer(ref), do: Process.cancel_timer(ref)
 
   def handle_frame({:text, message}, state) do
-    WandererNotifier.Logger.Logger.debug("WebSocket message received",
+    WandererNotifier.Logger.Logger.info("WebSocket text frame received",
       message_size: byte_size(message),
-      message_preview: String.slice(message, 0, 200)
+      message_preview: String.slice(message, 0, 500)
     )
 
     case Jason.decode(message) do
       {:ok, data} ->
+        WandererNotifier.Logger.Logger.info("Decoded WebSocket message",
+          event: data["event"],
+          topic: data["topic"],
+          payload_keys: if(is_map(data["payload"]), do: Map.keys(data["payload"]), else: nil)
+        )
+
         handle_phoenix_message(data, state)
 
       {:error, reason} ->
@@ -138,7 +160,17 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_info(:heartbeat, state) do
-    WandererNotifier.Logger.Logger.debug("Sending WebSocket heartbeat")
+    # Log heartbeat with connection uptime
+    uptime =
+      if state[:connected_at] do
+        DateTime.diff(DateTime.utc_now(), state.connected_at, :second)
+      else
+        0
+      end
+
+    WandererNotifier.Logger.Logger.info(
+      "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
+    )
 
     # Send Phoenix heartbeat
     if state.channel_ref do

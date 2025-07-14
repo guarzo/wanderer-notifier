@@ -166,7 +166,8 @@ defmodule WebSocketMonitor do
     # This would require access to the logger backend
     # For now, just indicate where to look
     IO.puts("")
-    IO.puts("💡 Check logs with: docker logs notifier | grep -i websocket | tail -10")
+    IO.puts("💡 Check logs in your terminal where you ran 'make s'")
+    IO.puts("   Look for WebSocket-related messages")
   end
   
   defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"

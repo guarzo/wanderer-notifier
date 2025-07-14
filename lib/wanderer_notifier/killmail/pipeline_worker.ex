@@ -57,6 +57,9 @@ defmodule WandererNotifier.Killmail.PipelineWorker do
       system_id: killmail[:system_id]
     )
 
+    # Increment the killmails received counter immediately
+    WandererNotifier.Core.Stats.track_killmail_received()
+
     # Process asynchronously using async_nolink to enable monitoring without linking
     task =
       Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->

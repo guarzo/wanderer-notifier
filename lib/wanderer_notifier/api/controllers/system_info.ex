@@ -314,9 +314,6 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
       {:error, reason} ->
         handle_cachex_error(reason)
-
-      other ->
-        handle_unexpected_cachex_response(other)
     end
   end
 
@@ -334,11 +331,6 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp handle_cachex_error(reason) do
     WandererNotifier.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
-    empty_cache_stats()
-  end
-
-  defp handle_unexpected_cachex_response(response) do
-    WandererNotifier.Logger.Logger.warn("Unexpected cache stats response: #{inspect(response)}")
     empty_cache_stats()
   end
 

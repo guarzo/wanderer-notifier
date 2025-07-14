@@ -130,8 +130,9 @@ defmodule WebSocketDebug do
     IO.puts("  Full WebSocket URL: #{socket_url}")
     
     # Check if URL is reachable
-    IO.puts("  💡 Test connection manually with:")
+    IO.puts("  💡 Test connection manually with (if wscat is installed):")
     IO.puts("    wscat -c \"#{socket_url}\"")
+    IO.puts("  💡 Or install wscat with: npm install -g wscat")
     
     IO.puts("")
   end
@@ -156,24 +157,28 @@ defmodule WebSocketDebug do
   defp print_recommendations do
     IO.puts("🔍 Debug Steps:")
     IO.puts("1. Run the monitoring script: elixir scripts/websocket_monitor.exs")
-    IO.puts("2. Watch logs in real-time: docker logs notifier -f | grep -i websocket")
-    IO.puts("3. Test WebSocket server directly:")
-    IO.puts("   wscat -c \"ws://host.docker.internal:4004/socket/websocket?vsn=1.0.0\"")
-    IO.puts("4. Check server logs for connection issues")
-    IO.puts("5. Monitor network connectivity between containers")
+    IO.puts("2. Watch logs in your 'make s' terminal for WebSocket messages")
+    IO.puts("3. Test WebSocket server directly (if wscat is available):")
+    IO.puts("   wscat -c \"ws://localhost:4004/socket/websocket?vsn=1.0.0\"")
+    IO.puts("4. Check WandererKills service logs for connection issues")
+    IO.puts("5. Monitor application memory and process health")
     IO.puts("")
     IO.puts("🔧 Possible Issues to Investigate:")
     IO.puts("- Server-side timeout configuration (usually 60-600 seconds)")
-    IO.puts("- Network connectivity issues between containers")
+    IO.puts("- Network connectivity to WandererKills service")
     IO.puts("- Large subscription payload causing server to drop connection")
     IO.puts("- Heartbeat mechanism not compatible with server expectations")
     IO.puts("- Phoenix Channels version mismatch")
     IO.puts("")
     IO.puts("🚀 Quick Test:")
     IO.puts("Try reducing subscription size by limiting systems/characters")
-    IO.puts("Set these env vars to test:")
+    IO.puts("Add these to your .env file to test:")
     IO.puts("  WEBSOCKET_MAX_SYSTEMS=50")
     IO.puts("  WEBSOCKET_MAX_CHARACTERS=25")
+    IO.puts("")
+    IO.puts("📊 Dashboard:")
+    IO.puts("Check the enhanced dashboard at http://localhost:3000")
+    IO.puts("for real-time WebSocket status and process monitoring")
   end
   
   # Helper functions from WebSocket client

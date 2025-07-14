@@ -58,7 +58,7 @@ defmodule WandererNotifier.Application do
     result = Supervisor.start_link(children, opts)
 
     # Initialize SSE clients after supervisors are started (skip in test mode)
-    unless get_env() == :test do
+    if get_env() != :test do
       initialize_sse_clients()
     end
 
@@ -201,7 +201,9 @@ defmodule WandererNotifier.Application do
 
     case cache_adapter do
       Cachex ->
-        Cachex.child_spec(name: cache_name)
+        # Use the cache config which includes stats: true
+        cache_config = WandererNotifier.Cache.Config.cache_config()
+        Cachex.child_spec(cache_config)
 
       WandererNotifier.Cache.ETSCache ->
         {WandererNotifier.Cache.ETSCache, name: cache_name}
