@@ -6,7 +6,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
   setup do
     # Clear rate limiting keys from process dictionary before each test
     Process.get()
-    |> Enum.filter(fn {key, _} -> 
+    |> Enum.filter(fn {key, _} ->
       key |> to_string() |> String.starts_with?("http_rate_limit:")
     end)
     |> Enum.each(fn {key, _} -> Process.delete(key) end)

@@ -8,6 +8,7 @@ defmodule WandererNotifier.Http.ClientTelemetryIntegrationTest do
     case Application.get_env(:wanderer_notifier, :http_client) do
       WandererNotifier.HTTPMock ->
         {:ok, skip: true}
+
       _ ->
         {:ok, skip: false}
     end
@@ -20,7 +21,7 @@ defmodule WandererNotifier.Http.ClientTelemetryIntegrationTest do
     else
       # Capture telemetry events during tests
       test_pid = self()
-      
+
       :telemetry.attach_many(
         "test-client-telemetry-events",
         [

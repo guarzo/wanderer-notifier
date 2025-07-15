@@ -65,7 +65,7 @@ defmodule WandererNotifier.Http.Client do
         body = prepare_body(Keyword.get(opts, :body))
         headers = merge_headers(Keyword.get(opts, :headers, []), method)
         WandererNotifier.HTTP.request(method, url, headers, body, opts)
-      
+
       _ ->
         # Production mode - use middleware chain
         body = prepare_body(Keyword.get(opts, :body))
