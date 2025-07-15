@@ -24,6 +24,10 @@ defmodule WandererNotifier.Http.Client do
 
   alias WandererNotifier.Http.Utils.JsonUtils
   alias WandererNotifier.Http.Middleware.Telemetry
+  alias WandererNotifier.Http.Middleware.{Retry, RateLimiter}
+
+  # Cache HTTP client configuration at compile time for performance
+  @http_client Application.compile_env(:wanderer_notifier, :http_client, __MODULE__)
 
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type url :: String.t()
@@ -63,8 +67,8 @@ defmodule WandererNotifier.Http.Client do
     headers = merge_headers(Keyword.get(opts, :headers, []), method)
 
     # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
-    case Application.get_env(:wanderer_notifier, :http_client) do
-      WandererNotifier.HTTPMock ->
+    case @http_client do
+      mock when mock == WandererNotifier.HTTPMock ->
         # Use the existing HTTP module which handles mocks properly
         WandererNotifier.HTTP.request(method, url, headers, body, opts)
 
@@ -148,7 +152,13 @@ defmodule WandererNotifier.Http.Client do
 
   defp prepare_body(nil), do: nil
   defp prepare_body(body) when is_binary(body), do: body
-  defp prepare_body(body) when is_map(body), do: JsonUtils.encode!(body)
+  defp prepare_body(body) when is_map(body) do
+    case JsonUtils.encode(body) do
+      {:ok, encoded} -> encoded
+      {:error, reason} -> 
+        raise ArgumentError, "Failed to encode body to JSON: #{inspect(reason)}"
+    end
+  end
   defp prepare_body(body), do: to_string(body)
 
   defp merge_headers(custom_headers, method) do
@@ -162,7 +172,6 @@ defmodule WandererNotifier.Http.Client do
     # Default middleware chain with retry, rate limiting, and telemetry
     # Telemetry should be first to capture all metrics
     # Can be overridden per request
-    alias WandererNotifier.Http.Middleware.{Telemetry, Retry, RateLimiter}
     [Telemetry, Retry, RateLimiter]
   end
 end

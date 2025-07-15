@@ -49,9 +49,20 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
   """
   @spec get_state(String.t()) :: circuit_info()
   def get_state(host) do
-    case :ets.lookup(@table_name, host) do
-      [{^host, circuit_info}] -> circuit_info
-      [] -> default_circuit_info()
+    try do
+      case :ets.lookup(@table_name, host) do
+        [{^host, circuit_info}] -> circuit_info
+        [] -> default_circuit_info()
+      end
+    rescue
+      ArgumentError ->
+        # ETS table doesn't exist (e.g., called before GenServer initialization)
+        AppLogger.api_warn("Circuit breaker ETS table not available, using default state", %{
+          host: host,
+          table: @table_name,
+          component: "CircuitBreakerState"
+        })
+        default_circuit_info()
     end
   end
 
@@ -83,11 +94,26 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
 
   @doc """
   Gets circuit breaker statistics for monitoring.
+  
+  ## Performance Warning
+  This function converts the entire ETS table to a list, which can be expensive
+  with many tracked hosts. Use judiciously in production environments.
+  Consider implementing pagination or filtering for large datasets.
   """
   @spec get_stats() :: %{String.t() => circuit_info()}
   def get_stats do
-    :ets.tab2list(@table_name)
-    |> Enum.into(%{})
+    try do
+      :ets.tab2list(@table_name)
+      |> Enum.into(%{})
+    rescue
+      ArgumentError ->
+        # ETS table doesn't exist
+        AppLogger.api_warn("Circuit breaker ETS table not available for stats", %{
+          table: @table_name,
+          component: "CircuitBreakerState"
+        })
+        %{}
+    end
   end
 
   @doc """
@@ -98,14 +124,31 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
     GenServer.cast(__MODULE__, {:reset_state, host})
   end
 
+  @doc """
+  Clears all circuit breaker states (for testing).
+  """
+  @spec clear_all_states() :: :ok
+  def clear_all_states do
+    GenServer.cast(__MODULE__, :clear_all_states)
+  end
+
+  @doc """
+  Sets the circuit breaker state for a host (for testing).
+  """
+  @spec set_state(String.t(), circuit_info()) :: :ok
+  def set_state(host, circuit_info) do
+    GenServer.cast(__MODULE__, {:set_state, host, circuit_info})
+  end
+
   ## GenServer Callbacks
 
   @impl true
   def init(_opts) do
     # Create ETS table for storing circuit breaker states
+    # Use :protected to ensure only this GenServer can write while allowing reads
     :ets.new(@table_name, [
       :named_table,
-      :public,
+      :protected,
       :set,
       {:read_concurrency, true},
       {:write_concurrency, true}
@@ -213,6 +256,28 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
     })
 
     :ets.insert(@table_name, {host, default_circuit_info()})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:clear_all_states, state) do
+    AppLogger.api_info("Clearing all circuit breaker states", %{
+      component: "CircuitBreakerState"
+    })
+
+    :ets.delete_all_objects(@table_name)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:set_state, host, circuit_info}, state) do
+    AppLogger.api_info("Setting circuit breaker state for testing", %{
+      host: host,
+      component: "CircuitBreakerState",
+      state: circuit_info.state
+    })
+
+    :ets.insert(@table_name, {host, circuit_info})
     {:noreply, state}
   end
 
