@@ -44,8 +44,6 @@ defmodule WandererNotifier.Http.Client do
   @default_headers [{"Content-Type", "application/json"}]
   @default_get_headers []
 
-  # Cache HTTP client configuration at compile time for performance
-  @http_client_module Application.compile_env(:wanderer_notifier, :http_client, :production)
 
   @doc """
   Makes an HTTP request with the specified method, URL and options.
@@ -66,7 +64,7 @@ defmodule WandererNotifier.Http.Client do
     headers = merge_headers(Keyword.get(opts, :headers, []), method)
 
     # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
-    case @http_client_module do
+    case Application.get_env(:wanderer_notifier, :http_client) do
       WandererNotifier.HTTPMock ->
         # Use the existing HTTP module which handles mocks properly
         WandererNotifier.HTTP.request(method, url, headers, body, opts)
