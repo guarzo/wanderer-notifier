@@ -234,35 +234,61 @@ The Makefile provides shortcuts for common tasks:
 Wanderer Notifier follows a domain-driven, event-driven architecture built on Elixir/OTP principles with real-time data streams:
 
 ### Real-Time Data Flow
+
 1. **WebSocket Client**: Maintains persistent connection to WandererKills service for pre-enriched killmail data
+
 2. **SSE Client**: Real-time Server-Sent Events connection for immediate map updates (systems and characters)
+
 3. **Event Processing**: Handles SSE events through dedicated event handlers for real-time map synchronization
+
 4. **Killmail Pipeline**: Processes incoming kills through supervised workers with filtering and notification stages
+
 5. **ESI Integration**: Provides additional enrichment when needed (most data comes pre-enriched from WandererKills)
+
 6. **Notification Engine**: Determines eligibility, applies license limits, and formats messages based on tracking rules
+
 7. **Discord Infrastructure**: Full bot integration with slash command registration and event consumption
+
 8. **Discord Delivery**: Sends rich embed or text notifications to configured channels with multi-channel routing
 
 ### Key Components
+
 - **Supervision Tree**: Robust fault tolerance with granular supervisor hierarchies and automatic recovery
+
 - **WebSocket Infrastructure**: Real-time killmail processing with connection management and supervised workers
+
 - **SSE Infrastructure**: Complete Server-Sent Events system with connection management, parsing, and event handling
+
 - **Discord Bot Services**: Full Discord integration with slash command registration, event consumption, and interaction handling
+
 - **Cache System**: Multi-adapter caching (Cachex/ETS) with unified key management and intelligent TTL strategies
+
 - **HTTP Client**: Centralized client with retry logic, rate limiting, structured logging, and response handling
+
 - **Schedulers**: Background tasks with registry-based management for service monitoring and maintenance
+
 - **License Service**: Controls premium features, notification formatting, and license-based limiting
+
 - **Telemetry System**: Comprehensive application metrics, structured logging, and operational monitoring
 
 ### Technology Stack
+
 - **Elixir 1.18+** with OTP supervision trees for fault tolerance
+
 - **Nostrum** for Discord bot functionality and slash commands
+
 - **HTTPoison/Req** for HTTP API interactions with retry logic
+
 - **Cachex/ETS** for multi-adapter caching with TTL management
+
 - **Jason** for high-performance JSON encoding/decoding
+
 - **WebSockex** for persistent WebSocket connections
+
 - **Server-Sent Events** for real-time map synchronization
+
 - **Mox** for behavior-based testing and mocking
+
 - **Docker** for containerized deployment and development
 
 ## License

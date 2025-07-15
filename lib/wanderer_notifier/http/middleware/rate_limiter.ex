@@ -44,6 +44,18 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
   @default_requests_per_second 10
   @default_burst_capacity 20
+  @table_name :http_rate_limiter_buckets
+
+  # Ensure ETS table exists for token bucket storage
+  def ensure_table do
+    case :ets.whereis(@table_name) do
+      :undefined ->
+        :ets.new(@table_name, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
+        
+      _table ->
+        :ok
+    end
+  end
 
   @doc """
   Executes the HTTP request with rate limiting applied.
@@ -90,11 +102,11 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
     bucket_key = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
 
-    # Simple token bucket implementation using process dictionary
+    # Token bucket implementation using ETS for shared storage
     case get_or_create_bucket(bucket_key, burst_capacity) do
       {:ok, tokens} when tokens > 0 ->
         # Consume a token
-        update_bucket(bucket_key, tokens - 1, requests_per_second)
+        update_bucket(bucket_key, tokens - 1, requests_per_second, burst_capacity)
         :ok
 
       {:ok, 0} ->
@@ -130,42 +142,46 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   end
 
   defp get_or_create_bucket(bucket_key, burst_capacity) do
-    # Use process dictionary for simple token bucket storage
-    # In production, this could be replaced with ETS or Redis
-    case Process.get(bucket_key) do
-      nil ->
+    ensure_table()
+    
+    case :ets.lookup(@table_name, bucket_key) do
+      [] ->
         # Create new bucket with full capacity
         bucket = %{
           tokens: burst_capacity,
           last_refill: :erlang.system_time(:second)
         }
 
-        Process.put(bucket_key, bucket)
+        :ets.insert(@table_name, {bucket_key, bucket})
         {:ok, burst_capacity}
 
-      bucket ->
+      [{^bucket_key, bucket}] ->
         {:ok, bucket.tokens}
     end
   end
 
-  defp update_bucket(bucket_key, new_tokens, refill_rate) do
+  defp update_bucket(bucket_key, new_tokens, refill_rate, burst_capacity) do
+    ensure_table()
     current_time = :erlang.system_time(:second)
 
-    case Process.get(bucket_key) do
-      nil ->
+    case :ets.lookup(@table_name, bucket_key) do
+      [] ->
         :ok
 
-      bucket ->
+      [{^bucket_key, bucket}] ->
         # Calculate token refill based on time elapsed
         time_diff = current_time - bucket.last_refill
-        tokens_to_add = min(time_diff * refill_rate, bucket.tokens + new_tokens)
+        tokens_to_add = time_diff * refill_rate
+        
+        # Update bucket with proper token calculation
+        updated_tokens = min(new_tokens + tokens_to_add, burst_capacity)
 
         updated_bucket = %{
-          tokens: new_tokens + tokens_to_add,
+          tokens: updated_tokens,
           last_refill: current_time
         }
 
-        Process.put(bucket_key, updated_bucket)
+        :ets.insert(@table_name, {bucket_key, updated_bucket})
         :ok
     end
   end

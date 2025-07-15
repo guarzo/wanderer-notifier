@@ -1,4 +1,4 @@
-# Wanderer Notifier - 2-Week Sprint Plans
+# Wanderer Notifier - 12-Week Sprint Plans
 
 > **Generated from**: ideas.md Architecture Improvement Ideas  
 > **Planning Date**: 2025-01-14  
@@ -8,6 +8,7 @@
 ## Sprint Planning Overview
 
 Each sprint follows this quality assurance pattern:
+
 1. Implement feature/improvement
 2. Run quality checks: `mix format`, `mix dialyzer`, `mix credo`
 3. Ensure all checks pass with clean results

@@ -43,6 +43,9 @@ defmodule WandererNotifier.Http.Client do
 
   @default_headers [{"Content-Type", "application/json"}]
   @default_get_headers []
+  
+  # Cache HTTP client configuration at compile time for performance
+  @http_client_module Application.compile_env(:wanderer_notifier, :http_client, :production)
 
   @doc """
   Makes an HTTP request with the specified method, URL and options.
@@ -58,18 +61,18 @@ defmodule WandererNotifier.Http.Client do
   """
   @spec request(method(), url(), opts()) :: response()
   def request(method, url, opts \\ []) do
+    # Prepare body and headers once to avoid duplication
+    body = prepare_body(Keyword.get(opts, :body))
+    headers = merge_headers(Keyword.get(opts, :headers, []), method)
+    
     # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
-    case Application.get_env(:wanderer_notifier, :http_client) do
+    case @http_client_module do
       WandererNotifier.HTTPMock ->
         # Use the existing HTTP module which handles mocks properly
-        body = prepare_body(Keyword.get(opts, :body))
-        headers = merge_headers(Keyword.get(opts, :headers, []), method)
         WandererNotifier.HTTP.request(method, url, headers, body, opts)
 
       _ ->
         # Production mode - use middleware chain
-        body = prepare_body(Keyword.get(opts, :body))
-        headers = merge_headers(Keyword.get(opts, :headers, []), method)
         middlewares = Keyword.get(opts, :middlewares, default_middlewares())
 
         request = %{
@@ -159,8 +162,10 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp default_middlewares do
-    # Default middleware chain - telemetry should be first to capture all metrics
+    # Default middleware chain with retry, rate limiting, and telemetry
+    # Telemetry should be first to capture all metrics
     # Can be overridden per request
-    [Telemetry]
+    alias WandererNotifier.Http.Middleware.{Telemetry, Retry, RateLimiter}
+    [Telemetry, Retry, RateLimiter]
   end
 end

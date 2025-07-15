@@ -77,6 +77,7 @@ The application follows a domain-driven design with these core components:
 - **Discord Configuration**: `DISCORD_BOT_TOKEN` and `DISCORD_APPLICATION_ID` required for slash commands
 - **Core Services**: Killmail processing via WebSocket and map synchronization via SSE are always enabled
 
+
 ### Testing Approach
 - Heavy use of Mox for behavior-based mocking
 - Test modules follow the same structure as implementation modules
@@ -104,6 +105,7 @@ All HTTP requests go through the centralized `WandererNotifier.Http` module whic
 - Use `WandererNotifier.Cache` module for all cache operations
 
 ### Feature Flags
+
 Features can be toggled via environment variables ending in `_ENABLED`:
 
 - `NOTIFICATIONS_ENABLED` - Master toggle for all notifications (default: true)

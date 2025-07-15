@@ -112,7 +112,10 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
   end
 
   defp generate_request_id do
-    :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    # Use lighter-weight unique integer instead of cryptographically strong bytes
+    :erlang.unique_integer([:positive, :monotonic])
+    |> Integer.to_string(16)
+    |> String.downcase()
   end
 
   defp emit_request_start(context, request) do
@@ -276,7 +279,12 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
 
   defp calculate_body_size(nil), do: 0
   defp calculate_body_size(body) when is_binary(body), do: byte_size(body)
-  defp calculate_body_size(body) when is_map(body), do: body |> Jason.encode!() |> byte_size()
+  defp calculate_body_size(body) when is_map(body) do
+    case Jason.encode(body) do
+      {:ok, encoded} -> byte_size(encoded)
+      {:error, _} -> 0
+    end
+  end
   defp calculate_body_size(_), do: 0
 
   defp calculate_headers_size(headers) do
@@ -288,21 +296,26 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
   end
 
   defp calculate_response_size(response) do
-    body_size =
-      case response.body do
-        body when is_binary(body) -> byte_size(body)
-        body when is_map(body) -> body |> Jason.encode!() |> byte_size()
-        _ -> 0
-      end
-
-    headers_size =
-      Map.get(response, :headers, [])
-      |> Enum.reduce(0, fn {key, value}, acc ->
-        # +4 for ": " and "\r\n"
-        acc + byte_size(key) + byte_size(value) + 4
-      end)
-
+    body_size = calculate_response_body_size(response.body)
+    headers_size = calculate_response_headers_size(response)
     body_size + headers_size
+  end
+
+  defp calculate_response_body_size(body) when is_binary(body), do: byte_size(body)
+  defp calculate_response_body_size(body) when is_map(body) do
+    case Jason.encode(body) do
+      {:ok, encoded} -> byte_size(encoded)
+      {:error, _} -> 0
+    end
+  end
+  defp calculate_response_body_size(_), do: 0
+
+  defp calculate_response_headers_size(response) do
+    Map.get(response, :headers, [])
+    |> Enum.reduce(0, fn {key, value}, acc ->
+      # +4 for ": " and "\r\n"
+      acc + byte_size(key) + byte_size(value) + 4
+    end)
   end
 
   defp status_class(status_code) when status_code >= 200 and status_code < 300, do: "2xx"
@@ -345,7 +358,7 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
       %{uri | query: nil, fragment: nil}
       |> URI.to_string()
     rescue
-      _ ->
+      URI.Error ->
         # If URI parsing fails, return original URL
         url
     end

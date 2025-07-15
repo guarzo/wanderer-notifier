@@ -73,30 +73,12 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
 
   @doc """
   Checks if a request should be allowed for a host.
+  
+  This operation is atomic to prevent race conditions during state transitions.
   """
   @spec can_execute?(String.t()) :: boolean()
   def can_execute?(host) do
-    current_time = :erlang.system_time(:millisecond)
-    circuit_info = get_state(host)
-
-    case circuit_info.state do
-      :closed ->
-        true
-
-      :open ->
-        # Check if recovery timeout has passed
-        if current_time >= circuit_info.next_attempt_time do
-          # Transition to half-open
-          GenServer.cast(__MODULE__, {:transition_to_half_open, host})
-          true
-        else
-          false
-        end
-
-      :half_open ->
-        # Allow limited requests in half-open state
-        true
-    end
+    GenServer.call(__MODULE__, {:can_execute, host})
   end
 
   @doc """
@@ -135,6 +117,40 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
     })
 
     {:ok, %{}}
+  end
+
+  @impl true
+  def handle_call({:can_execute, host}, _from, state) do
+    current_time = :erlang.system_time(:millisecond)
+    circuit_info = get_state(host)
+
+    {can_execute, updated_info} =
+      case circuit_info.state do
+        :closed ->
+          {true, circuit_info}
+
+        :open ->
+          # Check if recovery timeout has passed
+          if current_time >= circuit_info.next_attempt_time do
+            # Transition to half-open atomically
+            log_state_transition(host, :open, :half_open)
+            updated = %{circuit_info | state: :half_open}
+            {true, updated}
+          else
+            {false, circuit_info}
+          end
+
+        :half_open ->
+          # Allow limited requests in half-open state
+          {true, circuit_info}
+      end
+
+    # Update state in ETS if it changed
+    if updated_info != circuit_info do
+      :ets.insert(@table_name, {host, updated_info})
+    end
+
+    {:reply, can_execute, state}
   end
 
   @impl true
@@ -189,18 +205,6 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_cast({:transition_to_half_open, host}, state) do
-    circuit_info = get_state(host)
-
-    if circuit_info.state == :open do
-      log_state_transition(host, :open, :half_open)
-      updated_info = %{circuit_info | state: :half_open}
-      :ets.insert(@table_name, {host, updated_info})
-    end
-
-    {:noreply, state}
-  end
 
   @impl true
   def handle_cast({:reset_state, host}, state) do
