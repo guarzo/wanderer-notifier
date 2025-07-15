@@ -6,12 +6,8 @@ defmodule WandererNotifier.HTTP do
   """
   @behaviour WandererNotifier.HTTP.HttpBehaviour
 
-  alias WandererNotifier.Constants
-  alias WandererNotifier.Http.Utils.JsonUtils
-  alias WandererNotifier.Utils.TimeUtils
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  use WandererNotifier.Logger.ApiLoggerMacros
+  alias WandererNotifier.Http.Client
+  alias WandererNotifier.Http.Middleware.{Retry, RateLimiter, CircuitBreaker}
 
   @type url :: String.t()
   @type headers :: list({String.t(), String.t()})
@@ -20,18 +16,11 @@ defmodule WandererNotifier.HTTP do
   @type method :: :get | :post | :put | :delete | :head | :options
   @type response :: {:ok, %{status_code: integer(), body: term()}} | {:error, term()}
 
-  @default_headers [{"Content-Type", "application/json"}]
-  @default_get_headers []
-  @default_timeout Constants.default_timeout()
-  @default_recv_timeout Constants.default_recv_timeout()
-  @default_connect_timeout Constants.default_connect_timeout()
-  @default_pool_timeout Constants.default_pool_timeout()
-
   @doc """
   Makes a GET request to the specified URL.
   """
   @spec get(url(), headers(), opts()) :: response()
-  def get(url, headers \\ @default_get_headers, opts \\ []) do
+  def get(url, headers \\ [], opts \\ []) do
     request(:get, url, headers, nil, opts)
   end
 
@@ -39,7 +28,7 @@ defmodule WandererNotifier.HTTP do
   Makes a POST request with the given body.
   """
   @spec post(url(), body(), headers(), opts()) :: response()
-  def post(url, body, headers \\ @default_headers, opts \\ []) do
+  def post(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
     request(:post, url, headers, body, opts)
   end
 
@@ -47,9 +36,8 @@ defmodule WandererNotifier.HTTP do
   Makes a POST request with JSON body.
   """
   @spec post_json(url(), map(), headers(), opts()) :: response()
-  def post_json(url, body, headers \\ @default_headers, opts \\ []) do
-    encoded_body = JsonUtils.encode!(body)
-    post(url, encoded_body, headers, opts)
+  def post_json(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
+    post(url, body, headers, opts)
   end
 
   @doc """
@@ -57,80 +45,103 @@ defmodule WandererNotifier.HTTP do
   """
   @spec request(method(), url(), headers(), body() | nil, opts()) :: response()
   def request(method, url, headers, body, opts) do
-    start_time = TimeUtils.monotonic_ms()
+    # Check if we're in test mode and using mock
+    case Application.get_env(:wanderer_notifier, :http_client) do
+      WandererNotifier.HTTPMock ->
+        # Use the mock directly for testing
+        mock = WandererNotifier.HTTPMock
 
-    case make_request(method, url, headers, body, opts) do
-      {:ok, response} ->
-        result = process_response(response, url, method)
+        case method do
+          :get ->
+            apply(mock, :get, [url, headers, opts])
 
-        case result do
-          {:ok, %{status_code: status}} -> log_success(method, url, status, start_time)
+          :post ->
+            apply(mock, :post, [url, body, headers, opts])
+
+          _ ->
+            {:error, :method_not_supported}
         end
 
-        result
-
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        log_error(method, url, reason, start_time)
-        {:error, reason}
+      _ ->
+        # Production mode - use the new middleware-based client
+        client_opts = build_client_opts(opts, headers, body)
+        result = Client.request(method, url, client_opts)
+        transform_response(result)
     end
   end
 
   # Private implementation
 
-  defp make_request(method, url, headers, body, opts) do
-    payload = prepare_body(body)
-    request_opts = build_request_opts(opts)
+  defp build_client_opts(opts, headers, body) do
+    # Start with the provided options
+    client_opts = opts
 
-    HTTPoison.request(method, url, payload, headers, request_opts)
-  end
+    # Add headers if provided
+    client_opts =
+      if headers != [], do: Keyword.put(client_opts, :headers, headers), else: client_opts
 
-  defp prepare_body(nil), do: ""
-  defp prepare_body(body) when is_map(body), do: JsonUtils.encode!(body)
-  defp prepare_body(body), do: body
+    # Add body if provided
+    client_opts = if body != nil, do: Keyword.put(client_opts, :body, body), else: client_opts
 
-  defp build_request_opts(opts) do
-    [
-      timeout: Keyword.get(opts, :timeout, @default_timeout),
-      recv_timeout: Keyword.get(opts, :recv_timeout, @default_recv_timeout),
-      connect_timeout: Keyword.get(opts, :connect_timeout, @default_connect_timeout),
-      pool_timeout: Keyword.get(opts, :pool_timeout, @default_pool_timeout),
-      hackney: [pool: :default]
-    ]
-  end
+    # Configure middleware chain based on options
+    middlewares = configure_middlewares(opts)
 
-  @spec process_response(HTTPoison.Response.t(), url(), method()) :: response()
-  defp process_response(%HTTPoison.Response{status_code: status, body: body}, _url, _method) do
-    processed_body =
-      case JsonUtils.decode(body) do
-        {:ok, decoded} -> decoded
-        {:error, _reason} -> body
-      end
-
-    if status >= 400 do
-      {:error, {:http_error, status, processed_body}}
+    if middlewares != [] do
+      Keyword.put(client_opts, :middlewares, middlewares)
     else
-      {:ok, %{status_code: status, body: processed_body}}
+      client_opts
     end
   end
 
-  defp log_success(method, url, status, start_time) do
-    duration_ms = TimeUtils.monotonic_ms() - start_time
-    log_api_success(url, status, duration_ms, %{method: method, client: "HTTP"})
+  defp configure_middlewares(opts) do
+    middlewares = []
+
+    # Add retry middleware if retry options are present
+    middlewares =
+      if Keyword.has_key?(opts, :retry_options) do
+        [Retry | middlewares]
+      else
+        middlewares
+      end
+
+    # Add rate limiter middleware if rate limit options are present
+    middlewares =
+      if Keyword.has_key?(opts, :rate_limit_options) do
+        [RateLimiter | middlewares]
+      else
+        middlewares
+      end
+
+    # Add circuit breaker middleware if circuit breaker options are present
+    middlewares =
+      if Keyword.has_key?(opts, :circuit_breaker_options) do
+        [CircuitBreaker | middlewares]
+      else
+        middlewares
+      end
+
+    # If no specific middleware configured, use default chain
+    if middlewares == [] do
+      # Default middleware chain (telemetry is included by default in Client)
+      [Retry, RateLimiter]
+    else
+      middlewares
+    end
   end
 
-  defp log_error(method, url, reason, start_time) do
-    duration_ms = TimeUtils.monotonic_ms() - start_time
-    # Explicitly pass duration_ms as the third parameter (not nil)
-    # The macro handles both nil and non-nil cases, but we always have a value
-    metadata = Map.put(%{method: method, client: "HTTP"}, :duration_ms, duration_ms)
+  defp transform_response({:ok, response}) do
+    # Response is already in the correct format from the new client
+    {:ok, response}
+  end
 
-    AppLogger.api_error(
-      "API request failed",
-      Map.merge(metadata, %{
-        url: url,
-        error: inspect(reason)
-      })
-    )
+  defp transform_response({:error, {:http_error, status, body}}) do
+    # Keep the same error format
+    {:error, {:http_error, status, body}}
+  end
+
+  defp transform_response({:error, reason}) do
+    # Other errors pass through
+    {:error, reason}
   end
 
   @doc """

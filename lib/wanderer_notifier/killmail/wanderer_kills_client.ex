@@ -7,7 +7,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Http.Utils.RateLimiter
+  alias WandererNotifier.HTTP
   alias WandererNotifier.Http.ResponseHandler
   alias WandererNotifier.Constants
   require Logger
@@ -105,18 +105,29 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
   # Private functions
 
   defp perform_request(url) do
-    RateLimiter.run(
-      fn -> make_http_request(url) end,
-      context: "WandererKills request",
-      max_retries: @max_retries,
-      base_backoff: Constants.wanderer_kills_retry_backoff()
-    )
+    # Configure middleware options for retry and rate limiting
+    opts = [
+      retry_options: [
+        max_attempts: @max_retries,
+        base_backoff: Constants.wanderer_kills_retry_backoff(),
+        retryable_errors: [:timeout, :connect_timeout, :econnrefused],
+        retryable_status_codes: [429, 500, 502, 503, 504],
+        context: "WandererKills request"
+      ],
+      rate_limit_options: [
+        per_host: true,
+        requests_per_second: 10,
+        burst_capacity: 20
+      ],
+      timeout: 10_000,
+      recv_timeout: 10_000
+    ]
+
+    make_http_request(url, opts)
   end
 
-  defp get_http_client, do: WandererNotifier.Core.Dependencies.http_client()
-
-  defp make_http_request(url) do
-    result = get_http_client().get(url, http_headers(), http_options())
+  defp make_http_request(url, opts) do
+    result = HTTP.get(url, http_headers(), opts)
 
     case ResponseHandler.handle_response(result,
            success_codes: [200],
@@ -162,13 +173,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
     ]
   end
 
-  defp http_options do
-    [
-      recv_timeout: 10_000,
-      timeout: 10_000,
-      follow_redirect: true
-    ]
-  end
+  # Note: HTTP options are now passed directly to the unified client in perform_request
 
   defp decode_response(body) when is_binary(body) do
     case Jason.decode(body) do

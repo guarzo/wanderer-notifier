@@ -36,405 +36,508 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 box-sizing: border-box;
             }
 
+            :root {
+                --bg-primary: #0a0f1b;
+                --bg-secondary: #0f1823;
+                --bg-card: #1a2332;
+                --bg-hover: #202937;
+                --border-color: #2a3441;
+                --text-primary: #e8eaed;
+                --text-secondary: #9ca3af;
+                --text-muted: #6b7280;
+                --accent-primary: #60a5fa;
+                --accent-secondary: #3b82f6;
+                --success: #10b981;
+                --warning: #f59e0b;
+                --error: #ef4444;
+                --gradient-primary: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+                --gradient-dark: linear-gradient(135deg, #1a2332 0%, #0f1823 100%);
+            }
+
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                background-color: #0f172a;
-                color: #e2e8f0;
+                background: var(--bg-primary);
+                color: var(--text-primary);
                 line-height: 1.6;
-                padding: 2rem;
+                min-height: 100vh;
+                background-image: 
+                    radial-gradient(circle at 20% 50%, rgba(96, 165, 250, 0.05) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
             }
 
             .container {
-                max-width: 1200px;
+                max-width: 1600px;
                 margin: 0 auto;
+                padding: 2rem;
             }
 
+            /* Header Styles */
             .header {
-                text-align: center;
+                background: var(--gradient-dark);
+                border-radius: 20px;
+                padding: 3rem;
                 margin-bottom: 3rem;
-                background-color: #1e293b;
-                border-radius: 12px;
-                padding: 2rem;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-                border: 1px solid #334155;
+                position: relative;
+                overflow: hidden;
+                border: 1px solid var(--border-color);
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            }
+
+            .header::before {
+                content: '';
+                position: absolute;
+                top: -50%;
+                right: -50%;
+                width: 200%;
+                height: 200%;
+                background: radial-gradient(circle, rgba(96, 165, 250, 0.1) 0%, transparent 70%);
+                animation: rotate 20s linear infinite;
+            }
+
+            @keyframes rotate {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            .header-content {
+                position: relative;
+                z-index: 1;
+                text-align: center;
             }
 
             .header h1 {
-                font-size: 2.5rem;
-                color: #60a5fa;
-                margin-bottom: 1rem;
+                font-size: 3rem;
+                font-weight: 800;
+                background: var(--gradient-primary);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                margin-bottom: 1.5rem;
+                letter-spacing: -0.02em;
             }
 
-            .header-status {
-                color: #e2e8f0;
-                font-size: 1rem;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                flex-wrap: wrap;
-                gap: 1.5rem;
-                margin-top: 1rem;
+            .status-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 1rem;
+                margin-top: 2rem;
             }
 
             .status-item {
-                white-space: nowrap;
-                background: rgba(96, 165, 250, 0.1);
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                border: 1px solid rgba(96, 165, 250, 0.3);
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 12px;
+                padding: 1rem;
+                text-align: center;
+                backdrop-filter: blur(10px);
                 transition: all 0.3s ease;
             }
 
             .status-item:hover {
-                background: rgba(96, 165, 250, 0.2);
-                transform: translateY(-1px);
+                background: rgba(255, 255, 255, 0.05);
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
             }
 
-            .status-divider {
-                display: none;
+            .status-icon {
+                font-size: 2rem;
+                margin-bottom: 0.5rem;
+                display: block;
             }
 
-            .grid {
+            .status-label {
+                font-size: 0.75rem;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin-bottom: 0.25rem;
+            }
+
+            .status-value {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+
+            /* Main Grid */
+            .main-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-                gap: 2rem;
+                grid-template-columns: repeat(12, 1fr);
+                gap: 1.5rem;
                 margin-bottom: 2rem;
             }
 
             .card {
-                background-color: #1e293b;
-                border-radius: 12px;
-                padding: 1.5rem;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-                border: 1px solid #334155;
+                background: var(--bg-card);
+                border-radius: 16px;
+                padding: 2rem;
+                border: 1px solid var(--border-color);
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
                 transition: all 0.3s ease;
-            }
-
-            .card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4);
-                border-color: #475569;
-            }
-
-            .card h2 {
-                color: #60a5fa;
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-
-            .card h2::before {
-                content: '';
-                display: inline-block;
-                width: 4px;
-                height: 20px;
-                background-color: #60a5fa;
-                border-radius: 2px;
-            }
-
-            .info-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 0.75rem 0;
-                border-bottom: 1px solid #334155;
-            }
-
-            .info-row:last-child {
-                border-bottom: none;
-            }
-
-            .info-label {
-                color: #94a3b8;
-            }
-
-            .info-value {
-                color: #e2e8f0;
-                font-weight: 500;
-            }
-
-            .status-badge {
-                display: inline-block;
-                padding: 0.25rem 0.75rem;
-                border-radius: 9999px;
-                font-size: 0.875rem;
-                font-weight: 600;
-            }
-
-            .status-ok {
-                background-color: #166534;
-                color: #86efac;
-            }
-
-            .status-running {
-                background-color: #166534;
-                color: #86efac;
-            }
-
-            .status-stopped {
-                background-color: #7f1d1d;
-                color: #fca5a5;
-            }
-
-            .status-unknown {
-                background-color: #44403c;
-                color: #d6d3d1;
-            }
-
-            .progress-bar {
-                width: 100%;
-                height: 8px;
-                background-color: #334155;
-                border-radius: 4px;
-                overflow: hidden;
-                margin-top: 0.5rem;
-            }
-
-            .progress-fill {
-                height: 100%;
-                background-color: #60a5fa;
-                transition: width 0.3s ease;
-            }
-
-            .progress-fill.high {
-                background-color: #ef4444;
-            }
-
-            .progress-fill.medium {
-                background-color: #f59e0b;
-            }
-
-            .metric-box {
-                background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-                border-radius: 8px;
-                padding: 1rem;
-                margin: 0.5rem 0;
-                border-left: 4px solid #60a5fa;
-                transition: all 0.3s ease;
-            }
-
-            .metric-box:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 12px rgba(0, 0, 0, 0.4);
-            }
-
-            .metric-value {
-                font-size: 1.5rem;
-                font-weight: 700;
-                color: #60a5fa;
-                margin-bottom: 0.25rem;
-            }
-
-            .metric-label {
-                font-size: 0.875rem;
-                color: #94a3b8;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-
-            .health-indicator {
-                display: inline-block;
-                width: 12px;
-                height: 12px;
-                border-radius: 50%;
-                margin-right: 0.5rem;
-                animation: pulse 2s infinite;
-            }
-
-            .health-good {
-                background-color: #10b981;
-            }
-
-            .health-warning {
-                background-color: #f59e0b;
-            }
-
-            .health-error {
-                background-color: #ef4444;
-            }
-
-            @keyframes pulse {
-                0% {
-                    opacity: 1;
-                }
-                50% {
-                    opacity: 0.5;
-                }
-                100% {
-                    opacity: 1;
-                }
-            }
-
-            .chart-container {
-                margin-top: 1rem;
-                height: 100px;
-                background: #0f172a;
-                border-radius: 8px;
-                padding: 1rem;
-                border: 1px solid #334155;
-            }
-
-            .mini-chart {
-                width: 100%;
-                height: 60px;
-                background: linear-gradient(to right, #1e293b, #334155);
-                border-radius: 4px;
                 position: relative;
                 overflow: hidden;
             }
 
-            .chart-bar {
+            .card::before {
+                content: '';
                 position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                background: var(--gradient-primary);
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+
+            .card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+                border-color: var(--accent-primary);
+            }
+
+            .card:hover::before {
+                opacity: 1;
+            }
+
+            .card-small { grid-column: span 4; }
+            .card-medium { grid-column: span 6; }
+            .card-large { grid-column: span 8; }
+            .card-full { grid-column: span 12; }
+
+            .card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 1.5rem;
+            }
+
+            .card-title {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: var(--text-primary);
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+            }
+
+            .card-icon {
+                width: 40px;
+                height: 40px;
+                background: var(--gradient-primary);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.25rem;
+            }
+
+            /* Metrics */
+            .metric-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 1rem;
+            }
+
+            .metric-item {
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 12px;
+                padding: 1.5rem;
+                text-align: center;
+                transition: all 0.3s ease;
+            }
+
+            .metric-item:hover {
+                background: rgba(255, 255, 255, 0.04);
+                transform: scale(1.02);
+            }
+
+            .metric-value {
+                font-size: 2rem;
+                font-weight: 700;
+                background: var(--gradient-primary);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                margin-bottom: 0.5rem;
+            }
+
+            .metric-label {
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            /* Progress Bars */
+            .progress-container {
+                margin: 1rem 0;
+            }
+
+            .progress-header {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 0.5rem;
+            }
+
+            .progress-label {
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .progress-value {
+                font-size: 0.875rem;
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+
+            .progress-bar {
+                width: 100%;
+                height: 10px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                overflow: hidden;
+                position: relative;
+            }
+
+            .progress-fill {
+                height: 100%;
+                background: var(--gradient-primary);
+                border-radius: 10px;
+                transition: width 0.5s ease;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .progress-fill::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
                 bottom: 0;
-                background: linear-gradient(to top, #60a5fa, #3b82f6);
+                right: 0;
+                background: linear-gradient(
+                    90deg,
+                    transparent,
+                    rgba(255, 255, 255, 0.3),
+                    transparent
+                );
+                animation: shimmer 2s infinite;
+            }
+
+            @keyframes shimmer {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+            }
+
+            .progress-fill.warning {
+                background: linear-gradient(135deg, var(--warning) 0%, #f59e0b 100%);
+            }
+
+            .progress-fill.danger {
+                background: linear-gradient(135deg, var(--error) 0%, #ef4444 100%);
+            }
+
+            /* Status Indicators */
+            .status-indicator {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.5rem 1rem;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 20px;
+                font-size: 0.875rem;
+            }
+
+            .status-dot {
                 width: 8px;
-                margin-right: 2px;
-                border-radius: 2px 2px 0 0;
+                height: 8px;
+                border-radius: 50%;
+                animation: pulse 2s infinite;
             }
 
-            .alert-box {
-                background: rgba(239, 68, 68, 0.1);
-                border: 1px solid #ef4444;
-                border-radius: 8px;
+            .status-dot.success {
+                background: var(--success);
+                box-shadow: 0 0 10px var(--success);
+            }
+
+            .status-dot.warning {
+                background: var(--warning);
+                box-shadow: 0 0 10px var(--warning);
+            }
+
+            .status-dot.error {
+                background: var(--error);
+                box-shadow: 0 0 10px var(--error);
+            }
+
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+
+            /* Charts */
+            .chart-container {
+                height: 200px;
+                background: rgba(255, 255, 255, 0.02);
+                border-radius: 12px;
                 padding: 1rem;
-                margin: 1rem 0;
-                color: #fca5a5;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                position: relative;
+                overflow: hidden;
             }
 
-            .success-box {
-                background: rgba(16, 185, 129, 0.1);
-                border: 1px solid #10b981;
+            .chart-grid {
+                position: absolute;
+                inset: 0;
+                background-image: 
+                    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+                background-size: 20px 20px;
+            }
+
+            /* Info Lists */
+            .info-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .info-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.75rem;
+                background: rgba(255, 255, 255, 0.02);
                 border-radius: 8px;
-                padding: 1rem;
-                margin: 1rem 0;
-                color: #86efac;
+                transition: all 0.2s ease;
             }
 
-            .recent-activity {
-                max-height: 200px;
+            .info-item:hover {
+                background: rgba(255, 255, 255, 0.04);
+            }
+
+            .info-label {
+                color: var(--text-secondary);
+                font-size: 0.875rem;
+            }
+
+            .info-value {
+                color: var(--text-primary);
+                font-weight: 600;
+                font-size: 0.875rem;
+            }
+
+            /* Activity Feed */
+            .activity-feed {
+                max-height: 300px;
                 overflow-y: auto;
-                background: #0f172a;
-                border-radius: 8px;
-                padding: 1rem;
-                margin-top: 1rem;
+                padding-right: 0.5rem;
+            }
+
+            .activity-feed::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .activity-feed::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 3px;
+            }
+
+            .activity-feed::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 3px;
             }
 
             .activity-item {
-                padding: 0.5rem;
-                border-bottom: 1px solid #334155;
-                font-size: 0.875rem;
+                padding: 1rem;
+                margin-bottom: 0.75rem;
+                background: rgba(255, 255, 255, 0.02);
+                border-radius: 8px;
+                border-left: 3px solid var(--accent-primary);
+                transition: all 0.2s ease;
             }
 
-            .activity-item:last-child {
-                border-bottom: none;
+            .activity-item:hover {
+                background: rgba(255, 255, 255, 0.04);
+                transform: translateX(4px);
             }
 
             .activity-time {
-                color: #64748b;
                 font-size: 0.75rem;
+                color: var(--text-muted);
             }
 
-            .memory-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 1rem;
-                margin-top: 1rem;
-            }
-
-            .memory-item {
-                background: #0f172a;
-                padding: 1rem;
-                border-radius: 8px;
-                border: 1px solid #334155;
-            }
-
-            .memory-label {
-                font-size: 0.875rem;
-                color: #94a3b8;
-                margin-bottom: 0.25rem;
-            }
-
-            .memory-value {
-                font-size: 1.25rem;
-                font-weight: 600;
-                color: #e2e8f0;
-            }
-
-            .memory-warning {
-                color: #f59e0b !important;
-            }
-
-            .memory-critical {
-                color: #ef4444 !important;
-            }
-
-            .process-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 1rem;
-            }
-
-            .process-table th,
-            .process-table td {
-                padding: 0.75rem;
-                text-align: left;
-                border-bottom: 1px solid #334155;
-            }
-
-            .process-table th {
-                background: #0f172a;
-                color: #94a3b8;
-                font-weight: 600;
-                font-size: 0.875rem;
-            }
-
-            .process-table td {
-                color: #e2e8f0;
-                font-size: 0.875rem;
-            }
-
-            .process-status-running {
-                color: #10b981;
-            }
-
-            .process-status-not_running {
-                color: #ef4444;
-            }
-
-            .large-number {
-                font-size: 1.5rem;
-                font-weight: 700;
-                color: #60a5fa;
-            }
-
-            .warning-threshold {
-                color: #f59e0b;
-            }
-
-            .critical-threshold {
-                color: #ef4444;
-            }
-
+            /* Footer */
             .footer {
                 text-align: center;
-                color: #64748b;
+                padding: 2rem;
                 margin-top: 3rem;
-                padding-top: 2rem;
-                border-top: 1px solid #334155;
+                border-top: 1px solid var(--border-color);
+            }
+
+            .footer-content {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 1rem;
+            }
+
+            .refresh-controls {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+
+            .btn {
+                padding: 0.75rem 1.5rem;
+                background: var(--gradient-primary);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+            }
+
+            .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(96, 165, 250, 0.3);
+            }
+
+            .countdown {
+                color: var(--text-secondary);
+                font-size: 0.875rem;
+            }
+
+            /* Responsive */
+            @media (max-width: 1024px) {
+                .main-grid {
+                    grid-template-columns: repeat(6, 1fr);
+                }
+                .card-small { grid-column: span 6; }
+                .card-medium { grid-column: span 6; }
+                .card-large { grid-column: span 6; }
             }
 
             @media (max-width: 768px) {
-                body {
+                .container {
                     padding: 1rem;
                 }
-
+                .header {
+                    padding: 2rem 1.5rem;
+                }
                 .header h1 {
                     font-size: 2rem;
                 }
-
-                .grid {
+                .status-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+                .main-grid {
                     grid-template-columns: 1fr;
+                    gap: 1rem;
+                }
+                .card-small,
+                .card-medium,
+                .card-large {
+                    grid-column: span 1;
                 }
             }
         </style>
@@ -443,16 +546,15 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
         <div class="container">
             #{render_header(data, uptime_formatted)}
 
-            <div class="grid">
-                #{render_system_health_card(data)}
-
-                #{render_tracking_card(data)}
-
-                #{render_notifications_card(data)}
-
-                #{render_performance_card(data)}
-
-                #{render_cache_stats_card(data)}
+            <div class="main-grid">
+                #{render_system_overview_card(data)}
+                #{render_websocket_status_card(data)}
+                #{render_tracking_metrics_card(data)}
+                #{render_notification_stats_card(data)}
+                #{render_performance_metrics_card(data)}
+                #{render_cache_performance_card(data)}
+                #{render_memory_usage_card(data)}
+                #{render_activity_feed_card(data)}
             </div>
 
             #{render_footer(data)}
@@ -466,7 +568,7 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
             function updateCountdown() {
                 const countdownElement = document.getElementById('refresh-countdown');
                 if (countdownElement) {
-                    countdownElement.textContent = `Refreshing in ${countdown}s`;
+                    countdownElement.textContent = countdown;
                 }
 
                 if (countdown <= 0) {
@@ -491,6 +593,32 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                     e.preventDefault();
                     manualRefresh();
                 }
+            });
+
+            // Animate numbers on load
+            function animateValue(element, start, end, duration) {
+                const range = end - start;
+                const increment = range / (duration / 16);
+                let current = start;
+                
+                const timer = setInterval(() => {
+                    current += increment;
+                    if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                        current = end;
+                        clearInterval(timer);
+                    }
+                    element.textContent = Math.floor(current).toLocaleString();
+                }, 16);
+            }
+
+            // Animate all metric values on load
+            document.addEventListener('DOMContentLoaded', () => {
+                document.querySelectorAll('.animate-number').forEach(el => {
+                    const value = parseInt(el.textContent.replace(/,/g, ''));
+                    if (!isNaN(value)) {
+                        animateValue(el, 0, value, 1000);
+                    }
+                });
             });
         </script>
     </body>
@@ -538,64 +666,434 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
 
   defp render_header(data, uptime_formatted) do
     current_time = DateTime.utc_now()
-
-    # Determine WebSocket status
-    websocket_status = if data.websocket.client_alive, do: "🟢 Connected", else: "🔴 Disconnected"
+    websocket_connected = data.websocket.client_alive
 
     """
     <div class="header">
-        <h1>🚀 Wanderer Notifier Dashboard</h1>
-        <div class="header-status">
-            <span class="status-item">📦 v#{data.server_version}</span>
-            <span class="status-item">⏱️ Uptime: #{uptime_formatted}</span>
-            <span class="status-item">🔌 Port: #{data.web_server.port}</span>
-            <span class="status-item">#{websocket_status}</span>
-            <span class="status-item">🕐 #{format_time(current_time)}</span>
+        <div class="header-content">
+            <h1>Wanderer Notifier</h1>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-icon">📦</span>
+                    <div class="status-label">Version</div>
+                    <div class="status-value">v#{data.server_version}</div>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">⏰</span>
+                    <div class="status-label">Uptime</div>
+                    <div class="status-value">#{uptime_formatted}</div>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">🌐</span>
+                    <div class="status-label">Port</div>
+                    <div class="status-value">#{data.web_server.port}</div>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">#{if websocket_connected, do: "🟢", else: "🔴"}</span>
+                    <div class="status-label">WebSocket</div>
+                    <div class="status-value">#{if websocket_connected, do: "Connected", else: "Disconnected"}</div>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">🕐</span>
+                    <div class="status-label">Time</div>
+                    <div class="status-value">#{format_time(current_time)}</div>
+                </div>
+            </div>
         </div>
     </div>
     """
   end
 
-  defp render_tracking_card(data) do
+  defp render_system_overview_card(data) do
+    memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
+    memory_mb = Float.round((data.system.memory.total_kb || 0) / 1024, 1)
+
+    health_status =
+      cond do
+        memory_usage >= 80 -> "error"
+        memory_usage >= 60 -> "warning"
+        true -> "success"
+      end
+
     """
-    <div class="card">
-        <h2>📡 Tracking</h2>
-        <div class="info-row">
-            <span class="info-label">Systems Tracked</span>
-            <span class="info-value">#{data.tracking.systems_count}</span>
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">💻</div>
+                System Overview
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot #{health_status}"></div>
+                #{String.capitalize(health_status)}
+            </div>
         </div>
-        <div class="info-row">
-            <span class="info-label">Characters Tracked</span>
-            <span class="info-value">#{data.tracking.characters_count}</span>
+        
+        <div class="progress-container">
+            <div class="progress-header">
+                <span class="progress-label">Memory Usage</span>
+                <span class="progress-value">#{Float.round(memory_usage, 1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill #{if(memory_usage >= 80, do: "danger", else: if(memory_usage >= 60, do: "warning", else: ""))}"
+                     style="width: #{memory_usage}%"></div>
+            </div>
         </div>
-        <div class="info-row">
-            <span class="info-label">Killmails Received</span>
-            <span class="info-value">#{data.tracking.killmails_received}</span>
+        
+        <div class="info-list">
+            <div class="info-item">
+                <span class="info-label">Total Memory</span>
+                <span class="info-value">#{memory_mb} MB</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">CPU Cores</span>
+                <span class="info-value">#{data.system.scheduler_count}</span>
+            </div>
         </div>
     </div>
     """
   end
 
-  defp render_notifications_card(data) do
+  defp render_websocket_status_card(data) do
+    websocket_connected = data.websocket.client_alive
+    status_class = if websocket_connected, do: "success", else: "error"
+    status_text = if websocket_connected, do: "Connected", else: "Disconnected"
+    uptime = Map.get(data.websocket, :connection_uptime_formatted, "Unknown")
+
     """
-    <div class="card">
-        <h2>📬 Notifications Sent</h2>
-        <div class="info-row">
-            <span class="info-label">Total</span>
-            <span class="info-value">#{data.notifications.total}</span>
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">🔌</div>
+                WebSocket Connection
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot #{status_class}"></div>
+                #{status_text}
+            </div>
         </div>
-        <div class="info-row">
-            <span class="info-label">Kill Notifications</span>
-            <span class="info-value">#{data.notifications.kills}</span>
+        
+        #{if websocket_connected do
+      """
+      <div class="metric-grid" style="grid-template-columns: 1fr;">
+          <div class="metric-item">
+              <div class="metric-value">#{uptime}</div>
+              <div class="metric-label">Connection Duration</div>
+          </div>
+      </div>
+      """
+    else
+      """
+      <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🔴</div>
+          <div>WebSocket disconnected</div>
+      </div>
+      """
+    end}
+        
+        <div class="info-list">
+            <div class="info-item">
+                <span class="info-label">Status</span>
+                <span class="info-value">#{status_text}</span>
+            </div>
+            #{if websocket_connected do
+      """
+      <div class="info-item">
+          <span class="info-label">Uptime</span>
+          <span class="info-value">#{uptime}</span>
+      </div>
+      """
+    end}
         </div>
-        <div class="info-row">
-            <span class="info-label">System Notifications</span>
-            <span class="info-value">#{data.notifications.systems}</span>
+    </div>
+    """
+  end
+
+  defp render_tracking_metrics_card(data) do
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">📡</div>
+                Tracking Metrics
+            </div>
         </div>
-        <div class="info-row">
-            <span class="info-label">Character Notifications</span>
-            <span class="info-value">#{data.notifications.characters}</span>
+        
+        <div class="metric-grid">
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.tracking.systems_count}</div>
+                <div class="metric-label">Systems</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.tracking.characters_count}</div>
+                <div class="metric-label">Characters</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.tracking.killmails_received}</div>
+                <div class="metric-label">Killmails</div>
+            </div>
         </div>
+    </div>
+    """
+  end
+
+  defp render_notification_stats_card(data) do
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">📬</div>
+                Notifications
+            </div>
+        </div>
+        
+        <div class="metric-grid">
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.notifications.total}</div>
+                <div class="metric-label">Total Sent</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.notifications.kills}</div>
+                <div class="metric-label">Kill Alerts</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.notifications.systems}</div>
+                <div class="metric-label">System Alerts</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value animate-number">#{data.notifications.characters}</div>
+                <div class="metric-label">Character Alerts</div>
+            </div>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_performance_metrics_card(data) do
+    performance = data.performance
+
+    success_rate =
+      if performance.success_rate == 0.0, do: "0", else: "#{performance.success_rate}"
+
+    notification_rate =
+      if performance.notification_rate == 0.0, do: "0", else: "#{performance.notification_rate}"
+
+    processing_efficiency =
+      if performance.processing_efficiency == 0.0,
+        do: "0",
+        else: "#{performance.processing_efficiency}"
+
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">📊</div>
+                Performance Metrics
+            </div>
+        </div>
+        
+        <div class="metric-grid">
+            <div class="metric-item">
+                <div class="metric-value">#{success_rate}%</div>
+                <div class="metric-label">Success Rate</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">#{notification_rate}%</div>
+                <div class="metric-label">Notification Rate</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">#{processing_efficiency}%</div>
+                <div class="metric-label">Efficiency</div>
+            </div>
+        </div>
+        
+        <div class="info-list" style="margin-top: 2rem;">
+            <div class="info-item">
+                <span class="info-label">Last Activity</span>
+                <span class="info-value">#{performance.last_activity}</span>
+            </div>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_cache_performance_card(data) do
+    cache = data.cache_stats
+    has_activity = cache_has_activity?(cache)
+
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">💾</div>
+                Cache Performance
+            </div>
+            #{render_cache_status_indicator(has_activity, cache)}
+        </div>
+        
+        #{render_cache_content(has_activity, cache)}
+    </div>
+    """
+  end
+
+  defp cache_has_activity?(cache) do
+    cache.hits > 0 || cache.misses > 0 || cache.size > 0 || Map.get(cache, :writes, 0) > 0
+  end
+
+  defp render_cache_status_indicator(true, cache) do
+    hit_rate_color = get_cache_hit_rate_color(cache.hit_rate)
+
+    """
+    <div class="status-indicator">
+        <div class="status-dot #{hit_rate_color}"></div>
+        #{cache.hit_rate}% Hit Rate
+    </div>
+    """
+  end
+
+  defp render_cache_status_indicator(false, _cache) do
+    """
+    <div class="status-indicator">
+        <div class="status-dot warning"></div>
+        No Activity
+    </div>
+    """
+  end
+
+  defp render_cache_content(true, cache) do
+    progress_fill_class = get_cache_progress_fill_class(cache.hit_rate)
+
+    """
+    <div class="progress-container">
+        <div class="progress-header">
+            <span class="progress-label">Cache Hit Rate</span>
+            <span class="progress-value">#{cache.hit_rate}%</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill #{progress_fill_class}"
+                 style="width: #{cache.hit_rate}%"></div>
+        </div>
+    </div>
+
+    <div class="info-list">
+        <div class="info-item">
+            <span class="info-label">Cache Size</span>
+            <span class="info-value">#{cache.size} entries</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Hits / Misses</span>
+            <span class="info-value">#{cache.hits} / #{cache.misses}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Evictions</span>
+            <span class="info-value">#{cache.evictions}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Writes</span>
+            <span class="info-value">#{Map.get(cache, :writes, 0)}</span>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_cache_content(false, _cache) do
+    """
+    <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">💤</div>
+        <div>No cache activity yet</div>
+    </div>
+    """
+  end
+
+  defp get_cache_hit_rate_color(hit_rate) when hit_rate >= 80, do: "success"
+  defp get_cache_hit_rate_color(hit_rate) when hit_rate >= 60, do: "warning"
+  defp get_cache_hit_rate_color(_hit_rate), do: "error"
+
+  defp get_cache_progress_fill_class(hit_rate) when hit_rate >= 80, do: ""
+  defp get_cache_progress_fill_class(hit_rate) when hit_rate >= 60, do: "warning"
+  defp get_cache_progress_fill_class(_hit_rate), do: "danger"
+
+  defp render_memory_usage_card(data) do
+    memory = data.system.memory
+    processes_mb = Float.round((memory.processes_kb || 0) / 1024, 1)
+    system_mb = Float.round((memory.system_kb || 0) / 1024, 1)
+
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">🧠</div>
+                Memory Details
+            </div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-header">
+                <span class="progress-label">Process Memory</span>
+                <span class="progress-value">#{Float.round(memory.processes_percent, 1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill #{if(memory.processes_percent >= 80, do: "danger", else: if(memory.processes_percent >= 60, do: "warning", else: ""))}"
+                     style="width: #{memory.processes_percent}%"></div>
+            </div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-header">
+                <span class="progress-label">System Memory</span>
+                <span class="progress-value">#{Float.round(memory.system_percent, 1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill #{if(memory.system_percent >= 80, do: "danger", else: if(memory.system_percent >= 60, do: "warning", else: ""))}"
+                     style="width: #{memory.system_percent}%"></div>
+            </div>
+        </div>
+        
+        <div class="info-list">
+            <div class="info-item">
+                <span class="info-label">Processes</span>
+                <span class="info-value">#{processes_mb} MB</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">System</span>
+                <span class="info-value">#{system_mb} MB</span>
+            </div>
+        </div>
+    </div>
+    """
+  end
+
+  defp render_activity_feed_card(data) do
+    recent_activity = Map.get(data, :recent_activity, [])
+
+    """
+    <div class="card card-medium">
+        <div class="card-header">
+            <div class="card-title">
+                <div class="card-icon">📈</div>
+                Recent Activity
+            </div>
+        </div>
+        
+        #{if length(recent_activity) > 0 do
+      """
+      <div class="activity-feed">
+          #{Enum.map(recent_activity, fn activity -> """
+        <div class="activity-item">
+            <div>#{activity.message}</div>
+            <div class="activity-time">#{activity.timestamp}</div>
+        </div>
+        """ end) |> Enum.join("")}
+      </div>
+      """
+    else
+      """
+      <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+          <div style="font-size: 4rem; margin-bottom: 1rem;">📊</div>
+          <div style="font-size: 1.25rem; margin-bottom: 0.5rem;">All Quiet</div>
+          <div style="font-size: 0.875rem;">No recent activity to display</div>
+      </div>
+      """
+    end}
     </div>
     """
   end
@@ -603,155 +1101,21 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   defp render_footer(data) do
     """
     <div class="footer">
-        <p>Last updated: #{data.timestamp}</p>
-        <p id="refresh-countdown">Refreshing...</p>
-        <p>
-            <button onclick="manualRefresh()" style="background: #60a5fa; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">Refresh Now</button>
-            <span style="color: #64748b; font-size: 0.875rem;">Press Ctrl+R for manual refresh</span>
-        </p>
-    </div>
-    """
-  end
-
-  defp render_performance_card(data) do
-    performance = data.performance
-
-    # Format metrics with better display for zero values
-    success_rate =
-      if performance.success_rate == 0.0, do: "No data", else: "#{performance.success_rate}%"
-
-    notification_rate =
-      if performance.notification_rate == 0.0,
-        do: "No data",
-        else: "#{performance.notification_rate}%"
-
-    processing_efficiency =
-      if performance.processing_efficiency == 0.0,
-        do: "No data",
-        else: "#{performance.processing_efficiency}%"
-
-    """
-    <div class="card">
-        <h2>📊 Performance Metrics</h2>
-        <div class="info-row">
-            <span class="info-label">Success Rate</span>
-            <span class="info-value">#{success_rate}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Notification Rate</span>
-            <span class="info-value">#{notification_rate}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Processing Efficiency</span>
-            <span class="info-value">#{processing_efficiency}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Last Activity</span>
-            <span class="info-value">#{performance.last_activity}</span>
+        <div class="footer-content">
+            <div style="color: var(--text-secondary); font-size: 0.875rem;">
+                Last updated: #{data.timestamp}
+            </div>
+            <div class="refresh-controls">
+                <button onclick="manualRefresh()" class="btn">Refresh Now</button>
+                <div class="countdown">Refreshing in <span id="refresh-countdown">--</span>s</div>
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">
+                Press Ctrl+R for manual refresh
+            </div>
         </div>
     </div>
     """
   end
-
-  defp render_cache_stats_card(data) do
-    cache = data.cache_stats
-
-    # Add a note if cache stats are all zeros
-    stats_note =
-      if cache.hits == 0 && cache.misses == 0 && cache.size == 0 do
-        "<div class=\"info-row\" style=\"background: rgba(245, 158, 11, 0.1); padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem;\">\n            <span style=\"color: #f59e0b; font-size: 0.875rem;\">\u26a0️ Cache stats require app restart to enable</span>\n        </div>"
-      else
-        ""
-      end
-
-    """
-    <div class="card">
-        <h2>💾 Cache Statistics</h2>
-        #{stats_note}
-        <div class="info-row">
-            <span class="info-label">Hit Rate</span>
-            <span class="info-value #{get_hit_rate_class(cache.hit_rate)}">#{cache.hit_rate}%</span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_hit_rate_class(cache.hit_rate)}"
-                 style="width: #{cache.hit_rate}%"></div>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Cache Size</span>
-            <span class="info-value">#{cache.size} entries</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Hits / Misses</span>
-            <span class="info-value">#{cache.hits} / #{cache.misses}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Evictions</span>
-            <span class="info-value #{get_eviction_class(cache.evictions)}">#{cache.evictions}</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">Expirations</span>
-            <span class="info-value">#{cache.expirations}</span>
-        </div>
-    </div>
-    """
-  end
-
-  defp get_hit_rate_class(hit_rate) do
-    cond do
-      hit_rate >= 80 -> ""
-      hit_rate >= 60 -> "medium"
-      true -> "high"
-    end
-  end
-
-  defp get_eviction_class(evictions) do
-    cond do
-      evictions >= 1000 -> "critical-threshold"
-      evictions >= 100 -> "warning-threshold"
-      true -> ""
-    end
-  end
-
-  defp render_system_health_card(data) do
-    # Use the higher of the two memory percentages, not the sum
-    memory_usage = max(data.system.memory.processes_percent, data.system.memory.system_percent)
-
-    # Determine health status
-    health_class =
-      cond do
-        memory_usage >= 80 -> "health-error"
-        memory_usage >= 60 -> "health-warning"
-        true -> "health-good"
-      end
-
-    memory_mb = Float.round((data.system.memory.total_kb || 0) / 1024, 1)
-
-    """
-    <div class="card">
-        <h2><span class="health-indicator #{health_class}"></span>System Health</h2>
-        <div class="info-row">
-            <span class="info-label">Memory Usage</span>
-            <span class="info-value">#{Float.round(memory_usage, 1)}%</span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill #{get_memory_health_class(memory_usage)}"
-                 style="width: #{memory_usage}%"></div>
-        </div>
-        <div class="info-row" style="margin-top: 1rem;">
-            <span class="info-label">Total Memory</span>
-            <span class="info-value">#{memory_mb} MB</span>
-        </div>
-        <div class="info-row">
-            <span class="info-label">CPU Cores</span>
-            <span class="info-value">#{data.system.scheduler_count}</span>
-        </div>
-    </div>
-    """
-  end
-
-  defp get_memory_health_class(usage) when usage >= 90, do: "high"
-  defp get_memory_health_class(usage) when usage >= 70, do: "medium"
-  defp get_memory_health_class(_), do: ""
 
   match _ do
     send_error(conn, 404, "not_found")

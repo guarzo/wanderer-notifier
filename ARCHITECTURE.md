@@ -4,60 +4,129 @@ This document describes the architectural patterns and design decisions used in 
 
 ## Overview
 
-WandererNotifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. The application follows a modular, behavior-driven architecture with clear separation of concerns.
+WandererNotifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. The application follows a domain-driven, event-driven architecture built on real-time data streams with clear separation of concerns and fault tolerance.
 
 ## Core Design Principles
 
-### 1. Behavior-Driven Design
+### 1. Real-Time Event-Driven Architecture
+- WebSocket connections for real-time pre-enriched killmail data
+- Server-Sent Events (SSE) for live map synchronization
+- Event-driven processing with minimal polling
+- Fault-tolerant supervision trees for connection reliability
+
+### 2. Behavior-Driven Design
 - All major components define behaviors (protocols) for their interfaces
 - Implementations are swappable via configuration
 - Facilitates testing through mock implementations
+- Clear separation between interface and implementation
 
-### 2. Separation of Concerns
+### 3. Separation of Concerns
 - GenServers handle only state management and message passing
 - Business logic is extracted into pure functional modules
 - External service communication is isolated in client modules
+- Context modules provide domain boundaries
 
-### 3. Configuration Management
+### 4. Configuration Management
 - Centralized configuration through `WandererNotifier.Config` module
 - Environment variables are accessed only through the Config module
 - Runtime and compile-time configuration are clearly separated
+- Feature flags for dynamic behavior control
+
+## High-Level Data Flow
+
+### Real-Time Processing Pipeline
+1. **WebSocket Client** (`killmail/websocket_client.ex`) - Receives pre-enriched killmail data from WandererKills service
+2. **SSE Client** (`map/sse_client.ex`) - Processes real-time map events for system and character tracking
+3. **Event Processing** (`map/event_processor.ex`) - Handles SSE events through dedicated event handlers
+4. **Killmail Pipeline** (`killmail/pipeline.ex`) - Processes killmails through supervised workers
+5. **Notification System** (`notifications/`) - Determines eligibility, applies license limits, and formats messages
+6. **Discord Delivery** (`notifiers/discord/`) - Sends rich embed or text notifications to configured channels
+
+### Key Services
+- **WebSocket Infrastructure**: Real-time connection to WandererKills service for pre-enriched killmail data
+- **SSE Infrastructure**: Complete Server-Sent Events system with connection management, parsing, and event handling for real-time map updates
+- **Discord Bot Services**: Full Discord integration with slash command registration, event consumption, and interaction handling
+- **Cache Layer**: Multi-adapter caching system (Cachex/ETS) with unified key management and configurable TTLs
+- **License Service**: Controls feature availability (premium embeds vs free text notifications) with license limiting
+- **Telemetry System**: Comprehensive application metrics and structured logging
+- **HTTP Client**: Centralized HTTP client with retry logic, rate limiting, and structured error handling
 
 ## Module Organization
 
 ### `/lib/wanderer_notifier/`
 
+#### Root Level Modules
+- **application.ex** - Main OTP application module
+- **command_log.ex** - Command logging functionality
+- **constants.ex** - Application-wide constants
+- **http.ex** - Main HTTP client module
+- **notification_service.ex** - Legacy notification service
+- **persistent_values.ex** - Persistent state storage
+- **telemetry.ex** - Application telemetry and metrics
+
+#### `contexts/` - Domain Contexts
+- **external_adapters.ex** - External service adapters context
+- **killmail.ex** - Killmail context module
+
+#### `discord/` - Discord Bot Infrastructure
+- **command_registrar.ex** - Discord slash command registration
+- **consumer.ex** - Discord event consumer
+
+#### `supervisors/` - Supervision Trees
+- **external_adapters_supervisor.ex** - External adapters supervision
+- **killmail_supervisor.ex** - Killmail processing supervision
+
 #### `api/` - Web API Layer
-- **controllers/** - HTTP request handlers
+- **api_pipeline.ex** - API request processing pipeline
 - **helpers.ex** - Shared API utilities
+- **controllers/** - HTTP request handlers
+  - **controller_helpers.ex** - Shared controller utilities
+  - **dashboard_controller.ex** - Dashboard endpoint handler
+  - **health_controller.ex** - Health check endpoints
+  - **system_info.ex** - System information endpoint
 
 #### `cache/` - Caching Layer
+- **adapter.ex** - Cache adapter interface
 - **cache_behaviour.ex** - Cache interface definition
 - **cache_helper.ex** - High-level caching utilities
+- **cache_key.ex** - Cache key data structure
 - **config.ex** - Cache-specific configuration
+- **ets_cache.ex** - ETS-based cache implementation
+- **key_generator.ex** - Cache key generation logic
 - **keys.ex** - Centralized cache key generation
 
 #### `config/` - Configuration Management
 - **config.ex** - Main configuration interface
 - **config_behaviour.ex** - Configuration behavior definition
-- **utils.ex** - Configuration parsing utilities
+- **env_provider.ex** - Environment variable provider
+- **helpers.ex** - Configuration helper utilities
 - **provider.ex** - Runtime configuration provider
+- **system_env_provider.ex** - System environment provider
+- **utils.ex** - Configuration parsing utilities
+- **version.ex** - Version information
 
 #### `core/` - Core Application Services
+- **dependencies.ex** - Centralized dependency injection
+- **stats.ex** - Application statistics tracking
 - **application/** - Application lifecycle management
   - **service.ex** - Main application GenServer
   - **api.ex** - Public API for configuration access
-- **dependencies.ex** - Centralized dependency injection
-- **stats.ex** - Application statistics tracking
 
 #### `esi/` - EVE Swagger Interface Integration
 - **client.ex** - Low-level ESI API client
+- **client_behaviour.ex** - ESI client behavior
 - **service.ex** - High-level ESI service layer
+- **service_behaviour.ex** - ESI service behavior
+- **service_stub.ex** - ESI service stub for testing
 - **entities/** - Domain models for ESI data
+  - **alliance.ex** - Alliance information
+  - **character.ex** - Character information
+  - **corporation.ex** - Corporation information
+  - **solar_system.ex** - Solar system information
 
 #### `http/` - HTTP Client and Utilities
-- **http_behaviour.ex** - HTTP client behavior
 - **headers.ex** - Common HTTP headers
+- **http_behaviour.ex** - HTTP client behavior
 - **response_handler.ex** - Standardized response handling
 - **validation.ex** - JSON/HTTP validation
 - **utils/** - HTTP utilities
@@ -68,51 +137,102 @@ WandererNotifier is an Elixir/OTP application that monitors EVE Online killmail 
 #### `killmail/` - Killmail Processing
 - **killmail.ex** - Killmail data structure
 - **pipeline.ex** - Processing pipeline
+- **pipeline_worker.ex** - Pipeline worker process
 - **processor.ex** - Individual killmail processing
 - **enrichment.ex** - Data enrichment
 - **cache.ex** - Killmail-specific caching
-- **redisq_client.ex** - RedisQ WebSocket client
-- **zkill_client.ex** - ZKillboard API client
+- **websocket_client.ex** - WebSocket client for real-time killmail data
+- **wanderer_kills_client.ex** - WandererKills API client
+- **notification.ex** - Killmail notification logic
+- **notification_checker.ex** - Notification eligibility checking
+- **context.ex** - Killmail processing context
+- **supervisor.ex** - Killmail supervision tree
+- **json_encoders.ex** - JSON encoding for killmails
+- **schema.ex** - Killmail data schema
 
 #### `license/` - License Management
-- **service.ex** - License validation service
 - **client.ex** - License API client
+- **service.ex** - License validation service
 - **validation.ex** - License validation logic
 
 #### `logger/` - Logging Infrastructure
-- **logger.ex** - Main logger module
-- **error_logger.ex** - Error-specific logging
 - **api_logger_macros.ex** - Logging macros
+- **emojis.ex** - Emoji constants for logging
+- **error_logger.ex** - Error-specific logging
+- **logger.ex** - Main logger module
+- **logger_behaviour.ex** - Logger behavior interface
 - **messages.ex** - Log message templates
 - **metadata_keys.ex** - Structured logging metadata
+- **structured_logger.ex** - Structured logging implementation
 
 #### `map/` - Map Integration
+- **sse_client.ex** - Server-Sent Events client for real-time map updates
+- **sse_connection.ex** - SSE connection management
+- **sse_parser.ex** - SSE data parsing
+- **sse_supervisor.ex** - SSE supervision tree
+- **event_processor.ex** - Map event processing
+- **initializer.ex** - Map initialization
+- **map_character.ex** - Character domain model
+- **map_system.ex** - System domain model
+- **map_util.ex** - Map utilities
+- **system_static_info.ex** - Static system information
+- **tracking_behaviour.ex** - Tracking behavior interface
 - **clients/** - Map API clients
   - **base_map_client.ex** - Shared client logic
   - **characters_client.ex** - Character tracking
   - **systems_client.ex** - System tracking
-- **map_character.ex** - Character domain model
-- **map_system.ex** - System domain model
+- **event_handlers/** - Event handling
+  - **character_handler.ex** - Character event handling
+  - **system_handler.ex** - System event handling
 
 #### `notifications/` - Notification System
 - **notification_service.ex** - Main notification service
 - **killmail_notification.ex** - Killmail notification logic
+- **discord_notifier.ex** - Discord notification service
+- **discord_notifier_behaviour.ex** - Discord notifier behavior
+- **dispatcher_behaviour.ex** - Notification dispatcher behavior
+- **factory.ex** - Notification factory
+- **killmail_notification_behaviour.ex** - Killmail notification behavior
+- **license_limiter.ex** - License-based notification limiting
+- **neo_client.ex** - Nostrum-based Discord client
+- **utils.ex** - Notification utilities
 - **deduplication/** - Duplicate prevention
+  - **cache_impl.ex** - Cache-based deduplication
+  - **deduplication.ex** - Deduplication logic
+  - **deduplication_behaviour.ex** - Deduplication behavior
 - **determiner/** - Notification eligibility
+  - **character.ex** - Character notification determination
+  - **kill.ex** - Kill notification determination
+  - **kill_behaviour.ex** - Kill determination behavior
+  - **system.ex** - System notification determination
 - **formatters/** - Message formatting
+  - **character.ex** - Character message formatting
+  - **character_utils.ex** - Character formatting utilities
+  - **common.ex** - Common formatting utilities
+  - **killmail.ex** - Killmail message formatting
+  - **plain_text.ex** - Plain text formatting
+  - **status.ex** - Status message formatting
+  - **system.ex** - System message formatting
 - **types/** - Notification type definitions
+  - **notification.ex** - Notification type definition
 
 #### `notifiers/` - Notification Delivery
+- **test.ex** - Test notifier
+- **test_notifier.ex** - Test notification implementation
 - **discord/** - Discord integration
   - **notifier.ex** - Main Discord notifier
   - **neo_client.ex** - Nostrum-based client
   - **component_builder.ex** - Discord UI components
+  - **constants.ex** - Discord constants
+  - **discord_behaviour.ex** - Discord behavior interface
+  - **feature_flags.ex** - Discord feature flags
 
 #### `schedulers/` - Background Tasks
 - **supervisor.ex** - Scheduler supervision tree
 - **base_scheduler.ex** - Common scheduler logic
-- **character_update_scheduler.ex** - Character updates
-- **system_update_scheduler.ex** - System updates
+- **registry.ex** - Scheduler registry
+- **scheduler.ex** - Main scheduler interface
+- **service_status_scheduler.ex** - Service status monitoring
 
 #### `utils/` - Shared Utilities
 - **error_handler.ex** - Error handling utilities
@@ -157,15 +277,6 @@ test "with mock ESI service" do
   
   # Cleanup is automatic with ExUnit's setup
 end
-```
-
-**Legacy Patterns (being phased out):**
-```elixir
-# Direct Application.get_env calls (DEPRECATED)
-Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.Http)
-
-# Through Config module (acceptable for non-injectable dependencies)
-Config.discord_channel_id()
 ```
 
 ### Error Handling
@@ -261,9 +372,11 @@ end
 
 ## Performance Considerations
 
-### Compile-Time Optimization
-- Configuration values that don't change are resolved at compile time
-- Module references for performance-critical paths use compile-time injection
+### Real-Time Optimization
+- WebSocket connections eliminate polling overhead
+- SSE streams provide immediate map updates
+- Pre-enriched data reduces ESI API calls
+- Connection pooling and supervision for reliability
 
 ### Caching
 - Multi-level caching with appropriate TTLs
@@ -288,33 +401,6 @@ end
 - Token validation through dedicated modules
 - No token logging
 
-## Future Improvements
-
-### Planned Enhancements
-1. Circuit breaker pattern for external services
-2. Event sourcing for killmail history
-3. Metrics collection and monitoring
-4. WebSocket connection pooling
-
-### Technical Debt & Coupling Analysis
-
-**Major Coupling Concerns Identified:**
-1. **Notification Formatters** - Heavy cross-module dependencies to Map, ESI, and Killmail modules
-2. **Map Clients** - Circular dependencies with Notification Determiners  
-3. **Cross-Domain References** - Direct module references instead of behavior-based interfaces
-
-**Recommended Coupling Reductions:**
-1. **Extract Formatter Interfaces** - Create behavior definitions for formatters to reduce direct dependencies
-2. **Event-Driven Architecture** - Replace direct calls between Map and Notifications with event publishing
-3. **Repository Pattern** - Abstract data access through repository interfaces instead of direct module calls
-4. **Dependency Inversion** - Use the new `Dependencies` module consistently across all modules
-
-**Completed Improvements:**
-1. ✅ Centralized dependency injection through `WandererNotifier.Core.Dependencies`
-2. ✅ Unified HTTP response handling
-3. ✅ Consolidated caching patterns
-4. ✅ Standardized HTTP headers
-
 ## Deployment
 
 ### Docker Support
@@ -328,10 +414,14 @@ Application
 ├── Stats
 ├── License.Service
 ├── Schedulers.Supervisor
-│   ├── CharacterUpdateScheduler
-│   ├── SystemUpdateScheduler
 │   └── ServiceStatusScheduler
-├── RedisQClient
+├── Killmail.Supervisor
+│   ├── WebSocketClient
+│   └── PipelineWorker
+├── Map.SSE.Supervisor
+│   └── SSEClient
+├── ExternalAdapters.Supervisor
+├── Discord.Consumer
 ├── Web.Server
 └── Core.Application.Service
 ```
@@ -351,3 +441,51 @@ Application
 - Kill processing metrics
 - Notification delivery stats
 - API call performance tracking
+- Real-time connection status
+
+## Configuration
+
+### Environment Variables
+The application supports comprehensive configuration through environment variables:
+
+#### Required
+- `DISCORD_BOT_TOKEN` - Discord bot authentication
+- `DISCORD_APPLICATION_ID` - Discord application ID
+- `DISCORD_CHANNEL_ID` - Primary notification channel
+- `MAP_URL`, `MAP_NAME`, `MAP_API_KEY` - Map API configuration
+- `LICENSE_KEY` - License for premium features
+
+#### Optional Features
+- Feature flags: `*_NOTIFICATIONS_ENABLED`, `PRIORITY_SYSTEMS_ONLY`, etc.
+- Service URLs: `WEBSOCKET_URL`, `WANDERER_KILLS_URL`
+- Channel routing: `DISCORD_*_CHANNEL_ID` variants
+- Advanced configuration: Cache, SSE, and performance tuning options
+
+### Configuration Layers
+1. Compile-time configuration (`config/config.exs`)
+2. Runtime configuration (`config/runtime.exs`)
+3. Environment variables (highest priority)
+4. Default values in code
+
+### Legacy Support
+Maintains backward compatibility with `WANDERER_` prefixed environment variables through the release overlay system.
+
+## Future Improvements
+
+### Planned Enhancements
+1. Circuit breaker pattern for external services
+2. Event sourcing for killmail history
+3. Enhanced metrics collection and monitoring
+4. WebSocket connection pooling
+5. Multi-guild Discord bot support
+
+### Architecture Evolution
+The application has evolved significantly from a polling-based system to a real-time event-driven architecture:
+
+- **From ZKillboard/RedisQ to WandererKills/WebSocket** - Eliminated polling overhead
+- **Added SSE Infrastructure** - Real-time map synchronization
+- **Enhanced Discord Integration** - Full bot capabilities with slash commands
+- **Improved Supervision** - More granular fault tolerance
+- **Advanced Caching** - Multi-adapter system with intelligent key management
+
+The modular design supports continued evolution while maintaining backward compatibility and operational stability.

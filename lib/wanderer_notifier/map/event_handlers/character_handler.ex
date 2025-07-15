@@ -33,6 +33,13 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
   def handle_character_added(event, map_slug) do
     payload = Map.get(event, "payload", %{})
 
+    # Log the full payload for debugging and monitoring
+    AppLogger.api_info("Character added payload received",
+      map_slug: map_slug,
+      payload: inspect(payload),
+      payload_keys: Map.keys(payload)
+    )
+
     AppLogger.api_info("Processing character added event",
       map_slug: map_slug,
       character_name: Map.get(payload, "name"),
@@ -66,6 +73,13 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
   @spec handle_character_removed(map(), String.t()) :: :ok | {:error, term()}
   def handle_character_removed(event, map_slug) do
     payload = Map.get(event, "payload", %{})
+
+    # Log the full payload for debugging and monitoring
+    AppLogger.api_info("Character removed payload received",
+      map_slug: map_slug,
+      payload: inspect(payload),
+      payload_keys: Map.keys(payload)
+    )
 
     AppLogger.api_info("Processing character removed event",
       map_slug: map_slug,

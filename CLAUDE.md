@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. It integrates with an external WandererKills service via WebSocket for real-time pre-enriched killmail data, EVE Swagger Interface (ESI) for legacy data enrichment, and custom map APIs to track wormhole systems and character activities.
+Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail data and sends Discord notifications for significant in-game events. It integrates with an external WandererKills service via WebSocket for real-time pre-enriched killmail data, EVE Swagger Interface (ESI) for additional data enrichment when needed, and Wanderer map APIs via Server-Sent Events (SSE) to track wormhole systems and character activities in real-time.
 
 ## Common Development Commands
 
@@ -73,8 +73,10 @@ The application follows a domain-driven design with these core components:
 - Local development uses `.env` file via Dotenvy
 - **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004") for killmail processing
 - **WandererKills Configuration**: `WANDERER_KILLS_URL` (default: "http://host.docker.internal:4004")
-- **SSE Configuration**: Automatically configured from MAP_URL/MAP_NAME/MAP_API_KEY
+- **SSE Configuration**: Automatically configured from MAP_URL/MAP_NAME/MAP_API_KEY for real-time map events
+- **Discord Configuration**: `DISCORD_BOT_TOKEN` and `DISCORD_APPLICATION_ID` required for slash commands
 - **Core Services**: Killmail processing via WebSocket and map synchronization via SSE are always enabled
+
 
 ### Testing Approach
 - Heavy use of Mox for behavior-based mocking
@@ -103,8 +105,13 @@ All HTTP requests go through the centralized `WandererNotifier.Http` module whic
 - Use `WandererNotifier.Cache` module for all cache operations
 
 ### Feature Flags
+
 Features can be toggled via environment variables ending in `_ENABLED`:
 
-- `KILL_NOTIFICATIONS_ENABLED` - Enable/disable kill notifications
-- `SYSTEM_NOTIFICATIONS_ENABLED` - Enable/disable system notifications
-- `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications
+- `NOTIFICATIONS_ENABLED` - Master toggle for all notifications (default: true)
+- `KILL_NOTIFICATIONS_ENABLED` - Enable/disable kill notifications (default: true)
+- `SYSTEM_NOTIFICATIONS_ENABLED` - Enable/disable system notifications (default: true)
+- `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications (default: true)
+- `ENABLE_STATUS_MESSAGES` - Enable/disable startup status messages (default: false)
+- `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
+- `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
