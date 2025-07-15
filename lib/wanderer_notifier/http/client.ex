@@ -23,6 +23,7 @@ defmodule WandererNotifier.Http.Client do
   """
 
   alias WandererNotifier.Http.Utils.JsonUtils
+  alias WandererNotifier.Http.Middleware.Telemetry
 
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type url :: String.t()
@@ -147,7 +148,8 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp default_middlewares do
-    # Default middleware chain - can be overridden per request
-    []
+    # Default middleware chain - telemetry should be first to capture all metrics
+    # Can be overridden per request
+    [Telemetry]
   end
 end
