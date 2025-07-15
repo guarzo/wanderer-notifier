@@ -298,7 +298,13 @@ defmodule WandererNotifier.Cache.VersionManager do
       Logger.info("Cache warming hook: #{old_version} -> #{new_version}")
 
       # Force startup warming for new version
-      Warmer.force_startup_warming()
+      try do
+        Warmer.force_startup_warming()
+      rescue
+        error ->
+          Logger.error("Cache warming failed during deployment: #{inspect(error)}")
+          :error
+      end
     end)
 
     # Cache invalidation hook
@@ -319,7 +325,9 @@ defmodule WandererNotifier.Cache.VersionManager do
       try do
         WandererNotifier.Cache.Metrics.reset_metrics()
       rescue
-        _ -> :ok
+        error ->
+          Logger.warning("Failed to reset metrics during deployment: #{inspect(error)}")
+          :ok
       end
     end)
   end
@@ -330,6 +338,10 @@ defmodule WandererNotifier.Cache.VersionManager do
         to_string(version)
 
       _ ->
+        Logger.warning(
+          "Application version not found in spec, falling back to default version 1.0.0"
+        )
+
         "1.0.0"
     end
   end
@@ -348,15 +360,6 @@ defmodule WandererNotifier.Cache.VersionManager do
         Logger.warning("Incompatible versions, invalidating cache")
         Versioning.invalidate_old_versions(app_version)
         Versioning.set_version(app_version)
-    end
-  end
-
-  defp do_validate_deployment(current_version, new_version, strategy) do
-    with :ok <- validate_version_format(current_version, new_version),
-         :ok <- validate_version_progression(current_version, new_version),
-         :ok <- validate_compatibility(current_version, new_version),
-         :ok <- validate_strategy(strategy) do
-      :ok
     end
   end
 
@@ -393,19 +396,30 @@ defmodule WandererNotifier.Cache.VersionManager do
   defp execute_deployment_step(step, current_version, new_version) do
     case step do
       :validate ->
-        do_validate_deployment(current_version, new_version, :safe)
+        validate_deployment(current_version, new_version, :safe)
 
       :backup ->
-        # In a real implementation, this would backup current cache state
-        Logger.info("Backing up cache state for version #{current_version}")
+        # TODO: Implement actual cache backup logic
+        # This should create a backup of the current cache state before deployment
+        # Consider: key enumeration, data export, versioned backup storage
+        Logger.info(
+          "Backing up cache state for version #{current_version} (backup not yet implemented)"
+        )
+
         :ok
 
       :update_version ->
         Versioning.set_version(new_version)
 
       :warm_cache ->
-        Warmer.force_startup_warming()
-        :ok
+        try do
+          Warmer.force_startup_warming()
+          :ok
+        rescue
+          error ->
+            Logger.error("Cache warming failed during deployment step: #{inspect(error)}")
+            {:error, error}
+        end
 
       :invalidate_old ->
         Versioning.invalidate_old_versions(new_version)
@@ -416,8 +430,13 @@ defmodule WandererNotifier.Cache.VersionManager do
         :ok
 
       :verify ->
-        # In a real implementation, this would verify the deployment
-        Logger.info("Verifying deployment to version #{new_version}")
+        # TODO: Implement real verification logic to confirm deployment success
+        # This should verify that the new version is properly set and accessible
+        # For now, we only log the verification step
+        Logger.info(
+          "Verifying deployment to version #{new_version} (verification not yet implemented)"
+        )
+
         :ok
 
       _ ->
@@ -622,7 +641,6 @@ defmodule WandererNotifier.Cache.VersionManager do
   end
 
   defp get_registered_hooks do
-    # In a real implementation, this would get registered hooks from Versioning
-    ["cache_warming", "cache_invalidation", "performance_monitoring"]
+    Versioning.get_registered_hooks()
   end
 end

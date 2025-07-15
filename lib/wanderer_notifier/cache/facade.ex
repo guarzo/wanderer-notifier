@@ -35,14 +35,12 @@ defmodule WandererNotifier.Cache.Facade do
   alias WandererNotifier.Cache.Config
   alias WandererNotifier.Cache.KeyGenerator
   alias WandererNotifier.Cache.Metrics
+  alias WandererNotifier.Cache.Versioning
 
   @type cache_key :: String.t()
   @type cache_value :: term()
   @type cache_result :: {:ok, cache_value()} | {:error, term()}
   @type ttl_seconds :: non_neg_integer() | :infinity | nil
-
-  # Version for cache key generation - increment when cache structure changes
-  @cache_version "v1"
 
   @doc """
   Gets character data from cache.
@@ -361,11 +359,7 @@ defmodule WandererNotifier.Cache.Facade do
     versioned_key = add_version_to_key(key)
 
     case delete_from_cache(versioned_key) do
-      {:ok, _} ->
-        log_cache_operation(:custom, key, :delete)
-        :ok
-
-      :ok ->
+      result when result == :ok or (is_tuple(result) and elem(result, 0) == :ok) ->
         log_cache_operation(:custom, key, :delete)
         :ok
 
@@ -382,17 +376,18 @@ defmodule WandererNotifier.Cache.Facade do
   - key: Cache key
 
   ## Returns
-  - true if key exists
-  - false if key doesn't exist
+  - {:ok, true} if key exists
+  - {:ok, false} if key doesn't exist
+  - {:error, term()} if cache access error occurs
   """
-  @spec exists?(cache_key()) :: boolean()
+  @spec exists?(cache_key()) :: {:ok, boolean()} | {:error, term()}
   def exists?(key) do
     versioned_key = add_version_to_key(key)
 
     case get_from_cache(versioned_key) do
-      {:ok, _} -> true
-      {:error, :not_found} -> false
-      {:error, _} -> false
+      {:ok, _} -> {:ok, true}
+      {:error, :not_found} -> {:ok, false}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -591,11 +586,7 @@ defmodule WandererNotifier.Cache.Facade do
     key = build_custom_key(key_pattern)
 
     case delete_from_cache(key) do
-      {:ok, _} ->
-        log_cache_operation(:custom, key_pattern, :delete)
-        :ok
-
-      :ok ->
+      result when result == :ok or (is_tuple(result) and elem(result, 0) == :ok) ->
         log_cache_operation(:custom, key_pattern, :delete)
         :ok
 
@@ -654,18 +645,18 @@ defmodule WandererNotifier.Cache.Facade do
         stats
 
       _other ->
-        %{adapter: Adapter.adapter(), version: @cache_version}
+        %{adapter: Adapter.adapter(), version: Versioning.current_version()}
     end
   end
 
   # Private functions
 
   defp versioned_key(prefix, entity_type, id) do
-    KeyGenerator.combine([prefix, entity_type], [id], @cache_version)
+    KeyGenerator.combine([prefix, entity_type], [id], Versioning.current_version())
   end
 
   defp add_version_to_key(key) do
-    "#{key}:#{@cache_version}"
+    "#{key}:#{Versioning.current_version()}"
   end
 
   defp get_from_cache(key, _opts \\ []) do
@@ -772,8 +763,10 @@ defmodule WandererNotifier.Cache.Facade do
         %{data_type: domain, id: id}
       )
     rescue
-      # Don't fail cache operations if analytics fails
-      _ -> :ok
+      error ->
+        # Don't fail cache operations if analytics fails, but log the error
+        Logger.warning("Cache analytics recording failed for #{domain}:#{id}: #{inspect(error)}")
+        :ok
     end
   end
 

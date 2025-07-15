@@ -248,6 +248,17 @@ defmodule WandererNotifier.Cache.Versioning do
     GenServer.call(__MODULE__, {:unregister_hook, hook_name})
   end
 
+  @doc """
+  Gets the list of registered deployment hooks.
+
+  ## Returns
+  List of registered hook names
+  """
+  @spec get_registered_hooks() :: [atom()]
+  def get_registered_hooks do
+    GenServer.call(__MODULE__, :get_registered_hooks)
+  end
+
   # GenServer callbacks
 
   @impl GenServer
@@ -365,6 +376,12 @@ defmodule WandererNotifier.Cache.Versioning do
       })
 
     {:reply, stats, state}
+  end
+
+  @impl GenServer
+  def handle_call(:get_registered_hooks, _from, state) do
+    hooks = Map.keys(state.deployment_hooks)
+    {:reply, hooks, state}
   end
 
   @impl GenServer

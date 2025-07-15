@@ -37,21 +37,6 @@
 7. **Quality Gate**: Run `mix format`, `mix dialyzer`, `mix credo` - all must pass
 8. **Commit**: "feat: add message deduplication across real-time sources"
 
-### Task 3.3: Backpressure Handling
-**Estimated Time**: 3 days  
-**Files to Create/Modify**:
-- `lib/wanderer_notifier/realtime/backpressure.ex`
-- `lib/wanderer_notifier/realtime/flow_control.ex`
-
-**Implementation Steps**:
-1. Implement backpressure detection and handling
-2. Add message queuing with priority levels
-3. Create flow control mechanisms for high-volume periods
-4. Add backpressure metrics and alerting
-5. Create configurable backpressure thresholds
-6. Test with high-volume message scenarios
-7. **Quality Gate**: Run `mix format`, `mix dialyzer`, `mix credo` - all must pass
-8. **Commit**: "feat: add backpressure handling for high-volume periods"
 
 ## Week 2: Event Sourcing & Integration
 
