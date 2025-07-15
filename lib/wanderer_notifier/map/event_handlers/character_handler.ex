@@ -9,6 +9,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Facade
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
 
@@ -198,15 +199,13 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
   end
 
   defp add_character_to_cache(character) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, CacheKeys.character_list()) do
+    case Facade.get_custom(CacheKeys.character_list()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
-        add_to_existing_cache(cache_name, cached_characters, character)
+        add_to_existing_cache(cached_characters, character)
 
-      {:ok, nil} ->
+      {:error, :not_found} ->
         # No cached characters, create new list
-        Cachex.put(cache_name, CacheKeys.character_list(), [character])
+        Facade.put_custom(CacheKeys.character_list(), [character])
         :ok
 
       {:error, reason} ->
@@ -214,7 +213,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
     end
   end
 
-  defp add_to_existing_cache(cache_name, cached_characters, character) do
+  defp add_to_existing_cache(cached_characters, character) do
     eve_id = character["eve_id"]
 
     if Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end) do
@@ -222,23 +221,21 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
     else
       # Add new character
       updated_characters = [character | cached_characters]
-      Cachex.put(cache_name, CacheKeys.character_list(), updated_characters)
+      Facade.put_custom(CacheKeys.character_list(), updated_characters)
       :ok
     end
   end
 
   defp remove_character_from_cache(character) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, CacheKeys.character_list()) do
+    case Facade.get_custom(CacheKeys.character_list()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         # Remove character from the list
         eve_id = character["eve_id"]
         updated_characters = Enum.reject(cached_characters, fn c -> c["eve_id"] == eve_id end)
-        Cachex.put(cache_name, CacheKeys.character_list(), updated_characters)
+        Facade.put_custom(CacheKeys.character_list(), updated_characters)
         :ok
 
-      {:ok, nil} ->
+      {:error, :not_found} ->
         # No cached characters, nothing to remove
         :ok
 
@@ -248,16 +245,14 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
   end
 
   defp update_character_in_cache(character) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, CacheKeys.character_list()) do
+    case Facade.get_custom(CacheKeys.character_list()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
-        update_cached_characters(cache_name, cached_characters, character)
+        update_cached_characters(cached_characters, character)
 
-      {:ok, nil} ->
+      {:error, :not_found} ->
         # No cached characters, only create if we have eve_id
         if character["eve_id"] do
-          Cachex.put(cache_name, CacheKeys.character_list(), [character])
+          Facade.put_custom(CacheKeys.character_list(), [character])
         end
 
         :ok
@@ -267,7 +262,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
     end
   end
 
-  defp update_cached_characters(cache_name, cached_characters, character) do
+  defp update_cached_characters(cached_characters, character) do
     {matched, updated_characters} =
       if character["eve_id"] do
         update_by_eve_id(cached_characters, character)
@@ -276,7 +271,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
       end
 
     final_characters = add_if_new(updated_characters, character, matched)
-    Cachex.put(cache_name, CacheKeys.character_list(), final_characters)
+    Facade.put_custom(CacheKeys.character_list(), final_characters)
     :ok
   end
 

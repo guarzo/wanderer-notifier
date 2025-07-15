@@ -12,8 +12,12 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
   end
 
   setup do
-    # Clear the ETS table between tests
-    :ets.delete_all_objects(:circuit_breaker_states)
+    # Clear the ETS table between tests using the proper API
+    CircuitBreakerState.clear_all_states()
+
+    # Add a small delay to ensure the cast is processed
+    Process.sleep(10)
+
     :ok
   end
 
@@ -104,7 +108,10 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
 
       # Manually transition to half-open (simulating timeout)
       updated_state = %{state | state: :half_open}
-      :ets.insert(:circuit_breaker_states, {"api.example.com", updated_state})
+      CircuitBreakerState.set_state("api.example.com", updated_state)
+
+      # Give GenServer time to process the cast
+      Process.sleep(10)
 
       # Request should be allowed in half-open state
       assert {:ok, %{status_code: 200}} = CircuitBreaker.call(request, success_next)
@@ -124,7 +131,10 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
       # Start with half-open state
       state = CircuitBreakerState.get_state("api.example.com")
       updated_state = %{state | state: :half_open}
-      :ets.insert(:circuit_breaker_states, {"api.example.com", updated_state})
+      CircuitBreakerState.set_state("api.example.com", updated_state)
+
+      # Give GenServer time to process the cast
+      Process.sleep(10)
 
       # Failing request in half-open state
       {:ok, %{status_code: 500}} = CircuitBreaker.call(request, failing_next)
@@ -183,7 +193,10 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
       assert state.state == :open
 
       # Reset for next test by clearing the host state
-      :ets.delete(:circuit_breaker_states, "api.example.com")
+      CircuitBreakerState.reset_state("api.example.com")
+
+      # Give GenServer time to process the cast
+      Process.sleep(10)
 
       # 503 should NOT be treated as failure (not in custom config)
       for _i <- 1..5 do

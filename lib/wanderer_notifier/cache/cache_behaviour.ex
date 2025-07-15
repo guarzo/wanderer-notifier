@@ -11,6 +11,8 @@ defmodule WandererNotifier.Cache.CacheBehaviour do
      - Atomic updates
      - Batch operations
      - Error handling
+     - Versioned keys for deployment safety
+     - Performance monitoring integration
 
   2. Error handling:
      - All operations should return {:ok, value} or {:error, reason}
@@ -21,6 +23,12 @@ defmodule WandererNotifier.Cache.CacheBehaviour do
      - Implementations should be optimized for high-volume operations
      - Consider using batch operations where possible
      - Handle concurrent access appropriately
+     - Support cache warming and preloading strategies
+
+  4. Versioning and deployment:
+     - Support versioned cache keys for safe deployments
+     - Handle cache invalidation across versions
+     - Provide migration support for key format changes
   """
 
   @type key :: term()
@@ -152,11 +160,118 @@ defmodule WandererNotifier.Cache.CacheBehaviour do
   """
   @callback init_batch_logging() :: :ok
 
+  @doc """
+  Checks if a key exists in the cache.
+
+  ## Parameters
+  - key: The cache key
+
+  ## Returns
+  - true if key exists
+  - false if key doesn't exist
+  """
+  @callback exists?(key :: key()) :: boolean()
+
+  @doc """
+  Gets cache statistics and performance metrics.
+
+  ## Returns
+  - {:ok, map()} with cache statistics
+  - {:error, reason} on failure
+  """
+  @callback stats() :: {:ok, map()} | {:error, reason()}
+
+  @doc """
+  Gets domain-specific character data from cache.
+
+  ## Parameters
+  - character_id: EVE character ID
+  - opts: Additional options
+
+  ## Returns
+  - {:ok, character_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @callback get_character(character_id :: integer() | String.t(), opts :: opts()) ::
+              {:ok, map()} | {:error, :not_found | reason()}
+
+  @doc """
+  Gets domain-specific corporation data from cache.
+
+  ## Parameters
+  - corporation_id: EVE corporation ID  
+  - opts: Additional options
+
+  ## Returns
+  - {:ok, corporation_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @callback get_corporation(corporation_id :: integer() | String.t(), opts :: opts()) ::
+              {:ok, map()} | {:error, :not_found | reason()}
+
+  @doc """
+  Gets domain-specific alliance data from cache.
+
+  ## Parameters
+  - alliance_id: EVE alliance ID
+  - opts: Additional options
+
+  ## Returns
+  - {:ok, alliance_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @callback get_alliance(alliance_id :: integer() | String.t(), opts :: opts()) ::
+              {:ok, map()} | {:error, :not_found | reason()}
+
+  @doc """
+  Gets domain-specific system data from cache.
+
+  ## Parameters
+  - system_id: EVE system ID
+  - opts: Additional options
+
+  ## Returns
+  - {:ok, system_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @callback get_system(system_id :: integer() | String.t(), opts :: opts()) ::
+              {:ok, map()} | {:error, :not_found | reason()}
+
+  @doc """
+  Stores value in cache with custom TTL.
+
+  ## Parameters
+  - key: Cache key
+  - value: Value to store
+  - ttl: Time-to-live in seconds, :infinity, or nil for default
+
+  ## Returns
+  - :ok on success
+  - {:error, reason} on error
+  """
+  @callback put_with_ttl(
+              key :: key(),
+              value :: value(),
+              ttl :: non_neg_integer() | :infinity | nil
+            ) ::
+              :ok | {:error, reason()}
+
   @optional_callbacks [
     get_recent_kills: 0,
     init_batch_logging: 0,
     clear: 0,
     mget: 1,
-    get_kill: 1
+    get_kill: 1,
+    exists?: 1,
+    stats: 0,
+    get_character: 2,
+    get_corporation: 2,
+    get_alliance: 2,
+    get_system: 2,
+    put_with_ttl: 3
   ]
 end

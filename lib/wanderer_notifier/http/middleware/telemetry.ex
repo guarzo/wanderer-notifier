@@ -41,6 +41,7 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
 
   alias WandererNotifier.Telemetry
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Http.Utils.HttpUtils
 
   @type telemetry_options :: [
           service_name: String.t(),
@@ -91,7 +92,7 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
   end
 
   defp build_telemetry_context(request, options) do
-    host = extract_host(request.url)
+    host = HttpUtils.extract_host(request.url)
     service_name = Keyword.get(options, :service_name, host)
 
     %{
@@ -102,13 +103,6 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
       request_id: generate_request_id(),
       custom_metadata: Keyword.get(options, :custom_metadata, %{})
     }
-  end
-
-  defp extract_host(url) do
-    case URI.parse(url) do
-      %URI{host: host} when is_binary(host) -> host
-      _ -> "unknown"
-    end
   end
 
   defp generate_request_id do

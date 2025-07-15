@@ -32,6 +32,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   @behaviour WandererNotifier.Http.Middleware.MiddlewareBehaviour
 
   alias WandererNotifier.Http.Utils.RateLimiter, as: RateLimiterUtils
+  alias WandererNotifier.Http.Utils.HttpUtils
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type rate_limit_options :: [
@@ -45,6 +46,11 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   @default_requests_per_second 10
   @default_burst_capacity 20
   @table_name :http_rate_limiter_buckets
+
+  @doc """
+  Returns the ETS table name used for rate limiting buckets.
+  """
+  def table_name, do: @table_name
 
   # Ensure ETS table exists for token bucket storage
   def ensure_table do
@@ -73,7 +79,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   @impl true
   def call(request, next) do
     rate_limit_options = get_rate_limit_options(request.opts)
-    host = extract_host(request.url)
+    host = HttpUtils.extract_host(request.url)
 
     # Check rate limit before making request
     case check_rate_limit(host, rate_limit_options) do
@@ -92,13 +98,6 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
   defp get_rate_limit_options(opts) do
     Keyword.get(opts, :rate_limit_options, [])
-  end
-
-  defp extract_host(url) do
-    case URI.parse(url) do
-      %URI{host: host} when is_binary(host) -> host
-      _ -> "unknown"
-    end
   end
 
   defp check_rate_limit(host, options) do

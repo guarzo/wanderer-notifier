@@ -32,6 +32,7 @@ defmodule WandererNotifier.Map.MapCharacter do
   @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Cache.Facade
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -63,9 +64,7 @@ defmodule WandererNotifier.Map.MapCharacter do
   end
 
   def is_tracked?(character_id_str) when is_binary(character_id_str) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, Keys.character_list()) do
+    case Facade.get_custom(Keys.character_list()) do
       {:ok, characters} when is_list(characters) ->
         result =
           Enum.any?(characters, fn char ->
@@ -74,6 +73,9 @@ defmodule WandererNotifier.Map.MapCharacter do
           end)
 
         {:ok, result}
+
+      {:error, :not_found} ->
+        {:ok, false}
 
       _ ->
         {:ok, false}
@@ -202,11 +204,12 @@ defmodule WandererNotifier.Map.MapCharacter do
   Gets a character by ID from the cache.
   """
   def get_character(character_id) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, Keys.character_list()) do
+    case Facade.get_custom(Keys.character_list()) do
       {:ok, characters} when is_list(characters) ->
         Enum.find(characters, &(&1["id"] == character_id))
+
+      {:error, :not_found} ->
+        nil
 
       _ ->
         nil
@@ -217,11 +220,12 @@ defmodule WandererNotifier.Map.MapCharacter do
   Gets a character by name from the cache.
   """
   def get_character_by_name(character_name) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case Cachex.get(cache_name, Keys.character_list()) do
+    case Facade.get_custom(Keys.character_list()) do
       {:ok, characters} when is_list(characters) ->
         Enum.find(characters, &(&1["name"] == character_name))
+
+      {:error, :not_found} ->
+        nil
 
       _ ->
         nil
