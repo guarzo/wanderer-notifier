@@ -50,8 +50,14 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   def ensure_table do
     case :ets.whereis(@table_name) do
       :undefined ->
-        :ets.new(@table_name, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
-        
+        :ets.new(@table_name, [
+          :named_table,
+          :public,
+          :set,
+          read_concurrency: true,
+          write_concurrency: true
+        ])
+
       _table ->
         :ok
     end
@@ -143,7 +149,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
   defp get_or_create_bucket(bucket_key, burst_capacity) do
     ensure_table()
-    
+
     case :ets.lookup(@table_name, bucket_key) do
       [] ->
         # Create new bucket with full capacity
@@ -172,7 +178,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
         # Calculate token refill based on time elapsed
         time_diff = current_time - bucket.last_refill
         tokens_to_add = time_diff * refill_rate
-        
+
         # Update bucket with proper token calculation
         updated_tokens = min(new_tokens + tokens_to_add, burst_capacity)
 

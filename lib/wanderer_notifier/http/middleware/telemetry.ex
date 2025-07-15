@@ -279,12 +279,14 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
 
   defp calculate_body_size(nil), do: 0
   defp calculate_body_size(body) when is_binary(body), do: byte_size(body)
+
   defp calculate_body_size(body) when is_map(body) do
     case Jason.encode(body) do
       {:ok, encoded} -> byte_size(encoded)
       {:error, _} -> 0
     end
   end
+
   defp calculate_body_size(_), do: 0
 
   defp calculate_headers_size(headers) do
@@ -302,12 +304,14 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
   end
 
   defp calculate_response_body_size(body) when is_binary(body), do: byte_size(body)
+
   defp calculate_response_body_size(body) when is_map(body) do
     case Jason.encode(body) do
       {:ok, encoded} -> byte_size(encoded)
       {:error, _} -> 0
     end
   end
+
   defp calculate_response_body_size(_), do: 0
 
   defp calculate_response_headers_size(response) do

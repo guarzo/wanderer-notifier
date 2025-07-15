@@ -73,7 +73,7 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
 
   @doc """
   Checks if a request should be allowed for a host.
-  
+
   This operation is atomic to prevent race conditions during state transitions.
   """
   @spec can_execute?(String.t()) :: boolean()
@@ -204,7 +204,6 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
     :ets.insert(@table_name, {host, final_info})
     {:noreply, state}
   end
-
 
   @impl true
   def handle_cast({:reset_state, host}, state) do

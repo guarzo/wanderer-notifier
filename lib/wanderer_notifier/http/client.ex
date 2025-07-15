@@ -43,7 +43,7 @@ defmodule WandererNotifier.Http.Client do
 
   @default_headers [{"Content-Type", "application/json"}]
   @default_get_headers []
-  
+
   # Cache HTTP client configuration at compile time for performance
   @http_client_module Application.compile_env(:wanderer_notifier, :http_client, :production)
 
@@ -64,7 +64,7 @@ defmodule WandererNotifier.Http.Client do
     # Prepare body and headers once to avoid duplication
     body = prepare_body(Keyword.get(opts, :body))
     headers = merge_headers(Keyword.get(opts, :headers, []), method)
-    
+
     # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
     case @http_client_module do
       WandererNotifier.HTTPMock ->

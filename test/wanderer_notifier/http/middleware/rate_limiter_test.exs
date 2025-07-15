@@ -6,10 +6,11 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
   setup do
     # Clear ETS table before each test to prevent interference
     table_name = :http_rate_limiter_buckets
-    
+
     case :ets.whereis(table_name) do
       :undefined ->
         :ok
+
       table ->
         :ets.delete_all_objects(table)
     end
