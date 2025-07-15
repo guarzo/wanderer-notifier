@@ -395,54 +395,63 @@ defmodule WandererNotifier.Cache.VersionManager do
 
   defp execute_deployment_step(step, current_version, new_version) do
     case step do
-      :validate ->
-        validate_deployment(current_version, new_version, :safe)
-
-      :backup ->
-        # TODO: Implement actual cache backup logic
-        # This should create a backup of the current cache state before deployment
-        # Consider: key enumeration, data export, versioned backup storage
-        Logger.info(
-          "Backing up cache state for version #{current_version} (backup not yet implemented)"
-        )
-
-        :ok
-
-      :update_version ->
-        Versioning.set_version(new_version)
-
-      :warm_cache ->
-        try do
-          Warmer.force_startup_warming()
-          :ok
-        rescue
-          error ->
-            Logger.error("Cache warming failed during deployment step: #{inspect(error)}")
-            {:error, error}
-        end
-
-      :invalidate_old ->
-        Versioning.invalidate_old_versions(new_version)
-        :ok
-
-      :gradual_migration ->
-        execute_migration(current_version, new_version, :gradual)
-        :ok
-
-      :verify ->
-        # TODO: Implement real verification logic to confirm deployment success
-        # This should verify that the new version is properly set and accessible
-        # For now, we only log the verification step
-        Logger.info(
-          "Verifying deployment to version #{new_version} (verification not yet implemented)"
-        )
-
-        :ok
-
-      _ ->
-        Logger.warning("Unknown deployment step: #{step}")
-        :ok
+      :validate -> validate_deployment(current_version, new_version, :safe)
+      :backup -> execute_backup_step(current_version)
+      :update_version -> Versioning.set_version(new_version)
+      :warm_cache -> execute_warm_cache_step()
+      :invalidate_old -> execute_invalidate_old_step(new_version)
+      :gradual_migration -> execute_gradual_migration_step(current_version, new_version)
+      :verify -> execute_verify_step(new_version)
+      _ -> execute_unknown_deployment_step(step)
     end
+  end
+
+  defp execute_backup_step(current_version) do
+    # NOTE: Cache backup logic not yet implemented
+    # This should create a backup of the current cache state before deployment
+    # Consider: key enumeration, data export, versioned backup storage
+    Logger.info(
+      "Backing up cache state for version #{current_version} (backup not yet implemented)"
+    )
+
+    :ok
+  end
+
+  defp execute_warm_cache_step do
+    try do
+      Warmer.force_startup_warming()
+      :ok
+    rescue
+      error ->
+        Logger.error("Cache warming failed during deployment step: #{inspect(error)}")
+        {:error, error}
+    end
+  end
+
+  defp execute_invalidate_old_step(new_version) do
+    Versioning.invalidate_old_versions(new_version)
+    :ok
+  end
+
+  defp execute_gradual_migration_step(current_version, new_version) do
+    execute_migration(current_version, new_version, :gradual)
+    :ok
+  end
+
+  defp execute_verify_step(new_version) do
+    # NOTE: Real verification logic not yet implemented
+    # This should verify that the new version is properly set and accessible
+    # For now, we only log the verification step
+    Logger.info(
+      "Verifying deployment to version #{new_version} (verification not yet implemented)"
+    )
+
+    :ok
+  end
+
+  defp execute_unknown_deployment_step(step) do
+    Logger.warning("Unknown deployment step: #{step}")
+    :ok
   end
 
   defp find_previous_version(version_history) do
