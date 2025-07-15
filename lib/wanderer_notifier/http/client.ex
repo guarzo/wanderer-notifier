@@ -44,7 +44,6 @@ defmodule WandererNotifier.Http.Client do
   @default_headers [{"Content-Type", "application/json"}]
   @default_get_headers []
 
-
   @doc """
   Makes an HTTP request with the specified method, URL and options.
 
