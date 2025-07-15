@@ -30,6 +30,9 @@ defmodule WandererNotifier.Application do
       # Add Registry for SSE client naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
       create_cache_child_spec(),
+      # Add cache metrics and performance monitoring
+      {WandererNotifier.Cache.Metrics, []},
+      {WandererNotifier.Cache.PerformanceMonitor, []},
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
@@ -57,12 +60,33 @@ defmodule WandererNotifier.Application do
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     result = Supervisor.start_link(children, opts)
 
+    # Initialize cache metrics and performance monitoring
+    initialize_cache_monitoring()
+
     # Initialize SSE clients after supervisors are started (skip in test mode)
     if get_env() != :test do
       initialize_sse_clients()
     end
 
     result
+  end
+
+  # Initialize cache metrics and performance monitoring
+  defp initialize_cache_monitoring do
+    try do
+      # Initialize cache metrics telemetry
+      WandererNotifier.Cache.Metrics.init()
+
+      # Start performance monitoring
+      WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
+
+      WandererNotifier.Logger.Logger.startup_info("Cache performance monitoring initialized")
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
+          error: Exception.message(error)
+        )
+    end
   end
 
   # Initialize SSE clients with proper error handling

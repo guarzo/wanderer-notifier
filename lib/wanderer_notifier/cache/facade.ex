@@ -34,6 +34,7 @@ defmodule WandererNotifier.Cache.Facade do
   alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Cache.Config
   alias WandererNotifier.Cache.KeyGenerator
+  alias WandererNotifier.Cache.Metrics
 
   @type cache_key :: String.t()
   @type cache_value :: term()
@@ -405,20 +406,27 @@ defmodule WandererNotifier.Cache.Facade do
   @spec clear() :: :ok | {:error, term()}
   def clear do
     cache_name = Config.cache_name()
+    start_time = System.monotonic_time(:millisecond)
 
-    case Adapter.clear(cache_name) do
-      {:ok, _} ->
-        Logger.info("Cache cleared successfully")
-        :ok
+    result =
+      case Adapter.clear(cache_name) do
+        {:ok, _} ->
+          Logger.info("Cache cleared successfully")
+          :ok
 
-      :ok ->
-        Logger.info("Cache cleared successfully")
-        :ok
+        :ok ->
+          Logger.info("Cache cleared successfully")
+          :ok
 
-      {:error, reason} = error ->
-        Logger.error("Failed to clear cache: #{inspect(reason)}")
-        error
-    end
+        {:error, reason} = error ->
+          Logger.error("Failed to clear cache: #{inspect(reason)}")
+          error
+      end
+
+    duration = System.monotonic_time(:millisecond) - start_time
+    Metrics.record_operation_time(:clear, duration)
+
+    result
   end
 
   @doc """
@@ -453,27 +461,48 @@ defmodule WandererNotifier.Cache.Facade do
 
   defp get_from_cache(key, _opts \\ []) do
     cache_name = Config.cache_name()
+    start_time = System.monotonic_time(:millisecond)
 
-    case Adapter.get(cache_name, key) do
-      {:ok, nil} -> {:error, :not_found}
-      {:ok, value} -> {:ok, value}
-      {:error, reason} -> {:error, reason}
-    end
+    result =
+      case Adapter.get(cache_name, key) do
+        {:ok, nil} -> {:error, :not_found}
+        {:ok, value} -> {:ok, value}
+        {:error, reason} -> {:error, reason}
+      end
+
+    duration = System.monotonic_time(:millisecond) - start_time
+    Metrics.record_operation_time(:get, duration)
+
+    result
   end
 
   defp put_in_cache(key, value, ttl) do
     cache_name = Config.cache_name()
+    start_time = System.monotonic_time(:millisecond)
 
-    case Adapter.set(cache_name, key, value, ttl) do
-      {:ok, _} -> :ok
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    result =
+      case Adapter.set(cache_name, key, value, ttl) do
+        {:ok, _} -> :ok
+        :ok -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    duration = System.monotonic_time(:millisecond) - start_time
+    Metrics.record_operation_time(:put, duration)
+
+    result
   end
 
   defp delete_from_cache(key) do
     cache_name = Config.cache_name()
-    Adapter.del(cache_name, key)
+    start_time = System.monotonic_time(:millisecond)
+
+    result = Adapter.del(cache_name, key)
+
+    duration = System.monotonic_time(:millisecond) - start_time
+    Metrics.record_operation_time(:delete, duration)
+
+    result
   end
 
   defp get_domain_ttl(domain, opts) do
@@ -493,6 +522,11 @@ defmodule WandererNotifier.Cache.Facade do
 
   defp log_cache_access(domain, id, result) do
     Logger.debug("Cache #{result} for #{domain}:#{id}")
+
+    case result do
+      :hit -> Metrics.record_hit(domain, id)
+      :miss -> Metrics.record_miss(domain, id)
+    end
   end
 
   defp log_cache_operation(domain, id, operation) do
