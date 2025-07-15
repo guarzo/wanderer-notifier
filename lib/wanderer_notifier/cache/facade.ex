@@ -500,7 +500,8 @@ defmodule WandererNotifier.Cache.Facade do
   - :ok on success
   - {:error, reason} on error
   """
-  @spec put_killmail(integer() | String.t(), String.t(), cache_value(), keyword()) :: :ok | {:error, term()}
+  @spec put_killmail(integer() | String.t(), String.t(), cache_value(), keyword()) ::
+          :ok | {:error, term()}
   def put_killmail(kill_id, killmail_hash, killmail_data, opts \\ []) do
     key = versioned_key("esi", "killmail", "#{kill_id}:#{killmail_hash}")
     ttl = get_domain_ttl(:killmail, opts)
@@ -724,19 +725,19 @@ defmodule WandererNotifier.Cache.Facade do
 
   defp get_domain_ttl(domain, opts) do
     case Keyword.get(opts, :ttl) do
-      nil ->
-        case domain do
-          :character -> Config.ttl_for(:character)
-          :corporation -> Config.ttl_for(:corporation)
-          :alliance -> Config.ttl_for(:alliance)
-          :system -> Config.ttl_for(:system)
-          :type -> Config.ttl_for(:type)
-          :killmail -> Config.ttl_for(:killmail)
-          :default -> Config.ttl_for(:default)
-        end
+      nil -> get_default_ttl_for_domain(domain)
+      ttl -> ttl
+    end
+  end
 
-      ttl ->
-        ttl
+  defp get_default_ttl_for_domain(domain) do
+    case domain do
+      :character -> Config.ttl_for(:character)
+      :corporation -> Config.ttl_for(:corporation)
+      :alliance -> Config.ttl_for(:alliance)
+      :system -> Config.ttl_for(:system)
+      :type -> Config.ttl_for(:type)
+      :killmail -> Config.ttl_for(:killmail)
     end
   end
 
@@ -750,7 +751,18 @@ defmodule WandererNotifier.Cache.Facade do
 
     # Record operation for analytics
     try do
-      key = versioned_key("esi", Atom.to_string(domain), id)
+      key =
+        case domain do
+          :custom ->
+            to_string(id)
+
+          domain
+          when domain in [:character, :corporation, :alliance, :system, :type, :killmail] ->
+            versioned_key("esi", Atom.to_string(domain), id)
+
+          _ ->
+            versioned_key("esi", Atom.to_string(domain), id)
+        end
 
       WandererNotifier.Cache.Analytics.record_operation(
         :get,

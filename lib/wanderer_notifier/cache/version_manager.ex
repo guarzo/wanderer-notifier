@@ -241,46 +241,53 @@ defmodule WandererNotifier.Cache.VersionManager do
     version_history = Versioning.get_version_history()
 
     if length(version_history) > keep_versions do
-      versions_to_keep = Enum.take(version_history, keep_versions)
-      versions_to_clean = Enum.drop(version_history, keep_versions)
-
-      cleanup_results =
-        Enum.map(versions_to_clean, fn version_info ->
-          case Versioning.invalidate_old_versions(version_info.version) do
-            {:ok, count} ->
-              Logger.info("Cleaned up #{count} entries for version #{version_info.version}")
-              {version_info.version, count}
-
-            {:error, reason} ->
-              Logger.error(
-                "Failed to clean up version #{version_info.version}: #{inspect(reason)}"
-              )
-
-              {version_info.version, 0}
-          end
-        end)
-
-      total_cleaned =
-        cleanup_results
-        |> Enum.map(&elem(&1, 1))
-        |> Enum.sum()
-
-      {:ok,
-       %{
-         versions_kept: length(versions_to_keep),
-         versions_cleaned: length(versions_to_clean),
-         entries_cleaned: total_cleaned,
-         cleanup_results: cleanup_results
-       }}
+      do_cleanup_versions(version_history, keep_versions)
     else
-      {:ok,
-       %{
-         versions_kept: length(version_history),
-         versions_cleaned: 0,
-         entries_cleaned: 0,
-         cleanup_results: []
-       }}
+      no_cleanup_needed(version_history)
     end
+  end
+
+  defp do_cleanup_versions(version_history, keep_versions) do
+    versions_to_keep = Enum.take(version_history, keep_versions)
+    versions_to_clean = Enum.drop(version_history, keep_versions)
+
+    cleanup_results = Enum.map(versions_to_clean, &cleanup_version/1)
+
+    total_cleaned =
+      cleanup_results
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.sum()
+
+    {:ok,
+     %{
+       versions_kept: length(versions_to_keep),
+       versions_cleaned: length(versions_to_clean),
+       entries_cleaned: total_cleaned,
+       cleanup_results: cleanup_results
+     }}
+  end
+
+  defp cleanup_version(version_info) do
+    case Versioning.invalidate_old_versions(version_info.version) do
+      {:ok, count} ->
+        Logger.info("Cleaned up #{count} entries for version #{version_info.version}")
+        {version_info.version, count}
+
+      {:error, reason} ->
+        Logger.error("Failed to clean up version #{version_info.version}: #{inspect(reason)}")
+
+        {version_info.version, 0}
+    end
+  end
+
+  defp no_cleanup_needed(version_history) do
+    {:ok,
+     %{
+       versions_kept: length(version_history),
+       versions_cleaned: 0,
+       entries_cleaned: 0,
+       cleanup_results: []
+     }}
   end
 
   # Private functions
@@ -496,36 +503,49 @@ defmodule WandererNotifier.Cache.VersionManager do
 
   defp execute_migration_step(step, plan) do
     case step do
-      :prepare ->
-        Logger.info("Preparing migration from #{plan.from_version} to #{plan.to_version}")
-        :ok
-
-      :backup ->
-        Logger.info("Backing up cache state")
-        :ok
-
-      :migrate_keys ->
-        case Versioning.migrate_version(plan.from_version, plan.to_version) do
-          {:ok, _count} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      :verify ->
-        Logger.info("Verifying migration")
-        :ok
-
-      :cleanup ->
-        Logger.info("Cleaning up old cache entries")
-
-        case Versioning.invalidate_old_versions(plan.to_version) do
-          {:ok, _count} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      _ ->
-        Logger.warning("Unknown migration step: #{step}")
-        {:error, {:unknown_step, step}}
+      :prepare -> execute_prepare_step(plan)
+      :backup -> execute_backup_step()
+      :migrate_keys -> execute_migrate_keys_step(plan)
+      :verify -> execute_verify_step()
+      :cleanup -> execute_cleanup_step(plan)
+      _ -> execute_unknown_step(step)
     end
+  end
+
+  defp execute_prepare_step(plan) do
+    Logger.info("Preparing migration from #{plan.from_version} to #{plan.to_version}")
+    :ok
+  end
+
+  defp execute_backup_step do
+    Logger.info("Backing up cache state")
+    :ok
+  end
+
+  defp execute_migrate_keys_step(plan) do
+    case Versioning.migrate_version(plan.from_version, plan.to_version) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp execute_verify_step do
+    Logger.info("Verifying migration")
+    :ok
+  end
+
+  defp execute_cleanup_step(plan) do
+    Logger.info("Cleaning up old cache entries")
+
+    case Versioning.invalidate_old_versions(plan.to_version) do
+      {:ok, _count} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp execute_unknown_step(step) do
+    Logger.warning("Unknown migration step: #{step}")
+    {:error, {:unknown_step, step}}
   end
 
   defp estimate_migration_duration(from_version, to_version) do

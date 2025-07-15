@@ -429,20 +429,10 @@ defmodule WandererNotifier.Cache.Analytics do
     now = System.monotonic_time(:millisecond)
 
     # Get current metrics from the metrics module
-    current_metrics =
-      try do
-        Metrics.get_current_metrics()
-      rescue
-        _ -> %{}
-      end
+    current_metrics = get_current_metrics()
 
     # Get performance status
-    performance_status =
-      try do
-        PerformanceMonitor.get_performance_status()
-      rescue
-        _ -> %{}
-      end
+    performance_status = get_performance_status()
 
     time_series_entry = %{
       timestamp: now,
@@ -686,11 +676,12 @@ defmodule WandererNotifier.Cache.Analytics do
           DateTime.from_unix!(entry.timestamp, :millisecond).hour
         end)
         |> Enum.into(%{}, fn {hour, entries} ->
-          avg_operations = 
+          avg_operations =
             entries
             |> Enum.map(& &1.operations_count)
             |> Enum.sum()
             |> Kernel./(length(entries))
+
           {hour, avg_operations}
         end)
 
@@ -717,28 +708,53 @@ defmodule WandererNotifier.Cache.Analytics do
       end
 
     # Memory recommendations
-    if map_size(state.key_stats) > 10_000 do
-      recommendations = [
-        "Consider implementing cache size limits and eviction policies" | recommendations
-      ]
-    end
+    recommendations =
+      if map_size(state.key_stats) > 10_000 do
+        [
+          "Consider implementing cache size limits and eviction policies" | recommendations
+        ]
+      else
+        recommendations
+      end
 
     # Performance recommendations
     avg_response_time = calculate_average_response_time(state.response_times)
 
-    if avg_response_time > 50.0 do
-      recommendations = [
-        "Average response time is high - consider cache optimization" | recommendations
-      ]
-    end
+    recommendations =
+      if avg_response_time > 50.0 do
+        [
+          "Average response time is high - consider cache optimization" | recommendations
+        ]
+      else
+        recommendations
+      end
 
     # Pattern-based recommendations
     cold_keys = identify_cold_keys(state.key_stats, 10)
 
-    if length(cold_keys) > 5 do
-      recommendations = ["Consider implementing TTL for rarely accessed keys" | recommendations]
-    end
+    recommendations =
+      if length(cold_keys) > 5 do
+        ["Consider implementing TTL for rarely accessed keys" | recommendations]
+      else
+        recommendations
+      end
 
     recommendations
+  end
+
+  defp get_current_metrics do
+    try do
+      Metrics.get_metrics()
+    rescue
+      _ -> %{}
+    end
+  end
+
+  defp get_performance_status do
+    try do
+      PerformanceMonitor.get_status()
+    rescue
+      _ -> %{}
+    end
   end
 end

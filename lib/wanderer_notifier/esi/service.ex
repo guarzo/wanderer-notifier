@@ -326,7 +326,6 @@ defmodule WandererNotifier.ESI.Service do
     get_system(system_id, opts)
   end
 
-
   @impl WandererNotifier.ESI.ServiceBehaviour
   @spec get_character(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_character(character_id, opts \\ []) do
@@ -378,5 +377,4 @@ defmodule WandererNotifier.ESI.Service do
   @impl true
   @spec search(String.t(), list(String.t()), keyword()) :: {:ok, map()} | {:error, term()}
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
-
 end

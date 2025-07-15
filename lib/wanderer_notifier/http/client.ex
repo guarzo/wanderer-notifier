@@ -26,8 +26,10 @@ defmodule WandererNotifier.Http.Client do
   alias WandererNotifier.Http.Middleware.Telemetry
   alias WandererNotifier.Http.Middleware.{Retry, RateLimiter}
 
-  # Cache HTTP client configuration at compile time for performance
-  @http_client Application.compile_env(:wanderer_notifier, :http_client, __MODULE__)
+  # HTTP client configuration - use runtime config for test compatibility
+  defp http_client do
+    Application.get_env(:wanderer_notifier, :http_client, __MODULE__)
+  end
 
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type url :: String.t()
@@ -67,8 +69,8 @@ defmodule WandererNotifier.Http.Client do
     headers = merge_headers(Keyword.get(opts, :headers, []), method)
 
     # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
-    case @http_client do
-      mock when mock == WandererNotifier.HTTPMock ->
+    case http_client() do
+      WandererNotifier.HTTPMock ->
         # Use the existing HTTP module which handles mocks properly
         WandererNotifier.HTTP.request(method, url, headers, body, opts)
 

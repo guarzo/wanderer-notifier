@@ -46,8 +46,6 @@ defmodule WandererNotifier.Cache.Insights do
   require Logger
 
   alias WandererNotifier.Cache.Analytics
-  alias WandererNotifier.Cache.Metrics
-  alias WandererNotifier.Cache.PerformanceMonitor
 
   @type health_score :: %{
           overall_score: float(),
@@ -433,20 +431,23 @@ defmodule WandererNotifier.Cache.Insights do
   defp analyze_hit_rate_optimization(usage_report) do
     recommendations = []
 
-    if usage_report.hit_rate < @performance_benchmarks.acceptable_hit_rate do
-      recommendations = [
-        %{
-          type: :hit_rate,
-          priority: :high,
-          description:
-            "Hit rate is below acceptable threshold (#{Float.round(usage_report.hit_rate * 100, 1)}%)",
-          impact: "Poor hit rate increases response times and external API calls",
-          implementation: "Implement cache warming for frequently accessed data",
-          estimated_improvement: 0.15
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if usage_report.hit_rate < @performance_benchmarks.acceptable_hit_rate do
+        [
+          %{
+            type: :hit_rate,
+            priority: :high,
+            description:
+              "Hit rate is below acceptable threshold (#{Float.round(usage_report.hit_rate * 100, 1)}%)",
+            impact: "Poor hit rate increases response times and external API calls",
+            implementation: "Implement cache warming for frequently accessed data",
+            estimated_improvement: 0.15
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     # Data type specific recommendations
     Enum.reduce(usage_report.data_type_breakdown, recommendations, fn {type, stats}, acc ->
@@ -472,20 +473,23 @@ defmodule WandererNotifier.Cache.Insights do
   defp analyze_performance_optimization(usage_report) do
     recommendations = []
 
-    if usage_report.average_response_time > @performance_benchmarks.acceptable_response_time do
-      recommendations = [
-        %{
-          type: :performance,
-          priority: :high,
-          description:
-            "Average response time is high (#{Float.round(usage_report.average_response_time, 1)}ms)",
-          impact: "High response times affect application performance",
-          implementation: "Optimize cache access patterns and consider cache clustering",
-          estimated_improvement: 0.20
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if usage_report.average_response_time > @performance_benchmarks.acceptable_response_time do
+        [
+          %{
+            type: :performance,
+            priority: :high,
+            description:
+              "Average response time is high (#{Float.round(usage_report.average_response_time, 1)}ms)",
+            impact: "High response times affect application performance",
+            implementation: "Optimize cache access patterns and consider cache clustering",
+            estimated_improvement: 0.20
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     recommendations
   end
@@ -493,20 +497,23 @@ defmodule WandererNotifier.Cache.Insights do
   defp analyze_memory_optimization(efficiency_metrics) do
     recommendations = []
 
-    if efficiency_metrics.memory_efficiency < 0.8 do
-      recommendations = [
-        %{
-          type: :memory,
-          priority: :medium,
-          description:
-            "Memory efficiency is suboptimal (#{Float.round(efficiency_metrics.memory_efficiency * 100, 1)}%)",
-          impact: "Poor memory usage may lead to performance degradation",
-          implementation: "Review cache size limits and implement proper eviction policies",
-          estimated_improvement: 0.15
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if efficiency_metrics.memory_efficiency < 0.8 do
+        [
+          %{
+            type: :memory,
+            priority: :medium,
+            description:
+              "Memory efficiency is suboptimal (#{Float.round(efficiency_metrics.memory_efficiency * 100, 1)}%)",
+            impact: "Poor memory usage may lead to performance degradation",
+            implementation: "Review cache size limits and implement proper eviction policies",
+            estimated_improvement: 0.15
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     recommendations
   end
@@ -515,34 +522,40 @@ defmodule WandererNotifier.Cache.Insights do
     recommendations = []
 
     # Hotspot optimization
-    if length(patterns.hotspots) > 10 do
-      recommendations = [
-        %{
-          type: :hotspots,
-          priority: :medium,
-          description: "High number of cache hotspots detected (#{length(patterns.hotspots)})",
-          impact: "Hotspots may indicate uneven cache distribution",
-          implementation: "Consider cache partitioning or load balancing",
-          estimated_improvement: 0.10
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if length(patterns.hotspots) > 10 do
+        [
+          %{
+            type: :hotspots,
+            priority: :medium,
+            description: "High number of cache hotspots detected (#{length(patterns.hotspots)})",
+            impact: "Hotspots may indicate uneven cache distribution",
+            implementation: "Consider cache partitioning or load balancing",
+            estimated_improvement: 0.10
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     # Cold key optimization
-    if length(patterns.cold_keys) > 50 do
-      recommendations = [
-        %{
-          type: :cold_keys,
-          priority: :low,
-          description: "Many cold keys detected (#{length(patterns.cold_keys)})",
-          impact: "Cold keys consume memory without providing value",
-          implementation: "Implement TTL policies for rarely accessed keys",
-          estimated_improvement: 0.05
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if length(patterns.cold_keys) > 50 do
+        [
+          %{
+            type: :cold_keys,
+            priority: :low,
+            description: "Many cold keys detected (#{length(patterns.cold_keys)})",
+            impact: "Cold keys consume memory without providing value",
+            implementation: "Implement TTL policies for rarely accessed keys",
+            estimated_improvement: 0.05
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     recommendations
   end
@@ -550,19 +563,23 @@ defmodule WandererNotifier.Cache.Insights do
   defp analyze_capacity_planning(usage_report) do
     recommendations = []
 
-    if usage_report.total_operations > 100_000 do
-      recommendations = [
-        %{
-          type: :capacity,
-          priority: :medium,
-          description: "High cache usage detected (#{usage_report.total_operations} operations)",
-          impact: "High usage may require capacity planning",
-          implementation: "Monitor growth trends and plan for scaling",
-          estimated_improvement: 0.0
-        }
-        | recommendations
-      ]
-    end
+    recommendations =
+      if usage_report.total_operations > 100_000 do
+        [
+          %{
+            type: :capacity,
+            priority: :medium,
+            description:
+              "High cache usage detected (#{usage_report.total_operations} operations)",
+            impact: "High usage may require capacity planning",
+            implementation: "Monitor growth trends and plan for scaling",
+            estimated_improvement: 0.0
+          }
+          | recommendations
+        ]
+      else
+        recommendations
+      end
 
     recommendations
   end
@@ -776,7 +793,7 @@ defmodule WandererNotifier.Cache.Insights do
       # Simple linear prediction based on recent trend
       recent_data = Enum.take(historical_data, 5)
 
-      avg_hit_rate = 
+      avg_hit_rate =
         recent_data
         |> Enum.map(& &1.hit_rate)
         |> Enum.sum()
@@ -827,15 +844,19 @@ defmodule WandererNotifier.Cache.Insights do
   defp generate_capacity_recommendations(usage_report, patterns) do
     recommendations = []
 
-    if usage_report.total_operations > 50_000 do
-      recommendations = [
-        "Consider horizontal scaling for high operation volume" | recommendations
-      ]
-    end
+    recommendations =
+      if usage_report.total_operations > 50_000 do
+        ["Consider horizontal scaling for high operation volume" | recommendations]
+      else
+        recommendations
+      end
 
-    if length(patterns.hotspots) > 20 do
-      recommendations = ["Consider cache partitioning for hotspot distribution" | recommendations]
-    end
+    recommendations =
+      if length(patterns.hotspots) > 20 do
+        ["Consider cache partitioning for hotspot distribution" | recommendations]
+      else
+        recommendations
+      end
 
     recommendations
   end

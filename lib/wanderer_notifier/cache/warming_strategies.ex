@@ -55,33 +55,20 @@ defmodule WandererNotifier.Cache.WarmingStrategies do
   """
   @spec execute_strategy(atom()) :: strategy_result()
   def execute_strategy(strategy_name) do
-    case strategy_name do
-      :recent_characters ->
-        warm_recent_characters()
+    strategies = %{
+      recent_characters: &warm_recent_characters/0,
+      priority_systems: &warm_priority_systems/0,
+      active_corporations: &warm_active_corporations/0,
+      map_systems: &warm_map_systems/0,
+      frequent_alliances: &warm_frequent_alliances/0,
+      critical_startup: &warm_critical_startup_data/0,
+      killmail_entities: &warm_killmail_entities/0,
+      notification_dependencies: &warm_notification_dependencies/0
+    }
 
-      :priority_systems ->
-        warm_priority_systems()
-
-      :active_corporations ->
-        warm_active_corporations()
-
-      :map_systems ->
-        warm_map_systems()
-
-      :frequent_alliances ->
-        warm_frequent_alliances()
-
-      :critical_startup ->
-        warm_critical_startup_data()
-
-      :killmail_entities ->
-        warm_killmail_entities()
-
-      :notification_dependencies ->
-        warm_notification_dependencies()
-
-      _ ->
-        {:error, {:unknown_strategy, strategy_name}}
+    case Map.get(strategies, strategy_name) do
+      nil -> {:error, {:unknown_strategy, strategy_name}}
+      strategy_fn -> strategy_fn.()
     end
   end
 
@@ -135,79 +122,63 @@ defmodule WandererNotifier.Cache.WarmingStrategies do
   """
   @spec get_strategy_config(atom()) :: map()
   def get_strategy_config(strategy_name) do
-    case strategy_name do
-      :recent_characters ->
-        %{
-          description: "Warm recently active characters",
-          frequency: :high,
-          expected_items: 50,
-          timeout: 30_000
-        }
+    strategy_configs = %{
+      recent_characters: %{
+        description: "Warm recently active characters",
+        frequency: :high,
+        expected_items: 50,
+        timeout: 30_000
+      },
+      priority_systems: %{
+        description: "Warm priority wormhole systems",
+        frequency: :medium,
+        expected_items: 100,
+        timeout: 60_000
+      },
+      active_corporations: %{
+        description: "Warm active corporations",
+        frequency: :medium,
+        expected_items: 25,
+        timeout: 30_000
+      },
+      map_systems: %{
+        description: "Warm systems from current map data",
+        frequency: :high,
+        expected_items: 200,
+        timeout: 120_000
+      },
+      frequent_alliances: %{
+        description: "Warm frequently accessed alliances",
+        frequency: :low,
+        expected_items: 10,
+        timeout: 30_000
+      },
+      critical_startup: %{
+        description: "Warm critical startup data",
+        frequency: :startup_only,
+        expected_items: 20,
+        timeout: 60_000
+      },
+      killmail_entities: %{
+        description: "Warm entities from recent killmails",
+        frequency: :high,
+        expected_items: 75,
+        timeout: 45_000
+      },
+      notification_dependencies: %{
+        description: "Warm notification dependency data",
+        frequency: :medium,
+        expected_items: 30,
+        timeout: 30_000
+      }
+    }
 
-      :priority_systems ->
-        %{
-          description: "Warm priority wormhole systems",
-          frequency: :medium,
-          expected_items: 100,
-          timeout: 60_000
-        }
-
-      :active_corporations ->
-        %{
-          description: "Warm active corporations",
-          frequency: :medium,
-          expected_items: 25,
-          timeout: 30_000
-        }
-
-      :map_systems ->
-        %{
-          description: "Warm systems from current map data",
-          frequency: :high,
-          expected_items: 200,
-          timeout: 120_000
-        }
-
-      :frequent_alliances ->
-        %{
-          description: "Warm frequently accessed alliances",
-          frequency: :low,
-          expected_items: 10,
-          timeout: 30_000
-        }
-
-      :critical_startup ->
-        %{
-          description: "Warm critical startup data",
-          frequency: :startup_only,
-          expected_items: 20,
-          timeout: 60_000
-        }
-
-      :killmail_entities ->
-        %{
-          description: "Warm entities from recent killmails",
-          frequency: :high,
-          expected_items: 75,
-          timeout: 45_000
-        }
-
-      :notification_dependencies ->
-        %{
-          description: "Warm notification dependency data",
-          frequency: :medium,
-          expected_items: 30,
-          timeout: 30_000
-        }
-
-      _ ->
-        %{
-          description: "Unknown strategy",
-          frequency: :unknown,
-          expected_items: 0,
-          timeout: 30_000
-        }
-    end
+    Map.get(strategy_configs, strategy_name, %{
+      description: "Unknown strategy",
+      frequency: :unknown,
+      expected_items: 0,
+      timeout: 30_000
+    })
   end
 
   # Strategy implementations

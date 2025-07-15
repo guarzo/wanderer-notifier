@@ -18,16 +18,17 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
         {:ok, :duplicate}
 
       {:error, :not_found} ->
-        case Facade.put_custom(cache_key, true, ttl: ttl) do
-          :ok -> {:ok, :new}
-          {:error, reason} -> {:error, reason}
-        end
+        handle_cache_miss(cache_key, ttl)
 
       _ ->
-        case Facade.put_custom(cache_key, true, ttl: ttl) do
-          :ok -> {:ok, :new}
-          {:error, reason} -> {:error, reason}
-        end
+        handle_cache_miss(cache_key, ttl)
+    end
+  end
+
+  defp handle_cache_miss(cache_key, ttl) do
+    case Facade.put_custom(cache_key, true, ttl: ttl) do
+      :ok -> {:ok, :new}
+      {:error, reason} -> {:error, reason}
     end
   end
 

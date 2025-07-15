@@ -37,7 +37,8 @@ defmodule WandererNotifier.Cache.Metrics do
 
   @type metric_key :: atom()
   @type metric_value :: number()
-  @type cache_domain :: :character | :corporation | :alliance | :system | :custom
+  @type cache_domain ::
+          :character | :corporation | :alliance | :system | :type | :killmail | :custom
   @type operation_type :: :get | :put | :delete | :clear
 
   # Default metrics collection interval in milliseconds
