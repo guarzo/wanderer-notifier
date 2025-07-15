@@ -33,6 +33,7 @@ defmodule WandererNotifier.Application do
       # Add cache metrics and performance monitoring
       {WandererNotifier.Cache.Metrics, []},
       {WandererNotifier.Cache.PerformanceMonitor, []},
+      {WandererNotifier.Cache.Warmer, []},
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
@@ -80,7 +81,12 @@ defmodule WandererNotifier.Application do
       # Start performance monitoring
       WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
 
-      WandererNotifier.Logger.Logger.startup_info("Cache performance monitoring initialized")
+      # Start cache warming
+      WandererNotifier.Cache.Warmer.start_warming()
+
+      WandererNotifier.Logger.Logger.startup_info(
+        "Cache performance monitoring and warming initialized"
+      )
     rescue
       error ->
         WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
