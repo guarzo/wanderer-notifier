@@ -397,6 +397,214 @@ defmodule WandererNotifier.Cache.Facade do
   end
 
   @doc """
+  Gets type/universe data from cache.
+
+  ## Parameters
+  - type_id: EVE type ID
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - {:ok, type_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @spec get_type(integer() | String.t(), keyword()) :: cache_result()
+  def get_type(type_id, opts \\ []) do
+    key = versioned_key("esi", "type", type_id)
+
+    case get_from_cache(key, opts) do
+      {:ok, result} ->
+        log_cache_access(:type, type_id, :hit)
+        {:ok, result}
+
+      {:error, :not_found} = error ->
+        log_cache_access(:type, type_id, :miss)
+        error
+
+      {:error, reason} = error ->
+        log_cache_error(:type, type_id, reason)
+        error
+    end
+  end
+
+  @doc """
+  Stores type/universe data in cache with appropriate TTL.
+
+  ## Parameters
+  - type_id: EVE type ID
+  - type_data: Type data to store
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - :ok on success
+  - {:error, reason} on error
+  """
+  @spec put_type(integer() | String.t(), cache_value(), keyword()) :: :ok | {:error, term()}
+  def put_type(type_id, type_data, opts \\ []) do
+    key = versioned_key("esi", "type", type_id)
+    ttl = get_domain_ttl(:type, opts)
+
+    case put_in_cache(key, type_data, ttl) do
+      :ok ->
+        log_cache_operation(:type, type_id, :put)
+        :ok
+
+      {:error, reason} = error ->
+        log_cache_error(:type, type_id, reason)
+        error
+    end
+  end
+
+  @doc """
+  Gets killmail data from cache.
+
+  ## Parameters
+  - kill_id: Killmail ID
+  - killmail_hash: Killmail hash
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - {:ok, killmail_data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @spec get_killmail(integer() | String.t(), String.t(), keyword()) :: cache_result()
+  def get_killmail(kill_id, killmail_hash, opts \\ []) do
+    key = versioned_key("esi", "killmail", "#{kill_id}:#{killmail_hash}")
+
+    case get_from_cache(key, opts) do
+      {:ok, result} ->
+        log_cache_access(:killmail, kill_id, :hit)
+        {:ok, result}
+
+      {:error, :not_found} = error ->
+        log_cache_access(:killmail, kill_id, :miss)
+        error
+
+      {:error, reason} = error ->
+        log_cache_error(:killmail, kill_id, reason)
+        error
+    end
+  end
+
+  @doc """
+  Stores killmail data in cache with appropriate TTL.
+
+  ## Parameters
+  - kill_id: Killmail ID
+  - killmail_hash: Killmail hash
+  - killmail_data: Killmail data to store
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - :ok on success
+  - {:error, reason} on error
+  """
+  @spec put_killmail(integer() | String.t(), String.t(), cache_value(), keyword()) :: :ok | {:error, term()}
+  def put_killmail(kill_id, killmail_hash, killmail_data, opts \\ []) do
+    key = versioned_key("esi", "killmail", "#{kill_id}:#{killmail_hash}")
+    ttl = get_domain_ttl(:killmail, opts)
+
+    case put_in_cache(key, killmail_data, ttl) do
+      :ok ->
+        log_cache_operation(:killmail, kill_id, :put)
+        :ok
+
+      {:error, reason} = error ->
+        log_cache_error(:killmail, kill_id, reason)
+        error
+    end
+  end
+
+  @doc """
+  Gets custom data from cache with a specific key pattern.
+
+  ## Parameters
+  - key_pattern: String or list of key components
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - {:ok, data} if found
+  - {:error, :not_found} if not found
+  - {:error, reason} on error
+  """
+  @spec get_custom(String.t() | [String.t()], keyword()) :: cache_result()
+  def get_custom(key_pattern, opts \\ []) do
+    key = build_custom_key(key_pattern)
+
+    case get_from_cache(key, opts) do
+      {:ok, result} ->
+        log_cache_access(:custom, key_pattern, :hit)
+        {:ok, result}
+
+      {:error, :not_found} = error ->
+        log_cache_access(:custom, key_pattern, :miss)
+        error
+
+      {:error, reason} = error ->
+        log_cache_error(:custom, key_pattern, reason)
+        error
+    end
+  end
+
+  @doc """
+  Stores custom data in cache with a specific key pattern.
+
+  ## Parameters
+  - key_pattern: String or list of key components
+  - data: Data to store
+  - opts: Additional options (default: [])
+
+  ## Returns
+  - :ok on success
+  - {:error, reason} on error
+  """
+  @spec put_custom(String.t() | [String.t()], cache_value(), keyword()) :: :ok | {:error, term()}
+  def put_custom(key_pattern, data, opts \\ []) do
+    key = build_custom_key(key_pattern)
+    ttl = Keyword.get(opts, :ttl, Config.ttl_for(:default))
+
+    case put_in_cache(key, data, ttl) do
+      :ok ->
+        log_cache_operation(:custom, key_pattern, :put)
+        :ok
+
+      {:error, reason} = error ->
+        log_cache_error(:custom, key_pattern, reason)
+        error
+    end
+  end
+
+  @doc """
+  Deletes custom data from cache with a specific key pattern.
+
+  ## Parameters
+  - key_pattern: String or list of key components
+
+  ## Returns
+  - :ok on success
+  - {:error, reason} on error
+  """
+  @spec delete_custom(String.t() | [String.t()]) :: :ok | {:error, term()}
+  def delete_custom(key_pattern) do
+    key = build_custom_key(key_pattern)
+
+    case delete_from_cache(key) do
+      {:ok, _} ->
+        log_cache_operation(:custom, key_pattern, :delete)
+        :ok
+
+      :ok ->
+        log_cache_operation(:custom, key_pattern, :delete)
+        :ok
+
+      {:error, reason} = error ->
+        log_cache_error(:custom, key_pattern, reason)
+        error
+    end
+  end
+
+  @doc """
   Clears all cache entries.
 
   ## Returns
@@ -505,6 +713,15 @@ defmodule WandererNotifier.Cache.Facade do
     result
   end
 
+  defp build_custom_key(key_pattern) when is_binary(key_pattern) do
+    add_version_to_key(key_pattern)
+  end
+
+  defp build_custom_key(key_pattern) when is_list(key_pattern) do
+    key = Enum.join(key_pattern, ":")
+    add_version_to_key(key)
+  end
+
   defp get_domain_ttl(domain, opts) do
     case Keyword.get(opts, :ttl) do
       nil ->
@@ -513,6 +730,9 @@ defmodule WandererNotifier.Cache.Facade do
           :corporation -> Config.ttl_for(:corporation)
           :alliance -> Config.ttl_for(:alliance)
           :system -> Config.ttl_for(:system)
+          :type -> Config.ttl_for(:type)
+          :killmail -> Config.ttl_for(:killmail)
+          :default -> Config.ttl_for(:default)
         end
 
       ttl ->

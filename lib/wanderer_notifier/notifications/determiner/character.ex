@@ -6,7 +6,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
 
   require Logger
   alias WandererNotifier.Config
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Facade
   alias WandererNotifier.Notifications.Deduplication
   alias WandererNotifier.Map.MapCharacter
 
@@ -70,12 +70,12 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   """
   def character_changed?(character_id, new_data)
       when is_binary(character_id) or is_integer(character_id) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    cache_key = CacheKeys.character(character_id)
-
-    case Cachex.get(cache_name, cache_key) do
+    case Facade.get_character(character_id) do
       {:ok, old_data} when old_data != nil ->
         old_data != new_data
+
+      {:error, :not_found} ->
+        true
 
       _ ->
         true

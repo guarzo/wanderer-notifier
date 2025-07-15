@@ -30,6 +30,7 @@ defmodule WandererNotifier.Map.MapSystem do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Config, as: CacheConfig
   alias WandererNotifier.Cache.Adapter
+  alias WandererNotifier.Cache.Facade
 
   @enforce_keys [:solar_system_id, :name]
   defstruct [
@@ -64,9 +65,7 @@ defmodule WandererNotifier.Map.MapSystem do
   end
 
   def is_tracked?(system_id_str) when is_binary(system_id_str) do
-    cache_name = CacheConfig.cache_name()
-
-    case Adapter.get(cache_name, CacheKeys.map_systems()) do
+    case Facade.get_custom(CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         result =
           Enum.any?(systems, fn system ->
@@ -75,6 +74,9 @@ defmodule WandererNotifier.Map.MapSystem do
           end)
 
         {:ok, result}
+
+      {:error, :not_found} ->
+        {:ok, false}
 
       _ ->
         {:ok, false}
@@ -418,11 +420,12 @@ defmodule WandererNotifier.Map.MapSystem do
   Gets a system by ID from the cache.
   """
   def get_system(system_id) do
-    cache_name = CacheConfig.cache_name()
-
-    case Adapter.get(cache_name, CacheKeys.map_systems()) do
+    case Facade.get_custom(CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         Enum.find(systems, &(&1["id"] == system_id))
+
+      {:error, :not_found} ->
+        nil
 
       _ ->
         nil
@@ -433,11 +436,12 @@ defmodule WandererNotifier.Map.MapSystem do
   Gets a system by name from the cache.
   """
   def get_system_by_name(system_name) do
-    cache_name = CacheConfig.cache_name()
-
-    case Adapter.get(cache_name, CacheKeys.map_systems()) do
+    case Facade.get_custom(CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         Enum.find(systems, &(&1["name"] == system_name))
+
+      {:error, :not_found} ->
+        nil
 
       _ ->
         nil
