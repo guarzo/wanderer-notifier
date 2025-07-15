@@ -28,8 +28,6 @@ defmodule WandererNotifier.Map.MapSystem do
   @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Config, as: CacheConfig
-  alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Cache.Facade
 
   @enforce_keys [:solar_system_id, :name]
