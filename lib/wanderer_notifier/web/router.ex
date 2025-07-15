@@ -6,6 +6,7 @@ defmodule WandererNotifier.Web.Router do
 
   alias WandererNotifier.Api.Controllers.HealthController
   alias WandererNotifier.Api.Controllers.DashboardController
+  alias WandererNotifier.Api.Controllers.CacheController
 
   # Disable HTTP request/response logging 
   # plug(Plug.Logger, log: :debug)
@@ -41,6 +42,9 @@ defmodule WandererNotifier.Web.Router do
   # Health check endpoints (must come before catch-all routes)
   forward("/health", to: HealthController)
   forward("/api/health", to: HealthController)
+
+  # Cache analytics endpoints
+  forward("/api/cache", to: CacheController)
 
   # Dashboard endpoints - both root and /dashboard
   forward("/dashboard", to: DashboardController)

@@ -35,6 +35,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Cache.PerformanceMonitor, []},
       {WandererNotifier.Cache.Warmer, []},
       {WandererNotifier.Cache.Versioning, []},
+      {WandererNotifier.Cache.Analytics, []},
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
@@ -88,8 +89,11 @@ defmodule WandererNotifier.Application do
       # Initialize version manager
       WandererNotifier.Cache.VersionManager.initialize()
 
+      # Start cache analytics collection
+      WandererNotifier.Cache.Analytics.start_collection()
+
       WandererNotifier.Logger.Logger.startup_info(
-        "Cache performance monitoring, warming, and versioning initialized"
+        "Cache performance monitoring, warming, versioning, and analytics initialized"
       )
     rescue
       error ->

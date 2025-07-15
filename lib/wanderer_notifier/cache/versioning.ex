@@ -55,7 +55,6 @@ defmodule WandererNotifier.Cache.Versioning do
   # Default version if none configured
   @default_version "1.0.0"
 
-
   # Version history storage key
   @version_history_key "cache:versioning:history"
 

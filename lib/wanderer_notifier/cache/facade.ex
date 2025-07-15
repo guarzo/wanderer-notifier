@@ -520,12 +520,28 @@ defmodule WandererNotifier.Cache.Facade do
     end
   end
 
-  defp log_cache_access(domain, id, result) do
+  defp log_cache_access(domain, id, result, duration \\ 0) do
     Logger.debug("Cache #{result} for #{domain}:#{id}")
 
     case result do
       :hit -> Metrics.record_hit(domain, id)
       :miss -> Metrics.record_miss(domain, id)
+    end
+
+    # Record operation for analytics
+    try do
+      key = versioned_key("esi", Atom.to_string(domain), id)
+
+      WandererNotifier.Cache.Analytics.record_operation(
+        :get,
+        key,
+        result,
+        duration,
+        %{data_type: domain, id: id}
+      )
+    rescue
+      # Don't fail cache operations if analytics fails
+      _ -> :ok
     end
   end
 

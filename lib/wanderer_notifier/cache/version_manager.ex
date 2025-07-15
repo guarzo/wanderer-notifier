@@ -260,7 +260,7 @@ defmodule WandererNotifier.Cache.VersionManager do
           end
         end)
 
-      total_cleaned = 
+      total_cleaned =
         cleanup_results
         |> Enum.map(&elem(&1, 1))
         |> Enum.sum()
@@ -516,6 +516,7 @@ defmodule WandererNotifier.Cache.VersionManager do
 
       :cleanup ->
         Logger.info("Cleaning up old cache entries")
+
         case Versioning.invalidate_old_versions(plan.to_version) do
           {:ok, _count} -> :ok
           {:error, reason} -> {:error, reason}
