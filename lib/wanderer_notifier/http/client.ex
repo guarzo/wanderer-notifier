@@ -58,19 +58,30 @@ defmodule WandererNotifier.Http.Client do
   """
   @spec request(method(), url(), opts()) :: response()
   def request(method, url, opts \\ []) do
-    body = prepare_body(Keyword.get(opts, :body))
-    headers = merge_headers(Keyword.get(opts, :headers, []), method)
-    middlewares = Keyword.get(opts, :middlewares, default_middlewares())
+    # Check if we're in test mode and using mock - delegate to WandererNotifier.HTTP for compatibility
+    case Application.get_env(:wanderer_notifier, :http_client) do
+      WandererNotifier.HTTPMock ->
+        # Use the existing HTTP module which handles mocks properly
+        body = prepare_body(Keyword.get(opts, :body))
+        headers = merge_headers(Keyword.get(opts, :headers, []), method)
+        WandererNotifier.HTTP.request(method, url, headers, body, opts)
+      
+      _ ->
+        # Production mode - use middleware chain
+        body = prepare_body(Keyword.get(opts, :body))
+        headers = merge_headers(Keyword.get(opts, :headers, []), method)
+        middlewares = Keyword.get(opts, :middlewares, default_middlewares())
 
-    request = %{
-      method: method,
-      url: url,
-      headers: headers,
-      body: body,
-      opts: opts
-    }
+        request = %{
+          method: method,
+          url: url,
+          headers: headers,
+          body: body,
+          opts: opts
+        }
 
-    execute_middleware_chain(request, middlewares)
+        execute_middleware_chain(request, middlewares)
+    end
   end
 
   @doc """

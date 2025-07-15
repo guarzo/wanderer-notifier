@@ -17,10 +17,11 @@ Set these environment variables before starting the application:
 export DISCORD_BOT_TOKEN="your_bot_token_here"
 export DISCORD_APPLICATION_ID="your_application_id_here"
 
-# Required for basic functionality (existing)
+# Required for basic functionality
 export DISCORD_CHANNEL_ID="your_default_channel_id"
+export MAP_URL="https://wanderer.example.com"
+export MAP_NAME="your-map-name"
 export MAP_API_KEY="your_map_api_key"
-export NOTIFIER_API_TOKEN="your_api_token"
 export LICENSE_KEY="your_license_key"
 
 # Optional: Separate channel for system notifications
@@ -99,15 +100,18 @@ The bot persists data between restarts:
 Control notification behavior via environment variables:
 
 ```bash
-# System notifications (can be overridden by priority systems)
-export SYSTEM_NOTIFICATIONS_ENABLED=true
+# Master toggle for all notifications
+export NOTIFICATIONS_ENABLED=true
 
-# Priority-only mode: only send notifications for priority systems
-export PRIORITY_SYSTEMS_ONLY=false
-
-# Other notification types  
-export CHARACTER_NOTIFICATIONS_ENABLED=true
+# Individual notification types
 export KILL_NOTIFICATIONS_ENABLED=true
+export SYSTEM_NOTIFICATIONS_ENABLED=true
+export CHARACTER_NOTIFICATIONS_ENABLED=true
+
+# Special modes
+export PRIORITY_SYSTEMS_ONLY=false  # Only send notifications for priority systems
+export ENABLE_STATUS_MESSAGES=false  # Enable startup status messages
+export TRACK_KSPACE_ENABLED=true    # Track K-Space systems in addition to wormholes
 ```
 
 ### Channel Configuration

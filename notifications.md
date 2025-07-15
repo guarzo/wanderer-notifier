@@ -49,9 +49,9 @@ Displays a basic text notification containing:
 
 ### Data Sources
 
-- Initial kill data from zKillboard WebSocket
-- Enrichment from ESI for character, corporation, and ship details
-- Additional details from zkillboard API when needed
+- Initial kill data from WandererKills WebSocket service (pre-enriched)
+- Enrichment from ESI for additional character, corporation, and ship details when needed
+- WandererKills API for historical kill lookups
 
 ## Character Tracking Notifications
 
@@ -86,7 +86,8 @@ Receives a simple text notification that includes:
 
 ### Data Sources
 
-- Initial character data from Map API
+- Initial character data from Wanderer Map API via Server-Sent Events (SSE)
+- Real-time character tracking updates via SSE stream
 - Enrichment from ESI for character and corporation details
 - Corporation name fallback to ticker if full name unavailable
 
@@ -138,9 +139,10 @@ Provides a basic text notification including:
 
 ### Data Sources
 
-- Initial system data from Map API
-- Static system information from Map API or internal database
-- Kill data enrichment from zKillboard API
+- Initial system data from Wanderer Map API via Server-Sent Events (SSE)
+- Real-time system tracking updates via SSE stream
+- Static system information from internal database and Map API
+- Kill data enrichment from WandererKills API
 - Region information from ESI when needed
 
 ## Special First Message Behavior
@@ -158,17 +160,17 @@ Customize your notification experience with several configuration options availa
 
 ### Notification Control Variables
 
+- **NOTIFICATIONS_ENABLED:** Master switch for all notifications (default: true).
 - **KILL_NOTIFICATIONS_ENABLED:** Enable/disable kill notifications (default: true).
-- **CHARACTER_TRACKING_ENABLED:** Enable/disable character data tracking scheduler (default: true).
 - **CHARACTER_NOTIFICATIONS_ENABLED:** Enable/disable notifications when new characters are added (default: true).
 - **SYSTEM_NOTIFICATIONS_ENABLED:** Enable/disable system notifications (default: true).
-- **SYSTEM_TRACKING_ENABLED:** Enable/disable system data tracking scheduler (default: true).
+- **ENABLE_STATUS_MESSAGES:** Enable startup and status notifications (default: false).
 
 ### Additional Control Variables
 
-- **NOTIFICATIONS_ENABLED:** Master switch for all notifications (default: true).
-- **DISABLE_STATUS_MESSAGES:** Disable startup and status notifications (default: false).
-- **TRACK_KSPACE:** Controls whether K-Space systems are tracked in addition to wormholes (default: true).
+- **PRIORITY_SYSTEMS_ONLY:** Only send notifications for priority systems (default: false).
+- **TRACK_KSPACE_ENABLED:** Controls whether K-Space systems are tracked in addition to wormholes (default: true).
+- **CHARACTER_EXCLUDE_LIST:** Comma-separated list of character IDs to exclude from tracking.
 
 To disable a notification type, set the corresponding variable to `false` or `0` in your `.env` file:
 
@@ -176,8 +178,11 @@ To disable a notification type, set the corresponding variable to `false` or `0`
 # Example: Disable kill notifications while keeping other notifications enabled
 KILL_NOTIFICATIONS_ENABLED=false
 
-# Example: Disable character tracking scheduler to stop character data updates
-CHARACTER_TRACKING_ENABLED=false
+# Example: Enable priority-only mode for high-traffic environments
+PRIORITY_SYSTEMS_ONLY=true
+
+# Example: Exclude specific characters from tracking
+CHARACTER_EXCLUDE_LIST=123456789,987654321
 ```
 
 ## Troubleshooting

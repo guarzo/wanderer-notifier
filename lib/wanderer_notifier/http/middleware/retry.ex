@@ -65,7 +65,7 @@ defmodule WandererNotifier.Http.Middleware.Retry do
     retry_options = get_retry_options(request.opts)
     context = build_context(request)
     retry_fun = build_retry_function(request, next, retry_options)
-    
+
     execute_with_retry(retry_fun, retry_options, context)
   end
 
@@ -94,6 +94,7 @@ defmodule WandererNotifier.Http.Middleware.Retry do
       case reason do
         {:http_error, status_code, _body} when status_code in [408, 429, 500, 502, 503, 504] ->
           {:error, :http_error}
+
         _ ->
           result
       end
@@ -106,14 +107,15 @@ defmodule WandererNotifier.Http.Middleware.Retry do
   defp execute_with_retry(retry_fun, retry_options, context) do
     try do
       case RetryUtils.run(retry_fun,
-        max_attempts: Keyword.get(retry_options, :max_attempts, 3),
-        base_backoff: Keyword.get(retry_options, :base_backoff, 1000),
-        max_backoff: Keyword.get(retry_options, :max_backoff, 30_000),
-        jitter: Keyword.get(retry_options, :jitter, true),
-        retryable_errors: [:retryable_http_status, :http_error] ++ get_all_retryable_errors(retry_options),
-        context: context,
-        on_retry: &log_retry_attempt/3
-      ) do
+             max_attempts: Keyword.get(retry_options, :max_attempts, 3),
+             base_backoff: Keyword.get(retry_options, :base_backoff, 1000),
+             max_backoff: Keyword.get(retry_options, :max_backoff, 30_000),
+             jitter: Keyword.get(retry_options, :jitter, true),
+             retryable_errors:
+               [:retryable_http_status, :http_error] ++ get_all_retryable_errors(retry_options),
+             context: context,
+             on_retry: &log_retry_attempt/3
+           ) do
         {:ok, result} -> {:ok, result}
         {:error, {:retryable_http_status, response}} -> {:ok, response}
         {:error, reason} -> {:error, reason}

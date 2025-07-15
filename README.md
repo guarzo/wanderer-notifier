@@ -5,18 +5,19 @@ Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-t
 ## Features
 
 - **Real-Time Kill Monitoring:** Receives pre-enriched killmail data via WebSocket connection to WandererKills service
-- **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the map
+- **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the Wanderer map
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
-- **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
+- **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications with real-time updates
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
-- **Discord Slash Commands:** Manage priority systems and check bot status directly from Discord
-- **Priority Systems:** Mark critical systems for special notifications with @here mentions
+- **Discord Slash Commands:** Full Discord bot integration with slash commands to manage priority systems and check bot status
+- **Priority Systems:** Mark critical systems for special notifications with @here mentions, with priority-only mode support
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
-- **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
-- **Data Enrichment:** Integrates with EVE's ESI API when needed (pre-enriched data used when available)
-- **Map Integration:** Real-time SSE connection to Wanderer map API for system and character tracking
-- **Robust Architecture:** Built on Elixir's OTP supervision trees for fault tolerance and reliability
-- **Production Ready:** Comprehensive logging, telemetry, Docker deployment, and health checks
+- **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management and unified key generation
+- **Data Enrichment:** Integrates with EVE's ESI API for additional enrichment when needed (most data comes pre-enriched)
+- **Map Integration:** Real-time SSE connection to Wanderer map API for immediate system and character tracking updates
+- **Event-Driven Architecture:** Built on real-time data streams with minimal polling for maximum responsiveness
+- **Robust Supervision:** Built on Elixir's OTP supervision trees with granular fault tolerance and automatic recovery
+- **Production Ready:** Comprehensive logging, telemetry, Docker deployment, health checks, and operational monitoring
 
 ## Notification System
 
@@ -230,34 +231,39 @@ The Makefile provides shortcuts for common tasks:
 
 ## Architecture
 
-Wanderer Notifier follows a domain-driven, event-driven architecture built on Elixir/OTP principles:
+Wanderer Notifier follows a domain-driven, event-driven architecture built on Elixir/OTP principles with real-time data streams:
 
-### Core Data Flow
-1. **WebSocket Client**: Maintains real-time connection to WandererKills service for pre-enriched killmail data
-2. **SSE Client**: Real-time Server-Sent Events connection for map updates (systems and characters)
-3. **Killmail Pipeline**: Processes incoming kills through filtering and notification stages
-4. **ESI Integration**: Provides additional enrichment when needed (most data comes pre-enriched)
-5. **Notification Engine**: Determines eligibility and formats messages based on tracking rules
-6. **Discord Delivery**: Sends rich embed or text notifications to configured channels
+### Real-Time Data Flow
+1. **WebSocket Client**: Maintains persistent connection to WandererKills service for pre-enriched killmail data
+2. **SSE Client**: Real-time Server-Sent Events connection for immediate map updates (systems and characters)
+3. **Event Processing**: Handles SSE events through dedicated event handlers for real-time map synchronization
+4. **Killmail Pipeline**: Processes incoming kills through supervised workers with filtering and notification stages
+5. **ESI Integration**: Provides additional enrichment when needed (most data comes pre-enriched from WandererKills)
+6. **Notification Engine**: Determines eligibility, applies license limits, and formats messages based on tracking rules
+7. **Discord Infrastructure**: Full bot integration with slash command registration and event consumption
+8. **Discord Delivery**: Sends rich embed or text notifications to configured channels with multi-channel routing
 
 ### Key Components
-- **Supervision Tree**: Robust fault tolerance with supervisor hierarchies
-- **WebSocket Client**: Real-time connection for pre-enriched killmail data
-- **SSE Supervisor**: Manages Server-Sent Events connections for map synchronization
-- **Cache System**: Multi-adapter caching (Cachex/ETS) with unified key management
-- **HTTP Client**: Centralized client with retry logic, rate limiting, and structured logging
-- **Schedulers**: Background tasks for periodic updates and maintenance
-- **License Service**: Controls premium features and notification formatting
-- **Map Integration**: Real-time SSE-based tracking of wormhole systems and character locations
+- **Supervision Tree**: Robust fault tolerance with granular supervisor hierarchies and automatic recovery
+- **WebSocket Infrastructure**: Real-time killmail processing with connection management and supervised workers
+- **SSE Infrastructure**: Complete Server-Sent Events system with connection management, parsing, and event handling
+- **Discord Bot Services**: Full Discord integration with slash command registration, event consumption, and interaction handling
+- **Cache System**: Multi-adapter caching (Cachex/ETS) with unified key management and intelligent TTL strategies
+- **HTTP Client**: Centralized client with retry logic, rate limiting, structured logging, and response handling
+- **Schedulers**: Background tasks with registry-based management for service monitoring and maintenance
+- **License Service**: Controls premium features, notification formatting, and license-based limiting
+- **Telemetry System**: Comprehensive application metrics, structured logging, and operational monitoring
 
 ### Technology Stack
-- **Elixir 1.18+** with OTP supervision trees
-- **Nostrum** for Discord bot functionality
-- **HTTPoison/Req** for HTTP API interactions
-- **Cachex** for distributed caching
-- **Jason** for JSON handling
-- **WebSockex** for WebSocket connections
-- **Docker** for containerized deployment
+- **Elixir 1.18+** with OTP supervision trees for fault tolerance
+- **Nostrum** for Discord bot functionality and slash commands
+- **HTTPoison/Req** for HTTP API interactions with retry logic
+- **Cachex/ETS** for multi-adapter caching with TTL management
+- **Jason** for high-performance JSON encoding/decoding
+- **WebSockex** for persistent WebSocket connections
+- **Server-Sent Events** for real-time map synchronization
+- **Mox** for behavior-based testing and mocking
+- **Docker** for containerized deployment and development
 
 ## License
 
