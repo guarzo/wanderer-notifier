@@ -14,10 +14,10 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
   setup do
     # Clear the ETS table between tests using the proper API
     CircuitBreakerState.clear_all_states()
-    
+
     # Add a small delay to ensure the cast is processed
     Process.sleep(10)
-    
+
     :ok
   end
 
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
       # Manually transition to half-open (simulating timeout)
       updated_state = %{state | state: :half_open}
       CircuitBreakerState.set_state("api.example.com", updated_state)
-      
+
       # Give GenServer time to process the cast
       Process.sleep(10)
 
@@ -132,7 +132,7 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
       state = CircuitBreakerState.get_state("api.example.com")
       updated_state = %{state | state: :half_open}
       CircuitBreakerState.set_state("api.example.com", updated_state)
-      
+
       # Give GenServer time to process the cast
       Process.sleep(10)
 
@@ -194,7 +194,7 @@ defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
 
       # Reset for next test by clearing the host state
       CircuitBreakerState.reset_state("api.example.com")
-      
+
       # Give GenServer time to process the cast
       Process.sleep(10)
 

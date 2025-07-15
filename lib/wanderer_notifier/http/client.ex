@@ -152,13 +152,17 @@ defmodule WandererNotifier.Http.Client do
 
   defp prepare_body(nil), do: nil
   defp prepare_body(body) when is_binary(body), do: body
+
   defp prepare_body(body) when is_map(body) do
     case JsonUtils.encode(body) do
-      {:ok, encoded} -> encoded
-      {:error, reason} -> 
+      {:ok, encoded} ->
+        encoded
+
+      {:error, reason} ->
         raise ArgumentError, "Failed to encode body to JSON: #{inspect(reason)}"
     end
   end
+
   defp prepare_body(body), do: to_string(body)
 
   defp merge_headers(custom_headers, method) do

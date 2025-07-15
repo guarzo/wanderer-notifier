@@ -5,12 +5,12 @@ defmodule WandererNotifier.Http.Utils.HttpUtils do
 
   @doc """
   Extracts the host from a URL.
-  
+
   Returns the hostname from a URL string, or "unknown" if the URL is invalid
   or doesn't contain a host.
-  
+
   ## Examples
-  
+
       iex> HttpUtils.extract_host("https://api.example.com/path")
       "api.example.com"
       

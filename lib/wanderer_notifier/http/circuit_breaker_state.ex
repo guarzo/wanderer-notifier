@@ -62,6 +62,7 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
           table: @table_name,
           component: "CircuitBreakerState"
         })
+
         default_circuit_info()
     end
   end
@@ -94,7 +95,7 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
 
   @doc """
   Gets circuit breaker statistics for monitoring.
-  
+
   ## Performance Warning
   This function converts the entire ETS table to a list, which can be expensive
   with many tracked hosts. Use judiciously in production environments.
@@ -112,6 +113,7 @@ defmodule WandererNotifier.Http.CircuitBreakerState do
           table: @table_name,
           component: "CircuitBreakerState"
         })
+
         %{}
     end
   end

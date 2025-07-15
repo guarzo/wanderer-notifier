@@ -105,7 +105,6 @@ defmodule WandererNotifier.Http.Middleware.Telemetry do
     }
   end
 
-
   defp generate_request_id do
     # Use lighter-weight unique integer instead of cryptographically strong bytes
     :erlang.unique_integer([:positive, :monotonic])

@@ -100,7 +100,6 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     Keyword.get(opts, :rate_limit_options, [])
   end
 
-
   defp check_rate_limit(host, options) do
     requests_per_second = Keyword.get(options, :requests_per_second, @default_requests_per_second)
     burst_capacity = Keyword.get(options, :burst_capacity, @default_burst_capacity)
