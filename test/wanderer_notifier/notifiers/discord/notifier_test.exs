@@ -56,7 +56,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
     def format_system_security(killmail) do
       case killmail do
-        %{solar_system_security: sec} when not is_nil(sec) -> sec
+        %{solar_system_security: sec} when is_number(sec) -> sec
         _ -> 0.5
       end
     end

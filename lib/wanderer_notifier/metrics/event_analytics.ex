@@ -274,7 +274,7 @@ defmodule WandererNotifier.Metrics.EventAnalytics do
     |> Enum.map(fn {bucket_time, source_counts} ->
       %{
         timestamp: bucket_time,
-        total: Enum.sum(Map.values(source_counts)),
+        total: source_counts |> Map.values() |> Enum.sum(),
         by_source: source_counts
       }
     end)

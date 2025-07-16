@@ -274,17 +274,7 @@ defmodule WandererNotifier.Realtime.Integration do
       # Check all connections
       case ConnectionMonitor.get_connections() do
         {:ok, connections} ->
-          Enum.each(connections, fn connection ->
-            health = HealthChecker.assess_connection_quality(connection)
-
-            if health in [:poor, :critical] do
-              Logger.warning("Connection health degraded",
-                connection_id: connection.id,
-                type: connection.type,
-                quality: health
-              )
-            end
-          end)
+          check_connections_health(connections)
 
         _ ->
           :ok
@@ -292,6 +282,20 @@ defmodule WandererNotifier.Realtime.Integration do
 
       # Trigger performance check
       PerformanceMonitor.check_performance_now()
+    end
+
+    defp check_connections_health(connections) do
+      Enum.each(connections, fn connection ->
+        health = HealthChecker.assess_connection_quality(connection)
+
+        if health in [:poor, :critical] do
+          Logger.warning("Connection health degraded",
+            connection_id: connection.id,
+            type: connection.type,
+            quality: health
+          )
+        end
+      end)
     end
 
     defp schedule_health_check do

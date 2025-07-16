@@ -234,7 +234,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp add_statics_field(fields, _, _), do: fields
 
-  defp add_region_field(fields, region_name) when not is_nil(region_name) do
+  defp add_region_field(fields, region_name) when is_binary(region_name) do
     # Create a hyperlink to EVE Maps dotlan for the region
     region_str = safe_to_string(region_name)
     # Replace spaces with underscores for the URL
@@ -245,7 +245,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp add_region_field(fields, _), do: fields
 
-  defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name),
+  defp add_effect_field(fields, true, effect_name) when is_binary(effect_name),
     do: fields ++ [%{name: "Effect", value: safe_to_string(effect_name), inline: true}]
 
   defp add_effect_field(fields, _, _), do: fields

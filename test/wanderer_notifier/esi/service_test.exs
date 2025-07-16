@@ -172,7 +172,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   describe "get_character_struct/2" do
     test "returns a Character struct when successful", %{character_data: _character_data} do
       # Ensure cache is empty for this test
-      Facade.delete(WandererNotifier.Cache.Keys.character(123_456))
+      123_456
+      |> WandererNotifier.Cache.Keys.character()
+      |> Facade.delete()
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -204,7 +206,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   describe "get_corporation_struct/2" do
     test "returns a Corporation struct when successful", %{corporation_data: _corporation_data} do
       # Ensure cache is empty for this test
-      Facade.delete(WandererNotifier.Cache.Keys.corporation(789_012))
+      789_012
+      |> WandererNotifier.Cache.Keys.corporation()
+      |> Facade.delete()
 
       # Get corporation struct from ESI service
       {:ok, corporation} = Service.get_corporation_struct(789_012)
@@ -224,7 +228,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   describe "get_alliance_struct/2" do
     test "returns an Alliance struct when successful", %{alliance_data: _alliance_data} do
       # Ensure cache is empty for this test
-      Facade.delete(WandererNotifier.Cache.Keys.alliance(345_678))
+      345_678
+      |> WandererNotifier.Cache.Keys.alliance()
+      |> Facade.delete()
 
       # Get alliance struct from ESI service
       {:ok, alliance} = Service.get_alliance_struct(345_678)

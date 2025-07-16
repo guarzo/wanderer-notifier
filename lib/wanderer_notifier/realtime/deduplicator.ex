@@ -225,7 +225,7 @@ defmodule WandererNotifier.Realtime.Deduplicator do
       %{type: "character_event", data: %{character_id: char_id, event: event}} ->
         %{type: "character_event", character_id: char_id, event: event}
 
-      %{id: id, type: type} when not is_nil(id) ->
+      %{id: id, type: type} when is_binary(id) or is_integer(id) ->
         %{type: type, id: id}
 
       %{data: data, type: type} when is_map(data) ->

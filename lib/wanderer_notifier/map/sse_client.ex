@@ -373,61 +373,57 @@ defmodule WandererNotifier.Map.SSEClient do
   defp process_event(event_data, state) do
     with {:ok, parsed_event} <- parse_event(event_data),
          {:ok, validated_event} <- validate_event(parsed_event) do
-      # Process through integrated pipeline (skip if Integration not running)
-      if Process.whereis(WandererNotifier.Realtime.Integration) do
-        event_type = Map.get(validated_event, "event", "unknown")
-
-        integration_result =
-          WandererNotifier.Realtime.Integration.process_sse_event(event_type, validated_event)
-
-        case integration_result do
-          {:ok, :duplicate} ->
-            # Skip legacy processing for duplicates
-            event_id = Map.get(validated_event, "id")
-            {:ok, event_id}
-
-          {:ok, _} ->
-            # Also process through legacy system for backward compatibility
-            case EventProcessor.process_event(validated_event, state.map_slug) do
-              :ok ->
-                event_id = Map.get(validated_event, "id")
-                {:ok, event_id}
-
-              error ->
-                error
-            end
-
-          {:error, reason} ->
-            AppLogger.api_error("Failed to process SSE event through integration",
-              error: inspect(reason),
-              event_type: event_type
-            )
-
-            # Still try legacy processing
-            case EventProcessor.process_event(validated_event, state.map_slug) do
-              :ok ->
-                event_id = Map.get(validated_event, "id")
-                {:ok, event_id}
-
-              error ->
-                error
-            end
-        end
-      else
-        # Integration not running, process through legacy system only
-        case EventProcessor.process_event(validated_event, state.map_slug) do
-          :ok ->
-            event_id = Map.get(validated_event, "id")
-            {:ok, event_id}
-
-          error ->
-            error
-        end
-      end
+      process_validated_event(validated_event, state)
     else
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp process_validated_event(validated_event, state) do
+    if Process.whereis(WandererNotifier.Realtime.Integration) do
+      process_with_integration(validated_event, state)
+    else
+      process_legacy_only(validated_event, state)
+    end
+  end
+
+  defp process_with_integration(validated_event, state) do
+    event_type = Map.get(validated_event, "event", "unknown")
+
+    integration_result =
+      WandererNotifier.Realtime.Integration.process_sse_event(event_type, validated_event)
+
+    case integration_result do
+      {:ok, :duplicate} ->
+        extract_event_id(validated_event)
+
+      {:ok, _} ->
+        process_legacy_only(validated_event, state)
+
+      {:error, reason} ->
+        log_integration_error(reason, event_type)
+        process_legacy_only(validated_event, state)
+    end
+  end
+
+  defp process_legacy_only(validated_event, state) do
+    case EventProcessor.process_event(validated_event, state.map_slug) do
+      :ok -> extract_event_id(validated_event)
+      error -> error
+    end
+  end
+
+  defp extract_event_id(validated_event) do
+    event_id = Map.get(validated_event, "id")
+    {:ok, event_id}
+  end
+
+  defp log_integration_error(reason, event_type) do
+    AppLogger.api_error("Failed to process SSE event through integration",
+      error: inspect(reason),
+      event_type: event_type
+    )
   end
 
   defp parse_event(event_data) when is_binary(event_data) do

@@ -174,10 +174,10 @@ defmodule WandererNotifier.Realtime.HealthChecker do
     recommendations = []
 
     recommendations =
-      if not heartbeat_healthy?(connection) do
-        ["Check heartbeat mechanism - no recent heartbeat detected" | recommendations]
-      else
+      if heartbeat_healthy?(connection) do
         recommendations
+      else
+        ["Check heartbeat mechanism - no recent heartbeat detected" | recommendations]
       end
 
     recommendations =

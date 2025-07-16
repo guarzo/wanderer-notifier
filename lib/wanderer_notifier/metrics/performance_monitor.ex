@@ -500,25 +500,11 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp generate_performance_status(state) do
     current_metrics = Collector.get_current_metrics()
     active_alerts = get_active_alerts_list(state.recent_alerts)
-
-    overall_health =
-      case get_performance_score(current_metrics) do
-        score when is_number(score) ->
-          cond do
-            score >= @performance_thresholds.good -> :excellent
-            score >= @performance_thresholds.fair -> :good
-            score >= @performance_thresholds.poor -> :fair
-            score >= @performance_thresholds.critical -> :poor
-            true -> :critical
-          end
-
-        _ ->
-          :unknown
-      end
+    performance_score = get_performance_score(current_metrics)
 
     %{
-      overall_health: overall_health,
-      performance_score: get_performance_score(current_metrics),
+      overall_health: calculate_overall_health(performance_score),
+      performance_score: performance_score,
       active_alerts_count: length(active_alerts),
       active_alerts: active_alerts,
       baseline_available: not is_nil(state.performance_baseline),
@@ -526,6 +512,18 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       monitoring_stats: state.stats
     }
   end
+
+  defp calculate_overall_health(score) when is_number(score) do
+    cond do
+      score >= @performance_thresholds.good -> :excellent
+      score >= @performance_thresholds.fair -> :good
+      score >= @performance_thresholds.poor -> :fair
+      score >= @performance_thresholds.critical -> :poor
+      true -> :critical
+    end
+  end
+
+  defp calculate_overall_health(_), do: :unknown
 
   defp get_active_alerts_list(recent_alerts) do
     recent_alerts
