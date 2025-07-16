@@ -164,14 +164,14 @@ defmodule WandererNotifier.Map.SSEConnection do
   end
 
   # Normalizes a base URL by removing path and query components.
-  # 
+  #
   # Takes a URL string and returns a normalized URL with only the scheme, host, and port.
   # This ensures that the URL is in a consistent format for building API endpoints.
-  # 
+  #
   # Examples:
   #   normalize_base_url("https://example.com/some/path?param=value")
   #   #=> "https://example.com"
-  #   
+  #
   #   normalize_base_url("http://localhost:3000/maps/test")
   #   #=> "http://localhost:3000"
   @spec normalize_base_url(String.t()) :: String.t()

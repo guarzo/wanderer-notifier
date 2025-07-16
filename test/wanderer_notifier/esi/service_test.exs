@@ -4,7 +4,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
   alias WandererNotifier.ESI.Service
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance}
-  alias WandererNotifier.Test.Support.Mocks, as: CacheMock
+  alias WandererNotifier.Cache.Facade
   alias WandererNotifier.ESI.ServiceMock
 
   # Test data
@@ -55,9 +55,33 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
   # Stub the Client module
   setup do
-    # Set the cache mock as the implementation
-    Application.put_env(:wanderer_notifier, :cache_repo, CacheMock)
-    CacheMock.clear()
+    # Make sure the required registries are started
+    unless Process.whereis(WandererNotifier.Cache.Registry) do
+      {:ok, _} = Registry.start_link(keys: :unique, name: WandererNotifier.Cache.Registry)
+    end
+
+    # Make sure the cache process is started and running with the correct adapter
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
+
+    adapter =
+      Application.get_env(:wanderer_notifier, :cache_adapter, WandererNotifier.Cache.ETSCache)
+
+    # Start the ETS cache if it's not already running
+    case adapter do
+      WandererNotifier.Cache.ETSCache ->
+        case GenServer.whereis({:via, Registry, {WandererNotifier.Cache.Registry, cache_name}}) do
+          nil ->
+            WandererNotifier.Cache.ETSCache.start_link([
+              {:name, cache_name}
+            ])
+
+          _pid ->
+            :ok
+        end
+
+      _ ->
+        :ok
+    end
 
     # Set the ESI client mock as the implementation
     Application.put_env(:wanderer_notifier, :esi_client, ServiceMock)
@@ -150,7 +174,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
       # Ensure cache is empty for this test
       123_456
       |> WandererNotifier.Cache.Keys.character()
-      |> CacheMock.delete()
+      |> Facade.delete()
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -167,8 +191,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
     test "uses cached data when available", %{character_data: character_data} do
       # Ensure the character is in the cache
-      cache_key = WandererNotifier.Cache.Keys.character(123_456)
-      CacheMock.put(cache_key, character_data)
+      Facade.put_character(123_456, character_data)
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -183,7 +206,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   describe "get_corporation_struct/2" do
     test "returns a Corporation struct when successful", %{corporation_data: _corporation_data} do
       # Ensure cache is empty for this test
-      CacheMock.delete("corporation:789012")
+      789_012
+      |> WandererNotifier.Cache.Keys.corporation()
+      |> Facade.delete()
 
       # Get corporation struct from ESI service
       {:ok, corporation} = Service.get_corporation_struct(789_012)
@@ -203,7 +228,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   describe "get_alliance_struct/2" do
     test "returns an Alliance struct when successful", %{alliance_data: _alliance_data} do
       # Ensure cache is empty for this test
-      CacheMock.delete("alliance:345678")
+      345_678
+      |> WandererNotifier.Cache.Keys.alliance()
+      |> Facade.delete()
 
       # Get alliance struct from ESI service
       {:ok, alliance} = Service.get_alliance_struct(345_678)

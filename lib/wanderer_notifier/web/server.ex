@@ -77,7 +77,7 @@ defmodule WandererNotifier.Web.Server do
   end
 
   @impl true
-  def terminate(_reason, %{server_ref: ref} = _state) when not is_nil(ref) do
+  def terminate(_reason, %{server_ref: ref} = _state) when is_reference(ref) do
     AppLogger.startup_debug("Stopping web server")
     # Plug.Cowboy returns a reference, not a pid, so we just log the shutdown
     :ok

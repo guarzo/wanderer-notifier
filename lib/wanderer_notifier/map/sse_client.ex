@@ -109,7 +109,8 @@ defmodule WandererNotifier.Map.SSEClient do
       reconnect_attempts: 0,
       reconnect_timer: nil,
       events_filter: events,
-      status: :disconnected
+      status: :disconnected,
+      connection_id: nil
     }
 
     AppLogger.api_debug("SSE client initialized",
@@ -123,9 +124,33 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_continue(:connect, state) do
+    # Generate connection ID for monitoring
+    connection_id = "sse_map_#{state.map_slug}_#{:erlang.phash2(self())}"
+
     case do_connect(state) do
       {:ok, connection} ->
-        new_state = %{state | connection: connection, status: :connected, reconnect_attempts: 0}
+        # Register and update connection status (skip if Integration not running)
+        if Process.whereis(WandererNotifier.Realtime.Integration) do
+          WandererNotifier.Realtime.Integration.register_sse_connection(connection_id, %{
+            map_slug: state.map_slug,
+            events_filter: state.events_filter,
+            pid: self()
+          })
+
+          WandererNotifier.Realtime.Integration.update_connection_health(
+            connection_id,
+            :connected
+          )
+        end
+
+        new_state = %{
+          state
+          | connection: connection,
+            status: :connected,
+            reconnect_attempts: 0,
+            connection_id: connection_id
+        }
+
         AppLogger.api_info("SSE connected", map_slug: state.map_slug)
         {:noreply, new_state}
 
@@ -135,7 +160,24 @@ defmodule WandererNotifier.Map.SSEClient do
           error: inspect(reason)
         )
 
-        new_state = schedule_reconnect(state)
+        # Update connection status (skip if Integration not running)
+        if Process.whereis(WandererNotifier.Realtime.Integration) do
+          WandererNotifier.Realtime.Integration.register_sse_connection(connection_id, %{
+            map_slug: state.map_slug,
+            events_filter: state.events_filter,
+            pid: self()
+          })
+
+          WandererNotifier.Realtime.Integration.update_connection_health(
+            connection_id,
+            :failed,
+            %{
+              reason: reason
+            }
+          )
+        end
+
+        new_state = schedule_reconnect(%{state | connection_id: connection_id})
         {:noreply, new_state}
     end
   end
@@ -330,15 +372,58 @@ defmodule WandererNotifier.Map.SSEClient do
 
   defp process_event(event_data, state) do
     with {:ok, parsed_event} <- parse_event(event_data),
-         {:ok, validated_event} <- validate_event(parsed_event),
-         :ok <- EventProcessor.process_event(validated_event, state.map_slug) do
-      # Extract event ID for tracking
-      event_id = Map.get(validated_event, "id")
-      {:ok, event_id}
+         {:ok, validated_event} <- validate_event(parsed_event) do
+      process_validated_event(validated_event, state)
     else
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp process_validated_event(validated_event, state) do
+    if Process.whereis(WandererNotifier.Realtime.Integration) do
+      process_with_integration(validated_event, state)
+    else
+      process_legacy_only(validated_event, state)
+    end
+  end
+
+  defp process_with_integration(validated_event, state) do
+    event_type = Map.get(validated_event, "event", "unknown")
+
+    integration_result =
+      WandererNotifier.Realtime.Integration.process_sse_event(event_type, validated_event)
+
+    case integration_result do
+      {:ok, :duplicate} ->
+        extract_event_id(validated_event)
+
+      {:ok, _} ->
+        process_legacy_only(validated_event, state)
+
+      {:error, reason} ->
+        log_integration_error(reason, event_type)
+        process_legacy_only(validated_event, state)
+    end
+  end
+
+  defp process_legacy_only(validated_event, state) do
+    case EventProcessor.process_event(validated_event, state.map_slug) do
+      :ok -> extract_event_id(validated_event)
+      error -> error
+    end
+  end
+
+  defp extract_event_id(validated_event) do
+    event_id = Map.get(validated_event, "id")
+    {:ok, event_id}
+  end
+
+  defp log_integration_error(reason, event_type) do
+    AppLogger.api_error("Failed to process SSE event through integration",
+      error: inspect(reason),
+      event_type: event_type
+    )
   end
 
   defp parse_event(event_data) when is_binary(event_data) do

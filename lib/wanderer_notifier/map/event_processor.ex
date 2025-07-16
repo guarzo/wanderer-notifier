@@ -84,7 +84,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Routes an event to the appropriate handler based on event type.
-  # 
+  #
   # ## Event Categories
   # - System Events: add_system, deleted_system, system_metadata_changed
   # - Connection Events: connection_added, connection_removed, connection_updated

@@ -56,6 +56,19 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
     )
 
+    # Register connection with monitoring system (skip if Integration not running)
+    connection_id = "websocket_killmail_#{:erlang.phash2(self())}"
+
+    if Process.whereis(WandererNotifier.Realtime.Integration) do
+      WandererNotifier.Realtime.Integration.register_websocket_connection(connection_id, %{
+        url: state.url,
+        pid: self()
+      })
+
+      # Update connection status
+      WandererNotifier.Realtime.Integration.update_connection_health(connection_id, :connected)
+    end
+
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
 
@@ -71,7 +84,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
        state
        | heartbeat_ref: heartbeat_ref,
          subscription_update_ref: subscription_update_ref,
-         connected_at: connected_at
+         connected_at: connected_at,
+         connection_id: connection_id
      }}
   end
 
@@ -81,6 +95,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     # Cancel timers
     cancel_timer(state.heartbeat_ref)
     cancel_timer(state.subscription_update_ref)
+
+    # Update connection status in monitoring system (skip if Integration not running)
+    if Map.has_key?(state, :connection_id) &&
+         Process.whereis(WandererNotifier.Realtime.Integration) do
+      WandererNotifier.Realtime.Integration.update_connection_health(
+        state.connection_id,
+        :disconnected,
+        %{reason: reason}
+      )
+    end
 
     # Reconnect after delay
     Process.send_after(self(), :connect_delayed, @reconnect_delay)
@@ -171,6 +195,12 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     WandererNotifier.Logger.Logger.info(
       "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
     )
+
+    # Record heartbeat in monitoring system (skip if Integration not running)
+    if Map.has_key?(state, :connection_id) &&
+         Process.whereis(WandererNotifier.Realtime.Integration) do
+      WandererNotifier.Realtime.Integration.record_heartbeat(state.connection_id)
+    end
 
     # Send Phoenix heartbeat
     if state.channel_ref do
@@ -549,6 +579,34 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   # Send transformed killmail to pipeline worker
   defp send_to_pipeline(killmail, state) do
+    # Process through the new integrated pipeline (skip if Integration not running)
+    if Process.whereis(WandererNotifier.Realtime.Integration) do
+      case WandererNotifier.Realtime.Integration.process_websocket_killmail(killmail) do
+        {:ok, :duplicate} ->
+          # Duplicate filtered, don't send to legacy pipeline
+          :ok
+
+        {:ok, _event} ->
+          # Successfully processed, also send to legacy pipeline for backward compatibility
+          send_to_legacy_pipeline(killmail, state)
+
+        {:error, reason} ->
+          WandererNotifier.Logger.Logger.error(
+            "Failed to process killmail through integration pipeline",
+            error: inspect(reason),
+            killmail_id: Map.get(killmail, :killmail_id)
+          )
+
+          # Still send to legacy pipeline as fallback
+          send_to_legacy_pipeline(killmail, state)
+      end
+    else
+      # Integration not running, send directly to legacy pipeline
+      send_to_legacy_pipeline(killmail, state)
+    end
+  end
+
+  defp send_to_legacy_pipeline(killmail, state) do
     if state.pipeline_worker do
       send(state.pipeline_worker, {:websocket_killmail, killmail})
     else

@@ -299,7 +299,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   defp build_zkillboard_url(:alliance, id), do: "https://zkillboard.com/alliance/#{id}/"
 
   defp build_corp_field(%{corp: corp, corp_id: corp_id})
-       when not is_nil(corp) and not is_nil(corp_id) do
+       when is_binary(corp) and is_integer(corp_id) and corp_id > 0 do
     %{
       name: "Attacker Corp",
       value: "[#{corp}](#{build_zkillboard_url(:corporation, corp_id)})",
@@ -307,14 +307,14 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     }
   end
 
-  defp build_corp_field(%{corp: corp}) when not is_nil(corp) do
+  defp build_corp_field(%{corp: corp}) when is_binary(corp) do
     %{name: "Attacker Corp", value: corp, inline: true}
   end
 
   defp build_corp_field(_), do: nil
 
   defp build_alliance_field(%{alliance: alliance, alliance_id: alliance_id})
-       when not is_nil(alliance) and not is_nil(alliance_id) do
+       when is_binary(alliance) and is_integer(alliance_id) and alliance_id > 0 do
     %{
       name: "Attacker Alliance",
       value: "[#{alliance}](#{build_zkillboard_url(:alliance, alliance_id)})",
@@ -322,17 +322,18 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     }
   end
 
-  defp build_alliance_field(%{alliance: alliance}) when not is_nil(alliance) do
+  defp build_alliance_field(%{alliance: alliance}) when is_binary(alliance) do
     %{name: "Attacker Alliance", value: alliance, inline: true}
   end
 
   defp build_alliance_field(_), do: nil
 
-  defp build_security_field(%{security_formatted: security}) when not is_nil(security) do
+  defp build_security_field(%{security_formatted: security})
+       when is_binary(security) and security != "" and security != "Unknown" do
     %{name: "Security", value: security, inline: true}
   end
 
-  defp build_security_field(_), do: nil
+  defp build_security_field(%{security_formatted: _}), do: nil
 
   defp build_kill_notification(
          kill_id,
@@ -413,7 +414,8 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
          %{character: character, corp: corp} = final_blow_details,
          kill_context
        )
-       when not is_nil(character) and not is_nil(corp) do
+       when is_binary(character) and character != "" and
+              is_binary(corp) and corp not in ["", "Unknown Corp"] do
     attacker_name_part = build_attacker_name_part(final_blow_details)
     corp_part = build_attacker_corp_part(final_blow_details)
     ship_part = build_attacker_ship_part(final_blow_details, kill_context)
@@ -427,13 +429,14 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
          %{character: character, character_id: character_id},
          _kill_context
        )
-       when not is_nil(character) and not is_nil(character_id) do
+       when is_binary(character) and character != "" and is_integer(character_id) do
     "[#{character}](https://zkillboard.com/character/#{character_id}/)"
   end
 
   defp build_attacker_description_part(%{character: character}, _kill_context)
-       when not is_nil(character) do
-    character
+       when is_binary(character) and character != "" do
+    trimmed = String.trim(character)
+    if trimmed != "", do: trimmed, else: nil
   end
 
   defp build_attacker_description_part(_final_blow_details, _kill_context), do: "Unknown attacker"
