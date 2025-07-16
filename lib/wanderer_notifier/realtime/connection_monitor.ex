@@ -14,9 +14,6 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
   # Connection states
   @states [:disconnected, :connecting, :connected, :reconnecting, :failed]
 
-  # Connection quality levels
-  @quality_levels [:excellent, :good, :poor, :critical]
-
   defmodule Connection do
     @moduledoc """
     Represents a monitored connection.
@@ -322,7 +319,7 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
     %{state | metrics: metrics}
   end
 
-  defp calculate_average_uptime(connections) when length(connections) == 0, do: 0.0
+  defp calculate_average_uptime([]), do: 0.0
 
   defp calculate_average_uptime(connections) do
     total_uptime = Enum.reduce(connections, 0.0, &(&1.uptime_percentage + &2))
@@ -330,7 +327,10 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
   end
 
   defp calculate_average_ping(connections) do
-    ping_times = Enum.filter_map(connections, &(!is_nil(&1.ping_time)), & &1.ping_time)
+    ping_times =
+      connections
+      |> Enum.filter(&(!is_nil(&1.ping_time)))
+      |> Enum.map(& &1.ping_time)
 
     case ping_times do
       [] -> 0

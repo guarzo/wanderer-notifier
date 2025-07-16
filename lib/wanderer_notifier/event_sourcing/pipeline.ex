@@ -135,8 +135,7 @@ defmodule WandererNotifier.EventSourcing.Pipeline do
   end
 
   defp process_current_batch(state) do
-    batch = Enum.reverse(state.current_batch)
-    process_batch_events(%{state | current_batch: []})
+    process_batch_events(%{state | current_batch: Enum.reverse(state.current_batch)})
   end
 
   defp process_batch_events(%State{current_batch: batch} = state) when length(batch) > 0 do
@@ -233,21 +232,13 @@ defmodule WandererNotifier.EventSourcing.Pipeline do
     # Process events through handlers
     processing_results = Handlers.handle_batch_events(events)
 
-    case processing_results do
-      {:ok, %{successes: successes, failures: failures}} ->
-        result
-        |> Map.put(:successes, successes)
-        |> Map.put(:failures, failures)
-        |> Map.put(:processing_results, processing_results)
+    # handle_batch_events always returns {:ok, _}
+    {:ok, %{successes: successes, failures: failures}} = processing_results
 
-      {:error, reason} ->
-        Logger.error("Batch processing failed", reason: inspect(reason))
-
-        result
-        |> Map.put(:successes, 0)
-        |> Map.put(:failures, length(events))
-        |> Map.put(:processing_error, reason)
-    end
+    result
+    |> Map.put(:successes, successes)
+    |> Map.put(:failures, failures)
+    |> Map.put(:processing_results, processing_results)
   end
 
   defp schedule_batch_processing(state) do

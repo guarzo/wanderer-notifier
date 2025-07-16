@@ -319,7 +319,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     end
   end
 
-  defp detect_anomalies(current_metrics, baseline) when is_nil(baseline), do: []
+  defp detect_anomalies(_current_metrics, baseline) when is_nil(baseline), do: []
 
   defp detect_anomalies(current_metrics, baseline) do
     anomalies = []

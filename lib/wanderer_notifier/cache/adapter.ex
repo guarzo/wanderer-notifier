@@ -8,7 +8,6 @@ defmodule WandererNotifier.Cache.Adapter do
   """
 
   alias WandererNotifier.Cache.Config
-  alias WandererNotifier.Cache.ETSCache
 
   @doc """
   Gets the configured cache adapter.
@@ -25,8 +24,8 @@ defmodule WandererNotifier.Cache.Adapter do
       Cachex ->
         Cachex.get(cache_name, key)
 
-      ETSCache ->
-        ETSCache.get(key, table: cache_name)
+      WandererNotifier.Cache.ETSCache ->
+        WandererNotifier.Cache.ETSCache.get(key, table: cache_name)
 
       other ->
         {:error, {:unknown_adapter, other}}
@@ -57,8 +56,8 @@ defmodule WandererNotifier.Cache.Adapter do
     Cachex.put(cache_name, key, value, ttl: cachex_ttl)
   end
 
-  defp do_set(ETSCache, cache_name, key, value, ttl) do
-    ETSCache.set(key, value, ttl, table: cache_name)
+  defp do_set(WandererNotifier.Cache.ETSCache, cache_name, key, value, ttl) do
+    WandererNotifier.Cache.ETSCache.set(key, value, ttl, table: cache_name)
   end
 
   defp do_set(other, _cache_name, _key, _value, _ttl) do
@@ -73,8 +72,8 @@ defmodule WandererNotifier.Cache.Adapter do
       Cachex ->
         Cachex.put(cache_name, key, value)
 
-      ETSCache ->
-        ETSCache.put(key, value, table: cache_name)
+      WandererNotifier.Cache.ETSCache ->
+        WandererNotifier.Cache.ETSCache.put(key, value, table: cache_name)
 
       other ->
         {:error, {:unknown_adapter, other}}
@@ -89,8 +88,8 @@ defmodule WandererNotifier.Cache.Adapter do
       Cachex ->
         Cachex.del(cache_name, key)
 
-      ETSCache ->
-        case ETSCache.delete(key, table: cache_name) do
+      WandererNotifier.Cache.ETSCache ->
+        case WandererNotifier.Cache.ETSCache.delete(key, table: cache_name) do
           :ok -> {:ok, true}
           error -> error
         end
@@ -108,8 +107,8 @@ defmodule WandererNotifier.Cache.Adapter do
       Cachex ->
         Cachex.clear(cache_name)
 
-      ETSCache ->
-        case ETSCache.clear(table: cache_name) do
+      WandererNotifier.Cache.ETSCache ->
+        case WandererNotifier.Cache.ETSCache.clear(table: cache_name) do
           :ok -> {:ok, true}
           error -> error
         end

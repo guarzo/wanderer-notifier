@@ -10,7 +10,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
   require Logger
 
   alias WandererNotifier.Metrics.{Collector, EventAnalytics, PerformanceMonitor}
-  alias WandererNotifier.Realtime.{ConnectionMonitor, HealthChecker}
+  alias WandererNotifier.Realtime.ConnectionMonitor
 
   # Dashboard configuration
   # 5 seconds
@@ -219,7 +219,6 @@ defmodule WandererNotifier.Metrics.Dashboard do
   end
 
   defp generate_system_overview do
-    current_metrics = Collector.get_current_metrics()
     performance_status = PerformanceMonitor.get_performance_status()
 
     %{
@@ -322,7 +321,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
       discord: %{
         remaining: get_discord_rate_limit_remaining(),
         reset_at: get_discord_rate_limit_reset(),
-        throttled: is_discord_throttled()
+        throttled: discord_throttled?()
       }
     }
   end
@@ -357,7 +356,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
     |> Enum.take(20)
   end
 
-  defp get_recent_event_stream(limit) do
+  defp get_recent_event_stream(_limit) do
     # This would connect to a circular buffer of recent events
     # For now, return a placeholder
     []
@@ -371,8 +370,8 @@ defmodule WandererNotifier.Metrics.Dashboard do
   end
 
   defp format_uptime(seconds) do
-    days = div(seconds, 86400)
-    hours = div(rem(seconds, 86400), 3600)
+    days = div(seconds, 86_400)
+    hours = div(rem(seconds, 86_400), 3_600)
     minutes = div(rem(seconds, 3600), 60)
 
     %{
@@ -487,14 +486,14 @@ defmodule WandererNotifier.Metrics.Dashboard do
 
   defp identify_bottlenecks(_), do: []
 
-  defp generate_optimization_suggestions(metrics) do
+  defp generate_optimization_suggestions(_metrics) do
     suggestions = []
 
     # Add suggestions based on metrics
     suggestions
   end
 
-  defp get_notification_count(type) do
+  defp get_notification_count(_type) do
     # Placeholder - would connect to notification tracking
     :rand.uniform(1000)
   end
@@ -577,7 +576,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
   defp get_discord_rate_limit_reset,
     do: DateTime.add(DateTime.utc_now(), :rand.uniform(60), :second)
 
-  defp is_discord_throttled, do: false
+  defp discord_throttled?, do: false
 
   defp project_rate_limit_exhaustion(_api) do
     # Calculate when rate limit will be exhausted at current rate
@@ -590,7 +589,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
 
   # Business metrics helpers (placeholders)
 
-  defp get_killmail_count(:processed), do: :rand.uniform(10000)
+  defp get_killmail_count(:processed), do: :rand.uniform(10_000)
   defp calculate_total_isk_destroyed, do: :rand.uniform(1_000_000_000_000)
 
   defp get_most_active_systems(limit) do

@@ -78,7 +78,14 @@ defmodule WandererNotifier.Cache.Versioning do
   """
   @spec current_version() :: version()
   def current_version do
-    GenServer.call(__MODULE__, :current_version)
+    case Process.whereis(__MODULE__) do
+      nil ->
+        # Return default version when process is not started (e.g., in test environment)
+        get_configured_version([])
+
+      _pid ->
+        GenServer.call(__MODULE__, :current_version)
+    end
   end
 
   @doc """

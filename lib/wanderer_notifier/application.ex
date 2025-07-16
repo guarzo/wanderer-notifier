@@ -30,12 +30,6 @@ defmodule WandererNotifier.Application do
       # Add Registry for SSE client naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
       create_cache_child_spec(),
-      # Add cache metrics and performance monitoring
-      {WandererNotifier.Cache.Metrics, []},
-      {WandererNotifier.Cache.PerformanceMonitor, []},
-      {WandererNotifier.Cache.Warmer, []},
-      {WandererNotifier.Cache.Versioning, []},
-      {WandererNotifier.Cache.Analytics, []},
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
@@ -47,6 +41,28 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Web.Server, []}
     ]
 
+    # Add cache metrics and performance monitoring (skip in test)
+    cache_monitoring_children =
+      if get_env() != :test do
+        [
+          {WandererNotifier.Cache.Metrics, []},
+          {WandererNotifier.Cache.PerformanceMonitor, []},
+          {WandererNotifier.Cache.Warmer, []},
+          {WandererNotifier.Cache.Versioning, []},
+          {WandererNotifier.Cache.Analytics, []}
+        ]
+      else
+        []
+      end
+
+    # Add real-time processing integration (Sprint 3) (skip in test)
+    realtime_children =
+      if get_env() != :test do
+        [{WandererNotifier.Realtime.Integration, []}]
+      else
+        []
+      end
+
     # Add Killmail processing pipeline - always enabled
     killmail_children = [{WandererNotifier.Killmail.Supervisor, []}]
 
@@ -56,7 +72,10 @@ defmodule WandererNotifier.Application do
     # Add scheduler supervisor last to ensure all dependencies are started
     scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
 
-    children = base_children ++ killmail_children ++ sse_children ++ scheduler_children
+    children =
+      base_children ++
+        cache_monitoring_children ++
+        realtime_children ++ killmail_children ++ sse_children ++ scheduler_children
 
     WandererNotifier.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
 
@@ -76,30 +95,47 @@ defmodule WandererNotifier.Application do
 
   # Initialize cache metrics and performance monitoring
   defp initialize_cache_monitoring do
-    try do
-      # Initialize cache metrics telemetry
-      WandererNotifier.Cache.Metrics.init()
-
-      # Start performance monitoring
-      WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
-
-      # Start cache warming
-      WandererNotifier.Cache.Warmer.start_warming()
-
-      # Initialize version manager
-      WandererNotifier.Cache.VersionManager.initialize()
-
-      # Start cache analytics collection
-      WandererNotifier.Cache.Analytics.start_collection()
-
+    # Skip cache monitoring initialization in test environment
+    if get_env() == :test do
       WandererNotifier.Logger.Logger.startup_info(
-        "Cache performance monitoring, warming, versioning, and analytics initialized"
+        "Skipping cache monitoring initialization in test environment"
       )
-    rescue
-      error ->
-        WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
-          error: Exception.message(error)
+    else
+      try do
+        # Initialize cache metrics telemetry
+        if Code.ensure_loaded?(WandererNotifier.Cache.Metrics) do
+          WandererNotifier.Cache.Metrics.init()
+        end
+
+        # Start performance monitoring
+        if Process.whereis(WandererNotifier.Cache.PerformanceMonitor) do
+          WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
+        end
+
+        # Start cache warming
+        if Code.ensure_loaded?(WandererNotifier.Cache.Warmer) do
+          WandererNotifier.Cache.Warmer.start_warming()
+        end
+
+        # Initialize version manager
+        if Code.ensure_loaded?(WandererNotifier.Cache.VersionManager) do
+          WandererNotifier.Cache.VersionManager.initialize()
+        end
+
+        # Start cache analytics collection
+        if Code.ensure_loaded?(WandererNotifier.Cache.Analytics) do
+          WandererNotifier.Cache.Analytics.start_collection()
+        end
+
+        WandererNotifier.Logger.Logger.startup_info(
+          "Cache performance monitoring, warming, versioning, and analytics initialized"
         )
+      rescue
+        error ->
+          WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
+            error: Exception.message(error)
+          )
+      end
     end
   end
 

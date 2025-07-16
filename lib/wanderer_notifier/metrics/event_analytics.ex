@@ -9,8 +9,6 @@ defmodule WandererNotifier.Metrics.EventAnalytics do
   use GenServer
   require Logger
 
-  alias WandererNotifier.EventSourcing.Pipeline
-
   # Analytics configuration
   # 1 hour
   @default_window_size 3_600_000

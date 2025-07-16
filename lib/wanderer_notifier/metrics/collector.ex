@@ -9,7 +9,7 @@ defmodule WandererNotifier.Metrics.Collector do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Realtime.{ConnectionMonitor, MessageTracker, Deduplicator}
+  alias WandererNotifier.Realtime.{ConnectionMonitor, Deduplicator}
   alias WandererNotifier.EventSourcing.Pipeline
 
   # Collection intervals
@@ -245,13 +245,13 @@ defmodule WandererNotifier.Metrics.Collector do
   end
 
   defp collect_connection_metrics do
-    case ConnectionMonitor.get_all_connections() do
+    case ConnectionMonitor.get_connections() do
       {:ok, connections} ->
         %{
           total_connections: length(connections),
           connections: connections,
           healthy_connections: Enum.count(connections, &(&1.status == :connected)),
-          average_ping: ConnectionMonitor.get_average_ping(),
+          average_ping: calculate_average_ping(connections),
           uptime_percentage: calculate_overall_uptime(connections)
         }
 
@@ -359,7 +359,7 @@ defmodule WandererNotifier.Metrics.Collector do
 
   defp calculate_processing_score(metrics) do
     success_rate = Map.get(metrics, :success_rate, 0.0)
-    avg_time = Map.get(metrics, :average_processing_time, Float.max_value())
+    avg_time = Map.get(metrics, :average_processing_time, 999_999.0)
 
     # Score based on success rate and processing speed
     time_score =
@@ -413,6 +413,20 @@ defmodule WandererNotifier.Metrics.Collector do
     (memory_score + process_score) / 2.0
   end
 
+  defp calculate_average_ping([]), do: 0
+
+  defp calculate_average_ping(connections) do
+    ping_times =
+      connections
+      |> Enum.filter(&(Map.has_key?(&1, :ping_time) && !is_nil(&1.ping_time)))
+      |> Enum.map(& &1.ping_time)
+
+    case ping_times do
+      [] -> 0
+      times -> (Enum.sum(times) / length(times)) |> round()
+    end
+  end
+
   defp calculate_overall_uptime(connections) do
     if length(connections) > 0 do
       uptimes =
@@ -438,14 +452,9 @@ defmodule WandererNotifier.Metrics.Collector do
   end
 
   defp get_cpu_usage do
-    # Simplified CPU usage calculation
-    case :cpu_sup.util() do
-      {:error, _} -> 0.0
-      usage when is_number(usage) -> usage
-      _ -> 0.0
-    end
-  rescue
-    _ -> 0.0
+    # CPU monitoring not available in all environments
+    # :cpu_sup.util() not available in this environment
+    0.0
   end
 
   defp add_to_history(history, new_metrics, retention_period) do
