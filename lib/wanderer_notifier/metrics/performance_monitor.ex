@@ -275,7 +275,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
 
   defp log_anomalies_if_present(%{anomaly_history: history} = state) do
     case history do
-      [%{anomalies: anomalies} | _] when length(anomalies) > 0 ->
+      [%{anomalies: [_ | _] = anomalies} | _] ->
         Logger.warning("Performance anomalies detected",
           anomaly_count: length(anomalies),
           new_alerts: length(state.recent_alerts)

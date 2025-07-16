@@ -328,11 +328,12 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
   defp build_alliance_field(_), do: nil
 
-  defp build_security_field(%{security_formatted: security}) when is_binary(security) do
+  defp build_security_field(%{security_formatted: security})
+       when is_binary(security) and security != "" do
     %{name: "Security", value: security, inline: true}
   end
 
-  defp build_security_field(_), do: nil
+  defp build_security_field(%{security_formatted: _}), do: nil
 
   defp build_kill_notification(
          kill_id,
