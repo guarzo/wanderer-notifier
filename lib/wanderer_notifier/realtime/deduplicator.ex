@@ -215,28 +215,44 @@ defmodule WandererNotifier.Realtime.Deduplicator do
 
   defp extract_key_fields(message) do
     # Extract the most important fields for deduplication
-    case message do
-      %{type: "killmail", data: %{killmail_id: id}} ->
-        %{type: "killmail", id: id}
+    type = Map.get(message, :type)
 
-      %{type: "sse_event", data: %{event_type: event_type, system_id: system_id}} ->
-        %{type: "sse_event", event_type: event_type, system_id: system_id}
-
-      %{type: "character_event", data: %{character_id: char_id, event: event}} ->
-        %{type: "character_event", character_id: char_id, event: event}
-
-      %{id: id, type: type} when is_binary(id) or is_integer(id) ->
-        %{type: type, id: id}
-
-      %{data: data, type: type} when is_map(data) ->
-        # Extract ID-like fields from data
-        id_fields = extract_id_fields(data)
-        %{type: type, data: id_fields}
-
-      _ ->
-        # Fallback to entire message structure
-        message
+    cond do
+      type == "killmail" -> extract_killmail_key(message)
+      type == "sse_event" -> extract_sse_event_key(message)
+      type == "character_event" -> extract_character_event_key(message)
+      Map.has_key?(message, :id) -> extract_simple_key(message)
+      Map.has_key?(message, :data) -> extract_data_key(message)
+      true -> message
     end
+  end
+
+  defp extract_killmail_key(%{type: type, data: %{killmail_id: id}}) do
+    %{type: type, id: id}
+  end
+
+  defp extract_sse_event_key(%{type: type, data: data}) do
+    %{
+      type: type,
+      event_type: Map.get(data, :event_type),
+      system_id: Map.get(data, :system_id)
+    }
+  end
+
+  defp extract_character_event_key(%{type: type, data: data}) do
+    %{
+      type: type,
+      character_id: Map.get(data, :character_id),
+      event: Map.get(data, :event)
+    }
+  end
+
+  defp extract_simple_key(%{id: id, type: type}) when is_binary(id) or is_integer(id) do
+    %{type: type, id: id}
+  end
+
+  defp extract_data_key(%{data: data, type: type}) when is_map(data) do
+    %{type: type, data: extract_id_fields(data)}
   end
 
   defp extract_id_fields(data) when is_map(data) do

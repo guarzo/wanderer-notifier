@@ -211,25 +211,28 @@ defmodule WandererNotifier.Realtime.MessageTracker do
 
   defp update_stats(stats, event) do
     case event do
-      :new_message ->
-        stats
-        |> Map.update(:total_messages, 1, &(&1 + 1))
-        |> Map.update(:cache_misses, 1, &(&1 + 1))
-
-      :duplicate ->
-        stats
-        |> Map.update(:duplicates_found, 1, &(&1 + 1))
-        |> Map.update(:cache_hits, 1, &(&1 + 1))
-
-      :cache_hit ->
-        Map.update(stats, :cache_hits, 1, &(&1 + 1))
-
-      :cache_miss ->
-        Map.update(stats, :cache_misses, 1, &(&1 + 1))
-
-      :eviction ->
-        Map.update(stats, :evictions, 1, &(&1 + 1))
+      :new_message -> increment_new_message_stats(stats)
+      :duplicate -> increment_duplicate_stats(stats)
+      :cache_hit -> increment_stat(stats, :cache_hits)
+      :cache_miss -> increment_stat(stats, :cache_misses)
+      :eviction -> increment_stat(stats, :evictions)
     end
+  end
+
+  defp increment_new_message_stats(stats) do
+    stats
+    |> increment_stat(:total_messages)
+    |> increment_stat(:cache_misses)
+  end
+
+  defp increment_duplicate_stats(stats) do
+    stats
+    |> increment_stat(:duplicates_found)
+    |> increment_stat(:cache_hits)
+  end
+
+  defp increment_stat(stats, key) do
+    Map.update(stats, key, 1, &(&1 + 1))
   end
 
   defp maybe_evict_oldest(state) do

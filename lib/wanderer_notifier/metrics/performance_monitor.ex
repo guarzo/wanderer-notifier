@@ -210,66 +210,82 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     start_time = System.monotonic_time(:millisecond)
 
     try do
-      # Get current metrics
       current_metrics = Collector.get_current_metrics()
 
-      # Update baseline if needed
-      updated_baseline =
-        update_performance_baseline(
-          state.performance_baseline,
-          current_metrics,
-          state.baseline_window
-        )
-
-      # Detect anomalies
-      anomalies = detect_anomalies(current_metrics, updated_baseline)
-
-      # Generate alerts for anomalies
-      new_alerts =
-        generate_alerts_for_anomalies(anomalies, state.recent_alerts, state.alert_cooldown)
-
-      # Update anomaly history
-      new_anomaly_history =
-        if length(anomalies) > 0 do
-          anomaly_entry = %{
-            timestamp: start_time,
-            anomalies: anomalies,
-            performance_score: get_performance_score(current_metrics)
-          }
-
-          [anomaly_entry | Enum.take(state.anomaly_history, 99)]
-        else
-          state.anomaly_history
-        end
-
-      # Update statistics
-      stats =
-        Map.merge(state.stats, %{
-          checks_performed: state.stats.checks_performed + 1,
-          alerts_generated: state.stats.alerts_generated + length(new_alerts),
-          anomalies_detected: state.stats.anomalies_detected + length(anomalies),
-          last_check_time: start_time
-        })
-
-      if length(anomalies) > 0 do
-        Logger.warning("Performance anomalies detected",
-          anomaly_count: length(anomalies),
-          new_alerts: length(new_alerts)
-        )
-      end
-
-      %{
-        state
-        | performance_baseline: updated_baseline,
-          recent_alerts: new_alerts ++ state.recent_alerts,
-          anomaly_history: new_anomaly_history,
-          stats: stats
-      }
+      state
+      |> process_metrics(current_metrics, start_time)
+      |> log_anomalies_if_present()
     rescue
       e ->
         Logger.error("Performance check failed", error: Exception.message(e))
         state
     end
+  end
+
+  defp process_metrics(state, current_metrics, start_time) do
+    updated_baseline =
+      update_performance_baseline(
+        state.performance_baseline,
+        current_metrics,
+        state.baseline_window
+      )
+
+    anomalies = detect_anomalies(current_metrics, updated_baseline)
+
+    new_alerts =
+      generate_alerts_for_anomalies(anomalies, state.recent_alerts, state.alert_cooldown)
+
+    state
+    |> update_anomaly_history(anomalies, current_metrics, start_time)
+    |> update_performance_stats(anomalies, new_alerts, start_time)
+    |> update_state_fields(updated_baseline, new_alerts)
+  end
+
+  defp update_anomaly_history(state, [], _, _), do: state
+
+  defp update_anomaly_history(state, anomalies, current_metrics, start_time) do
+    anomaly_entry = %{
+      timestamp: start_time,
+      anomalies: anomalies,
+      performance_score: get_performance_score(current_metrics)
+    }
+
+    %{state | anomaly_history: [anomaly_entry | Enum.take(state.anomaly_history, 99)]}
+  end
+
+  defp update_performance_stats(state, anomalies, new_alerts, start_time) do
+    updated_stats =
+      Map.merge(state.stats, %{
+        checks_performed: state.stats.checks_performed + 1,
+        alerts_generated: state.stats.alerts_generated + length(new_alerts),
+        anomalies_detected: state.stats.anomalies_detected + length(anomalies),
+        last_check_time: start_time
+      })
+
+    %{state | stats: updated_stats}
+  end
+
+  defp update_state_fields(state, updated_baseline, new_alerts) do
+    %{
+      state
+      | performance_baseline: updated_baseline,
+        recent_alerts: new_alerts ++ state.recent_alerts
+    }
+  end
+
+  defp log_anomalies_if_present(%{anomaly_history: history} = state) do
+    case history do
+      [%{anomalies: anomalies} | _] when length(anomalies) > 0 ->
+        Logger.warning("Performance anomalies detected",
+          anomaly_count: length(anomalies),
+          new_alerts: length(state.recent_alerts)
+        )
+
+      _ ->
+        :ok
+    end
+
+    state
   end
 
   defp update_performance_baseline(nil, current_metrics, _window) do
