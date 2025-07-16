@@ -209,16 +209,28 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp perform_performance_check(state) do
     start_time = System.monotonic_time(:millisecond)
 
-    try do
-      current_metrics = Collector.get_current_metrics()
+    case get_current_metrics_safe() do
+      {:ok, current_metrics} ->
+        state
+        |> process_metrics(current_metrics, start_time)
+        |> log_anomalies_if_present()
 
-      state
-      |> process_metrics(current_metrics, start_time)
-      |> log_anomalies_if_present()
+      {:error, reason} ->
+        Logger.error("Performance check failed", error: reason)
+        state
+    end
+  end
+
+  defp get_current_metrics_safe() do
+    try do
+      metrics = Collector.get_current_metrics()
+      {:ok, metrics}
     rescue
       e ->
-        Logger.error("Performance check failed", error: Exception.message(e))
-        state
+        {:error, Exception.message(e)}
+    catch
+      :exit, reason ->
+        {:error, "GenServer exit: #{inspect(reason)}"}
     end
   end
 
@@ -288,20 +300,21 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     state
   end
 
+  defp create_new_baseline(metrics) do
+    %{
+      created_at: System.monotonic_time(:millisecond),
+      performance_score: get_performance_score(metrics),
+      processing_metrics: extract_processing_baseline(metrics),
+      system_metrics: extract_system_baseline(metrics),
+      connection_metrics: extract_connection_baseline(metrics)
+    }
+  end
+
   defp update_performance_baseline(nil, current_metrics, _window) do
     # Initialize baseline with current metrics
     case current_metrics do
-      %{} = metrics ->
-        %{
-          created_at: System.monotonic_time(:millisecond),
-          performance_score: get_performance_score(metrics),
-          processing_metrics: extract_processing_baseline(metrics),
-          system_metrics: extract_system_baseline(metrics),
-          connection_metrics: extract_connection_baseline(metrics)
-        }
-
-      _ ->
-        nil
+      %{} = metrics -> create_new_baseline(metrics)
+      _ -> nil
     end
   end
 
@@ -312,7 +325,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
 
         # Update baseline if window has passed
         if now - created_at > window do
-          update_performance_baseline(nil, metrics, window)
+          create_new_baseline(metrics)
         else
           # Gradually update baseline with current metrics (exponential smoothing)
           # Smoothing factor
@@ -338,41 +351,34 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp detect_anomalies(_current_metrics, baseline) when is_nil(baseline), do: []
 
   defp detect_anomalies(current_metrics, baseline) do
-    anomalies = []
+    [
+      detect_performance_score_anomalies(current_metrics, baseline),
+      detect_processing_anomalies(current_metrics, baseline),
+      detect_system_anomalies(current_metrics, baseline),
+      detect_connection_anomalies(current_metrics, baseline)
+    ]
+    |> List.flatten()
+    |> Enum.reject(&is_nil/1)
+  end
 
-    # Check performance score anomaly
-    anomalies =
-      case get_performance_score(current_metrics) do
-        score when is_number(score) ->
-          # 30% drop
-          if score < baseline.performance_score * 0.7 do
-            [
-              %{
-                type: :performance_degradation,
-                severity: :high,
-                current: score,
-                baseline: baseline.performance_score
-              }
-              | anomalies
-            ]
-          else
-            anomalies
-          end
+  defp detect_performance_score_anomalies(current_metrics, baseline) do
+    case get_performance_score(current_metrics) do
+      score when is_number(score) ->
+        # 30% drop
+        if score < baseline.performance_score * 0.7 do
+          %{
+            type: :performance_degradation,
+            severity: :high,
+            current: score,
+            baseline: baseline.performance_score
+          }
+        else
+          nil
+        end
 
-        _ ->
-          anomalies
-      end
-
-    # Check processing anomalies
-    anomalies = anomalies ++ detect_processing_anomalies(current_metrics, baseline)
-
-    # Check system anomalies
-    anomalies = anomalies ++ detect_system_anomalies(current_metrics, baseline)
-
-    # Check connection anomalies
-    anomalies = anomalies ++ detect_connection_anomalies(current_metrics, baseline)
-
-    anomalies
+      _ ->
+        nil
+    end
   end
 
   defp detect_processing_anomalies(current_metrics, baseline) do
@@ -514,19 +520,35 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   end
 
   defp generate_performance_status(state) do
-    current_metrics = Collector.get_current_metrics()
-    active_alerts = get_active_alerts_list(state.recent_alerts)
-    performance_score = get_performance_score(current_metrics)
+    case get_current_metrics_safe() do
+      {:ok, current_metrics} ->
+        active_alerts = get_active_alerts_list(state.recent_alerts)
+        performance_score = get_performance_score(current_metrics)
 
-    %{
-      overall_health: calculate_overall_health(performance_score),
-      performance_score: performance_score,
-      active_alerts_count: length(active_alerts),
-      active_alerts: active_alerts,
-      baseline_available: not is_nil(state.performance_baseline),
-      last_check: state.stats.last_check_time,
-      monitoring_stats: state.stats
-    }
+        %{
+          overall_health: calculate_overall_health(performance_score),
+          performance_score: performance_score,
+          active_alerts_count: length(active_alerts),
+          active_alerts: active_alerts,
+          baseline_available: not is_nil(state.performance_baseline),
+          last_check: state.stats.last_check_time,
+          monitoring_stats: state.stats
+        }
+
+      {:error, _reason} ->
+        active_alerts = get_active_alerts_list(state.recent_alerts)
+
+        %{
+          overall_health: :degraded,
+          performance_score: 0.0,
+          active_alerts_count: length(active_alerts),
+          active_alerts: active_alerts,
+          baseline_available: not is_nil(state.performance_baseline),
+          last_check: state.stats.last_check_time,
+          monitoring_stats: state.stats,
+          error: "Unable to retrieve current metrics"
+        }
+    end
   end
 
   defp calculate_overall_health(score) when is_number(score) do
