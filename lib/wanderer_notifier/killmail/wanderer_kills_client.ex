@@ -116,8 +116,8 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
       ],
       rate_limit_options: [
         per_host: true,
-        requests_per_second: 10,
-        burst_capacity: 20
+        requests_per_second: 100,
+        burst_capacity: 200
       ],
       timeout: 10_000,
       recv_timeout: 10_000

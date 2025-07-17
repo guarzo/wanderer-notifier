@@ -8,7 +8,6 @@ defmodule WandererNotifier.Config do
     - Debug/logging
     - Notifications
     - Features
-    - RedisQ
     - Cache
     - License
     - Web/server
@@ -119,18 +118,11 @@ defmodule WandererNotifier.Config do
     if explicit_name && explicit_name != "" do
       explicit_name
     else
-      # Fall back to parsing from map_url_with_name for backward compatibility
-      Utils.parse_map_name_from_url(map_url_with_name())
+      # Fall back to empty string if no explicit name is set
+      ""
     end
   end
 
-  @deprecated "Use map_url/0 instead"
-  def map_api_url do
-    # Alias for map_url for backward compatibility
-    map_url()
-  end
-
-  def map_url_with_name, do: get(:map_url_with_name)
   def map_csrf_token, do: get(:map_csrf_token)
 
   def map_slug do
@@ -140,8 +132,8 @@ defmodule WandererNotifier.Config do
     if name && name != "" do
       name
     else
-      # Fallback to parsing from URL path for backward compatibility
-      Utils.extract_slug_from_url(map_url_with_name())
+      # Fallback to map_name if no slug can be determined
+      name
     end
   end
 
@@ -316,14 +308,6 @@ defmodule WandererNotifier.Config do
   def character_tracking_enabled?, do: true
   def system_tracking_enabled?, do: true
 
-  # --- Killmail Processing (formerly RedisQ) ---
-  def redisq_config, do: get(:redisq, %{})
-
-  # Always enabled
-  def redisq_enabled?, do: true
-  def redisq_url, do: Map.get(redisq_config(), :url, "https://zkillredisq.stream/listen.php")
-  def redisq_poll_interval, do: Map.get(redisq_config(), :poll_interval, 1000)
-
   # --- Cache ---
   def cache_dir, do: get(:cache_dir, "/app/data/cache")
   def cache_name, do: get(:cache_name, :wanderer_notifier_cache)
@@ -432,13 +416,6 @@ defmodule WandererNotifier.Config do
   @doc "Returns whether schedulers are enabled."
   def schedulers_enabled?, do: get(:schedulers_enabled, false)
 
-  # --- RedisQ Timeouts ---
-  @doc "Returns the RedisQ receive timeout in ms."
-  def redisq_recv_timeout, do: get(:redisq_recv_timeout, 30_000)
-
-  @doc "Returns the RedisQ connect timeout in ms."
-  def redisq_connect_timeout, do: get(:redisq_connect_timeout, 10_000)
-
   # --- WebSocket Configuration ---
   @doc "Returns the WebSocket URL for the external killmail service."
   def websocket_url, do: fetch("WEBSOCKET_URL", "ws://host.docker.internal:4004")
@@ -478,7 +455,6 @@ defmodule WandererNotifier.Config do
   def map_debug_settings do
     %{
       debug_logging_enabled: debug_logging_enabled?(),
-      map_url_with_name: map_url_with_name(),
       map_url: map_url(),
       map_name: map_name(),
       map_token: map_token()
@@ -491,14 +467,12 @@ defmodule WandererNotifier.Config do
   Useful for troubleshooting map API issues.
   """
   def map_config_diagnostics do
-    url = map_url_with_name()
+    _url = map_url()
     token = map_token()
     base_url = map_url()
     name = map_name()
 
     %{
-      map_url_with_name: url,
-      map_url_with_name_present: !Utils.nil_or_empty?(url),
       map_url: base_url,
       map_url_present: base_url |> Utils.nil_or_empty?() |> Kernel.not(),
       map_url_explicit: get(:map_url) |> Utils.nil_or_empty?() |> Kernel.not(),
@@ -543,8 +517,8 @@ defmodule WandererNotifier.Config do
   @doc "Returns the systems cache TTL in seconds."
   def systems_cache_ttl, do: get(:systems_cache_ttl, 300)
 
-  # Add a function to return the base URL portion of map_url_with_name
+  # Returns the base map URL
   def base_map_url do
-    Utils.build_base_url(map_url_with_name())
+    map_url()
   end
 end

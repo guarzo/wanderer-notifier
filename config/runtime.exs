@@ -67,25 +67,12 @@ feature_env_vars =
   end)
   |> Enum.into(%{})
 
-# Build map_url_with_name from required MAP_URL and MAP_NAME
-map_url = System.get_env("MAP_URL")
-map_name = System.get_env("MAP_NAME")
-
-map_url_with_name =
-  if map_url && map_name do
-    base_url = String.trim_trailing(map_url, "/")
-    "#{base_url}/?name=#{map_name}"
-  else
-    nil
-  end
-
 config :wanderer_notifier,
   # Required settings
   map_token: System.get_env("MAP_API_KEY"),
   license_key: System.get_env("LICENSE_KEY"),
-  map_url_with_name: map_url_with_name,
-  map_url: map_url,
-  map_name: map_name,
+  map_url: System.get_env("MAP_URL"),
+  map_name: System.get_env("MAP_NAME"),
 
   # Set discord_channel_id explicitly
   discord_channel_id: System.get_env("DISCORD_CHANNEL_ID") || "",
@@ -129,13 +116,22 @@ config :wanderer_notifier,
   host: System.get_env("HOST") || "localhost",
   scheme: System.get_env("SCHEME") || "http"
 
-# Configure the web server
+# Configure the Phoenix endpoint
 config :wanderer_notifier, WandererNotifierWeb.Endpoint,
-  url: [host: System.get_env("HOST") || "localhost"],
-  http: [
-    port: Helpers.parse_int(System.get_env("PORT"), 4000)
+  url: [
+    host: System.get_env("HOST") || "localhost",
+    port: Helpers.parse_int(System.get_env("PORT"), 4000),
+    scheme: System.get_env("SCHEME") || "http"
   ],
-  server: true
+  http: [
+    port: Helpers.parse_int(System.get_env("PORT"), 4000),
+    transport_options: [socket_opts: [:inet6]]
+  ],
+  server: true,
+  secret_key_base:
+    System.get_env("SECRET_KEY_BASE") ||
+      "wanderer_notifier_secret_key_base_default_for_development_only",
+  live_view: [signing_salt: "wanderer_liveview_salt"]
 
 # Configure WebSocket and WandererKills settings
 config :wanderer_notifier,

@@ -43,8 +43,8 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
           context: String.t()
         ]
 
-  @default_requests_per_second 10
-  @default_burst_capacity 20
+  @default_requests_per_second 200
+  @default_burst_capacity 500
   @table_name :http_rate_limiter_buckets
 
   @doc """
@@ -161,7 +161,25 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
         {:ok, burst_capacity}
 
       [{^bucket_key, bucket}] ->
-        {:ok, bucket.tokens}
+        # Refill tokens based on time elapsed before returning current count
+        current_time = :erlang.system_time(:second)
+        time_diff = current_time - bucket.last_refill
+
+        if time_diff > 0 do
+          # Calculate tokens to add based on refill rate (use default rate for calculation)
+          tokens_to_add = time_diff * @default_requests_per_second
+          updated_tokens = min(bucket.tokens + tokens_to_add, burst_capacity)
+
+          updated_bucket = %{
+            tokens: updated_tokens,
+            last_refill: current_time
+          }
+
+          :ets.insert(@table_name, {bucket_key, updated_bucket})
+          {:ok, updated_tokens}
+        else
+          {:ok, bucket.tokens}
+        end
     end
   end
 

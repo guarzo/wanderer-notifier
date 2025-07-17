@@ -10,7 +10,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   alias WandererNotifier.Contexts.ExternalAdapters
 
-  @reconnect_delay 5_000
+  @initial_reconnect_delay 1_000
+  @max_reconnect_delay 60_000
   @heartbeat_interval 30_000
   # 5 minutes
   @subscription_update_interval 300_000
@@ -37,7 +38,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       subscribed_systems: MapSet.new(),
       subscribed_characters: MapSet.new(),
       pipeline_worker: Keyword.get(opts, :pipeline_worker),
-      connected_at: nil
+      connected_at: nil,
+      reconnect_attempts: 0
     }
 
     WebSockex.start_link(socket_url, __MODULE__, state,
@@ -85,7 +87,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
        | heartbeat_ref: heartbeat_ref,
          subscription_update_ref: subscription_update_ref,
          connected_at: connected_at,
-         connection_id: connection_id
+         connection_id: connection_id,
+         reconnect_attempts: 0
      }}
   end
 
@@ -106,8 +109,15 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       )
     end
 
+    # Calculate exponential backoff with jitter
+    delay = calculate_backoff(state.reconnect_attempts)
+
+    WandererNotifier.Logger.Logger.info(
+      "WebSocket scheduling reconnect in #{delay}ms (attempt #{state.reconnect_attempts + 1})"
+    )
+
     # Reconnect after delay
-    Process.send_after(self(), :connect_delayed, @reconnect_delay)
+    Process.send_after(self(), :connect_delayed, delay)
 
     {:ok,
      %{
@@ -115,7 +125,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
        | channel_ref: nil,
          heartbeat_ref: nil,
          subscription_update_ref: nil,
-         connected_at: nil
+         connected_at: nil,
+         reconnect_attempts: state.reconnect_attempts + 1
      }}
   end
 
@@ -151,6 +162,15 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   defp cancel_timer(nil), do: :ok
   defp cancel_timer(ref), do: Process.cancel_timer(ref)
+
+  defp calculate_backoff(attempts) do
+    base = @initial_reconnect_delay
+    # Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s max
+    calculated = base * :math.pow(2, attempts)
+    # Add 20-40% jitter to prevent thundering herd
+    jittered = calculated * (0.8 + :rand.uniform() * 0.4)
+    min(trunc(jittered), @max_reconnect_delay)
+  end
 
   def handle_frame({:text, message}, state) do
     WandererNotifier.Logger.Logger.info("WebSocket text frame received",

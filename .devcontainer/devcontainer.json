@@ -6,11 +6,6 @@
   "service": "app",
   "workspaceFolder": "/workspace",
 
-  "runArgs": [
-    "--add-host=host.docker.internal:host-gateway",
-    "-v", "/var/run/docker.sock:/var/run/docker.sock"
-  ],
-
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "networkArgs": ["--add-host=host.docker.internal:host-gateway"]
@@ -18,7 +13,7 @@
   },
 
   // Add port forwarding configuration
-  "forwardPorts": [4000, 4001, 5173],
+  "forwardPorts": [4000, 4001],
   "portsAttributes": {
     "5173": {
       "label": "Frontend Dev Server",

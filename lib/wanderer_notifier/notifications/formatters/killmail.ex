@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.ErrorLogger
   alias WandererNotifier.Config.Utils
+  alias WandererNotifier.Map.MapSystem
 
   @doc """
   Creates a standard formatted kill notification embed/attachment from a Killmail struct.
@@ -88,7 +89,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       killmail.system_name ||
         Map.get(killmail.esi_data || %{}, "solar_system_name") ||
         if(system_id,
-          do: WandererNotifier.Killmail.Cache.get_system_name(system_id),
+          do: get_system_name_from_map_or_esi(system_id),
           else: "Unknown"
         )
 
@@ -774,6 +775,18 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     category_text = if item.category != "Notable", do: " [#{item.category}]", else: ""
 
     "• #{item.name}#{quantity_text}#{category_text}"
+  end
+
+  # System name resolution helper - prefer Map API over ESI for custom system names
+  defp get_system_name_from_map_or_esi(system_id) do
+    case MapSystem.get_system(system_id) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        name
+
+      _not_found ->
+        # Fallback to ESI for systems not in the map cache
+        WandererNotifier.Killmail.Cache.get_system_name(system_id)
+    end
   end
 
   # ESI service configuration

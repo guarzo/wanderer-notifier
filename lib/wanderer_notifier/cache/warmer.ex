@@ -66,8 +66,8 @@ defmodule WandererNotifier.Cache.Warmer do
   @default_config %{
     # 5 minutes
     warming_interval: 300_000,
-    # Enable startup warming
-    startup_warming: true,
+    # Disable startup warming to improve startup performance
+    startup_warming: false,
     # Maximum concurrent warming jobs
     max_concurrent_jobs: 10,
     # 30 seconds timeout per job
@@ -419,6 +419,51 @@ defmodule WandererNotifier.Cache.Warmer do
     {:noreply, new_state}
   end
 
+  @impl GenServer
+  def handle_info({ref, result}, state) when is_reference(ref) do
+    # Handle Task completion
+    case find_job_by_ref(ref, state.running_jobs) do
+      {job_id, {_job, _task}} ->
+        # Process the task result
+        case result do
+          {:ok, job_result} ->
+            new_state = handle_job_completion(job_id, job_result, state)
+            {:noreply, new_state}
+
+          {:error, reason} ->
+            new_state = handle_job_failure(job_id, reason, state)
+            {:noreply, new_state}
+        end
+
+      nil ->
+        # Unknown task reference, ignore
+        {:noreply, state}
+    end
+  end
+
+  @impl GenServer
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) when is_reference(ref) do
+    # Handle Task process DOWN message - these are normal for completed tasks
+    {:noreply, state}
+  end
+
+  @impl GenServer
+  def handle_info({:job_timeout, job_id}, state) do
+    case Map.get(state.running_jobs, job_id) do
+      {_job, task} ->
+        # Kill the task
+        Task.shutdown(task, :brutal_kill)
+
+        # Handle as failure
+        new_state = handle_job_failure(job_id, :timeout, state)
+        {:noreply, new_state}
+
+      nil ->
+        # Job already completed, ignore timeout
+        {:noreply, state}
+    end
+  end
+
   # Private functions
 
   defp schedule_warming(interval) do
@@ -635,39 +680,29 @@ defmodule WandererNotifier.Cache.Warmer do
 
   # These would integrate with the existing ESI service
   defp fetch_character_from_esi(character_id) do
-    # Placeholder - would use WandererNotifier.ESI.Service
-    try do
-      {:ok, %{id: character_id, name: "Character #{character_id}"}}
-    rescue
-      _ -> {:error, :fetch_failed}
-    end
+    WandererNotifier.ESI.Service.get_character(character_id)
   end
 
   defp fetch_corporation_from_esi(corporation_id) do
-    # Placeholder - would use WandererNotifier.ESI.Service
-    try do
-      {:ok, %{id: corporation_id, name: "Corporation #{corporation_id}"}}
-    rescue
-      _ -> {:error, :fetch_failed}
-    end
+    WandererNotifier.ESI.Service.get_corporation_info(corporation_id)
   end
 
   defp fetch_alliance_from_esi(alliance_id) do
-    # Placeholder - would use WandererNotifier.ESI.Service
-    try do
-      {:ok, %{id: alliance_id, name: "Alliance #{alliance_id}"}}
-    rescue
-      _ -> {:error, :fetch_failed}
-    end
+    WandererNotifier.ESI.Service.get_alliance_info(alliance_id)
   end
 
   defp fetch_system_from_esi(system_id) do
-    # Placeholder - would use WandererNotifier.ESI.Service
-    try do
-      {:ok, %{id: system_id, name: "System #{system_id}"}}
-    rescue
-      _ -> {:error, :fetch_failed}
-    end
+    WandererNotifier.ESI.Service.get_system(system_id)
+  end
+
+  defp find_job_by_ref(ref, running_jobs) do
+    Enum.find_value(running_jobs, fn {job_id, {job, task}} ->
+      if task.ref == ref do
+        {job_id, {job, task}}
+      else
+        nil
+      end
+    end)
   end
 
   defp handle_job_completion(job_id, _result, state) do

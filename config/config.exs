@@ -40,6 +40,23 @@ config :mime, :extensions, %{
   "mjs" => "text/javascript"
 }
 
+# Configure Phoenix
+config :wanderer_notifier, WandererNotifierWeb.Endpoint,
+  url: [host: "localhost"],
+  render_errors: [
+    formats: [json: WandererNotifierWeb.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: WandererNotifier.PubSub,
+  live_view: [signing_salt: "wanderer_liveview_salt"],
+  server: false
+
+# Configure Phoenix PubSub
+config :wanderer_notifier, WandererNotifier.PubSub, adapter: Phoenix.PubSub.PG2
+
+# Configure JSON library for Phoenix
+config :phoenix, :json_library, Jason
+
 # Configure the logger
 config :logger,
   level: :info,
