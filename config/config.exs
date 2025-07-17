@@ -48,11 +48,11 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
     layout: false
   ],
   pubsub_server: WandererNotifier.PubSub,
-  live_view: [signing_salt: "wanderer_liveview_salt"],
+  live_view: [],
   server: false
 
 # Configure Phoenix PubSub
-config :wanderer_notifier, WandererNotifier.PubSub, adapter: Phoenix.PubSub.PG2
+config :wanderer_notifier, WandererNotifier.PubSub, adapter: Phoenix.PubSub.PG
 
 # Configure JSON library for Phoenix
 config :phoenix, :json_library, Jason

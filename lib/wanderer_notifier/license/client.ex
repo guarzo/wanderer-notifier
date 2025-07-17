@@ -146,7 +146,7 @@ defmodule WandererNotifier.License.Client do
       ]
     ]
 
-    case WandererNotifier.HTTP.post_json(url, body, headers, opts) do
+    case WandererNotifier.Http.post_json(url, body, opts ++ [headers: headers]) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_decoded_license_data(decoded)
 

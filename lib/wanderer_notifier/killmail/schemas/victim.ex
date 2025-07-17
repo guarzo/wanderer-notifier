@@ -264,7 +264,9 @@ defmodule WandererNotifier.Killmail.Schemas.Victim do
     # Ensure damage_taken is reasonable for the context
     damage = get_field(changeset, :damage_taken)
 
-    if damage && damage > 1_000_000_000 do
+    # Increased threshold to accommodate capital ship damage
+    # Titans and other capital ships can take significantly more damage
+    if damage && damage > 10_000_000_000 do
       add_error(changeset, :damage_taken, "Damage taken seems unreasonably high")
     else
       changeset

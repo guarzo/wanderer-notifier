@@ -14,7 +14,7 @@ defmodule WandererNotifierWeb.Endpoint do
   @session_options [
     store: :cookie,
     key: "_wanderer_notifier_key",
-    signing_salt: "wanderer_salt",
+    signing_salt: System.get_env("SESSION_SIGNING_SALT") || "wanderer_salt",
     same_site: "Lax"
   ]
 

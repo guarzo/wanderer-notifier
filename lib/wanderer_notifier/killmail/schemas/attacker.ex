@@ -136,7 +136,13 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
   """
   @spec get_final_blow_attacker([t()]) :: t() | nil
   def get_final_blow_attacker(attackers) when is_list(attackers) do
-    Enum.find(attackers, & &1.final_blow)
+    Enum.find(attackers, fn attacker ->
+      case attacker do
+        %__MODULE__{final_blow: final_blow} -> final_blow
+        %Ecto.Changeset{} -> Ecto.Changeset.get_field(attacker, :final_blow)
+        _ -> false
+      end
+    end)
   end
 
   @doc """
@@ -348,12 +354,39 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
 
     case {damage_done, final_blow} do
       {0, true} ->
-        add_error(changeset, :final_blow, "Final blow attacker must have damage > 0")
+        if allowed_zero_damage?(changeset) do
+          changeset
+        else
+          add_error(changeset, :final_blow, "Final blow attacker must have damage > 0")
+        end
 
       _ ->
         changeset
     end
   end
+
+  # Helper function to check if zero damage is allowed for this attacker
+  defp allowed_zero_damage?(changeset) do
+    weapon_type_id = get_field(changeset, :weapon_type_id)
+    character_id = get_field(changeset, :character_id)
+
+    # Allow zero damage for:
+    # 1. Smartbomb modules (weapon type IDs in smartbomb range)
+    # 2. NPC final blows (character_id is nil)
+    is_smartbomb_weapon?(weapon_type_id) or is_npc_attacker?(character_id)
+  end
+
+  # Check if weapon is a smartbomb (approximate range, may need refinement)
+  defp is_smartbomb_weapon?(weapon_type_id) when is_integer(weapon_type_id) do
+    # Smartbomb weapon type IDs are typically in the range 9000-10000
+    # This is an approximation and may need adjustment based on actual EVE data
+    weapon_type_id >= 9000 and weapon_type_id <= 10000
+  end
+
+  defp is_smartbomb_weapon?(_), do: false
+
+  # Check if attacker is an NPC (no character_id)
+  defp is_npc_attacker?(character_id), do: is_nil(character_id)
 
   defp normalize_websocket_fields(ws_data) when is_map(ws_data) do
     # Use shared function for common fields, add attacker-specific fields

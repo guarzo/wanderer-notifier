@@ -60,14 +60,8 @@ ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN \
     VCS_REF=$VCS_REF \
     VERSION=$VERSION
 
-# Copy source code (excluding development files)
-COPY --exclude=.git \
-     --exclude=.env* \
-     --exclude=*.md \
-     --exclude=docs/ \
-     --exclude=test/ \
-     --exclude=log/ \
-     . .
+# Copy source code (exclusions handled by .dockerignore)
+COPY . .
 
 # Ensure Hex and Rebar are available in build stage
 RUN --mount=type=cache,target=/root/.hex \

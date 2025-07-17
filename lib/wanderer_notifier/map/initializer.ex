@@ -34,17 +34,49 @@ defmodule WandererNotifier.Map.Initializer do
       results = Task.await_many(tasks, timeout)
       process_results(results)
     rescue
+      e in TaskError ->
+        # Task-specific errors (timeout, exit, etc)
+        AppLogger.api_error("Map initialization task failed",
+          error: Exception.message(e),
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+
+      e in HTTPoison.Error ->
+        # Network/HTTP errors
+        AppLogger.api_error("Map initialization network error",
+          error: Exception.message(e),
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+
       e ->
-        AppLogger.api_error("Map initialization failed with exception",
+        # Other unexpected errors
+        AppLogger.api_error("Map initialization unexpected error",
           error: inspect(e),
+          exception_type: e.__struct__,
           timeout: timeout
         )
 
         # Continue startup even if map data fails
         :ok
     catch
+      :exit, {:timeout, _} ->
+        # Specific timeout handling
+        AppLogger.api_error("Map initialization timed out after #{timeout}ms",
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+
       :exit, reason ->
-        AppLogger.api_error("Map initialization timed out",
+        # Other exit reasons
+        AppLogger.api_error("Map initialization process exited",
           reason: inspect(reason),
           timeout: timeout
         )

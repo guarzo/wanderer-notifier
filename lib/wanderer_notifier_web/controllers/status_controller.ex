@@ -55,8 +55,15 @@ defmodule WandererNotifierWeb.StatusController do
     try do
       # Check if Discord consumer is alive
       case Process.whereis(WandererNotifier.Discord.Consumer) do
-        nil -> %{status: "stopped", message: "Discord consumer not running"}
-        _pid -> %{status: "running", message: "Discord consumer active"}
+        nil ->
+          %{status: "stopped", message: "Discord consumer not running"}
+
+        pid when is_pid(pid) ->
+          if Process.alive?(pid) do
+            %{status: "running", message: "Discord consumer active"}
+          else
+            %{status: "error", message: "Discord consumer unresponsive"}
+          end
       end
     rescue
       _ -> %{status: "unknown", message: "Unable to check Discord status"}
@@ -66,8 +73,15 @@ defmodule WandererNotifierWeb.StatusController do
   defp get_killmail_status do
     try do
       case Process.whereis(WandererNotifier.Killmail.Supervisor) do
-        nil -> %{status: "stopped", message: "Killmail supervisor not running"}
-        _pid -> %{status: "running", message: "Killmail processing active"}
+        nil ->
+          %{status: "stopped", message: "Killmail supervisor not running"}
+
+        pid when is_pid(pid) ->
+          if Process.alive?(pid) do
+            %{status: "running", message: "Killmail processing active"}
+          else
+            %{status: "error", message: "Killmail supervisor unresponsive"}
+          end
       end
     rescue
       _ -> %{status: "unknown", message: "Unable to check killmail status"}
@@ -77,8 +91,15 @@ defmodule WandererNotifierWeb.StatusController do
   defp get_map_status do
     try do
       case Process.whereis(WandererNotifier.Map.SSESupervisor) do
-        nil -> %{status: "stopped", message: "Map SSE supervisor not running"}
-        _pid -> %{status: "running", message: "Map integration active"}
+        nil ->
+          %{status: "stopped", message: "Map SSE supervisor not running"}
+
+        pid when is_pid(pid) ->
+          if Process.alive?(pid) do
+            %{status: "running", message: "Map integration active"}
+          else
+            %{status: "error", message: "Map SSE supervisor unresponsive"}
+          end
       end
     rescue
       _ -> %{status: "unknown", message: "Unable to check map status"}

@@ -131,7 +131,9 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
   secret_key_base:
     System.get_env("SECRET_KEY_BASE") ||
       "wanderer_notifier_secret_key_base_default_for_development_only",
-  live_view: [signing_salt: "wanderer_liveview_salt"]
+  live_view: [
+    signing_salt: System.get_env("LIVE_VIEW_SIGNING_SALT") || "wanderer_liveview_salt"
+  ]
 
 # Configure WebSocket and WandererKills settings
 config :wanderer_notifier,

@@ -143,8 +143,8 @@ defmodule WandererNotifier.Application do
     # Schedule SSE client initialization to happen after supervision tree is fully started
     # This prevents race conditions during application startup
     Task.start(fn ->
-      # Give the supervision tree time to fully initialize
-      Process.sleep(1000)
+      # Wait for supervision tree to be fully started by checking if supervisor is alive
+      wait_for_supervisor_startup()
 
       try do
         WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
@@ -157,6 +157,34 @@ defmodule WandererNotifier.Application do
     end)
 
     :ok
+  end
+
+  # Wait for the supervision tree to be fully started
+  defp wait_for_supervisor_startup do
+    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
+      nil ->
+        # Supervisor not started yet, wait a bit and retry
+        Process.sleep(100)
+        wait_for_supervisor_startup()
+
+      pid when is_pid(pid) ->
+        # Supervisor is running, check if it's responsive
+        case Supervisor.which_children(pid) do
+          children when is_list(children) ->
+            # Supervisor is responsive and ready
+            :ok
+
+          _ ->
+            # Supervisor exists but not responsive, wait and retry
+            Process.sleep(100)
+            wait_for_supervisor_startup()
+        end
+    end
+  rescue
+    _ ->
+      # If there's an error, wait a bit and try again
+      Process.sleep(100)
+      wait_for_supervisor_startup()
   end
 
   # Validates configuration on startup and logs any issues

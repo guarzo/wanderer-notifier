@@ -86,6 +86,9 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
 
   @valid_data_sources ~w(esi websocket zkillboard)
 
+  # Damage tolerance threshold for validating consistency between victim and attacker damage
+  @damage_tolerance Application.compile_env(:wanderer_notifier, :damage_tolerance, 0.1)
+
   @doc """
   Creates a changeset for killmail data with comprehensive validation.
   """
@@ -252,7 +255,8 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
   @doc """
   Determines the security level category for the system.
   """
-  @spec security_category(t()) :: :highsec | :lowsec | :nullsec | :wormhole | :unknown
+  @spec security_category(t()) ::
+          :highsec | :lowsec | :nullsec | :wormhole | :thera | :pochven | :unknown
   def security_category(%__MODULE__{security_status: security}) when is_float(security) do
     cond do
       security >= 0.5 -> :highsec
@@ -263,10 +267,15 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
   end
 
   def security_category(%__MODULE__{solar_system_id: system_id}) when is_integer(system_id) do
-    if system_id >= 31_000_000 and system_id < 32_000_000 do
-      :wormhole
-    else
-      :unknown
+    cond do
+      # Thera - special wormhole system
+      system_id == 31_000_005 -> :thera
+      # Pochven systems (Triglavian space) - range 30006000-30006027
+      system_id >= 30_006_000 and system_id <= 30_006_027 -> :pochven
+      # Regular wormhole systems
+      system_id >= 31_000_000 and system_id < 32_000_000 -> :wormhole
+      # Unknown system
+      true -> :unknown
     end
   end
 
@@ -462,7 +471,7 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
         total_attacker_damage = Attacker.total_damage(attackers)
 
         if (victim_damage && total_attacker_damage > 0) and
-             abs(victim_damage - total_attacker_damage) > victim_damage * 0.1 do
+             abs(victim_damage - total_attacker_damage) > victim_damage * @damage_tolerance do
           add_error(
             changeset,
             :attackers,

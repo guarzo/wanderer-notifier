@@ -69,7 +69,7 @@ defmodule WandererNotifier.Killmail.Schemas.SharedValidations do
     additional_fields
     |> Enum.reduce(normalized, fn field, acc ->
       string_field = to_string(field)
-      atom_field = String.to_atom(field)
+      atom_field = String.to_atom(string_field)
 
       if value = ws_data[string_field] do
         Map.put(acc, atom_field, value)

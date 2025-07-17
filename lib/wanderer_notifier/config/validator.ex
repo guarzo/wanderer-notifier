@@ -31,14 +31,14 @@ defmodule WandererNotifier.Config.Validator do
 
     errors =
       errors
-      |> validate_required_fields(config, schema, environment)
+      |> validate_required_fields(config, environment)
       |> validate_field_types(config, schema)
       |> validate_field_values(config, schema)
       |> validate_environment_specific(config, environment)
 
     case errors do
       [] -> :ok
-      errors -> {:error, errors}
+      errors -> {:error, Enum.reverse(errors)}
     end
   end
 
@@ -102,14 +102,14 @@ defmodule WandererNotifier.Config.Validator do
     critical_errors = Enum.filter(errors, &critical_error?/1)
     warning_errors = Enum.reject(errors, &critical_error?/1)
 
-    if length(critical_errors) > 0 do
+    if not Enum.empty?(critical_errors) do
       Logger.error("""
       Critical configuration errors found:
       #{format_errors(critical_errors)}
       """)
     end
 
-    if length(warning_errors) > 0 do
+    if not Enum.empty?(warning_errors) do
       Logger.warning("""
       Configuration warnings:
       #{format_errors(warning_errors)}
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Config.Validator do
 
   # Private functions
 
-  defp validate_required_fields(errors, config, _schema, environment) do
+  defp validate_required_fields(errors, config, environment) do
     required_fields = Schema.environment_fields(environment)
 
     required_fields
@@ -288,7 +288,10 @@ defmodule WandererNotifier.Config.Validator do
       required_map_fields
       |> Enum.filter(fn field -> Map.get(config, field) in [nil, ""] end)
 
-    if length(missing_fields) > 0 and length(missing_fields) < length(required_map_fields) do
+    missing_count = length(missing_fields)
+    total_count = length(required_map_fields)
+
+    if missing_count > 0 and missing_count < total_count do
       # Some but not all map fields are configured - this is likely an error
       missing_fields
       |> Enum.reduce(errors, fn field, acc ->
@@ -370,8 +373,20 @@ defmodule WandererNotifier.Config.Validator do
 
   defp parse_env_value(value, :integer) do
     case Integer.parse(value) do
-      {int, ""} -> int
-      _ -> value
+      {int, ""} ->
+        int
+
+      {_int, remainder} when remainder != "" ->
+        require Logger
+
+        Logger.warning(
+          "Environment variable integer parsing found non-empty remainder: #{inspect(remainder)} in value: #{inspect(value)}"
+        )
+
+        value
+
+      _ ->
+        value
     end
   end
 
@@ -401,6 +416,11 @@ defmodule WandererNotifier.Config.Validator do
   defp categorize_error(%{error: :unreachable_url}), do: :connectivity_warnings
   defp categorize_error(_), do: :other
 
+  # Validates URL format for production environments.
+  # This function flags localhost, 127.0.0.1, and host.docker.internal URLs as unreachable
+  # because they are typically not accessible in production environments.
+  # In development, these URLs are valid and expected, but in production they indicate
+  # potential misconfiguration where internal/development URLs are being used.
   defp reachable_url_format?(url) do
     # Basic check for localhost/docker internal URLs that might not be reachable
     not String.contains?(url, ["localhost", "127.0.0.1", "host.docker.internal"])

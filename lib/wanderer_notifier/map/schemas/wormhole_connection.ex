@@ -433,7 +433,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
         add_error(changeset, :wormhole_type, "Wormhole type is required")
 
       type when is_binary(type) ->
-        if String.match?(type, ~r/^[A-Z][0-9]{3}$|^K162$/) do
+        if String.match?(type, ~r/^[A-Z]{1,2}[0-9]{3}$|^K162$|^EOL$/) do
           changeset
         else
           add_error(changeset, :wormhole_type, "Invalid wormhole type format")

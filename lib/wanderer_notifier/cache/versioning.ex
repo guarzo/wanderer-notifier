@@ -288,7 +288,7 @@ defmodule WandererNotifier.Cache.Versioning do
     new_state = ensure_current_version_in_history(new_state)
 
     # Execute deployment hooks for current version asynchronously
-    spawn(fn -> execute_deployment_hooks(new_state, nil, current_version) end)
+    Task.start(fn -> execute_deployment_hooks(new_state, nil, current_version) end)
 
     Logger.info("Cache versioning initialized with version #{current_version}")
     {:ok, new_state}

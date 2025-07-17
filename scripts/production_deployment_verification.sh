@@ -58,12 +58,17 @@ make_request() {
     
     local response
     local http_code
+    local body
     
-    response=$(curl -s -w "%{http_code}" --max-time "$timeout" "$url" 2>/dev/null || echo "000")
-    http_code="${response: -3}"
+    # Use write-out format to separate response body and HTTP code
+    response=$(curl -s -w "\n__HTTP_CODE__%{http_code}" --max-time "$timeout" "$url" 2>/dev/null || echo "__HTTP_CODE__000")
+    
+    # Extract body and HTTP code using the delimiter
+    body="${response%__HTTP_CODE__*}"
+    http_code="${response##*__HTTP_CODE__}"
     
     if [[ "$http_code" == "$expected_code" ]]; then
-        echo "${response%???}"  # Remove the last 3 characters (HTTP code)
+        echo "$body"
         return 0
     else
         log_error "HTTP request to $url failed. Expected: $expected_code, Got: $http_code"
@@ -327,7 +332,7 @@ run_smoke_tests() {
     
     response_time=$(( (end_time - start_time) / 1000000 ))  # Convert to milliseconds
     
-    if [[ "$response_time" -lt 5000 ]]; then  # Less than 5 seconds
+    if [[ "$response_time" -lt 1000 ]]; then  # Less than 1 second
         log_success "Response time test passed (${response_time}ms)"
     else
         log_warning "Slow response time: ${response_time}ms"
