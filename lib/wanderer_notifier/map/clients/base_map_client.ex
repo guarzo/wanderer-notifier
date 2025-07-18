@@ -23,10 +23,21 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   # Extract shared functions out of the macro
   def fetch_and_decode(url, headers) do
     log_request_start(url, headers)
-    opts = build_http_options()
+
+    # Use our centralized HTTP client with higher rate limits for internal map API
+    # These are our own servers so we can afford higher limits
+    opts = [
+      rate_limit_options: [
+        # Much higher limit for internal APIs
+        requests_per_second: 1000,
+        per_host: true
+      ],
+      timeout: 45_000,
+      recv_timeout: 45_000
+    ]
 
     url
-    |> HTTPoison.get(headers, opts)
+    |> WandererNotifier.HTTP.get(headers, opts)
     |> handle_http_response(url)
   end
 
@@ -37,34 +48,15 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     )
   end
 
-  defp build_http_options do
-    [
-      # 45 second connect timeout
-      timeout: 45_000,
-      # 45 second receive timeout
-      recv_timeout: 45_000,
-      ssl: [
-        {:versions, [:"tlsv1.2", :"tlsv1.3"]},
-        {:verify, :verify_peer},
-        {:cacertfile, :certifi.cacertfile()},
-        {:depth, 3},
-        {:customize_hostname_check,
-         [
-           {:match_fun, :public_key.pkix_verify_hostname_match_fun(:https)}
-         ]}
-      ]
-    ]
-  end
-
   defp handle_http_response(response, url) do
     case response do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+      {:ok, %{status_code: 200, body: body}} ->
         handle_success_response(body, url)
 
-      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
+      {:ok, %{status_code: status, body: body}} ->
         handle_error_status(status, body, url)
 
-      {:error, %HTTPoison.Error{reason: reason}} ->
+      {:error, reason} ->
         handle_http_error(reason, url)
     end
   end

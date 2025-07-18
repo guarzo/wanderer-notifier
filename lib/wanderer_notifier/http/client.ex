@@ -24,7 +24,7 @@ defmodule WandererNotifier.Http.Client do
 
   alias WandererNotifier.Http.Utils.JsonUtils
   alias WandererNotifier.Http.Middleware.Telemetry
-  alias WandererNotifier.Http.Middleware.{Retry, RateLimiter}
+  alias WandererNotifier.Http.Middleware.Retry
 
   # HTTP client configuration - use runtime config for test compatibility
   defp http_client do
@@ -175,9 +175,10 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp default_middlewares do
-    # Default middleware chain with retry, rate limiting, and telemetry
+    # Default middleware chain with retry and telemetry
     # Telemetry should be first to capture all metrics
+    # Rate limiting removed to prevent startup issues
     # Can be overridden per request
-    [Telemetry, Retry, RateLimiter]
+    [Telemetry, Retry]
   end
 end

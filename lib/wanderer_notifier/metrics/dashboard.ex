@@ -436,11 +436,11 @@ defmodule WandererNotifier.Metrics.Dashboard do
     end
   end
 
-  defp extract_current_performance(metrics) when is_map(metrics) do
+  defp extract_current_performance(%{processing_metrics: processing_metrics}) do
     %{
-      processing_time: get_in(metrics, [:processing_metrics, :average_processing_time]) || 0,
-      success_rate: get_in(metrics, [:processing_metrics, :success_rate]) || 100.0,
-      throughput: get_in(metrics, [:processing_metrics, :events_per_second]) || 0
+      processing_time: Map.get(processing_metrics, :average_processing_time, 0),
+      success_rate: Map.get(processing_metrics, :success_rate, 100.0),
+      throughput: Map.get(processing_metrics, :events_per_second, 0)
     }
   end
 
@@ -457,12 +457,15 @@ defmodule WandererNotifier.Metrics.Dashboard do
     }
   end
 
-  defp identify_bottlenecks(metrics) when is_map(metrics) do
+  defp identify_bottlenecks(%{
+         processing_metrics: processing_metrics,
+         system_metrics: system_metrics
+       }) do
     bottlenecks = []
 
     # Check processing time
     bottlenecks =
-      case get_in(metrics, [:processing_metrics, :average_processing_time]) do
+      case Map.get(processing_metrics, :average_processing_time) do
         time when is_number(time) and time > 100 ->
           ["High processing time (#{Float.round(time, 1)}ms)" | bottlenecks]
 
@@ -472,7 +475,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
 
     # Check memory usage
     bottlenecks =
-      case get_in(metrics, [:system_metrics, :memory_usage]) do
+      case Map.get(system_metrics, :memory_usage) do
         # 2GB
         memory when is_number(memory) and memory > 2_147_483_648 ->
           ["High memory usage (#{Float.round(memory / 1_073_741_824, 2)}GB)" | bottlenecks]

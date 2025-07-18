@@ -16,21 +16,82 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
   end
 
   def should_send_rich?(type) when type in [:system, :character, :killmail] do
-    license = license_service().status()
-    count = license_service().get_notification_count(type)
-
-    if license.valid do
-      true
-    else
-      count < @max_rich
+    case get_license_status_with_timeout() do
+      {:ok, license} -> check_license_validity(license, type)
+      # Default to allowing rich notifications if license service is unavailable
+      {:error, _} -> true
     end
   end
 
   def increment(type) when type in [:system, :character, :killmail] do
-    license = license_service().status()
+    case get_license_status_with_timeout() do
+      {:ok, license} -> maybe_increment_count(license, type)
+      # Ignore if license service is unavailable
+      {:error, _} -> :ok
+    end
+  end
 
+  # Helper function to check license validity and notification count
+  defp check_license_validity(license, type) do
+    if license.valid do
+      true
+    else
+      check_notification_count(type)
+    end
+  end
+
+  defp check_notification_count(type) do
+    case get_notification_count_with_timeout(type) do
+      {:ok, count} -> count < @max_rich
+      # Default to allowing rich notifications on error
+      {:error, _} -> true
+    end
+  end
+
+  defp maybe_increment_count(license, type) do
     if !license.valid do
-      license_service().increment_notification_count(type)
+      increment_count_async(type)
+    end
+  end
+
+  defp increment_count_async(type) do
+    # Use Task.start to make this non-blocking
+    Task.start(fn ->
+      try do
+        license_service().increment_notification_count(type)
+      rescue
+        # Ignore errors in background increment
+        _ -> :ok
+      end
+    end)
+  end
+
+  # Helper functions with timeout handling
+  defp get_license_status_with_timeout do
+    try do
+      # Short timeout to prevent blocking
+      case GenServer.call(license_service(), :status, 1000) do
+        result when is_map(result) -> {:ok, result}
+        _ -> {:error, :invalid_response}
+      end
+    catch
+      :exit, {:timeout, _} -> {:error, :timeout}
+      :exit, reason -> {:error, reason}
+      type, reason -> {:error, {type, reason}}
+    end
+  end
+
+  defp get_notification_count_with_timeout(type) do
+    try do
+      # Short timeout to prevent blocking
+      case GenServer.call(license_service(), {:get_notification_count, type}, 1000) do
+        count when is_integer(count) -> {:ok, count}
+        _ -> {:error, :invalid_response}
+      end
+    catch
+      :exit, {:timeout, _} -> {:error, :timeout}
+      :exit, reason -> {:error, reason}
+      type, reason -> {:error, {type, reason}}
     end
   end
 end

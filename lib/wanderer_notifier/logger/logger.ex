@@ -275,18 +275,17 @@ defmodule WandererNotifier.Logger.Logger do
 
   # Handle any other metadata type
   defp convert_metadata_to_keyword_list(metadata) do
-    caller = get_caller_info()
+    # Avoid expensive stacktrace generation and large metadata inspection
+    metadata_type = typeof(metadata)
 
-    Logger.warning(
-      "[LOGGER] Invalid metadata type #{inspect(metadata)} (#{inspect(typeof(metadata))})\nCaller: #{caller}"
-    )
+    Logger.warning("[LOGGER] Invalid metadata type #{metadata_type} - converted to keyword list")
 
     [
       _metadata_source: "invalid_type",
       _metadata_warning: "Invalid metadata type converted to keyword list",
-      _original_type: inspect(typeof(metadata)),
-      _original_data: inspect(metadata),
-      _caller: caller
+      _original_type: metadata_type,
+      _original_data: "truncated_for_memory",
+      _caller: "unavailable_for_performance"
     ]
   end
 
@@ -302,27 +301,29 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   defp handle_invalid_list(metadata) do
-    caller = get_caller_info()
-    log_invalid_list_warning(metadata, caller)
-    convert_invalid_list_to_keyword_list(metadata, caller)
+    log_invalid_list_warning(metadata)
+    convert_invalid_list_to_keyword_list(metadata)
   end
 
-  defp log_invalid_list_warning(metadata, caller) do
+  defp log_invalid_list_warning(metadata) do
     Logger.warning(
-      "[LOGGER] Non-keyword list passed as metadata! Convert to map. List: #{inspect(metadata)}\nCaller: #{caller}"
+      "[LOGGER] Non-keyword list passed as metadata! List size: #{length(metadata)} items"
     )
   end
 
-  defp convert_invalid_list_to_keyword_list(metadata, caller) do
-    metadata
+  defp convert_invalid_list_to_keyword_list(metadata) do
+    # Limit conversion to first 10 items to prevent memory issues
+    limited_metadata = Enum.take(metadata, 10)
+
+    limited_metadata
     |> Enum.with_index()
     |> Enum.map(fn {value, index} -> {"item_#{index}", value} end)
     |> Enum.into(%{})
     |> Enum.map(fn {k, v} -> {safe_to_atom(k), v} end)
     |> add_metadata_source("invalid_list_converted")
     |> Keyword.put(:_metadata_warning, "Non-keyword list converted to keyword list")
-    |> Keyword.put(:_original_data, inspect(metadata))
-    |> Keyword.put(:_caller, caller)
+    |> Keyword.put(:_original_data, "truncated_for_memory")
+    |> Keyword.put(:_caller, "unavailable_for_performance")
   end
 
   defp add_metadata_source(metadata, source) do
@@ -343,41 +344,6 @@ defmodule WandererNotifier.Logger.Logger do
   defp typeof(value) when is_reference(value), do: "reference"
   defp typeof(value) when is_port(value), do: "port"
   defp typeof(_value), do: "unknown"
-
-  # Get detailed caller information
-  defp get_caller_info do
-    case Process.info(self(), :current_stacktrace) do
-      {:current_stacktrace, stacktrace} ->
-        format_stacktrace(stacktrace)
-
-      _ ->
-        "unknown caller"
-    end
-  end
-
-  # Format the caller information to show file and line
-  defp format_stacktrace(stacktrace) do
-    stacktrace
-    |> Enum.drop_while(fn {mod, _fun, _args, _loc} ->
-      mod
-      |> inspect()
-      |> String.contains?(["Logger", "WandererNotifier.Logger.Logger"])
-    end)
-    |> Enum.take(3)
-    |> format_frames()
-  end
-
-  defp format_frames([]), do: "unknown caller"
-
-  defp format_frames(frames) do
-    frames
-    |> Enum.map(fn {mod, fun, args, location} ->
-      file = Keyword.get(location, :file, "unknown")
-      line = Keyword.get(location, :line, "?")
-      "#{inspect(mod)}.#{fun}/#{length(args)} at #{file}:#{line}"
-    end)
-    |> Enum.join("\n  ")
-  end
 
   # Convert string or atom keys to atoms safely
   defp safe_to_atom(key) when is_atom(key), do: key

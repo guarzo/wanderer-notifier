@@ -30,12 +30,28 @@ defmodule WandererNotifier.Realtime.HealthChecker do
     heartbeat_score = assess_heartbeat_health(connection)
     status_score = assess_status_health(connection)
 
-    # Weight the scores (ping: 30%, uptime: 40%, heartbeat: 20%, status: 10%)
+    # Adjust weights based on connection type
+    # SSE connections don't have heartbeats, so redistribute that weight
+    {ping_weight, uptime_weight, heartbeat_weight, status_weight} =
+      case connection.type do
+        :sse ->
+          # No heartbeat for SSE, redistribute to uptime and status
+          {0.3, 0.5, 0.0, 0.2}
+
+        :websocket ->
+          # Standard weights for WebSocket connections
+          {0.3, 0.4, 0.2, 0.1}
+
+        _ ->
+          # Default weights
+          {0.3, 0.4, 0.2, 0.1}
+      end
+
     weighted_score =
-      ping_score * 0.3 +
-        uptime_score * 0.4 +
-        heartbeat_score * 0.2 +
-        status_score * 0.1
+      ping_score * ping_weight +
+        uptime_score * uptime_weight +
+        heartbeat_score * heartbeat_weight +
+        status_score * status_weight
 
     cond do
       weighted_score >= 0.9 -> :excellent
@@ -61,10 +77,15 @@ defmodule WandererNotifier.Realtime.HealthChecker do
         # In a real implementation, you'd track disconnect periods
         case connection.status do
           :connected ->
-            # Calculate based on any known disconnection periods
-            # For simplicity, we'll use a high percentage if currently connected
-            # Improve over time
-            min(99.5, 95.0 + total_seconds / 3600 * 0.5)
+            # If currently connected, assume good uptime unless we track disconnections
+            # Give new connections benefit of doubt after grace period
+            if total_seconds > 300 do
+              # After 5 minutes, assume good uptime (99.0%) for stable connections
+              99.0
+            else
+              # Grace period for new connections - don't penalize them
+              99.0
+            end
 
           :connecting ->
             85.0
@@ -174,10 +195,10 @@ defmodule WandererNotifier.Realtime.HealthChecker do
     recommendations = []
 
     recommendations =
-      if heartbeat_healthy?(connection) do
-        recommendations
-      else
+      if connection.type == :websocket and not heartbeat_healthy?(connection) do
         ["Check heartbeat mechanism - no recent heartbeat detected" | recommendations]
+      else
+        recommendations
       end
 
     recommendations =

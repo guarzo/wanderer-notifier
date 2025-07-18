@@ -1,16 +1,16 @@
 defmodule WandererNotifier.Http.Middleware.RateLimiter do
   @moduledoc """
-  HTTP middleware that implements token bucket rate limiting for HTTP requests.
+  HTTP middleware that implements rate limiting using the Hammer library.
 
   This middleware provides configurable rate limiting to prevent API abuse and
-  respect external service rate limits. It uses a token bucket algorithm with
-  per-host rate limiting and automatic backoff handling.
+  respect external service rate limits. It uses Hammer's efficient rate limiting
+  with per-host limiting and automatic backoff handling.
 
   ## Features
-  - Token bucket rate limiting algorithm
+  - Efficient rate limiting via Hammer library
   - Per-host rate limiting configuration
   - Handles HTTP 429 responses with Retry-After headers
-  - Configurable rate limits and burst capacity
+  - Configurable rate limits
   - Comprehensive logging of rate limit events
 
   ## Usage
@@ -24,7 +24,6 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
         middlewares: [RateLimiter],
         rate_limit_options: [
           requests_per_second: 10,
-          burst_capacity: 20,
           per_host: true
         ])
   """
@@ -37,37 +36,14 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
   @type rate_limit_options :: [
           requests_per_second: pos_integer(),
-          burst_capacity: pos_integer(),
           per_host: boolean(),
           enable_backoff: boolean(),
           context: String.t()
         ]
 
   @default_requests_per_second 200
-  @default_burst_capacity 500
-  @table_name :http_rate_limiter_buckets
-
-  @doc """
-  Returns the ETS table name used for rate limiting buckets.
-  """
-  def table_name, do: @table_name
-
-  # Ensure ETS table exists for token bucket storage
-  def ensure_table do
-    case :ets.whereis(@table_name) do
-      :undefined ->
-        :ets.new(@table_name, [
-          :named_table,
-          :public,
-          :set,
-          read_concurrency: true,
-          write_concurrency: true
-        ])
-
-      _table ->
-        :ok
-    end
-  end
+  # 1 second window
+  @default_scale_ms 1_000
 
   @doc """
   Executes the HTTP request with rate limiting applied.
@@ -102,21 +78,40 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
 
   defp check_rate_limit(host, options) do
     requests_per_second = Keyword.get(options, :requests_per_second, @default_requests_per_second)
-    burst_capacity = Keyword.get(options, :burst_capacity, @default_burst_capacity)
     per_host = Keyword.get(options, :per_host, true)
 
-    bucket_key = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
+    bucket_id = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
 
-    # Token bucket implementation using ETS for shared storage
-    case get_or_create_bucket(bucket_key, requests_per_second, burst_capacity) do
-      {:ok, tokens} when tokens > 0 ->
-        # Consume a token
-        update_bucket(bucket_key, tokens - 1, requests_per_second, burst_capacity)
+    # Debug logging to see what's happening
+    AppLogger.api_info("Rate limit check", %{
+      host: host,
+      bucket_id: bucket_id,
+      requests_per_second: requests_per_second,
+      options: options
+    })
+
+    # Use Hammer to check rate limit
+    case Hammer.check_rate(bucket_id, @default_scale_ms, requests_per_second) do
+      {:allow, count} ->
+        AppLogger.api_info("Rate limit allowed", %{
+          host: host,
+          bucket_id: bucket_id,
+          current_count: count,
+          limit: requests_per_second
+        })
+
         :ok
 
-      {:ok, 0} ->
-        # No tokens available
-        log_rate_limit_hit(host, bucket_key)
+      {:deny, limit} ->
+        # Rate limit exceeded
+        AppLogger.api_error("Rate limit denied", %{
+          host: host,
+          bucket_id: bucket_id,
+          limit: limit,
+          requests_per_second: requests_per_second
+        })
+
+        log_rate_limit_hit(host, bucket_id)
         {:error, :rate_limited}
     end
   end
@@ -146,69 +141,6 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     result
   end
 
-  defp get_or_create_bucket(bucket_key, requests_per_second, burst_capacity) do
-    ensure_table()
-
-    case :ets.lookup(@table_name, bucket_key) do
-      [] ->
-        # Create new bucket with full capacity
-        bucket = %{
-          tokens: burst_capacity,
-          last_refill: :erlang.system_time(:second)
-        }
-
-        :ets.insert(@table_name, {bucket_key, bucket})
-        {:ok, burst_capacity}
-
-      [{^bucket_key, bucket}] ->
-        # Refill tokens based on time elapsed before returning current count
-        current_time = :erlang.system_time(:second)
-        time_diff = current_time - bucket.last_refill
-
-        if time_diff > 0 do
-          # Calculate tokens to add based on refill rate
-          tokens_to_add = time_diff * requests_per_second
-          updated_tokens = min(bucket.tokens + tokens_to_add, burst_capacity)
-
-          updated_bucket = %{
-            tokens: updated_tokens,
-            last_refill: current_time
-          }
-
-          :ets.insert(@table_name, {bucket_key, updated_bucket})
-          {:ok, updated_tokens}
-        else
-          {:ok, bucket.tokens}
-        end
-    end
-  end
-
-  defp update_bucket(bucket_key, new_tokens, refill_rate, burst_capacity) do
-    ensure_table()
-    current_time = :erlang.system_time(:second)
-
-    case :ets.lookup(@table_name, bucket_key) do
-      [] ->
-        :ok
-
-      [{^bucket_key, bucket}] ->
-        # Calculate token refill based on time elapsed
-        time_diff = current_time - bucket.last_refill
-        tokens_to_add = time_diff * refill_rate
-
-        # Update bucket with proper token calculation
-        updated_tokens = min(new_tokens + tokens_to_add, burst_capacity)
-
-        updated_bucket = %{
-          tokens: updated_tokens,
-          last_refill: current_time
-        }
-
-        :ets.insert(@table_name, {bucket_key, updated_bucket})
-        :ok
-    end
-  end
-
   defp extract_retry_after(headers) do
     case Enum.find(headers, fn {key, _} ->
            String.downcase(key) == "retry-after"
@@ -225,10 +157,10 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     end
   end
 
-  defp log_rate_limit_hit(host, bucket_key) do
+  defp log_rate_limit_hit(host, bucket_id) do
     AppLogger.api_warn("Rate limit exceeded", %{
       host: host,
-      bucket_key: bucket_key,
+      bucket_key: bucket_id,
       middleware: "RateLimiter"
     })
   end

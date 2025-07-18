@@ -102,6 +102,30 @@ defmodule WandererNotifier.Application do
     result
   end
 
+  # Initialize version manager with retry logic to handle race conditions
+  defp initialize_version_manager_with_retry(retries \\ 3) do
+    WandererNotifier.Cache.VersionManager.initialize()
+  rescue
+    error ->
+      if retries > 0 do
+        WandererNotifier.Logger.Logger.startup_warn(
+          "Version manager initialization failed, retrying...",
+          error: Exception.message(error),
+          retries_left: retries - 1
+        )
+
+        Process.sleep(100)
+        initialize_version_manager_with_retry(retries - 1)
+      else
+        WandererNotifier.Logger.Logger.startup_error(
+          "Version manager initialization failed after all retries",
+          error: Exception.message(error)
+        )
+
+        reraise error, __STACKTRACE__
+      end
+  end
+
   # Initialize cache metrics and performance monitoring
   defp initialize_cache_monitoring do
     # Skip cache monitoring initialization in test environment
@@ -114,21 +138,31 @@ defmodule WandererNotifier.Application do
         # Initialize cache metrics telemetry
         WandererNotifier.Cache.Metrics.init()
 
-        # Start performance monitoring
-        WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
+        # All cache services (PerformanceMonitor, Analytics, Versioning) 
+        # start automatically when their GenServers start
 
-        # Cache warming disabled for startup performance
-        # WandererNotifier.Cache.Warmer.start_warming()
+        # Initialize version manager and start analytics collection after supervisor tree is ready
+        Task.start(fn ->
+          # Wait for GenServers to be fully started
+          Process.sleep(1000)
 
-        # Initialize version manager
-        WandererNotifier.Cache.VersionManager.initialize()
+          try do
+            initialize_version_manager_with_retry()
+            WandererNotifier.Cache.Analytics.start_collection()
 
-        # Start cache analytics collection
-        WandererNotifier.Cache.Analytics.start_collection()
+            WandererNotifier.Logger.Logger.startup_info(
+              "Cache version manager and analytics initialized"
+            )
+          rescue
+            error ->
+              WandererNotifier.Logger.Logger.startup_error(
+                "Failed to initialize cache services",
+                error: Exception.message(error)
+              )
+          end
+        end)
 
-        WandererNotifier.Logger.Logger.startup_info(
-          "Cache performance monitoring, warming, versioning, and analytics initialized"
-        )
+        WandererNotifier.Logger.Logger.startup_info("Cache performance monitoring initialized")
       rescue
         error ->
           WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",

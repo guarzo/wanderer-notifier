@@ -50,7 +50,7 @@ defmodule WandererNotifier.EventSourcing.Event do
       }
   """
   def new(type, source, data, opts \\ []) do
-    now = System.monotonic_time(:millisecond)
+    now = System.system_time(:millisecond)
     id = generate_event_id(type, source, now)
 
     %__MODULE__{
@@ -145,7 +145,7 @@ defmodule WandererNotifier.EventSourcing.Event do
   Gets the age of an event in milliseconds.
   """
   def age(%__MODULE__{timestamp: timestamp}) do
-    System.monotonic_time(:millisecond) - timestamp
+    System.system_time(:millisecond) - timestamp
   end
 
   @doc """

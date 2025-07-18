@@ -207,7 +207,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   # Private functions
 
   defp perform_performance_check(state) do
-    start_time = System.monotonic_time(:millisecond)
+    start_time = System.system_time(:millisecond)
 
     case get_current_metrics_safe() do
       {:ok, current_metrics} ->
@@ -262,7 +262,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       performance_score: get_performance_score(current_metrics)
     }
 
-    %{state | anomaly_history: [anomaly_entry | Enum.take(state.anomaly_history, 99)]}
+    %{state | anomaly_history: [anomaly_entry | Enum.take(state.anomaly_history, 49)]}
   end
 
   defp update_performance_stats(state, anomalies, new_alerts, start_time) do
@@ -281,16 +281,26 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     %{
       state
       | performance_baseline: updated_baseline,
-        recent_alerts: new_alerts ++ state.recent_alerts
+        recent_alerts: Enum.take(new_alerts ++ state.recent_alerts, 50)
     }
   end
 
   defp log_anomalies_if_present(%{anomaly_history: history} = state) do
     case history do
       [%{anomalies: [_ | _] = anomalies} | _] ->
+        # Log each anomaly with details
+        Enum.each(anomalies, fn anomaly ->
+          message = generate_alert_message(anomaly)
+
+          Logger.warning(
+            "Performance anomaly: #{anomaly.type} - #{message} [severity: #{anomaly.severity}]"
+          )
+        end)
+
         Logger.warning("Performance anomalies detected",
           anomaly_count: length(anomalies),
-          new_alerts: length(state.recent_alerts)
+          new_alerts: length(state.recent_alerts),
+          types: Enum.map(anomalies, & &1.type)
         )
 
       _ ->
@@ -302,7 +312,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
 
   defp create_new_baseline(metrics) do
     %{
-      created_at: System.monotonic_time(:millisecond),
+      created_at: System.system_time(:millisecond),
       performance_score: get_performance_score(metrics),
       processing_metrics: extract_processing_baseline(metrics),
       system_metrics: extract_system_baseline(metrics),
@@ -321,7 +331,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp update_performance_baseline(baseline, current_metrics, window) do
     case {baseline, current_metrics} do
       {%{created_at: created_at} = baseline, %{} = metrics} ->
-        now = System.monotonic_time(:millisecond)
+        now = System.system_time(:millisecond)
 
         # Update baseline if window has passed
         if now - created_at > window do
@@ -443,12 +453,26 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     anomalies =
       if baseline_memory > 0 and
            current_memory > baseline_memory * @anomaly_detection.memory_spike_threshold do
+        # Calculate severity based on spike magnitude
+        spike_ratio = current_memory / baseline_memory
+
+        severity =
+          cond do
+            # 5x or more
+            spike_ratio >= 5.0 -> :critical
+            # 3x-5x
+            spike_ratio >= 3.0 -> :high
+            # 2x-3x
+            true -> :medium
+          end
+
         [
           %{
             type: :memory_spike,
-            severity: :medium,
+            severity: severity,
             current: current_memory,
-            baseline: baseline_memory
+            baseline: baseline_memory,
+            spike_ratio: spike_ratio
           }
           | anomalies
         ]
@@ -490,7 +514,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   end
 
   defp generate_alerts_for_anomalies(anomalies, recent_alerts, cooldown) do
-    now = System.monotonic_time(:millisecond)
+    now = System.system_time(:millisecond)
 
     # Filter out alerts that are in cooldown
     active_alert_types =
@@ -566,8 +590,8 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp get_active_alerts_list(recent_alerts) do
     recent_alerts
     |> Enum.filter(fn alert -> is_nil(alert.resolved_at) end)
-    # Limit to most recent 20 alerts
-    |> Enum.take(20)
+    # Limit to most recent 10 alerts to reduce memory usage
+    |> Enum.take(10)
   end
 
   defp get_performance_score(nil), do: 0.0
@@ -597,7 +621,8 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp smooth_processing_metrics(baseline, _current, _alpha), do: baseline
 
   defp smooth_system_metrics(baseline, %{system_metrics: current}, alpha) do
-    smooth_metrics_map(baseline, current, alpha)
+    # Use adaptive smoothing for system metrics to prevent baseline creep during spikes
+    adaptive_smooth_system_metrics(baseline, current, alpha)
   end
 
   defp smooth_system_metrics(baseline, _current, _alpha), do: baseline
@@ -614,6 +639,36 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       smoothed_value = smooth_value(baseline_value, current_value, alpha)
       Map.put(acc, key, smoothed_value)
     end)
+  end
+
+  defp adaptive_smooth_system_metrics(baseline, current, alpha) do
+    Enum.reduce(baseline, baseline, fn {key, baseline_value}, acc ->
+      current_value = Map.get(current, key)
+
+      # For memory usage, use adaptive smoothing to prevent baseline creep
+      smoothed_value = calculate_smoothed_value(key, baseline_value, current_value, alpha)
+
+      Map.put(acc, key, smoothed_value)
+    end)
+  end
+
+  defp calculate_smoothed_value(key, baseline_value, current_value, alpha) do
+    if key == :memory_usage and is_number(baseline_value) and is_number(current_value) do
+      calculate_memory_smoothed_value(baseline_value, current_value, alpha)
+    else
+      smooth_value(baseline_value, current_value, alpha)
+    end
+  end
+
+  defp calculate_memory_smoothed_value(baseline_value, current_value, alpha) do
+    # If current memory is more than 1.5x baseline, reduce smoothing factor
+    if current_value > baseline_value * 1.5 do
+      # Use much smaller alpha (1%) for spikes
+      smooth_value(baseline_value, current_value, 0.01)
+    else
+      # Normal smoothing for stable values
+      smooth_value(baseline_value, current_value, alpha)
+    end
   end
 
   defp generate_alert_id do
@@ -634,7 +689,9 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       :memory_spike ->
         memory_mb = Float.round(anomaly.current / (1024 * 1024), 1)
         baseline_mb = Float.round(anomaly.baseline / (1024 * 1024), 1)
-        "Memory usage spiked to #{memory_mb}MB (baseline: #{baseline_mb}MB)"
+        spike_ratio = Map.get(anomaly, :spike_ratio, anomaly.current / anomaly.baseline)
+
+        "Memory usage spiked to #{memory_mb}MB (baseline: #{baseline_mb}MB, #{Float.round(spike_ratio, 1)}x increase)"
 
       :connection_drop ->
         "Connection count dropped to #{anomaly.current} (baseline: #{anomaly.baseline})"

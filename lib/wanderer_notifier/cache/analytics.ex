@@ -351,15 +351,21 @@ defmodule WandererNotifier.Cache.Analytics do
     # Update counters
     {hit_count, miss_count} = update_counters(state.hit_count, state.miss_count, result)
 
-    # Update response times (keep last 1000 for moving averages)
+    # Update response times (keep last 500 for moving averages, reduced from 1000)
     response_times =
       [duration | state.response_times]
-      |> Enum.take(1000)
+      |> Enum.take(200)
+
+    # Limit operations to 200 to further reduce memory usage (was previously unbounded)
+    limited_operations = [operation_record | state.operations] |> Enum.take(200)
+
+    # Clean up old key stats (keep only last 500 accessed keys) 
+    cleaned_key_stats = cleanup_old_key_stats(key_stats)
 
     %{
       state
-      | operations: [operation_record | state.operations] |> Enum.take(10_000),
-        key_stats: key_stats,
+      | operations: limited_operations,
+        key_stats: cleaned_key_stats,
         data_type_stats: data_type_stats,
         total_operations: state.total_operations + 1,
         hit_count: hit_count,
@@ -387,6 +393,18 @@ defmodule WandererNotifier.Cache.Analytics do
     }
 
     Map.put(key_stats, key, new_stats)
+  end
+
+  defp cleanup_old_key_stats(key_stats) do
+    # If we have more than 200 keys, keep only the 200 most recently accessed
+    if map_size(key_stats) > 200 do
+      key_stats
+      |> Enum.sort_by(fn {_key, stats} -> stats.last_accessed end, :desc)
+      |> Enum.take(200)
+      |> Map.new()
+    else
+      key_stats
+    end
   end
 
   defp update_data_type_stats(data_type_stats, data_type, result) do

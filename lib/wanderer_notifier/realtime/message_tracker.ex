@@ -12,7 +12,7 @@ defmodule WandererNotifier.Realtime.MessageTracker do
   # Default configuration
   # 5 minutes in milliseconds
   @default_ttl 300_000
-  @default_max_size 10_000
+  @default_max_size 5_000
   # 1 minute
   @cleanup_interval 60_000
 

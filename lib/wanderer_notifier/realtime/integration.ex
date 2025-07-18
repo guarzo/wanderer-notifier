@@ -165,7 +165,7 @@ defmodule WandererNotifier.Realtime.Integration do
     event =
       Event.from_websocket_killmail(killmail_data,
         metadata: %{
-          received_at: System.monotonic_time(:millisecond),
+          received_at: System.system_time(:millisecond),
           source_type: source
         }
       )
@@ -177,7 +177,7 @@ defmodule WandererNotifier.Realtime.Integration do
     event =
       Event.from_sse_system(data,
         metadata: %{
-          received_at: System.monotonic_time(:millisecond),
+          received_at: System.system_time(:millisecond),
           source_type: :sse
         }
       )
@@ -189,7 +189,7 @@ defmodule WandererNotifier.Realtime.Integration do
     event =
       Event.from_sse_character(data,
         metadata: %{
-          received_at: System.monotonic_time(:millisecond),
+          received_at: System.system_time(:millisecond),
           source_type: :sse
         }
       )
@@ -201,7 +201,7 @@ defmodule WandererNotifier.Realtime.Integration do
     event =
       Event.new(type, :sse, data,
         metadata: %{
-          received_at: System.monotonic_time(:millisecond),
+          received_at: System.system_time(:millisecond),
           source_type: :sse
         }
       )
@@ -228,7 +228,10 @@ defmodule WandererNotifier.Realtime.Integration do
   defp get_killmail_id(_), do: "unknown"
 
   defp record_connection_metric(connection_id, status, metadata) do
-    Collector.collect_now()
+    # Only trigger collection for significant status changes, not every update
+    if status in [:connected, :failed, :disconnected] do
+      Collector.collect_now()
+    end
 
     # Log connection status changes
     Logger.info("Connection status changed",
@@ -289,13 +292,46 @@ defmodule WandererNotifier.Realtime.Integration do
         health = HealthChecker.assess_connection_quality(connection)
 
         if health in [:poor, :critical] do
-          Logger.warning("Connection health degraded",
-            connection_id: connection.id,
-            type: connection.type,
-            quality: health
+          details = describe_health_issue(connection, health)
+          uptime = Float.round(connection.uptime_percentage || 0.0, 2)
+
+          Logger.warning(
+            "Connection health degraded: #{connection.id} (#{connection.type}) - Quality: #{health}, Status: #{connection.status}, Uptime: #{uptime}%, Details: #{details}"
           )
         end
       end)
+    end
+
+    defp describe_health_issue(connection, health) do
+      issues = []
+
+      issues =
+        if connection.uptime_percentage < 90.0,
+          do: ["Low uptime: #{Float.round(connection.uptime_percentage, 1)}%" | issues],
+          else: issues
+
+      # Only check heartbeat for WebSocket connections after grace period (SSE doesn't have heartbeats)
+      issues =
+        if connection.type == :websocket and is_nil(connection.last_heartbeat) and
+             not is_nil(connection.connected_at) and
+             DateTime.diff(DateTime.utc_now(), connection.connected_at, :second) > 60,
+           do: ["No heartbeat received after 60s" | issues],
+           else: issues
+
+      issues =
+        if connection.status != :connected,
+          do: ["Connection status: #{connection.status}" | issues],
+          else: issues
+
+      issues =
+        if connection.ping_time && connection.ping_time > 1000,
+          do: ["High ping: #{connection.ping_time}ms" | issues],
+          else: issues
+
+      case issues do
+        [] -> "Health assessment: #{health}"
+        _ -> Enum.join(issues, ", ")
+      end
     end
 
     defp schedule_health_check do

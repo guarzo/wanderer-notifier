@@ -102,12 +102,27 @@ defmodule WandererNotifier.Cache.Config do
       compression: [
         # Compress values larger than 1KB
         threshold: 1024
+      ],
+      # Memory limits to prevent excessive memory usage (reduced for debugging)
+      limit: [
+        # Maximum 50MB memory usage (in bytes) - reduced from 100MB
+        memory: 50 * 1024 * 1024,
+        # Maximum 10,000 cache entries - reduced from 50,000
+        size: 10_000,
+        # Use LRU eviction policy when limits are reached
+        policy: Cachex.Policy.LRU
       ]
     ]
 
     # Use put_new to respect caller's name if provided
     merged_config = Keyword.merge(base_config, opts)
-    Keyword.put_new(merged_config, :name, cache_name())
+    final_config = Keyword.put_new(merged_config, :name, cache_name())
+
+    # Log the full config to debug cache limits
+    require Logger
+    Logger.info("Cache configuration: #{inspect(final_config)}")
+
+    final_config
   end
 
   @doc """

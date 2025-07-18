@@ -39,7 +39,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       subscribed_characters: MapSet.new(),
       pipeline_worker: Keyword.get(opts, :pipeline_worker),
       connected_at: nil,
-      reconnect_attempts: 0
+      reconnect_attempts: 0,
+      connection_id: nil
     }
 
     WebSockex.start_link(socket_url, __MODULE__, state,
@@ -81,15 +82,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     # Join the killmails channel
     send(self(), :join_channel)
 
-    {:ok,
-     %{
-       state
-       | heartbeat_ref: heartbeat_ref,
-         subscription_update_ref: subscription_update_ref,
-         connected_at: connected_at,
-         connection_id: connection_id,
-         reconnect_attempts: 0
-     }}
+    new_state = %{
+      state
+      | heartbeat_ref: heartbeat_ref,
+        subscription_update_ref: subscription_update_ref,
+        connected_at: connected_at,
+        connection_id: connection_id,
+        reconnect_attempts: 0
+    }
+
+    {:ok, new_state}
   end
 
   def handle_disconnect(%{reason: reason}, state) do
@@ -173,14 +175,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_frame({:text, message}, state) do
-    WandererNotifier.Logger.Logger.info("WebSocket text frame received",
-      message_size: byte_size(message),
-      message_preview: String.slice(message, 0, 500)
+    message_size = byte_size(message)
+
+    # Only log detailed info for debug level, reduce memory impact
+    WandererNotifier.Logger.Logger.processor_debug("WebSocket text frame received",
+      message_size: message_size
     )
 
     case Jason.decode(message) do
       {:ok, data} ->
-        WandererNotifier.Logger.Logger.info("Decoded WebSocket message",
+        WandererNotifier.Logger.Logger.processor_debug("Decoded WebSocket message",
           event: data["event"],
           topic: data["topic"],
           payload_keys: if(is_map(data["payload"]), do: Map.keys(data["payload"]), else: nil)
@@ -189,9 +193,18 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
         handle_phoenix_message(data, state)
 
       {:error, reason} ->
+        # Limit message content in error logs to prevent memory bloat
+        message_preview =
+          if message_size > 200 do
+            String.slice(message, 0, 200) <> "... (truncated)"
+          else
+            message
+          end
+
         WandererNotifier.Logger.Logger.error("Failed to decode WebSocket message",
           error: inspect(reason),
-          message: message
+          message_size: message_size,
+          message_preview: message_preview
         )
 
         {:ok, state}
@@ -216,8 +229,9 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
     )
 
-    # Record heartbeat in monitoring system (skip if Integration not running)
+    # Record heartbeat in monitoring system (skip if Integration not running) 
     if Map.has_key?(state, :connection_id) &&
+         state.connection_id &&
          Process.whereis(WandererNotifier.Realtime.Integration) do
       WandererNotifier.Realtime.Integration.record_heartbeat(state.connection_id)
     end
@@ -264,9 +278,25 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_info(:join_channel, state) do
-    {limited_systems, limited_characters} = prepare_subscription_data()
-    join_params = build_join_params(limited_systems, limited_characters)
-    send_join_message(join_params, limited_systems, limited_characters, state)
+    WandererNotifier.Logger.Logger.info("WebSocket handling join_channel message")
+
+    try do
+      {limited_systems, limited_characters} = prepare_subscription_data()
+      join_params = build_join_params(limited_systems, limited_characters)
+      result = send_join_message(join_params, limited_systems, limited_characters, state)
+      WandererNotifier.Logger.Logger.info("Join channel result: #{inspect(result)}")
+      result
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.error("Error during channel join",
+          error: Exception.message(error),
+          stacktrace: __STACKTRACE__
+        )
+
+        # Retry after delay
+        Process.send_after(self(), :join_channel, 5_000)
+        {:ok, state}
+    end
   end
 
   defp check_and_update_subscriptions(state) do

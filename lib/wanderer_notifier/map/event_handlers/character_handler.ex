@@ -295,6 +295,25 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
     name = character["name"]
     id = character["id"]
 
+    # Try to find matching character to get eve_id
+    matched_character = Enum.find(cached_characters, &matches_name_or_id?(&1, name, id))
+
+    if matched_character do
+      AppLogger.api_info("Found cached character for update",
+        character_name: name,
+        character_id: id,
+        cached_eve_id: matched_character["eve_id"],
+        cached_name: matched_character["name"]
+      )
+    else
+      AppLogger.api_warn("No cached character found for update",
+        character_name: name,
+        character_id: id,
+        total_cached: length(cached_characters),
+        cached_names: Enum.map(cached_characters, & &1["name"]) |> Enum.take(5)
+      )
+    end
+
     updated =
       Enum.map(cached_characters, fn c ->
         if matches_name_or_id?(c, name, id) do
@@ -305,7 +324,7 @@ defmodule WandererNotifier.Map.EventHandlers.CharacterHandler do
         end
       end)
 
-    matched = Enum.any?(cached_characters, &matches_name_or_id?(&1, name, id))
+    matched = matched_character != nil
     {matched, updated}
   end
 
