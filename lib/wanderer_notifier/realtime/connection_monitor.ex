@@ -57,9 +57,24 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
 
   @doc """
   Registers a new connection for monitoring.
+
+  Can be called with either a PID directly or a metadata map containing a :pid key.
   """
-  def register_connection(id, type, pid) when type in [:websocket, :sse] do
+  def register_connection(id, type, pid_or_metadata)
+
+  def register_connection(id, type, pid) when type in [:websocket, :sse] and is_pid(pid) do
     GenServer.cast(__MODULE__, {:register_connection, id, type, pid})
+  end
+
+  def register_connection(id, type, metadata)
+      when type in [:websocket, :sse] and is_map(metadata) do
+    pid = Map.get(metadata, :pid)
+
+    if is_pid(pid) do
+      GenServer.cast(__MODULE__, {:register_connection, id, type, pid})
+    else
+      Logger.error("Invalid pid in connection metadata", id: id, metadata: inspect(metadata))
+    end
   end
 
   @doc """
@@ -175,7 +190,11 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
 
         updated_connection =
           if status == :connected and connection.connected_at == nil do
-            %{updated_connection | connected_at: DateTime.utc_now()}
+            connected_connection = %{updated_connection | connected_at: DateTime.utc_now()}
+            # Immediately calculate uptime for new connections
+            connected_connection
+            |> update_connection_quality()
+            |> update_uptime_percentage()
           else
             updated_connection
           end
@@ -226,13 +245,16 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
 
   @impl true
   def handle_call(:get_connections, _from, state) do
-    {:reply, state.connections, state}
+    connections_list = Map.values(state.connections)
+    {:reply, {:ok, connections_list}, state}
   end
 
   @impl true
   def handle_call({:get_connection, id}, _from, state) do
-    connection = Map.get(state.connections, id)
-    {:reply, connection, state}
+    case Map.get(state.connections, id) do
+      nil -> {:reply, {:error, :not_found}, state}
+      connection -> {:reply, {:ok, connection}, state}
+    end
   end
 
   @impl true

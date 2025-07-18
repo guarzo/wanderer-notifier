@@ -69,8 +69,8 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     eviction_rate_threshold: 0.10,
     # 5 minutes between alerts
     alert_cooldown: 300_000,
-    # Number of samples for trend analysis
-    trend_analysis_window: 10
+    # Number of samples for trend analysis (reduced to prevent memory growth)
+    trend_analysis_window: 5
   }
 
   @doc """
@@ -171,6 +171,9 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
   def init(opts) do
     config = Map.merge(@default_config, Map.new(opts))
 
+    # Start monitoring automatically unless explicitly disabled
+    auto_start = Keyword.get(opts, :auto_start, true)
+
     state = %{
       config: config,
       monitoring_active: false,
@@ -181,8 +184,15 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
       recommendations: []
     }
 
-    Logger.info("Cache performance monitor initialized")
-    {:ok, state}
+    # Automatically start monitoring if enabled
+    if auto_start do
+      schedule_monitoring(config.monitoring_interval)
+      Logger.info("Cache performance monitor initialized and started")
+      {:ok, %{state | monitoring_active: true}}
+    else
+      Logger.info("Cache performance monitor initialized (not started)")
+      {:ok, state}
+    end
   end
 
   @impl GenServer
@@ -287,7 +297,15 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
 
     # Log performance changes
     if status != state.current_status do
-      Logger.info("Cache performance status changed from #{state.current_status} to #{status}")
+      Logger.info("Cache performance status changed from #{state.current_status} to #{status}",
+        previous_status: state.current_status,
+        new_status: status,
+        hit_ratio: Float.round(performance_data.hit_ratio * 100, 1),
+        response_time_ms: Float.round(performance_data.average_response_time, 1),
+        memory_usage_mb: Float.round(performance_data.memory_usage / (1024 * 1024), 1),
+        eviction_rate: Float.round(performance_data.eviction_rate * 100, 1),
+        active_alerts: Map.keys(alerts)
+      )
     end
 
     new_state = %{
@@ -327,7 +345,7 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
   end
 
   defp check_for_alerts(performance_data, config, existing_alerts) do
-    current_time = System.monotonic_time(:millisecond)
+    current_time = System.system_time(:millisecond)
 
     # Check each alert type
     alerts = %{}
@@ -335,12 +353,15 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     # Hit ratio alert
     alerts =
       if performance_data.hit_ratio < config.hit_ratio_threshold do
-        check_and_add_alert(
+        check_and_add_alert_with_value(
           alerts,
           existing_alerts,
           :hit_ratio_low,
           current_time,
-          config.alert_cooldown
+          config.alert_cooldown,
+          performance_data.hit_ratio,
+          config.hit_ratio_threshold,
+          "Hit ratio: #{Float.round(performance_data.hit_ratio * 100, 1)}% (threshold: #{Float.round(config.hit_ratio_threshold * 100, 1)}%)"
         )
       else
         Map.delete(alerts, :hit_ratio_low)
@@ -349,12 +370,15 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     # Response time alert
     alerts =
       if performance_data.average_response_time > config.response_time_threshold do
-        check_and_add_alert(
+        check_and_add_alert_with_value(
           alerts,
           existing_alerts,
           :response_time_high,
           current_time,
-          config.alert_cooldown
+          config.alert_cooldown,
+          performance_data.average_response_time,
+          config.response_time_threshold,
+          "Response time: #{Float.round(performance_data.average_response_time, 1)}ms (threshold: #{config.response_time_threshold}ms)"
         )
       else
         Map.delete(alerts, :response_time_high)
@@ -363,12 +387,18 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     # Memory usage alert
     alerts =
       if performance_data.memory_usage > config.memory_usage_threshold do
-        check_and_add_alert(
+        memory_mb = Float.round(performance_data.memory_usage / (1024 * 1024), 1)
+        threshold_mb = Float.round(config.memory_usage_threshold / (1024 * 1024), 1)
+
+        check_and_add_alert_with_value(
           alerts,
           existing_alerts,
           :memory_usage_high,
           current_time,
-          config.alert_cooldown
+          config.alert_cooldown,
+          performance_data.memory_usage,
+          config.memory_usage_threshold,
+          "Memory usage: #{memory_mb}MB (threshold: #{threshold_mb}MB)"
         )
       else
         Map.delete(alerts, :memory_usage_high)
@@ -377,12 +407,15 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     # Eviction rate alert
     alerts =
       if performance_data.eviction_rate > config.eviction_rate_threshold do
-        check_and_add_alert(
+        check_and_add_alert_with_value(
           alerts,
           existing_alerts,
           :eviction_rate_high,
           current_time,
-          config.alert_cooldown
+          config.alert_cooldown,
+          performance_data.eviction_rate,
+          config.eviction_rate_threshold,
+          "Eviction rate: #{Float.round(performance_data.eviction_rate * 100, 1)}% (threshold: #{Float.round(config.eviction_rate_threshold * 100, 1)}%)"
         )
       else
         Map.delete(alerts, :eviction_rate_high)
@@ -391,17 +424,31 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     alerts
   end
 
-  defp check_and_add_alert(alerts, existing_alerts, alert_type, current_time, cooldown) do
+  defp check_and_add_alert_with_value(
+         alerts,
+         existing_alerts,
+         alert_type,
+         current_time,
+         cooldown,
+         _current_value,
+         _threshold,
+         message
+       ) do
     case Map.get(existing_alerts, alert_type) do
       nil ->
         # New alert
-        Logger.warning("Cache performance alert: #{alert_type}")
+        Logger.warning("Cache performance alert: #{alert_type} - #{message}")
         Map.put(alerts, alert_type, current_time)
 
       last_alert_time ->
         # Existing alert - check cooldown
         if current_time - last_alert_time > cooldown do
-          Logger.warning("Cache performance alert (repeated): #{alert_type}")
+          time_since = div(current_time - last_alert_time, 1000)
+
+          Logger.warning(
+            "Cache performance alert (repeated after #{time_since}s): #{alert_type} - #{message}"
+          )
+
           Map.put(alerts, alert_type, current_time)
         else
           Map.put(alerts, alert_type, last_alert_time)
@@ -410,6 +457,7 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
   end
 
   defp update_performance_history(performance_data, history, max_size) do
+    # Ensure we never exceed max_size to prevent memory leaks
     new_history = [performance_data | history]
     Enum.take(new_history, max_size)
   end
@@ -437,7 +485,6 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
               "Cache hit ratio is below threshold (#{Float.round(performance_data.hit_ratio * 100, 2)}%)",
             actions: [
               "Consider increasing cache TTL for frequently accessed data",
-              "Implement cache warming strategies",
               "Review cache eviction policies"
             ]
           }
@@ -513,8 +560,7 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
           description: "Cache hit ratio is showing a declining trend",
           actions: [
             "Investigate recent changes that might affect cache effectiveness",
-            "Review cache invalidation patterns",
-            "Consider adjusting cache warming strategies"
+            "Review cache invalidation patterns"
           ]
         }
       ]

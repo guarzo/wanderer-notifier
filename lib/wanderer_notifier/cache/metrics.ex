@@ -42,7 +42,11 @@ defmodule WandererNotifier.Cache.Metrics do
   @type operation_type :: :get | :put | :delete | :clear
 
   # Default metrics collection interval in milliseconds
-  @default_collection_interval 5_000
+  @default_collection_interval 30_000
+  # Maximum number of domains to track to prevent unbounded growth
+  @max_domains 50
+  # Maximum number of operation types to track
+  @max_operations 20
 
   @doc """
   Starts the metrics collection GenServer.
@@ -74,7 +78,7 @@ defmodule WandererNotifier.Cache.Metrics do
         [:wanderer_notifier, :cache, :eviction],
         [:wanderer_notifier, :cache, :expiration]
       ],
-      &handle_telemetry_event/4,
+      &__MODULE__.handle_telemetry_event/4,
       %{}
     )
 
@@ -239,7 +243,9 @@ defmodule WandererNotifier.Cache.Metrics do
         expirations: 0,
         memory_usage: %{}
       },
-      last_collection: System.monotonic_time(:millisecond)
+      last_collection: System.monotonic_time(:millisecond),
+      domain_count: 0,
+      operation_count: 0
     }
 
     # Schedule periodic metrics collection
@@ -271,7 +277,9 @@ defmodule WandererNotifier.Cache.Metrics do
           evictions: 0,
           expirations: 0,
           memory_usage: %{}
-        }
+        },
+        domain_count: 0,
+        operation_count: 0
     }
 
     {:reply, :ok, new_state}
@@ -302,66 +310,89 @@ defmodule WandererNotifier.Cache.Metrics do
     {:noreply, new_state}
   end
 
-  # Private functions
-
-  defp handle_telemetry_event([:wanderer_notifier, :cache, :hit], measurements, metadata, _config) do
+  @doc false
+  def handle_telemetry_event([:wanderer_notifier, :cache, :hit], measurements, metadata, _config) do
     GenServer.cast(__MODULE__, {:record_hit, measurements, metadata})
   end
 
-  defp handle_telemetry_event(
-         [:wanderer_notifier, :cache, :miss],
-         measurements,
-         metadata,
-         _config
-       ) do
+  def handle_telemetry_event(
+        [:wanderer_notifier, :cache, :miss],
+        measurements,
+        metadata,
+        _config
+      ) do
     GenServer.cast(__MODULE__, {:record_miss, measurements, metadata})
   end
 
-  defp handle_telemetry_event(
-         [:wanderer_notifier, :cache, :operation],
-         measurements,
-         metadata,
-         _config
-       ) do
+  def handle_telemetry_event(
+        [:wanderer_notifier, :cache, :operation],
+        measurements,
+        metadata,
+        _config
+      ) do
     GenServer.cast(__MODULE__, {:record_operation, measurements, metadata})
   end
 
-  defp handle_telemetry_event(
-         [:wanderer_notifier, :cache, :eviction],
-         measurements,
-         metadata,
-         _config
-       ) do
+  def handle_telemetry_event(
+        [:wanderer_notifier, :cache, :eviction],
+        measurements,
+        metadata,
+        _config
+      ) do
     GenServer.cast(__MODULE__, {:record_eviction, measurements, metadata})
   end
 
-  defp handle_telemetry_event(
-         [:wanderer_notifier, :cache, :expiration],
-         measurements,
-         metadata,
-         _config
-       ) do
+  def handle_telemetry_event(
+        [:wanderer_notifier, :cache, :expiration],
+        measurements,
+        metadata,
+        _config
+      ) do
     GenServer.cast(__MODULE__, {:record_expiration, measurements, metadata})
   end
+
+  # Private functions
 
   @impl GenServer
   def handle_cast({:record_hit, measurements, metadata}, state) do
     domain = Map.get(metadata, :domain, :unknown)
-    current_count = get_in(state.metrics, [:hits, domain]) || 0
-    new_count = current_count + Map.get(measurements, :count, 1)
 
-    new_metrics = put_in(state.metrics, [:hits, domain], new_count)
-    {:noreply, %{state | metrics: new_metrics}}
+    # Prevent unbounded domain growth
+    if not Map.has_key?(state.metrics.hits, domain) and
+         map_size(state.metrics.hits) >= @max_domains do
+      # Don't track new domains if we've hit the limit
+      {:noreply, state}
+    else
+      current_count = get_in(state.metrics, [:hits, domain]) || 0
+      new_count = current_count + Map.get(measurements, :count, 1)
+
+      new_metrics = put_in(state.metrics, [:hits, domain], new_count)
+
+      new_domain_count =
+        if Map.has_key?(state.metrics.hits, domain),
+          do: state.domain_count,
+          else: state.domain_count + 1
+
+      {:noreply, %{state | metrics: new_metrics, domain_count: new_domain_count}}
+    end
   end
 
   @impl GenServer
   def handle_cast({:record_miss, measurements, metadata}, state) do
     domain = Map.get(metadata, :domain, :unknown)
-    current_count = get_in(state.metrics, [:misses, domain]) || 0
-    new_count = current_count + Map.get(measurements, :count, 1)
 
-    new_metrics = put_in(state.metrics, [:misses, domain], new_count)
-    {:noreply, %{state | metrics: new_metrics}}
+    # Prevent unbounded domain growth
+    if not Map.has_key?(state.metrics.misses, domain) and
+         map_size(state.metrics.misses) >= @max_domains do
+      # Don't track new domains if we've hit the limit
+      {:noreply, state}
+    else
+      current_count = get_in(state.metrics, [:misses, domain]) || 0
+      new_count = current_count + Map.get(measurements, :count, 1)
+
+      new_metrics = put_in(state.metrics, [:misses, domain], new_count)
+      {:noreply, %{state | metrics: new_metrics}}
+    end
   end
 
   @impl GenServer
@@ -369,12 +400,25 @@ defmodule WandererNotifier.Cache.Metrics do
     operation = Map.get(metadata, :operation, :unknown)
     duration = Map.get(measurements, :duration, 0)
 
-    {current_total, current_count} = get_in(state.metrics, [:operations, operation]) || {0, 0}
-    new_total = current_total + duration
-    new_count = current_count + 1
+    # Prevent unbounded operation growth
+    if not Map.has_key?(state.metrics.operations, operation) and
+         map_size(state.metrics.operations) >= @max_operations do
+      # Don't track new operations if we've hit the limit
+      {:noreply, state}
+    else
+      {current_total, current_count} = get_in(state.metrics, [:operations, operation]) || {0, 0}
+      new_total = current_total + duration
+      new_count = current_count + 1
 
-    new_metrics = put_in(state.metrics, [:operations, operation], {new_total, new_count})
-    {:noreply, %{state | metrics: new_metrics}}
+      new_metrics = put_in(state.metrics, [:operations, operation], {new_total, new_count})
+
+      new_operation_count =
+        if Map.has_key?(state.metrics.operations, operation),
+          do: state.operation_count,
+          else: state.operation_count + 1
+
+      {:noreply, %{state | metrics: new_metrics, operation_count: new_operation_count}}
+    end
   end
 
   @impl GenServer

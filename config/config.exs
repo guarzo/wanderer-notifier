@@ -57,6 +57,10 @@ config :wanderer_notifier, WandererNotifier.PubSub, adapter: Phoenix.PubSub.PG
 # Configure JSON library for Phoenix
 config :phoenix, :json_library, Jason
 
+# Configure Hammer rate limiting
+config :hammer,
+  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 2, cleanup_interval_ms: 60_000 * 10]}
+
 # Configure the logger
 config :logger,
   level: :info,

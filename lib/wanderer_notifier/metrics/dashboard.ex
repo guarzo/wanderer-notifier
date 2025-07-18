@@ -220,12 +220,14 @@ defmodule WandererNotifier.Metrics.Dashboard do
 
   defp generate_system_overview do
     performance_status = PerformanceMonitor.get_performance_status()
+    connection_details = get_connection_details()
 
     %{
       health_status: performance_status.overall_health,
       performance_score: performance_status.performance_score,
       uptime: calculate_system_uptime(),
       active_connections: count_active_connections(),
+      connection_details: connection_details,
       event_throughput: calculate_event_throughput(),
       system_load: calculate_system_load()
     }
@@ -299,8 +301,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
         eviction_rate: cache_stats.eviction_rate
       },
       top_keys: cache_stats.top_accessed_keys,
-      ttl_distribution: cache_stats.ttl_distribution,
-      warming_effectiveness: calculate_warming_effectiveness()
+      ttl_distribution: cache_stats.ttl_distribution
     }
   end
 
@@ -392,6 +393,63 @@ defmodule WandererNotifier.Metrics.Dashboard do
     end
   end
 
+  defp get_connection_details do
+    case ConnectionMonitor.get_connections() do
+      {:ok, connections} ->
+        Enum.map(connections, fn connection ->
+          %{
+            id: connection.id,
+            type: connection.type,
+            status: connection.status,
+            uptime: calculate_connection_uptime(connection),
+            duration: calculate_connection_duration(connection),
+            ping_time: connection.ping_time,
+            quality: connection.quality || :unknown
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp calculate_connection_uptime(connection) do
+    case connection.uptime_percentage do
+      percentage when is_number(percentage) ->
+        "#{Float.round(percentage, 1)}%"
+
+      _ ->
+        "Unknown"
+    end
+  end
+
+  defp calculate_connection_duration(connection) do
+    case connection.connected_at do
+      %DateTime{} = connected_at ->
+        duration_seconds = DateTime.diff(DateTime.utc_now(), connected_at, :second)
+        format_duration(duration_seconds)
+
+      _ ->
+        "Unknown"
+    end
+  end
+
+  defp format_duration(seconds) when seconds < 60 do
+    "#{seconds}s"
+  end
+
+  defp format_duration(seconds) when seconds < 3600 do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+    "#{minutes}m #{remaining_seconds}s"
+  end
+
+  defp format_duration(seconds) do
+    hours = div(seconds, 3600)
+    remaining_minutes = div(rem(seconds, 3600), 60)
+    "#{hours}h #{remaining_minutes}m"
+  end
+
   defp calculate_event_throughput do
     # Events per second calculation
     case Collector.get_current_metrics() do
@@ -436,11 +494,11 @@ defmodule WandererNotifier.Metrics.Dashboard do
     end
   end
 
-  defp extract_current_performance(metrics) when is_map(metrics) do
+  defp extract_current_performance(%{processing_metrics: processing_metrics}) do
     %{
-      processing_time: get_in(metrics, [:processing_metrics, :average_processing_time]) || 0,
-      success_rate: get_in(metrics, [:processing_metrics, :success_rate]) || 100.0,
-      throughput: get_in(metrics, [:processing_metrics, :events_per_second]) || 0
+      processing_time: Map.get(processing_metrics, :average_processing_time, 0),
+      success_rate: Map.get(processing_metrics, :success_rate, 100.0),
+      throughput: Map.get(processing_metrics, :events_per_second, 0)
     }
   end
 
@@ -457,12 +515,15 @@ defmodule WandererNotifier.Metrics.Dashboard do
     }
   end
 
-  defp identify_bottlenecks(metrics) when is_map(metrics) do
+  defp identify_bottlenecks(%{
+         processing_metrics: processing_metrics,
+         system_metrics: system_metrics
+       }) do
     bottlenecks = []
 
     # Check processing time
     bottlenecks =
-      case get_in(metrics, [:processing_metrics, :average_processing_time]) do
+      case Map.get(processing_metrics, :average_processing_time) do
         time when is_number(time) and time > 100 ->
           ["High processing time (#{Float.round(time, 1)}ms)" | bottlenecks]
 
@@ -472,7 +533,7 @@ defmodule WandererNotifier.Metrics.Dashboard do
 
     # Check memory usage
     bottlenecks =
-      case get_in(metrics, [:system_metrics, :memory_usage]) do
+      case Map.get(system_metrics, :memory_usage) do
         # 2GB
         memory when is_number(memory) and memory > 2_147_483_648 ->
           ["High memory usage (#{Float.round(memory / 1_073_741_824, 2)}GB)" | bottlenecks]
@@ -493,19 +554,100 @@ defmodule WandererNotifier.Metrics.Dashboard do
     suggestions
   end
 
-  defp get_notification_count(_type) do
-    # Placeholder - would connect to notification tracking
-    :rand.uniform(1000)
+  defp get_notification_count(type) do
+    # Get real metrics from EventAnalytics if available
+    try do
+      analytics = EventAnalytics.get_source_analytics()
+      calculate_notification_count_by_type(type, analytics)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp calculate_notification_count_by_type(:sent, analytics) do
+    analytics
+    |> Map.values()
+    |> Enum.map(&Map.get(&1, :total_events, 0))
+    |> Enum.sum()
+  end
+
+  defp calculate_notification_count_by_type(:failed, analytics) do
+    analytics
+    |> Map.values()
+    |> calculate_failed_events()
+    |> Enum.sum()
+  end
+
+  defp calculate_notification_count_by_type(:kills, analytics),
+    do: get_source_event_count(analytics, :websocket)
+
+  defp calculate_notification_count_by_type(:systems, analytics),
+    do: get_source_event_count(analytics, :sse)
+
+  defp calculate_notification_count_by_type(:characters, analytics),
+    do: get_source_event_count(analytics, :sse)
+
+  defp calculate_notification_count_by_type(:free, analytics),
+    do: get_source_event_count(analytics, :websocket)
+
+  # Would need separate tracking
+  defp calculate_notification_count_by_type(:rate_limited, _analytics), do: 0
+  defp calculate_notification_count_by_type(:premium, _analytics), do: 0
+
+  defp calculate_failed_events(metrics_list) do
+    Enum.map(metrics_list, fn metrics ->
+      total = Map.get(metrics, :total_events, 0)
+      success_rate = Map.get(metrics, :success_rate, 100.0)
+      total - trunc(total * success_rate / 100.0)
+    end)
+  end
+
+  defp get_source_event_count(analytics, source) do
+    analytics
+    |> Map.get(source, %{})
+    |> Map.get(:total_events, 0)
   end
 
   defp calculate_notification_latency do
-    # Placeholder
-    :rand.uniform(100) + 50
+    # Get real latency from EventAnalytics if available
+    try do
+      analytics = EventAnalytics.get_source_analytics()
+
+      latencies =
+        analytics
+        |> Map.values()
+        |> Enum.map(&Map.get(&1, :average_latency, 0))
+        |> Enum.filter(&(&1 > 0))
+
+      if length(latencies) > 0 do
+        Enum.sum(latencies) / length(latencies)
+      else
+        0.0
+      end
+    rescue
+      _ -> 0.0
+    end
   end
 
   defp calculate_notification_success_rate do
-    # Placeholder
-    95.0 + :rand.uniform() * 5.0
+    # Get real success rate from EventAnalytics if available
+    try do
+      analytics = EventAnalytics.get_source_analytics()
+
+      success_rates =
+        analytics
+        |> Map.values()
+        |> Enum.map(&Map.get(&1, :success_rate, 100.0))
+        |> Enum.filter(&(&1 > 0))
+
+      if length(success_rates) > 0 do
+        Enum.sum(success_rates) / length(success_rates)
+      else
+        0.0
+      end
+    rescue
+      _ -> 0.0
+    end
   end
 
   defp get_cache_statistics do
@@ -544,15 +686,6 @@ defmodule WandererNotifier.Metrics.Dashboard do
     # Rough estimate based on cache size
     # 1KB average per entry
     Cachex.size!(:wanderer_cache) * 1024
-  end
-
-  defp calculate_warming_effectiveness do
-    # Placeholder - would track warming success
-    %{
-      success_rate: 98.5,
-      average_warm_time: 1500,
-      entries_warmed: 150
-    }
   end
 
   # Rate limit helpers (placeholders - would connect to actual tracking)

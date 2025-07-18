@@ -148,7 +148,7 @@ defmodule WandererNotifier.Metrics.Collector do
   @impl true
   def handle_call({:get_aggregated_metrics, window_size}, _from, state) do
     window = window_size || state.aggregation_window
-    now = System.monotonic_time(:millisecond)
+    now = System.system_time(:millisecond)
     start_time = now - window
 
     relevant_metrics =
@@ -187,7 +187,7 @@ defmodule WandererNotifier.Metrics.Collector do
   # Private functions
 
   defp perform_collection(state) do
-    start_time = System.monotonic_time(:millisecond)
+    start_time = System.system_time(:millisecond)
 
     try do
       # Collect metrics from various sources
@@ -225,7 +225,7 @@ defmodule WandererNotifier.Metrics.Collector do
           last_collection_time: start_time
         })
 
-      collection_time = System.monotonic_time(:millisecond) - start_time
+      collection_time = System.system_time(:millisecond) - start_time
 
       Logger.debug("Metrics collected",
         collection_time_ms: collection_time,
@@ -319,12 +319,11 @@ defmodule WandererNotifier.Metrics.Collector do
   end
 
   defp collect_system_metrics do
+    # Collect only essential metrics to reduce memory usage
     %{
       memory_usage: :erlang.memory(:total),
-      process_count: :erlang.system_info(:process_count),
-      cpu_usage: get_cpu_usage(),
-      uptime: :erlang.statistics(:wall_clock) |> elem(0),
-      gc_statistics: :erlang.statistics(:garbage_collection)
+      process_count: :erlang.system_info(:process_count)
+      # Removed detailed stats to reduce memory consumption
     }
   end
 
@@ -451,20 +450,14 @@ defmodule WandererNotifier.Metrics.Collector do
     end
   end
 
-  defp get_cpu_usage do
-    # CPU monitoring not available in all environments
-    # :cpu_sup.util() not available in this environment
-    0.0
-  end
-
   defp add_to_history(history, new_metrics, retention_period) do
-    cutoff_time = System.monotonic_time(:millisecond) - retention_period
+    cutoff_time = System.system_time(:millisecond) - retention_period
 
-    # Add new metrics and filter old ones
+    # Add new metrics and filter old ones, with more aggressive limits
     [new_metrics | history]
     |> Enum.filter(fn %Metrics{timestamp: ts} -> ts >= cutoff_time end)
-    # Limit history size
-    |> Enum.take(1000)
+    # Limit history size more aggressively (was 1000, now 500)
+    |> Enum.take(500)
   end
 
   defp aggregate_metrics([]), do: nil
@@ -498,7 +491,11 @@ defmodule WandererNotifier.Metrics.Collector do
 
   defp sum_nested_field(metrics_list, path) do
     metrics_list
-    |> Enum.map(&get_in(&1, path))
+    |> Enum.map(fn metric ->
+      # Convert struct to map to use get_in
+      metric_map = Map.from_struct(metric)
+      get_in(metric_map, path)
+    end)
     |> Enum.filter(&is_number/1)
     |> Enum.sum()
   end
@@ -506,7 +503,11 @@ defmodule WandererNotifier.Metrics.Collector do
   defp average_nested_field(metrics_list, path) do
     values =
       metrics_list
-      |> Enum.map(&get_in(&1, path))
+      |> Enum.map(fn metric ->
+        # Convert struct to map to use get_in
+        metric_map = Map.from_struct(metric)
+        get_in(metric_map, path)
+      end)
       |> Enum.filter(&is_number/1)
 
     if length(values) > 0, do: Enum.sum(values) / length(values), else: 0.0

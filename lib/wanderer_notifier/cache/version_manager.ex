@@ -32,7 +32,6 @@ defmodule WandererNotifier.Cache.VersionManager do
   require Logger
 
   alias WandererNotifier.Cache.Versioning
-  alias WandererNotifier.Cache.Warmer
   alias WandererNotifier.Config.Version
 
   @type deployment_strategy :: :safe | :aggressive | :gradual
@@ -290,19 +289,7 @@ defmodule WandererNotifier.Cache.VersionManager do
   # Private functions
 
   defp register_default_hooks do
-    # Cache warming hook
-    Versioning.register_deployment_hook(:cache_warming, fn old_version, new_version ->
-      Logger.info("Cache warming hook: #{old_version} -> #{new_version}")
-
-      # Force startup warming for new version
-      try do
-        Warmer.force_startup_warming()
-      rescue
-        error ->
-          Logger.error("Cache warming failed during deployment: #{inspect(error)}")
-          :error
-      end
-    end)
+    # Cache warming has been removed to improve startup performance
 
     # Cache invalidation hook
     Versioning.register_deployment_hook(:cache_invalidation, fn old_version, new_version ->
@@ -384,14 +371,8 @@ defmodule WandererNotifier.Cache.VersionManager do
   end
 
   defp execute_warm_cache_step do
-    try do
-      Warmer.force_startup_warming()
-      :ok
-    rescue
-      error ->
-        Logger.error("Cache warming failed during deployment step: #{inspect(error)}")
-        {:error, error}
-    end
+    # Cache warming has been removed to improve startup performance
+    :ok
   end
 
   defp execute_invalidate_old_step(new_version) do

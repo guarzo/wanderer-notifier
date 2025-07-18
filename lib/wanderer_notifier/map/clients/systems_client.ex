@@ -10,6 +10,9 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Cache.Keys, as: CacheKeys
 
+  @default_batch_size 50
+  @batch_size_config_key :map_systems_batch_size
+
   @impl true
   def endpoint, do: "systems"
 
@@ -111,10 +114,59 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   @doc """
   Fetches systems from the API and populates the cache.
   This is used during initialization to ensure we have system data.
+  Uses memory-efficient sequential processing to prevent startup spikes.
   """
   def fetch_and_cache_systems do
-    AppLogger.api_info("Fetching systems from API for initialization")
-    # Fetch with empty cache to trigger the fetch, but suppress notifications
-    fetch_and_process(api_url(), headers(), [], suppress_notifications: true)
+    AppLogger.api_info("Fetching systems from API for initialization (memory-efficient mode)")
+
+    with {:ok, decoded} <-
+           WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode(api_url(), headers()),
+         {:ok, systems} <- extract_data(decoded),
+         :ok <- validate_data(systems) do
+      # Process systems in smaller batches to prevent memory spikes
+      batch_size = get_batch_size()
+      batched_systems = Enum.chunk_every(systems, batch_size)
+
+      AppLogger.api_info("Processing systems in batches",
+        total_systems: length(systems),
+        batch_size: batch_size,
+        batch_count: length(batched_systems)
+      )
+
+      # Process each batch with a small delay for GC
+      final_systems = process_systems_in_batches(batched_systems, [])
+
+      # Cache all processed systems at once
+      WandererNotifier.Map.Clients.BaseMapClient.cache_put(
+        cache_key(),
+        final_systems,
+        cache_ttl()
+      )
+    else
+      error ->
+        AppLogger.api_error("Failed to fetch and cache systems", error: inspect(error))
+        error
+    end
+  end
+
+  defp process_systems_in_batches([], accumulated) do
+    # Reverse the accumulated list since we prepended items
+    Enum.reverse(accumulated)
+  end
+
+  defp process_systems_in_batches([batch | remaining_batches], accumulated) do
+    # Process current batch
+    processed_batch = Enum.map(batch, &enrich_item/1)
+
+    # Add small delay between batches to allow garbage collection
+    Process.sleep(50)
+
+    # Continue with remaining batches
+    # Prepend for O(1) performance instead of append which is O(n)
+    process_systems_in_batches(remaining_batches, Enum.reverse(processed_batch) ++ accumulated)
+  end
+
+  defp get_batch_size do
+    Application.get_env(:wanderer_notifier, @batch_size_config_key, @default_batch_size)
   end
 end

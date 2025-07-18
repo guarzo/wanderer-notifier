@@ -46,7 +46,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Application.Service, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},
-      # Phoenix endpoint for API and WebSocket functionality  
+      # Phoenix endpoint for API and WebSocket functionality
       {WandererNotifierWeb.Endpoint, []}
     ]
 
@@ -56,7 +56,6 @@ defmodule WandererNotifier.Application do
         [
           {WandererNotifier.Cache.Metrics, []},
           {WandererNotifier.Cache.PerformanceMonitor, []},
-          {WandererNotifier.Cache.Warmer, []},
           {WandererNotifier.Cache.Versioning, []},
           {WandererNotifier.Cache.Analytics, []}
         ]
@@ -102,6 +101,32 @@ defmodule WandererNotifier.Application do
     result
   end
 
+  # Initialize version manager with retry logic to handle race conditions
+  defp initialize_version_manager_with_retry(retries \\ 3) do
+    WandererNotifier.Cache.VersionManager.initialize()
+  rescue
+    error ->
+      if retries > 0 do
+        WandererNotifier.Logger.Logger.startup_warn(
+          "Version manager initialization failed, retrying...",
+          error: Exception.message(error),
+          retries_left: retries - 1
+        )
+
+        # Use exponential backoff for retries
+        wait_time = calculate_backoff_ms(3 - retries)
+        Process.sleep(wait_time)
+        initialize_version_manager_with_retry(retries - 1)
+      else
+        WandererNotifier.Logger.Logger.startup_error(
+          "Version manager initialization failed after all retries",
+          error: Exception.message(error)
+        )
+
+        reraise error, __STACKTRACE__
+      end
+  end
+
   # Initialize cache metrics and performance monitoring
   defp initialize_cache_monitoring do
     # Skip cache monitoring initialization in test environment
@@ -114,21 +139,31 @@ defmodule WandererNotifier.Application do
         # Initialize cache metrics telemetry
         WandererNotifier.Cache.Metrics.init()
 
-        # Start performance monitoring
-        WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
+        # All cache services (PerformanceMonitor, Analytics, Versioning)
+        # start automatically when their GenServers start
 
-        # Cache warming disabled for startup performance
-        # WandererNotifier.Cache.Warmer.start_warming()
+        # Initialize version manager and start analytics collection after supervisor tree is ready
+        Task.start(fn ->
+          # Wait for cache GenServers to be fully started
+          wait_for_cache_services()
 
-        # Initialize version manager
-        WandererNotifier.Cache.VersionManager.initialize()
+          try do
+            initialize_version_manager_with_retry()
+            WandererNotifier.Cache.Analytics.start_collection()
 
-        # Start cache analytics collection
-        WandererNotifier.Cache.Analytics.start_collection()
+            WandererNotifier.Logger.Logger.startup_info(
+              "Cache version manager and analytics initialized"
+            )
+          rescue
+            error ->
+              WandererNotifier.Logger.Logger.startup_error(
+                "Failed to initialize cache services",
+                error: Exception.message(error)
+              )
+          end
+        end)
 
-        WandererNotifier.Logger.Logger.startup_info(
-          "Cache performance monitoring, warming, versioning, and analytics initialized"
-        )
+        WandererNotifier.Logger.Logger.startup_info("Cache performance monitoring initialized")
       rescue
         error ->
           WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
@@ -160,25 +195,85 @@ defmodule WandererNotifier.Application do
   end
 
   # Wait for the supervision tree to be fully started
-  defp wait_for_supervisor_startup do
-    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
-      nil ->
-        # Supervisor not started yet, wait a bit and retry
-        Process.sleep(100)
-        wait_for_supervisor_startup()
-
-      pid when is_pid(pid) ->
-        # Supervisor is running, check if it's responsive
-        # which_children always returns a list
-        _children = Supervisor.which_children(pid)
-        # Supervisor is responsive and ready
-        :ok
+  defp wait_for_supervisor_startup(attempt \\ 0, max_attempts \\ 50) do
+    if attempt >= max_attempts do
+      raise "SSESupervisor failed to start after #{max_attempts} attempts"
     end
-  rescue
-    _ ->
-      # If there's an error, wait a bit and try again
-      Process.sleep(100)
-      wait_for_supervisor_startup()
+
+    case check_supervisor_state() do
+      :ready -> :ok
+      :not_found -> wait_and_retry_supervisor(attempt, max_attempts)
+      :not_ready -> wait_and_retry_supervisor(attempt, max_attempts)
+    end
+  end
+
+  defp check_supervisor_state do
+    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
+      nil -> :not_found
+      pid when is_pid(pid) -> check_supervisor_ready(pid)
+    end
+  end
+
+  defp wait_and_retry_supervisor(attempt, max_attempts) do
+    wait_time = calculate_backoff_ms(attempt)
+    Process.sleep(wait_time)
+    wait_for_supervisor_startup(attempt + 1, max_attempts)
+  end
+
+  defp check_supervisor_ready(pid) do
+    try do
+      # Check if supervisor can respond to queries
+      children = Supervisor.which_children(pid)
+
+      # Verify at least some children are started
+      if length(children) > 0 do
+        :ready
+      else
+        :not_ready
+      end
+    rescue
+      _ ->
+        # If there's an error, supervisor is not ready
+        :not_ready
+    end
+  end
+
+  defp calculate_backoff_ms(attempt) do
+    # Exponential backoff: 10ms, 20ms, 40ms, ..., max 1000ms
+    base_ms = 10
+    max_ms = 1000
+
+    backoff = base_ms * :math.pow(2, attempt)
+    min(trunc(backoff), max_ms)
+  end
+
+  # Wait for cache services to be ready
+  defp wait_for_cache_services(attempt \\ 0, max_attempts \\ 30) do
+    if attempt >= max_attempts do
+      raise "Cache services failed to start after #{max_attempts} attempts"
+    end
+
+    required_services = [
+      WandererNotifier.Cache.Analytics,
+      WandererNotifier.Cache.PerformanceMonitor
+    ]
+
+    all_ready = Enum.all?(required_services, &service_ready?/1)
+
+    if all_ready do
+      :ok
+    else
+      wait_time = calculate_backoff_ms(attempt)
+      Process.sleep(wait_time)
+      wait_for_cache_services(attempt + 1, max_attempts)
+    end
+  end
+
+  defp service_ready?(service) do
+    case Process.whereis(service) do
+      nil -> false
+      pid when is_pid(pid) -> Process.alive?(pid)
+    end
   end
 
   # Validates configuration on startup and logs any issues

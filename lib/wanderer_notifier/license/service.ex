@@ -513,7 +513,8 @@ defmodule WandererNotifier.License.Service do
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: 1
     }
 
     AppLogger.config_info("🧑‍💻 Development license active", state: inspect(dev_state))
@@ -575,14 +576,15 @@ defmodule WandererNotifier.License.Service do
     error_message = error_reason_to_message(reason)
     AppLogger.config_error("License/bot validation failed: #{error_message}")
 
-    error_state = %{
+    error_state = %State{
       valid: false,
       bot_assigned: false,
       error: reason,
       error_message: error_message,
       details: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: min(state.backoff_multiplier * 2, 32)
     }
 
     AppLogger.config_info("⚠️ Error license state", state: inspect(error_state))
@@ -627,14 +629,15 @@ defmodule WandererNotifier.License.Service do
     error_msg = message || "License is not valid"
     AppLogger.config_error("License validation failed - #{error_msg}")
 
-    invalid_state = %{
+    invalid_state = %State{
       valid: false,
       bot_assigned: false,
       details: response,
       error: :invalid_license,
       error_message: error_msg,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: min(state.backoff_multiplier * 2, 32)
     }
 
     AppLogger.config_info("❌ Invalid license state", state: inspect(invalid_state))

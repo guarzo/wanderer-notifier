@@ -25,18 +25,45 @@ defmodule WandererNotifier.Realtime.HealthChecker do
   Returns one of: :excellent, :good, :poor, :critical
   """
   def assess_connection_quality(%Connection{} = connection) do
-    ping_score = assess_ping_health(connection)
-    uptime_score = assess_uptime_health(connection)
-    heartbeat_score = assess_heartbeat_health(connection)
-    status_score = assess_status_health(connection)
+    scores = calculate_health_scores(connection)
+    weights = get_connection_weights(connection.type)
 
-    # Weight the scores (ping: 30%, uptime: 40%, heartbeat: 20%, status: 10%)
-    weighted_score =
-      ping_score * 0.3 +
-        uptime_score * 0.4 +
-        heartbeat_score * 0.2 +
-        status_score * 0.1
+    weighted_score = calculate_weighted_score(scores, weights)
+    categorize_quality_score(weighted_score)
+  end
 
+  defp calculate_health_scores(connection) do
+    %{
+      ping: assess_ping_health(connection),
+      uptime: assess_uptime_health(connection),
+      heartbeat: assess_heartbeat_health(connection),
+      status: assess_status_health(connection)
+    }
+  end
+
+  defp get_connection_weights(:sse) do
+    # No heartbeat for SSE, redistribute to uptime and status
+    %{ping: 0.3, uptime: 0.5, heartbeat: 0.0, status: 0.2}
+  end
+
+  defp get_connection_weights(:websocket) do
+    # Standard weights for WebSocket connections
+    %{ping: 0.3, uptime: 0.4, heartbeat: 0.2, status: 0.1}
+  end
+
+  defp get_connection_weights(_) do
+    # Default weights
+    %{ping: 0.3, uptime: 0.4, heartbeat: 0.2, status: 0.1}
+  end
+
+  defp calculate_weighted_score(scores, weights) do
+    scores.ping * weights.ping +
+      scores.uptime * weights.uptime +
+      scores.heartbeat * weights.heartbeat +
+      scores.status * weights.status
+  end
+
+  defp categorize_quality_score(weighted_score) do
     cond do
       weighted_score >= 0.9 -> :excellent
       weighted_score >= 0.7 -> :good
@@ -50,36 +77,36 @@ defmodule WandererNotifier.Realtime.HealthChecker do
   """
   def calculate_uptime_percentage(%Connection{} = connection) do
     case connection.connected_at do
-      nil ->
-        0.0
-
-      connected_at ->
-        now = DateTime.utc_now()
-        total_seconds = DateTime.diff(now, connected_at, :second)
-
-        # For now, we'll use a simple calculation based on current status
-        # In a real implementation, you'd track disconnect periods
-        case connection.status do
-          :connected ->
-            # Calculate based on any known disconnection periods
-            # For simplicity, we'll use a high percentage if currently connected
-            # Improve over time
-            min(99.5, 95.0 + total_seconds / 3600 * 0.5)
-
-          :connecting ->
-            85.0
-
-          :reconnecting ->
-            80.0
-
-          :failed ->
-            0.0
-
-          :disconnected ->
-            50.0
-        end
+      nil -> 0.0
+      connected_at -> calculate_uptime_from_connection_time(connection, connected_at)
     end
   end
+
+  defp calculate_uptime_from_connection_time(%Connection{} = connection, connected_at) do
+    now = DateTime.utc_now()
+    total_seconds = DateTime.diff(now, connected_at, :second)
+
+    # For now, we'll use a simple calculation based on current status
+    # In a real implementation, you'd track disconnect periods
+    calculate_uptime_by_status(connection.status, total_seconds)
+  end
+
+  defp calculate_uptime_by_status(:connected, total_seconds) do
+    # If currently connected, assume good uptime unless we track disconnections
+    # Give new connections benefit of doubt after grace period
+    if total_seconds > 300 do
+      # After 5 minutes, assume good uptime (99.0%) for stable connections
+      99.0
+    else
+      # Grace period for new connections - don't penalize them
+      99.0
+    end
+  end
+
+  defp calculate_uptime_by_status(:connecting, _total_seconds), do: 85.0
+  defp calculate_uptime_by_status(:reconnecting, _total_seconds), do: 80.0
+  defp calculate_uptime_by_status(:failed, _total_seconds), do: 0.0
+  defp calculate_uptime_by_status(:disconnected, _total_seconds), do: 50.0
 
   @doc """
   Checks if a connection's heartbeat is healthy.
@@ -171,46 +198,55 @@ defmodule WandererNotifier.Realtime.HealthChecker do
   end
 
   defp generate_recommendations(%Connection{} = connection) do
-    recommendations = []
-
     recommendations =
-      if heartbeat_healthy?(connection) do
-        recommendations
-      else
-        ["Check heartbeat mechanism - no recent heartbeat detected" | recommendations]
-      end
-
-    recommendations =
-      case get_average_ping(connection) do
-        nil ->
-          recommendations
-
-        ping when ping > @poor_ping_threshold ->
-          ["High latency detected - consider connection optimization" | recommendations]
-
-        _ ->
-          recommendations
-      end
-
-    recommendations =
-      if connection.status == :failed do
-        ["Connection failed - check network connectivity" | recommendations]
-      else
-        recommendations
-      end
-
-    uptime = calculate_uptime_percentage(connection)
-
-    recommendations =
-      if uptime < @poor_uptime_threshold do
-        ["Low uptime detected - investigate connection stability" | recommendations]
-      else
-        recommendations
-      end
+      []
+      |> check_heartbeat_recommendation(connection)
+      |> check_ping_recommendation(connection)
+      |> check_status_recommendation(connection)
+      |> check_uptime_recommendation(connection)
 
     case recommendations do
       [] -> ["Connection appears healthy"]
       recs -> recs
+    end
+  end
+
+  defp check_heartbeat_recommendation(recommendations, connection) do
+    if connection.type == :websocket and not heartbeat_healthy?(connection) do
+      ["Check heartbeat mechanism - no recent heartbeat detected" | recommendations]
+    else
+      recommendations
+    end
+  end
+
+  defp check_ping_recommendation(recommendations, connection) do
+    case get_average_ping(connection) do
+      nil ->
+        recommendations
+
+      ping when ping > @poor_ping_threshold ->
+        ["High latency detected - consider connection optimization" | recommendations]
+
+      _ ->
+        recommendations
+    end
+  end
+
+  defp check_status_recommendation(recommendations, connection) do
+    if connection.status == :failed do
+      ["Connection failed - check network connectivity" | recommendations]
+    else
+      recommendations
+    end
+  end
+
+  defp check_uptime_recommendation(recommendations, connection) do
+    uptime = calculate_uptime_percentage(connection)
+
+    if uptime < @poor_uptime_threshold do
+      ["Low uptime detected - investigate connection stability" | recommendations]
+    else
+      recommendations
     end
   end
 end

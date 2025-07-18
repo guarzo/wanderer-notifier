@@ -102,6 +102,15 @@ defmodule WandererNotifier.Cache.Config do
       compression: [
         # Compress values larger than 1KB
         threshold: 1024
+      ],
+      # Memory limits to prevent excessive memory usage (reduced for debugging)
+      limit: [
+        # Maximum 50MB memory usage (in bytes) - reduced from 100MB
+        memory: 50 * 1024 * 1024,
+        # Maximum 10,000 cache entries - reduced from 50,000
+        size: 10_000,
+        # Use LRU eviction policy when limits are reached
+        policy: Cachex.Policy.LRU
       ]
     ]
 

@@ -345,6 +345,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp send_notification(%Killmail{} = km, _ctx) do
     case Notification.send_kill_notification(km, km.killmail_id) do
       {:ok, _} ->
+        Telemetry.processing_completed(km.killmail_id, {:ok, :notified})
         Telemetry.killmail_notified(km.killmail_id, get_system_name_from_killmail(km))
         AppLogger.kill_info("💀 ✅ Killmail #{km.killmail_id} notified")
         {:ok, km.killmail_id}
@@ -355,6 +356,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp handle_notification_skipped(kill_id, system_id, reason) do
+    Telemetry.processing_completed(kill_id, {:ok, :skipped})
     Telemetry.processing_skipped(kill_id, reason)
 
     AppLogger.kill_info(
@@ -369,6 +371,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp handle_error(data, ctx, reason) do
     kill_id = safe_extract_killmail_id(data)
 
+    Telemetry.processing_completed(kill_id, {:error, reason})
     Telemetry.processing_error(kill_id, reason)
     log_error(kill_id, ctx, reason)
     {:error, reason}

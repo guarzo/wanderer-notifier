@@ -84,44 +84,72 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
   # Registers commands with retry logic to handle rate limiting.
   defp register_commands_with_retry(application_id, retries \\ 3) do
     case ApplicationCommand.bulk_overwrite_global_commands(application_id, commands()) do
-      {:ok, _commands} ->
-        WandererNotifier.Logger.Logger.startup_info(
-          "Successfully registered Discord slash commands"
-        )
-
-        log_registered_commands()
-        :ok
-
-      {:error, %{status_code: 429} = error} when retries > 0 ->
-        # Rate limited, wait and retry
-        wait_time = extract_retry_after(error)
-
-        WandererNotifier.Logger.Logger.startup_warn(
-          "Rate limited registering commands, retrying in #{wait_time}ms"
-        )
-
-        Process.sleep(wait_time)
-        register_commands_with_retry(application_id, retries - 1)
-
-      {:error, %{status_code: 401}} ->
-        WandererNotifier.Logger.Logger.startup_error(
-          "Invalid Discord bot token for command registration"
-        )
-
-        {:error, :invalid_token}
-
-      {:error, %{status_code: 403}} ->
-        WandererNotifier.Logger.Logger.startup_error("Bot lacks permissions to register commands")
-        {:error, :insufficient_permissions}
-
-      {:error, error} ->
-        WandererNotifier.Logger.Logger.startup_error("Failed to register Discord commands",
-          error: inspect(error),
-          application_id: application_id
-        )
-
-        {:error, error}
+      {:ok, _commands} -> handle_registration_success()
+      {:error, error} -> handle_registration_error(error, application_id, retries)
     end
+  end
+
+  defp handle_registration_success do
+    WandererNotifier.Logger.Logger.startup_info("Successfully registered Discord slash commands")
+    log_registered_commands()
+    :ok
+  end
+
+  defp handle_registration_error(%{status_code: 429} = error, application_id, retries)
+       when retries > 0 do
+    handle_rate_limit_error(error, application_id, retries)
+  end
+
+  defp handle_registration_error(%{status_code: status} = error, application_id, retries)
+       when status in [500, 502, 503, 504] and retries > 0 do
+    handle_server_error(error, status, application_id, retries)
+  end
+
+  defp handle_registration_error(%{status_code: 401}, _application_id, _retries) do
+    WandererNotifier.Logger.Logger.startup_error(
+      "Invalid Discord bot token for command registration"
+    )
+
+    {:error, :invalid_token}
+  end
+
+  defp handle_registration_error(%{status_code: 403}, _application_id, _retries) do
+    WandererNotifier.Logger.Logger.startup_error("Bot lacks permissions to register commands")
+    {:error, :insufficient_permissions}
+  end
+
+  defp handle_registration_error(error, application_id, _retries) do
+    WandererNotifier.Logger.Logger.startup_error("Failed to register Discord commands",
+      error: inspect(error),
+      application_id: application_id
+    )
+
+    {:error, error}
+  end
+
+  defp handle_rate_limit_error(error, application_id, retries) do
+    wait_time = extract_retry_after(error)
+
+    WandererNotifier.Logger.Logger.startup_warn(
+      "Rate limited registering commands, retrying in #{wait_time}ms"
+    )
+
+    Process.sleep(wait_time)
+    register_commands_with_retry(application_id, retries - 1)
+  end
+
+  defp handle_server_error(_error, status, application_id, retries) do
+    attempt = 3 - retries + 1
+    wait_time = calculate_exponential_backoff(attempt)
+
+    WandererNotifier.Logger.Logger.startup_warn(
+      "Server error registering commands (#{status}), retrying in #{wait_time}ms",
+      attempt: attempt,
+      retries_left: retries - 1
+    )
+
+    Process.sleep(wait_time)
+    register_commands_with_retry(application_id, retries - 1)
   end
 
   @doc """
@@ -259,6 +287,18 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   # Default to 5 seconds
   defp extract_retry_after(_), do: 5000
+
+  defp calculate_exponential_backoff(attempt) do
+    # Exponential backoff: 1s, 2s, 4s, max 8s
+    base_ms = 1000
+    max_ms = 8000
+
+    backoff = base_ms * :math.pow(2, attempt - 1)
+    # Add 10-20% jitter
+    with_jitter = backoff * (0.9 + :rand.uniform() * 0.2)
+
+    min(trunc(with_jitter), max_ms)
+  end
 
   # Logs details about registered commands
   defp log_registered_commands do

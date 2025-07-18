@@ -46,6 +46,7 @@ defmodule WandererNotifier.MixProject do
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},
+      {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:plug, "~> 1.18"},
       {:plug_cowboy, "~> 2.7"},
@@ -57,6 +58,8 @@ defmodule WandererNotifier.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:ecto, "~> 3.12"},
       {:mint_web_socket, "~> 1.0"},
+      # Rate limiting
+      {:hammer, "~> 6.2"},
       # Development & Testing
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},

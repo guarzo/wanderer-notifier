@@ -116,10 +116,57 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   @doc """
   Fetches characters from the API and populates the cache.
   This is used during initialization to ensure we have character data.
+  Uses memory-efficient sequential processing to prevent startup spikes.
   """
   def fetch_and_cache_characters do
-    AppLogger.api_info("Fetching characters from API for initialization")
-    # Fetch with empty cache to trigger the fetch, but suppress notifications
-    fetch_and_process(api_url(), headers(), [], suppress_notifications: true)
+    AppLogger.api_info("Fetching characters from API for initialization (memory-efficient mode)")
+
+    with {:ok, decoded} <-
+           WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode(api_url(), headers()),
+         {:ok, characters} <- extract_data(decoded),
+         :ok <- validate_data(characters) do
+      # Process characters in smaller batches to prevent memory spikes
+      # Smaller batches for character data
+      batch_size = 25
+      batched_characters = Enum.chunk_every(characters, batch_size)
+
+      AppLogger.api_info("Processing characters in batches",
+        total_characters: length(characters),
+        batch_size: batch_size,
+        batch_count: length(batched_characters)
+      )
+
+      # Process each batch with a small delay for GC
+      final_characters = process_characters_in_batches(batched_characters, [])
+
+      # Cache all processed characters at once
+      WandererNotifier.Map.Clients.BaseMapClient.cache_put(
+        cache_key(),
+        final_characters,
+        cache_ttl()
+      )
+    else
+      error ->
+        AppLogger.api_error("Failed to fetch and cache characters", error: inspect(error))
+        error
+    end
+  end
+
+  defp process_characters_in_batches([], accumulated) do
+    # Reverse the accumulated list since we prepended items
+    Enum.reverse(accumulated)
+  end
+
+  defp process_characters_in_batches([batch | remaining_batches], accumulated) do
+    # Process current batch
+    processed_batch = Enum.map(batch, &enrich_item/1)
+
+    # Add small delay between batches to allow garbage collection
+    # Slightly longer delay for character enrichment
+    Process.sleep(100)
+
+    # Continue with remaining batches
+    # Prepend for O(1) performance instead of append which is O(n)
+    process_characters_in_batches(remaining_batches, Enum.reverse(processed_batch) ++ accumulated)
   end
 end

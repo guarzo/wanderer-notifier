@@ -109,7 +109,8 @@ defmodule WandererNotifier.EventSourcing.Pipeline do
   @impl true
   def handle_cast({:process_batch, events}, state) do
     # Process the batch immediately
-    batch_events = Enum.reverse(events) ++ state.current_batch
+    # Use prepending instead of appending for better performance
+    batch_events = Enum.reduce(events, state.current_batch, fn event, acc -> [event | acc] end)
     process_batch_events(%{state | current_batch: batch_events})
   end
 

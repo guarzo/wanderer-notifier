@@ -12,6 +12,7 @@ defmodule WandererNotifier.EventSourcing.Event do
     :type,
     :source,
     :timestamp,
+    :monotonic_timestamp,
     :data,
     :metadata,
     :version,
@@ -28,6 +29,7 @@ defmodule WandererNotifier.EventSourcing.Event do
           type: event_type(),
           source: event_source(),
           timestamp: integer(),
+          monotonic_timestamp: integer() | nil,
           data: map(),
           metadata: map() | nil,
           version: integer() | nil,
@@ -50,7 +52,8 @@ defmodule WandererNotifier.EventSourcing.Event do
       }
   """
   def new(type, source, data, opts \\ []) do
-    now = System.monotonic_time(:millisecond)
+    now = System.system_time(:millisecond)
+    monotonic_now = System.monotonic_time(:millisecond)
     id = generate_event_id(type, source, now)
 
     %__MODULE__{
@@ -58,6 +61,7 @@ defmodule WandererNotifier.EventSourcing.Event do
       type: type,
       source: source,
       timestamp: now,
+      monotonic_timestamp: monotonic_now,
       data: data,
       metadata: Keyword.get(opts, :metadata, %{}),
       version: Keyword.get(opts, :version, 1),
@@ -143,9 +147,16 @@ defmodule WandererNotifier.EventSourcing.Event do
 
   @doc """
   Gets the age of an event in milliseconds.
+  Uses monotonic time if available to handle system clock changes.
   """
+  def age(%__MODULE__{monotonic_timestamp: monotonic_timestamp})
+      when not is_nil(monotonic_timestamp) do
+    System.monotonic_time(:millisecond) - monotonic_timestamp
+  end
+
   def age(%__MODULE__{timestamp: timestamp}) do
-    System.monotonic_time(:millisecond) - timestamp
+    # Fallback for events without monotonic timestamp
+    System.system_time(:millisecond) - timestamp
   end
 
   @doc """

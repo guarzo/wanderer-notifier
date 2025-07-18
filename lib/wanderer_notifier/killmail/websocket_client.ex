@@ -39,7 +39,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       subscribed_characters: MapSet.new(),
       pipeline_worker: Keyword.get(opts, :pipeline_worker),
       connected_at: nil,
-      reconnect_attempts: 0
+      reconnect_attempts: 0,
+      connection_id: nil
     }
 
     WebSockex.start_link(socket_url, __MODULE__, state,
@@ -59,7 +60,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     )
 
     # Register connection with monitoring system (skip if Integration not running)
-    connection_id = "websocket_killmail_#{:erlang.phash2(self())}"
+    connection_id =
+      "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
 
     if Process.whereis(WandererNotifier.Realtime.Integration) do
       WandererNotifier.Realtime.Integration.register_websocket_connection(connection_id, %{
@@ -71,6 +73,18 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       WandererNotifier.Realtime.Integration.update_connection_health(connection_id, :connected)
     end
 
+    # Notify fallback handler that WebSocket is connected
+    if Process.whereis(WandererNotifier.Killmail.FallbackHandler) do
+      WandererNotifier.Killmail.FallbackHandler.websocket_connected()
+    end
+
+    # Update stats with connection time
+    WandererNotifier.Core.Stats.update_websocket_stats(%{
+      connection_start: System.system_time(:second),
+      connected_at: connected_at,
+      url: state.url
+    })
+
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
 
@@ -81,15 +95,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     # Join the killmails channel
     send(self(), :join_channel)
 
-    {:ok,
-     %{
-       state
-       | heartbeat_ref: heartbeat_ref,
-         subscription_update_ref: subscription_update_ref,
-         connected_at: connected_at,
-         connection_id: connection_id,
-         reconnect_attempts: 0
-     }}
+    new_state = %{
+      state
+      | heartbeat_ref: heartbeat_ref,
+        subscription_update_ref: subscription_update_ref,
+        connected_at: connected_at,
+        connection_id: connection_id,
+        reconnect_attempts: 0
+    }
+
+    {:ok, new_state}
   end
 
   def handle_disconnect(%{reason: reason}, state) do
@@ -108,6 +123,14 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
         %{reason: reason}
       )
     end
+
+    # Notify fallback handler that WebSocket is down
+    if Process.whereis(WandererNotifier.Killmail.FallbackHandler) do
+      WandererNotifier.Killmail.FallbackHandler.websocket_down()
+    end
+
+    # Clear websocket stats on disconnect
+    WandererNotifier.Core.Stats.update_websocket_stats(%{})
 
     # Calculate exponential backoff with jitter
     delay = calculate_backoff(state.reconnect_attempts)
@@ -173,28 +196,15 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_frame({:text, message}, state) do
-    WandererNotifier.Logger.Logger.info("WebSocket text frame received",
-      message_size: byte_size(message),
-      message_preview: String.slice(message, 0, 500)
-    )
+    message_size = byte_size(message)
+    log_frame_received(message_size)
 
     case Jason.decode(message) do
       {:ok, data} ->
-        WandererNotifier.Logger.Logger.info("Decoded WebSocket message",
-          event: data["event"],
-          topic: data["topic"],
-          payload_keys: if(is_map(data["payload"]), do: Map.keys(data["payload"]), else: nil)
-        )
-
-        handle_phoenix_message(data, state)
+        handle_decoded_message(data, state)
 
       {:error, reason} ->
-        WandererNotifier.Logger.Logger.error("Failed to decode WebSocket message",
-          error: inspect(reason),
-          message: message
-        )
-
-        {:ok, state}
+        handle_decode_error(message, message_size, reason, state)
     end
   end
 
@@ -203,47 +213,51 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     {:ok, state}
   end
 
-  def handle_info(:heartbeat, state) do
-    # Log heartbeat with connection uptime
-    uptime =
-      if state[:connected_at] do
-        DateTime.diff(DateTime.utc_now(), state.connected_at, :second)
-      else
-        0
-      end
+  defp log_frame_received(message_size) do
+    # Only log detailed info for debug level, reduce memory impact
+    WandererNotifier.Logger.Logger.processor_debug("WebSocket text frame received",
+      message_size: message_size
+    )
+  end
 
-    WandererNotifier.Logger.Logger.info(
-      "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
+  defp handle_decoded_message(data, state) do
+    log_decoded_message(data)
+    handle_phoenix_message(data, state)
+  end
+
+  defp log_decoded_message(data) do
+    WandererNotifier.Logger.Logger.processor_debug("Decoded WebSocket message",
+      event: data["event"],
+      topic: data["topic"],
+      payload_keys: extract_payload_keys(data["payload"])
+    )
+  end
+
+  defp extract_payload_keys(payload) when is_map(payload), do: Map.keys(payload)
+  defp extract_payload_keys(_), do: nil
+
+  defp handle_decode_error(message, message_size, reason, state) do
+    message_preview = truncate_message(message, message_size)
+
+    WandererNotifier.Logger.Logger.error("Failed to decode WebSocket message",
+      error: inspect(reason),
+      message_size: message_size,
+      message_preview: message_preview
     )
 
-    # Record heartbeat in monitoring system (skip if Integration not running)
-    if Map.has_key?(state, :connection_id) &&
-         Process.whereis(WandererNotifier.Realtime.Integration) do
-      WandererNotifier.Realtime.Integration.record_heartbeat(state.connection_id)
-    end
+    {:ok, state}
+  end
 
-    # Send Phoenix heartbeat
-    if state.channel_ref do
-      heartbeat_message = %{
-        topic: "phoenix",
-        event: "heartbeat",
-        payload: %{},
-        ref: "heartbeat_#{System.system_time(:millisecond)}"
-      }
+  defp truncate_message(message, message_size) when message_size > 200 do
+    String.slice(message, 0, 200) <> "... (truncated)"
+  end
 
-      case Jason.encode(heartbeat_message) do
-        {:ok, json} ->
-          {:reply, {:text, json},
-           %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}}
+  defp truncate_message(message, _message_size), do: message
 
-        {:error, _} ->
-          {:ok,
-           %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}}
-      end
-    else
-      WandererNotifier.Logger.Logger.warn("Heartbeat attempted but no channel_ref set")
-      {:ok, %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}}
-    end
+  def handle_info(:heartbeat, state) do
+    log_heartbeat_uptime(state)
+    record_heartbeat_in_monitoring(state)
+    send_phoenix_heartbeat(state)
   end
 
   def handle_info(:connect_delayed, state) do
@@ -264,9 +278,90 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
   end
 
   def handle_info(:join_channel, state) do
-    {limited_systems, limited_characters} = prepare_subscription_data()
-    join_params = build_join_params(limited_systems, limited_characters)
-    send_join_message(join_params, limited_systems, limited_characters, state)
+    WandererNotifier.Logger.Logger.info("WebSocket handling join_channel message")
+
+    try do
+      {limited_systems, limited_characters} = prepare_subscription_data()
+      join_params = build_join_params(limited_systems, limited_characters)
+      result = send_join_message(join_params, limited_systems, limited_characters, state)
+      WandererNotifier.Logger.Logger.info("Join channel result: #{inspect(result)}")
+      result
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.error("Error during channel join",
+          error: Exception.message(error),
+          stacktrace: __STACKTRACE__
+        )
+
+        # Retry after delay
+        Process.send_after(self(), :join_channel, 5_000)
+        {:ok, state}
+    end
+  end
+
+  defp log_heartbeat_uptime(state) do
+    uptime = calculate_connection_uptime(state)
+
+    WandererNotifier.Logger.Logger.info(
+      "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
+    )
+  end
+
+  defp calculate_connection_uptime(%{connected_at: connected_at}) when not is_nil(connected_at) do
+    DateTime.diff(DateTime.utc_now(), connected_at, :second)
+  end
+
+  defp calculate_connection_uptime(_), do: 0
+
+  defp record_heartbeat_in_monitoring(state) do
+    # Record heartbeat in monitoring system (skip if Integration not running)
+    if should_record_heartbeat?(state) do
+      WandererNotifier.Realtime.Integration.record_heartbeat(state.connection_id)
+    end
+  end
+
+  defp should_record_heartbeat?(state) do
+    Map.has_key?(state, :connection_id) &&
+      state.connection_id &&
+      Process.whereis(WandererNotifier.Realtime.Integration) != nil
+  end
+
+  defp send_phoenix_heartbeat(state) do
+    if state.channel_ref do
+      send_heartbeat_message(state)
+    else
+      handle_missing_channel_ref(state)
+    end
+  end
+
+  defp send_heartbeat_message(state) do
+    heartbeat_message = build_heartbeat_message()
+
+    case Jason.encode(heartbeat_message) do
+      {:ok, json} ->
+        {:reply, {:text, json}, schedule_next_heartbeat(state)}
+
+      {:error, _} ->
+        {:ok, schedule_next_heartbeat(state)}
+    end
+  end
+
+  defp build_heartbeat_message do
+    %{
+      topic: "phoenix",
+      event: "heartbeat",
+      payload: %{},
+      ref: "heartbeat_#{System.system_time(:millisecond)}"
+    }
+  end
+
+  defp handle_missing_channel_ref(state) do
+    WandererNotifier.Logger.Logger.warn("Heartbeat attempted but no channel_ref set")
+    {:ok, schedule_next_heartbeat(state)}
+  end
+
+  defp schedule_next_heartbeat(state) do
+    %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}
   end
 
   defp check_and_update_subscriptions(state) do

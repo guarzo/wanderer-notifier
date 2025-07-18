@@ -24,7 +24,7 @@ defmodule WandererNotifier.Http.Client do
 
   alias WandererNotifier.Http.Utils.JsonUtils
   alias WandererNotifier.Http.Middleware.Telemetry
-  alias WandererNotifier.Http.Middleware.{Retry, RateLimiter}
+  alias WandererNotifier.Http.Middleware.Retry
 
   # HTTP client configuration - use runtime config for test compatibility
   defp http_client do
@@ -148,8 +148,46 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
-    # Delegate to the existing HTTP module to avoid code duplication
-    WandererNotifier.HTTP.request(method, url, headers, body, opts)
+    # Use Req directly to avoid circular dependency
+    req_opts = build_req_opts(opts, headers, body)
+
+    case Req.request([method: method, url: url] ++ req_opts) do
+      {:ok, %Req.Response{status: status, body: response_body, headers: response_headers}} ->
+        {:ok, %{status_code: status, body: response_body, headers: response_headers}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp build_req_opts(opts, headers, body) do
+    req_opts = []
+
+    # Add headers if provided
+    req_opts = if headers != [], do: Keyword.put(req_opts, :headers, headers), else: req_opts
+
+    # Add body if provided
+    req_opts = if body != nil, do: Keyword.put(req_opts, :body, body), else: req_opts
+
+    # Add timeout options - prioritize recv_timeout over timeout if both are present
+    receive_timeout =
+      cond do
+        Keyword.has_key?(opts, :recv_timeout) -> Keyword.get(opts, :recv_timeout)
+        Keyword.has_key?(opts, :timeout) -> Keyword.get(opts, :timeout)
+        true -> nil
+      end
+
+    req_opts =
+      if receive_timeout,
+        do: Keyword.put(req_opts, :receive_timeout, receive_timeout),
+        else: req_opts
+
+    req_opts =
+      if Keyword.has_key?(opts, :connect_timeout),
+        do: Keyword.put(req_opts, :connect_timeout, Keyword.get(opts, :connect_timeout)),
+        else: req_opts
+
+    req_opts
   end
 
   defp prepare_body(nil), do: nil
@@ -178,6 +216,6 @@ defmodule WandererNotifier.Http.Client do
     # Default middleware chain with retry, rate limiting, and telemetry
     # Telemetry should be first to capture all metrics
     # Can be overridden per request
-    [Telemetry, Retry, RateLimiter]
+    [Telemetry, RateLimiter, Retry]
   end
 end

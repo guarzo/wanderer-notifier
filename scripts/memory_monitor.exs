@@ -32,6 +32,9 @@ defmodule MemoryMonitor do
     IO.puts("Code:       #{mb(memory_info[:code])} MB")
     IO.puts("ETS:        #{mb(memory_info[:ets])} MB")
     
+    # Check specific WandererNotifier processes
+    print_app_process_memory()
+    
     # Process statistics
     process_count = :erlang.system_info(:process_count)
     process_limit = :erlang.system_info(:process_limit)
@@ -125,6 +128,87 @@ defmodule MemoryMonitor do
     end
   end
   
+  defp print_app_process_memory do
+    IO.puts("")
+    IO.puts("WandererNotifier Processes:")
+    
+    app_processes = [
+      {"WebSocket Client", WandererNotifier.Killmail.WebSocketClient},
+      {"Cache Metrics", WandererNotifier.Cache.Metrics},
+      {"Cache Analytics", WandererNotifier.Cache.Analytics},
+      {"Performance Monitor", WandererNotifier.Cache.PerformanceMonitor},
+      {"Cache", :wanderer_cache},
+      {"Stats", WandererNotifier.Core.Stats},
+      {"License Service", WandererNotifier.License.Service}
+    ]
+    
+    Enum.each(app_processes, fn {name, module} ->
+      pid = case module do
+        atom when is_atom(atom) -> Process.whereis(atom)
+        _ -> nil
+      end
+      
+      if pid do
+        info = Process.info(pid)
+        memory_mb = mb(Keyword.get(info, :memory, 0))
+        queue_len = Keyword.get(info, :message_queue_len, 0)
+        heap_size = Keyword.get(info, :heap_size, 0)
+        
+        IO.puts("  #{String.pad_trailing(name, 20)} #{memory_mb} MB (Queue: #{queue_len}, Heap: #{heap_size})")
+        
+        # Alert on high values
+        if memory_mb > 50 do
+          IO.puts("    🚨 HIGH MEMORY USAGE")
+        end
+        if queue_len > 100 do
+          IO.puts("    🚨 HIGH MESSAGE QUEUE")
+        end
+      else
+        IO.puts("  #{String.pad_trailing(name, 20)} Not Found")
+      end
+    end)
+    
+    # Try to get cache statistics
+    print_cache_stats()
+  end
+  
+  defp print_cache_stats do
+    try do
+      if Process.whereis(:wanderer_cache) do
+        IO.puts("")
+        IO.puts("Cache Statistics:")
+        
+        # Try to get cache size
+        case apply(Cachex, :size, [:wanderer_cache]) do
+          {:ok, size} ->
+            IO.puts("  Cache Size: #{size} entries")
+            
+            # Try to get cache stats
+            case apply(Cachex, :stats, [:wanderer_cache]) do
+              {:ok, stats} ->
+                hit_rate = Map.get(stats, :hit_rate, 0.0)
+                miss_rate = Map.get(stats, :miss_rate, 0.0)
+                IO.puts("  Hit Rate: #{Float.round(hit_rate * 100, 2)}%")
+                IO.puts("  Miss Rate: #{Float.round(miss_rate * 100, 2)}%")
+                
+              _ ->
+                IO.puts("  Stats: Unavailable")
+            end
+            
+          _ ->
+            IO.puts("  Size: Unavailable")
+        end
+      else
+        IO.puts("")
+        IO.puts("Cache: Process not found")
+      end
+    rescue
+      error ->
+        IO.puts("")
+        IO.puts("Cache: Error - #{inspect(error)}")
+    end
+  end
+
   defp mb(bytes) when is_integer(bytes) do
     Float.round(bytes / 1_048_576, 2)
   end
