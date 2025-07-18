@@ -106,27 +106,9 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
         Logger.debug("No voice states available for guild #{guild.id}")
         []
 
-      voice_states when is_map(voice_states) ->
-        process_voice_states_map(voice_states, guild)
-
       voice_states when is_list(voice_states) ->
         process_voice_states_list(voice_states, guild)
-
-      _ ->
-        Logger.warning("Unexpected voice_states structure for guild #{guild.id}")
-        []
     end
-  end
-
-  # Processes voice states when they're in map format
-  @spec process_voice_states_map(map(), map()) :: [String.t()]
-  defp process_voice_states_map(voice_states, guild) do
-    voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
-
-    voice_states
-    |> Map.values()
-    |> filter_by_voice_channels(voice_channel_ids)
-    |> build_user_mentions()
   end
 
   # Processes voice states when they're in list format
