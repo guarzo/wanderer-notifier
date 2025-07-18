@@ -4,8 +4,15 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
   alias WandererNotifier.Http.Middleware.RateLimiter
 
   setup do
-    # Hammer manages its own ETS tables, no need to clear them
-    :ok
+    # Start the rate limiter process if it's not already running
+    case Process.whereis(WandererNotifier.RateLimiter) do
+      nil ->
+        {:ok, _pid} = WandererNotifier.RateLimiter.start_link([])
+        :ok
+
+      _pid ->
+        :ok
+    end
   end
 
   describe "call/2" do
