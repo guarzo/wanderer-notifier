@@ -1,19 +1,9 @@
 defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Http.Middleware.RateLimiter
 
-  setup do
-    # Start the rate limiter process if it's not already running
-    case Process.whereis(WandererNotifier.RateLimiter) do
-      nil ->
-        {:ok, _pid} = WandererNotifier.RateLimiter.start_link([])
-        :ok
-
-      _pid ->
-        :ok
-    end
-  end
+  # No setup needed - RateLimiter is started by the application
 
   describe "call/2" do
     test "allows requests within rate limit" do
