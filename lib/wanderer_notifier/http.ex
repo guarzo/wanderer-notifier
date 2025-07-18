@@ -94,38 +94,44 @@ defmodule WandererNotifier.HTTP do
   end
 
   defp configure_middlewares(opts) do
-    middlewares = []
-
-    # Add retry middleware if retry options are present
-    middlewares =
-      if Keyword.has_key?(opts, :retry_options) do
-        [Retry | middlewares]
-      else
-        middlewares
-      end
-
-    # Add rate limiter middleware if rate limit options are present
-    middlewares =
-      if Keyword.has_key?(opts, :rate_limit_options) do
-        [RateLimiter | middlewares]
-      else
-        middlewares
-      end
-
-    # Add circuit breaker middleware if circuit breaker options are present
-    middlewares =
-      if Keyword.has_key?(opts, :circuit_breaker_options) do
-        [CircuitBreaker | middlewares]
-      else
-        middlewares
-      end
-
-    # If no specific middleware configured, use default chain
-    if middlewares == [] do
-      # Default middleware chain (telemetry is included by default in Client)
-      [Retry, RateLimiter]
+    # Check if middleware was explicitly disabled
+    if Keyword.get(opts, :middlewares) == [] do
+      # Explicit bypass - no middleware at all
+      []
     else
-      middlewares
+      middlewares = []
+
+      # Add retry middleware if retry options are present
+      middlewares =
+        if Keyword.has_key?(opts, :retry_options) do
+          [Retry | middlewares]
+        else
+          middlewares
+        end
+
+      # Add rate limiter middleware if rate limit options are present
+      middlewares =
+        if Keyword.has_key?(opts, :rate_limit_options) do
+          [RateLimiter | middlewares]
+        else
+          middlewares
+        end
+
+      # Add circuit breaker middleware if circuit breaker options are present
+      middlewares =
+        if Keyword.has_key?(opts, :circuit_breaker_options) do
+          [CircuitBreaker | middlewares]
+        else
+          middlewares
+        end
+
+      # If no specific middleware configured, use default chain
+      if middlewares == [] do
+        # Default middleware chain (telemetry is included by default in Client)
+        [Retry, RateLimiter]
+      else
+        middlewares
+      end
     end
   end
 

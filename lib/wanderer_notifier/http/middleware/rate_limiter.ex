@@ -43,8 +43,8 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
           context: String.t()
         ]
 
-  @default_requests_per_second 10
-  @default_burst_capacity 20
+  @default_requests_per_second 200
+  @default_burst_capacity 500
   @table_name :http_rate_limiter_buckets
 
   @doc """
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     bucket_key = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
 
     # Token bucket implementation using ETS for shared storage
-    case get_or_create_bucket(bucket_key, burst_capacity) do
+    case get_or_create_bucket(bucket_key, requests_per_second, burst_capacity) do
       {:ok, tokens} when tokens > 0 ->
         # Consume a token
         update_bucket(bucket_key, tokens - 1, requests_per_second, burst_capacity)
@@ -146,7 +146,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     result
   end
 
-  defp get_or_create_bucket(bucket_key, burst_capacity) do
+  defp get_or_create_bucket(bucket_key, requests_per_second, burst_capacity) do
     ensure_table()
 
     case :ets.lookup(@table_name, bucket_key) do
@@ -161,7 +161,25 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
         {:ok, burst_capacity}
 
       [{^bucket_key, bucket}] ->
-        {:ok, bucket.tokens}
+        # Refill tokens based on time elapsed before returning current count
+        current_time = :erlang.system_time(:second)
+        time_diff = current_time - bucket.last_refill
+
+        if time_diff > 0 do
+          # Calculate tokens to add based on refill rate
+          tokens_to_add = time_diff * requests_per_second
+          updated_tokens = min(bucket.tokens + tokens_to_add, burst_capacity)
+
+          updated_bucket = %{
+            tokens: updated_tokens,
+            last_refill: current_time
+          }
+
+          :ets.insert(@table_name, {bucket_key, updated_bucket})
+          {:ok, updated_tokens}
+        else
+          {:ok, bucket.tokens}
+        end
     end
   end
 

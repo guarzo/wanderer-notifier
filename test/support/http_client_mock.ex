@@ -27,9 +27,9 @@ defmodule WandererNotifier.Test.Support.HttpClientMock do
   end
 
   @doc """
-  Mock implementation of the post/3 function.
+  Mock implementation of the post function with headers and options.
   """
-  def post(_url, _body, _headers) do
+  def post(_url, _body, _headers \\ [], _options \\ []) do
     # Default implementation that will be overridden by Mox
     {:ok, %{status_code: 200, body: %{mock: true}}}
   end

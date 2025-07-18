@@ -7,7 +7,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
   require Logger
-  alias WandererNotifier.HTTP
   alias MapSet
 
   @callback endpoint() :: String.t()
@@ -23,19 +22,81 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
   # Extract shared functions out of the macro
   def fetch_and_decode(url, headers) do
-    with {:ok, response} <- HTTP.get(url, headers),
-         {:ok, body} <- extract_body(response),
-         {:ok, decoded} <- decode_body(body) do
-      {:ok, decoded}
-    else
-      {:error, _} = error -> error
+    log_request_start(url, headers)
+    opts = build_http_options()
+
+    url
+    |> HTTPoison.get(headers, opts)
+    |> handle_http_response(url)
+  end
+
+  defp log_request_start(url, headers) do
+    AppLogger.api_info("Making HTTP request",
+      url: url,
+      headers: Enum.map(headers, fn {k, _v} -> {k, "[REDACTED]"} end)
+    )
+  end
+
+  defp build_http_options do
+    [
+      # 45 second connect timeout
+      timeout: 45_000,
+      # 45 second receive timeout
+      recv_timeout: 45_000,
+      ssl: [
+        {:versions, [:"tlsv1.2", :"tlsv1.3"]},
+        {:verify, :verify_peer},
+        {:cacertfile, :certifi.cacertfile()},
+        {:depth, 3},
+        {:customize_hostname_check,
+         [
+           {:match_fun, :public_key.pkix_verify_hostname_match_fun(:https)}
+         ]}
+      ]
+    ]
+  end
+
+  defp handle_http_response(response, url) do
+    case response do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        handle_success_response(body, url)
+
+      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
+        handle_error_status(status, body, url)
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        handle_http_error(reason, url)
     end
   end
 
-  defp extract_body(%{status_code: 200, body: body}), do: {:ok, body}
-  defp extract_body(%{status_code: status} = _response), do: {:error, {:api_error, status}}
+  defp handle_success_response(body, url) do
+    AppLogger.api_info("HTTP request successful",
+      url: url,
+      status: 200,
+      body_size: byte_size(body)
+    )
 
-  defp decode_body(body) when is_map(body), do: {:ok, body}
+    decode_body(body)
+  end
+
+  defp handle_error_status(status, body, url) do
+    AppLogger.api_error("HTTP request failed with non-200 status",
+      url: url,
+      status: status,
+      body: String.slice(body, 0, 500)
+    )
+
+    {:error, {:api_error, status}}
+  end
+
+  defp handle_http_error(reason, url) do
+    AppLogger.api_error("HTTP request failed with error",
+      url: url,
+      error: inspect(reason)
+    )
+
+    {:error, reason}
+  end
 
   defp decode_body(body) when is_binary(body) do
     case Jason.decode(body) do

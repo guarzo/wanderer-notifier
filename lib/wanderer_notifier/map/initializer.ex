@@ -26,9 +26,57 @@ defmodule WandererNotifier.Map.Initializer do
       Task.async(fn -> fetch_characters() end)
     ]
 
-    # Wait for both tasks with a reasonable timeout
-    results = Task.await_many(tasks, 30_000)
+    # Wait for both tasks with extended timeout for startup
+    # Increased to 60 seconds for startup robustness
+    timeout = 60_000
 
+    try do
+      results = Task.await_many(tasks, timeout)
+      process_results(results)
+    rescue
+      e in HTTPoison.Error ->
+        # Network/HTTP errors
+        AppLogger.api_error("Map initialization network error",
+          error: Exception.message(e),
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+
+      e ->
+        # Other unexpected errors
+        AppLogger.api_error("Map initialization unexpected error",
+          error: inspect(e),
+          exception_type: e.__struct__,
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+    catch
+      :exit, {:timeout, _} ->
+        # Specific timeout handling
+        AppLogger.api_error("Map initialization timed out after #{timeout}ms",
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+
+      :exit, reason ->
+        # Other exit reasons
+        AppLogger.api_error("Map initialization process exited",
+          reason: inspect(reason),
+          timeout: timeout
+        )
+
+        # Continue startup even if map data fails
+        :ok
+    end
+  end
+
+  defp process_results(results) do
     # Log results and update stats
     Enum.each(results, fn
       {:ok, type, count} ->
@@ -53,30 +101,37 @@ defmodule WandererNotifier.Map.Initializer do
   end
 
   defp fetch_systems do
-    AppLogger.api_info("Starting systems fetch")
-
-    case SystemsClient.fetch_and_cache_systems() do
-      {:ok, systems} ->
-        AppLogger.api_info("Systems fetch completed", count: length(systems))
-        {:ok, "systems", length(systems)}
-
-      error ->
-        AppLogger.api_error("Systems fetch failed", error: inspect(error))
-        {:error, "systems", error}
-    end
+    execute_timed_fetch(fn -> SystemsClient.fetch_and_cache_systems() end, "systems")
   end
 
   defp fetch_characters do
-    AppLogger.api_info("Starting characters fetch")
+    execute_timed_fetch(fn -> CharactersClient.fetch_and_cache_characters() end, "characters")
+  end
 
-    case CharactersClient.fetch_and_cache_characters() do
-      {:ok, characters} ->
-        AppLogger.api_info("Characters fetch completed", count: length(characters))
-        {:ok, "characters", length(characters)}
+  defp execute_timed_fetch(fetch_function, label) do
+    AppLogger.api_info("Starting #{label} fetch")
+    start_time = System.monotonic_time(:millisecond)
+
+    case fetch_function.() do
+      {:ok, items} ->
+        elapsed = System.monotonic_time(:millisecond) - start_time
+
+        AppLogger.api_info("#{String.capitalize(label)} fetch completed",
+          count: length(items),
+          elapsed_ms: elapsed
+        )
+
+        {:ok, label, length(items)}
 
       error ->
-        AppLogger.api_error("Characters fetch failed", error: inspect(error))
-        {:error, "characters", error}
+        elapsed = System.monotonic_time(:millisecond) - start_time
+
+        AppLogger.api_error("#{String.capitalize(label)} fetch failed",
+          error: inspect(error),
+          elapsed_ms: elapsed
+        )
+
+        {:error, label, error}
     end
   end
 end

@@ -46,7 +46,8 @@ defmodule WandererNotifier.License.Service do
               error: nil,
               error_message: nil,
               last_validated: nil,
-              notification_counts: %{system: 0, character: 0, killmail: 0}
+              notification_counts: %{system: 0, character: 0, killmail: 0},
+              backoff_multiplier: 1
 
     @doc """
     Creates a new License state with default values.
@@ -445,8 +446,9 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_info(:refresh, state) do
-    schedule_refresh()
     new_state = do_validate(state)
+    # Schedule next refresh with appropriate backoff
+    schedule_refresh(new_state.backoff_multiplier)
     {:noreply, new_state}
   end
 
@@ -466,8 +468,11 @@ defmodule WandererNotifier.License.Service do
     end
   end
 
-  defp schedule_refresh do
-    Process.send_after(self(), :refresh, Config.license_refresh_interval())
+  defp schedule_refresh(backoff_multiplier \\ 1) do
+    base_interval = Config.license_refresh_interval()
+    # Apply exponential backoff with a maximum of 10x the base interval
+    interval = min(base_interval * backoff_multiplier, base_interval * 10)
+    Process.send_after(self(), :refresh, interval)
   end
 
   defp do_validate(state) do
@@ -543,8 +548,8 @@ defmodule WandererNotifier.License.Service do
     error_message = "License server rate limit exceeded"
     AppLogger.config_error("License validation rate limited: #{error_message}")
 
-    # When rate limited, use the previous state but update error info
-    rate_limited_state = %{
+    # When rate limited, use the previous state but update error info and increase backoff
+    rate_limited_state = %State{
       # Keep previous validation status
       valid: state.valid,
       bot_assigned: state.bot_assigned,
@@ -553,10 +558,16 @@ defmodule WandererNotifier.License.Service do
       # Keep previous details
       details: state.details,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts
+      notification_counts: state.notification_counts,
+      # Double the backoff multiplier for next attempt
+      backoff_multiplier: min(state.backoff_multiplier * 2, 32)
     }
 
-    AppLogger.config_info("🚦 Rate limited license state", state: inspect(rate_limited_state))
+    AppLogger.config_info(
+      "🚦 Rate limited license state, next retry with #{rate_limited_state.backoff_multiplier}x backoff",
+      state: inspect(rate_limited_state)
+    )
+
     rate_limited_state
   end
 
@@ -590,14 +601,16 @@ defmodule WandererNotifier.License.Service do
       )
     end
 
-    valid_state = %{
+    valid_state = %State{
       valid: true,
       bot_assigned: bot_assigned,
       details: response,
       error: nil,
       error_message: if(bot_assigned, do: nil, else: "License valid but bot not assigned"),
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0}
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      # Reset backoff on successful validation
+      backoff_multiplier: 1
     }
 
     log_message =

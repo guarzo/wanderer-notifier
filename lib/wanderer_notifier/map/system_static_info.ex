@@ -120,7 +120,9 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
-    result = WandererNotifier.HTTP.get(url, headers)
+    # Use higher rate limits for internal map API calls to avoid self-imposed throttling
+    opts = [rate_limit_options: [requests_per_second: 100, burst_capacity: 200]]
+    result = WandererNotifier.HTTP.get(url, headers, opts)
 
     case ResponseHandler.handle_response(result,
            success_codes: [200],
@@ -289,10 +291,13 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   def get_system_info(system_id) do
     headers = Headers.map_api_headers(Config.map_token())
 
-    base_url = Config.map_url_with_name()
-    url = "#{base_url}/systems/#{system_id}/static"
+    base_url = Config.map_url()
+    map_name = Config.map_name()
+    url = "#{base_url}/#{map_name}/systems/#{system_id}/static"
 
-    result = WandererNotifier.HTTP.get(url, headers)
+    # Use higher rate limits for internal map API calls to avoid self-imposed throttling
+    opts = [rate_limit_options: [requests_per_second: 100, burst_capacity: 200]]
+    result = WandererNotifier.HTTP.get(url, headers, opts)
 
     ResponseHandler.handle_response(result,
       success_codes: 200,

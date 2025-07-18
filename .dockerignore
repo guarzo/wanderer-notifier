@@ -6,3 +6,7 @@ node_modules
 renderer/node_modules
 chart-service/node_modules
 *.DS_Store
+.env*
+*.md
+docs/
+log/

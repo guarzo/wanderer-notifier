@@ -116,6 +116,8 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
       ],
       rate_limit_options: [
         per_host: true,
+        # Conservative rate limits - actual API limits should be confirmed
+        # NOTE: These values are conservative estimates; contact Wanderer API team for official limits
         requests_per_second: 10,
         burst_capacity: 20
       ],
@@ -129,6 +131,9 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
   defp make_http_request(url, opts) do
     result = HTTP.get(url, http_headers(), opts)
 
+    # Log rate limit headers if present for monitoring
+    log_rate_limit_headers(result)
+
     case ResponseHandler.handle_response(result,
            success_codes: [200],
            log_context: %{client: "WandererKills", url: url}
@@ -141,6 +146,10 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
         error
     end
   end
+
+  # Log rate limit headers for monitoring API limits
+  # Note: Headers are not currently available from the HTTP client response
+  defp log_rate_limit_headers(_result), do: :ok
 
   defp handle_successful_response(body, url) do
     AppLogger.api_debug("WandererKills response OK", %{url: url, sample: sample(body)})

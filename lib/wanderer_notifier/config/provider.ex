@@ -184,23 +184,10 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp add_map_config(config) do
-    map_url = System.get_env("MAP_URL")
-    map_name = System.get_env("MAP_NAME")
-
-    # Build map_url_with_name from required MAP_URL and MAP_NAME
-    map_url_with_name =
-      if map_url && map_name do
-        base_url = String.trim_trailing(map_url, "/")
-        "#{base_url}/?name=#{map_name}"
-      else
-        nil
-      end
-
     config
     |> put_in([:wanderer_notifier, :map_token], System.get_env("MAP_API_KEY"))
-    |> put_in([:wanderer_notifier, :map_url_with_name], map_url_with_name)
-    |> put_in([:wanderer_notifier, :map_url], map_url)
-    |> put_in([:wanderer_notifier, :map_name], map_name)
+    |> put_in([:wanderer_notifier, :map_url], System.get_env("MAP_URL"))
+    |> put_in([:wanderer_notifier, :map_name], System.get_env("MAP_NAME"))
     |> put_in([:wanderer_notifier, :map_api_key], System.get_env("MAP_API_KEY"))
   end
 

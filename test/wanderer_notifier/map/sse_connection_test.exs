@@ -30,13 +30,13 @@ defmodule WandererNotifier.Map.SSEConnectionTest do
       # We can test this by stubbing Config.get to return various URLs
 
       # Test with path and query
-      url_with_path_and_query = "https://example.com/some/path?param=value"
+      _url_with_path_and_query = "https://example.com/some/path?param=value"
       # Test with just path
-      url_with_path = "http://localhost:3000/maps/test"
+      _url_with_path = "http://localhost:3000/maps/test"
       # Test with just query
-      url_with_query = "https://api.example.com?token=abc123"
+      _url_with_query = "https://api.example.com?token=abc123"
       # Test with clean URL
-      clean_url = "https://example.com"
+      _clean_url = "https://example.com"
 
       # We can validate URL normalization by testing the connect function
       # and checking that different input URLs produce consistent base URLs

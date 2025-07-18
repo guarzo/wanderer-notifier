@@ -484,8 +484,8 @@ defmodule WandererNotifier.Map.SSEClient do
         @max_reconnect_delay
       )
 
-    # Add jitter to prevent thundering herd
-    jitter = (delay * 0.1) |> trunc() |> :rand.uniform()
+    # Add 30-50% jitter to prevent thundering herd
+    jitter = (delay * 0.3 + delay * 0.2 * :rand.uniform()) |> trunc()
     final_delay = (delay + jitter) |> trunc()
 
     AppLogger.api_info("Scheduling reconnect",

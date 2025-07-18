@@ -86,7 +86,6 @@ defmodule WandererNotifier.Core.Application.Service do
   defdelegate map_url(), to: WandererNotifier.Core.Application.API
   defdelegate map_token(), to: WandererNotifier.Core.Application.API
   defdelegate map_name(), to: WandererNotifier.Core.Application.API
-  defdelegate map_url_with_name(), to: WandererNotifier.Core.Application.API
   defdelegate map_api_key(), to: WandererNotifier.Core.Application.API
   defdelegate discord_channel_id(), to: WandererNotifier.Core.Application.API
   defdelegate discord_system_kill_channel_id(), to: WandererNotifier.Core.Application.API

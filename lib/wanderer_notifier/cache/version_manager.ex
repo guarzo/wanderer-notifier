@@ -33,6 +33,7 @@ defmodule WandererNotifier.Cache.VersionManager do
 
   alias WandererNotifier.Cache.Versioning
   alias WandererNotifier.Cache.Warmer
+  alias WandererNotifier.Config.Version
 
   @type deployment_strategy :: :safe | :aggressive | :gradual
   @type rollback_result :: {:ok, String.t()} | {:error, term()}
@@ -52,20 +53,16 @@ defmodule WandererNotifier.Cache.VersionManager do
     register_default_hooks()
 
     # Initialize version tracking
-    current_version = get_application_version()
+    current_version = Version.version()
+    cache_version = Versioning.current_version()
 
-    case Versioning.current_version() do
-      ^current_version ->
-        Logger.info("Cache version matches application version: #{current_version}")
-        :ok
-
-      cache_version ->
-        Logger.info(
-          "Cache version (#{cache_version}) differs from application version (#{current_version})"
-        )
-
-        handle_version_mismatch(cache_version, current_version)
+    # Only update version if it's actually different to avoid startup noise
+    if current_version != cache_version do
+      Logger.info("Updating cache version from #{cache_version} to #{current_version}")
+      Versioning.set_version(current_version)
     end
+
+    :ok
   end
 
   @doc """
@@ -183,7 +180,7 @@ defmodule WandererNotifier.Cache.VersionManager do
   @spec get_deployment_status() :: map()
   def get_deployment_status do
     current_version = Versioning.current_version()
-    app_version = get_application_version()
+    app_version = Version.version()
     version_history = Versioning.get_version_history()
     stats = Versioning.get_version_stats()
 
@@ -330,37 +327,6 @@ defmodule WandererNotifier.Cache.VersionManager do
           :ok
       end
     end)
-  end
-
-  defp get_application_version do
-    case Application.spec(:wanderer_notifier, :vsn) do
-      version when is_list(version) ->
-        to_string(version)
-
-      _ ->
-        Logger.warning(
-          "Application version not found in spec, falling back to default version 1.0.0"
-        )
-
-        "1.0.0"
-    end
-  end
-
-  defp handle_version_mismatch(cache_version, app_version) do
-    case get_compatibility_info(cache_version, app_version) do
-      %{compatible: true} ->
-        Logger.info("Versions are compatible, updating cache version")
-        Versioning.set_version(app_version)
-
-      %{compatible: false, migration_required: true} ->
-        Logger.warning("Version migration required from #{cache_version} to #{app_version}")
-        execute_migration(cache_version, app_version, :safe)
-
-      %{compatible: false, migration_required: false} ->
-        Logger.warning("Incompatible versions, invalidating cache")
-        Versioning.invalidate_old_versions(app_version)
-        Versioning.set_version(app_version)
-    end
   end
 
   defp execute_deployment(current_version, new_version, strategy) do
@@ -563,11 +529,14 @@ defmodule WandererNotifier.Cache.VersionManager do
   end
 
   defp execute_cleanup_step(plan) do
-    Logger.info("Cleaning up old cache entries")
-
+    # Silent cleanup
     case Versioning.invalidate_old_versions(plan.to_version) do
-      {:ok, _count} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, count} ->
+        Logger.debug("Cleaned up #{count} entries for version migration")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

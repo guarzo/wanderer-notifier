@@ -13,6 +13,12 @@ defmodule WandererNotifier.Application do
     # Ensure critical configuration exists to prevent startup failures
     ensure_critical_configuration()
 
+    # Set application start time for uptime calculation
+    Application.put_env(:wanderer_notifier, :start_time, System.monotonic_time(:second))
+
+    # Validate configuration on startup
+    validate_configuration()
+
     WandererNotifier.Logger.Logger.startup_info("Starting WandererNotifier")
 
     # Log all environment variables to help diagnose config issues
@@ -38,7 +44,10 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []}
+      # Phoenix PubSub for real-time communication
+      {Phoenix.PubSub, name: WandererNotifier.PubSub},
+      # Phoenix endpoint for API and WebSocket functionality  
+      {WandererNotifierWeb.Endpoint, []}
     ]
 
     # Add cache metrics and performance monitoring (skip in test)
@@ -103,29 +112,19 @@ defmodule WandererNotifier.Application do
     else
       try do
         # Initialize cache metrics telemetry
-        if Code.ensure_loaded?(WandererNotifier.Cache.Metrics) do
-          WandererNotifier.Cache.Metrics.init()
-        end
+        WandererNotifier.Cache.Metrics.init()
 
         # Start performance monitoring
-        if Process.whereis(WandererNotifier.Cache.PerformanceMonitor) do
-          WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
-        end
+        WandererNotifier.Cache.PerformanceMonitor.start_monitoring()
 
-        # Start cache warming
-        if Code.ensure_loaded?(WandererNotifier.Cache.Warmer) do
-          WandererNotifier.Cache.Warmer.start_warming()
-        end
+        # Cache warming disabled for startup performance
+        # WandererNotifier.Cache.Warmer.start_warming()
 
         # Initialize version manager
-        if Code.ensure_loaded?(WandererNotifier.Cache.VersionManager) do
-          WandererNotifier.Cache.VersionManager.initialize()
-        end
+        WandererNotifier.Cache.VersionManager.initialize()
 
         # Start cache analytics collection
-        if Code.ensure_loaded?(WandererNotifier.Cache.Analytics) do
-          WandererNotifier.Cache.Analytics.start_collection()
-        end
+        WandererNotifier.Cache.Analytics.start_collection()
 
         WandererNotifier.Logger.Logger.startup_info(
           "Cache performance monitoring, warming, versioning, and analytics initialized"
@@ -141,23 +140,77 @@ defmodule WandererNotifier.Application do
 
   # Initialize SSE clients with proper error handling
   defp initialize_sse_clients do
-    task = Task.async(fn -> WandererNotifier.Map.SSESupervisor.initialize_sse_clients() end)
+    # Schedule SSE client initialization to happen after supervision tree is fully started
+    # This prevents race conditions during application startup
+    Task.start(fn ->
+      # Wait for supervision tree to be fully started by checking if supervisor is alive
+      wait_for_supervisor_startup()
 
-    try do
-      # 10 second timeout
-      Task.await(task, 10_000)
-    rescue
-      error ->
-        WandererNotifier.Logger.Logger.startup_error("Failed to initialize SSE clients",
-          error: Exception.message(error)
+      try do
+        WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
+      rescue
+        error ->
+          WandererNotifier.Logger.Logger.startup_error("Failed to initialize SSE clients",
+            error: Exception.message(error)
+          )
+      end
+    end)
+
+    :ok
+  end
+
+  # Wait for the supervision tree to be fully started
+  defp wait_for_supervisor_startup do
+    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
+      nil ->
+        # Supervisor not started yet, wait a bit and retry
+        Process.sleep(100)
+        wait_for_supervisor_startup()
+
+      pid when is_pid(pid) ->
+        # Supervisor is running, check if it's responsive
+        # which_children always returns a list
+        _children = Supervisor.which_children(pid)
+        # Supervisor is responsive and ready
+        :ok
+    end
+  rescue
+    _ ->
+      # If there's an error, wait a bit and try again
+      Process.sleep(100)
+      wait_for_supervisor_startup()
+  end
+
+  # Validates configuration on startup and logs any issues
+  defp validate_configuration do
+    environment = get_env()
+
+    case WandererNotifier.Config.Validator.validate_from_env(environment) do
+      :ok ->
+        WandererNotifier.Logger.Logger.startup_info("Configuration validation: PASSED")
+
+      {:error, errors} ->
+        WandererNotifier.Config.Validator.log_validation_errors(errors)
+
+        summary = WandererNotifier.Config.Validator.validation_summary(errors)
+
+        WandererNotifier.Logger.Logger.startup_info(
+          "Configuration validation summary: #{summary.total_errors} errors " <>
+            "(#{summary.critical_errors} critical, #{summary.warnings} warnings)"
         )
 
-        :error
-    catch
-      :exit, {:timeout, _} ->
-        WandererNotifier.Logger.Logger.startup_error("SSE client initialization timed out")
-        Task.shutdown(task, :brutal_kill)
-        :timeout
+        # Fail startup on critical errors in production
+        if environment == :prod and summary.critical_errors > 0 do
+          error_details = WandererNotifier.Config.Validator.format_errors(errors)
+
+          raise """
+          Critical configuration errors detected. Application cannot start.
+
+          #{error_details}
+
+          Please fix these configuration issues and restart the application.
+          """
+        end
     end
   end
 

@@ -56,6 +56,9 @@ config :wanderer_notifier,
 # Configure the ESI service
 config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock
 
+# Configure HTTP client to use mock in tests
+config :wanderer_notifier, http_client: WandererNotifier.HTTPMock
+
 # Configure the notification service
 config :wanderer_notifier, :notifications, service: WandererNotifier.Notifiers.TestNotifier
 

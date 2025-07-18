@@ -5,7 +5,6 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   alias WandererNotifier.Config
   alias WandererNotifier.Utils.TimeUtils
-  alias WandererNotifier.Web.Server
 
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
@@ -401,7 +400,6 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       {"WebSocket Client", WandererNotifier.Killmail.WebSocketClient},
       {"Stats Server", WandererNotifier.Core.Stats},
       {"Pipeline Worker", WandererNotifier.Killmail.PipelineWorker},
-      {"Web Server", WandererNotifier.Web.Server},
       {"Discord Consumer", WandererNotifier.Discord.Consumer}
     ]
 
@@ -457,24 +455,20 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp check_server_status do
+    # Check if Phoenix endpoint is running
     try do
-      Server.running?()
+      case Process.whereis(WandererNotifierWeb.Endpoint) do
+        nil -> false
+        _pid -> true
+      end
     rescue
-      error in [ArgumentError, KeyError] ->
+      error ->
         WandererNotifier.Logger.Logger.error("Failed to check server status",
           error: inspect(error),
           module: __MODULE__
         )
 
-        :unknown
-
-      error ->
-        WandererNotifier.Logger.Logger.error("Unexpected error checking server status",
-          error: inspect(error),
-          module: __MODULE__
-        )
-
-        :unknown
+        false
     end
   end
 end

@@ -42,6 +42,7 @@ defmodule WandererNotifier.Cache.Versioning do
 
   alias WandererNotifier.Cache.Adapter
   alias WandererNotifier.Cache.Config
+  alias WandererNotifier.Config.Version
 
   @type version :: String.t()
   @type version_info :: %{
@@ -51,9 +52,6 @@ defmodule WandererNotifier.Cache.Versioning do
           invalidated_at: integer() | nil,
           status: :active | :deprecated | :invalidated
         }
-
-  # Default version if none configured
-  @default_version "1.0.0"
 
   # Version history storage key
   @version_history_key "cache:versioning:history"
@@ -289,8 +287,8 @@ defmodule WandererNotifier.Cache.Versioning do
     # Initialize current version if not in history
     new_state = ensure_current_version_in_history(new_state)
 
-    # Execute deployment hooks for current version
-    execute_deployment_hooks(new_state, nil, current_version)
+    # Execute deployment hooks for current version asynchronously
+    Task.start(fn -> execute_deployment_hooks(new_state, nil, current_version) end)
 
     Logger.info("Cache versioning initialized with version #{current_version}")
     {:ok, new_state}
@@ -330,8 +328,8 @@ defmodule WandererNotifier.Cache.Versioning do
       # Save version history
       save_version_history(new_state)
 
-      # Execute deployment hooks
-      execute_deployment_hooks(new_state, old_version, new_version)
+      # Execute deployment hooks asynchronously to avoid recursive calls
+      spawn(fn -> execute_deployment_hooks(new_state, old_version, new_version) end)
 
       Logger.info("Cache version updated from #{old_version} to #{new_version}")
       {:reply, :ok, new_state}
@@ -414,7 +412,8 @@ defmodule WandererNotifier.Cache.Versioning do
   defp get_configured_version(opts) do
     case Keyword.get(opts, :current_version) do
       nil ->
-        Application.get_env(:wanderer_notifier, :cache_version, @default_version)
+        # Use application version as the cache version
+        Application.get_env(:wanderer_notifier, :cache_version, Version.version())
 
       version ->
         version
@@ -488,7 +487,8 @@ defmodule WandererNotifier.Cache.Versioning do
     # For now, we'll return a simulated count
     try do
       count = simulate_invalidation(keep_version)
-      Logger.info("Invalidated #{count} cache entries for versions older than #{keep_version}")
+
+      # Silent invalidation - Logger.info("Invalidated #{count} cache entries for versions older than #{keep_version}")
       {:ok, count}
     rescue
       error ->
@@ -507,7 +507,8 @@ defmodule WandererNotifier.Cache.Versioning do
     # For now, we'll return a simulated count
     try do
       count = simulate_migration(from_version, to_version, key_patterns)
-      Logger.info("Migrated #{count} cache entries from #{from_version} to #{to_version}")
+
+      # Silent migration - Logger.info("Migrated #{count} cache entries from #{from_version} to #{to_version}")
       {:ok, count}
     rescue
       error ->
