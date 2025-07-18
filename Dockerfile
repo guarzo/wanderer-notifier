@@ -73,13 +73,9 @@ RUN --mount=type=cache,target=/root/.hex \
 RUN --mount=type=cache,target=/app/_build,sharing=locked \
     --mount=type=cache,target=/root/.hex \
     --mount=type=cache,target=/root/.mix \
-    # Compile with warnings as errors and optimizations
-    mix compile --warnings-as-errors --force \
- && # Build release with production optimizations
-    mix release --overwrite --strip-debug \
- && # Copy release to staging directory
-    cp -r /app/_build/prod/rel/wanderer_notifier /app/release \
- && # Verify release integrity
+    mix compile --warnings-as-errors --force && \
+    mix release --overwrite --strip-debug && \
+    cp -r /app/_build/prod/rel/wanderer_notifier /app/release && \
     /app/release/bin/wanderer_notifier eval "Application.ensure_all_started(:wanderer_notifier)"
 
 ###############################################################################
