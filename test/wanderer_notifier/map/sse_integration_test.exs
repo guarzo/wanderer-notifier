@@ -7,13 +7,6 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
   @moduletag :integration
 
   setup do
-    # Start Registry for SSE client naming
-    registry_pid =
-      case Registry.start_link(keys: :unique, name: WandererNotifier.Registry) do
-        {:ok, registry} -> registry
-        {:error, {:already_started, registry}} -> registry
-      end
-
     # Start HTTPoison/hackney
     HTTPoison.start()
 
@@ -30,14 +23,13 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
       end
     end)
 
-    {:ok, registry: registry_pid}
+    :ok
   end
 
   describe "SSE Integration" do
     test "SSE client can be configured and started" do
       # Test configuration
       opts = [
-        map_id: "test-map-uuid-123",
         map_slug: "test-map",
         api_token: "test-token-123",
         events: ["add_system", "deleted_system", "system_metadata_changed"]
@@ -70,7 +62,6 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
 
       # Test client management
       opts = [
-        map_id: "test-map-uuid-456",
         map_slug: "test-supervisor-map",
         api_token: "test-token-456",
         events: ["add_system"]

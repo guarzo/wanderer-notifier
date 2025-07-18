@@ -4,9 +4,14 @@
 # Usage: elixir scripts/memory_monitor.exs [interval_seconds]
 
 defmodule MemoryMonitor do
+  # Configurable alert thresholds
+  @memory_alert_mb 50
+  @queue_alert_length 100
+  
   def start(interval \\ 5) do
     IO.puts("Starting memory monitoring (interval: #{interval}s)")
     IO.puts("Press Ctrl+C to stop")
+    IO.puts("Alert thresholds: Memory > #{@memory_alert_mb}MB, Queue > #{@queue_alert_length}")
     IO.puts("")
     
     loop(interval)
@@ -143,10 +148,7 @@ defmodule MemoryMonitor do
     ]
     
     Enum.each(app_processes, fn {name, module} ->
-      pid = case module do
-        atom when is_atom(atom) -> Process.whereis(atom)
-        _ -> nil
-      end
+      pid = Process.whereis(module)
       
       if pid do
         info = Process.info(pid)
@@ -157,10 +159,10 @@ defmodule MemoryMonitor do
         IO.puts("  #{String.pad_trailing(name, 20)} #{memory_mb} MB (Queue: #{queue_len}, Heap: #{heap_size})")
         
         # Alert on high values
-        if memory_mb > 50 do
+        if memory_mb > @memory_alert_mb do
           IO.puts("    🚨 HIGH MEMORY USAGE")
         end
-        if queue_len > 100 do
+        if queue_len > @queue_alert_length do
           IO.puts("    🚨 HIGH MESSAGE QUEUE")
         end
       else

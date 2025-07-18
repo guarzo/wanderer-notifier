@@ -29,7 +29,11 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
       :last_heartbeat,
       :ping_time,
       :uptime_percentage,
-      :metrics
+      :metrics,
+      # Track connection history for accurate uptime calculation
+      :total_connected_time,
+      :last_disconnect_at,
+      :disconnect_events
     ]
 
     @type t :: %__MODULE__{
@@ -42,7 +46,10 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
             last_heartbeat: DateTime.t() | nil,
             ping_time: non_neg_integer() | nil,
             uptime_percentage: float(),
-            metrics: map()
+            metrics: map(),
+            total_connected_time: non_neg_integer(),
+            last_disconnect_at: DateTime.t() | nil,
+            disconnect_events: list()
           }
   end
 
