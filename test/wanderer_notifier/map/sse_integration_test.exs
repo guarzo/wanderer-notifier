@@ -6,15 +6,41 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
 
   @moduletag :integration
 
-  setup do
+  setup_all do
+    # Ensure the application is started (which should start Registry)
+    {:ok, _} = Application.ensure_all_started(:wanderer_notifier)
+
+    # Wait a bit for all services to initialize
+    Process.sleep(100)
+
+    # Verify Registry is available
+    case Process.whereis(WandererNotifier.Registry) do
+      nil ->
+        # Try to start it manually if not running
+        case Registry.start_link(keys: :unique, name: WandererNotifier.Registry) do
+          {:ok, _pid} ->
+            # Give it time to initialize
+            Process.sleep(50)
+            :ok
+
+          {:error, {:already_started, _pid}} ->
+            :ok
+
+          error ->
+            raise "Failed to start Registry: #{inspect(error)}"
+        end
+
+      _pid ->
+        :ok
+    end
+
     # Start HTTPoison/hackney
     HTTPoison.start()
 
-    # Ensure required services are started for tests
-    unless Process.whereis(WandererNotifier.Registry) do
-      Registry.start_link(keys: :unique, name: WandererNotifier.Registry)
-    end
+    :ok
+  end
 
+  setup do
     # Ensure MAP_URL is set for SSE connections
     map_url = Application.get_env(:wanderer_notifier, :map_url) || "https://example.com"
     Application.put_env(:wanderer_notifier, :map_url, map_url)
@@ -55,6 +81,11 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
     end
 
     test "SSE supervisor can manage clients" do
+      # Ensure Registry is available
+      unless Process.whereis(WandererNotifier.Registry) do
+        flunk("Registry is not running - required for SSE tests")
+      end
+
       # Test that supervisor can be started
       supervisor_pid =
         case SSESupervisor.start_link([]) do
@@ -65,6 +96,9 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
       # Verify supervisor is running
       assert Process.alive?(supervisor_pid)
 
+      # Give the supervisor time to fully initialize
+      Process.sleep(100)
+
       # Test client management
       opts = [
         map_slug: "test-supervisor-map",
@@ -73,8 +107,13 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
       ]
 
       # Start client via supervisor
-      {:ok, client_pid} = SSESupervisor.start_sse_client(opts)
-      assert Process.alive?(client_pid)
+      case SSESupervisor.start_sse_client(opts) do
+        {:ok, client_pid} ->
+          assert Process.alive?(client_pid)
+
+        {:error, reason} ->
+          flunk("Failed to start SSE client: #{inspect(reason)}")
+      end
 
       # Check client status
       status = SSESupervisor.get_client_status()
