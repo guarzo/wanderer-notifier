@@ -319,12 +319,11 @@ defmodule WandererNotifier.Metrics.Collector do
   end
 
   defp collect_system_metrics do
+    # Collect only essential metrics to reduce memory usage
     %{
       memory_usage: :erlang.memory(:total),
-      process_count: :erlang.system_info(:process_count),
-      cpu_usage: get_cpu_usage(),
-      uptime: :erlang.statistics(:wall_clock) |> elem(0),
-      gc_statistics: :erlang.statistics(:garbage_collection)
+      process_count: :erlang.system_info(:process_count)
+      # Removed detailed stats to reduce memory consumption
     }
   end
 
@@ -449,12 +448,6 @@ defmodule WandererNotifier.Metrics.Collector do
     else
       100.0
     end
-  end
-
-  defp get_cpu_usage do
-    # CPU monitoring not available in all environments
-    # :cpu_sup.util() not available in this environment
-    0.0
   end
 
   defp add_to_history(history, new_metrics, retention_period) do

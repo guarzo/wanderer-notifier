@@ -116,13 +116,7 @@ defmodule WandererNotifier.Cache.Config do
 
     # Use put_new to respect caller's name if provided
     merged_config = Keyword.merge(base_config, opts)
-    final_config = Keyword.put_new(merged_config, :name, cache_name())
-
-    # Log the full config to debug cache limits
-    require Logger
-    Logger.info("Cache configuration: #{inspect(final_config)}")
-
-    final_config
+    Keyword.put_new(merged_config, :name, cache_name())
   end
 
   @doc """

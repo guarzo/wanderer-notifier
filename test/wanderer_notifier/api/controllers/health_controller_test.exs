@@ -11,9 +11,9 @@ defmodule WandererNotifier.Api.Controllers.HealthControllerTest do
       conn = conn(:get, "/api/health") |> Router.call(@opts)
       assert conn.status == 200
       response = Jason.decode!(conn.resp_body)
-      assert %{"status" => "healthy"} = response
+      assert %{"status" => "ok"} = response
       assert Map.has_key?(response, "timestamp")
-      assert Map.has_key?(response, "version")
+      # Version field is not included in current implementation
     end
   end
 

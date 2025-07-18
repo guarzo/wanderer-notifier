@@ -303,34 +303,56 @@ defmodule WandererNotifier.Realtime.Integration do
     end
 
     defp describe_health_issue(connection, health) do
-      issues = []
-
       issues =
-        if connection.uptime_percentage < 90.0,
-          do: ["Low uptime: #{Float.round(connection.uptime_percentage, 1)}%" | issues],
-          else: issues
-
-      # Only check heartbeat for WebSocket connections after grace period (SSE doesn't have heartbeats)
-      issues =
-        if connection.type == :websocket and is_nil(connection.last_heartbeat) and
-             not is_nil(connection.connected_at) and
-             DateTime.diff(DateTime.utc_now(), connection.connected_at, :second) > 60,
-           do: ["No heartbeat received after 60s" | issues],
-           else: issues
-
-      issues =
-        if connection.status != :connected,
-          do: ["Connection status: #{connection.status}" | issues],
-          else: issues
-
-      issues =
-        if connection.ping_time && connection.ping_time > 1000,
-          do: ["High ping: #{connection.ping_time}ms" | issues],
-          else: issues
+        []
+        |> check_uptime_issue(connection)
+        |> check_heartbeat_issue(connection)
+        |> check_connection_status_issue(connection)
+        |> check_ping_issue(connection)
 
       case issues do
         [] -> "Health assessment: #{health}"
         _ -> Enum.join(issues, ", ")
+      end
+    end
+
+    defp check_uptime_issue(issues, connection) do
+      if connection.uptime_percentage < 90.0 do
+        ["Low uptime: #{Float.round(connection.uptime_percentage, 1)}%" | issues]
+      else
+        issues
+      end
+    end
+
+    defp check_heartbeat_issue(issues, connection) do
+      # Only check heartbeat for WebSocket connections after grace period (SSE doesn't have heartbeats)
+      if should_check_heartbeat?(connection) do
+        ["No heartbeat received after 60s" | issues]
+      else
+        issues
+      end
+    end
+
+    defp should_check_heartbeat?(connection) do
+      connection.type == :websocket and
+        is_nil(connection.last_heartbeat) and
+        not is_nil(connection.connected_at) and
+        DateTime.diff(DateTime.utc_now(), connection.connected_at, :second) > 60
+    end
+
+    defp check_connection_status_issue(issues, connection) do
+      if connection.status != :connected do
+        ["Connection status: #{connection.status}" | issues]
+      else
+        issues
+      end
+    end
+
+    defp check_ping_issue(issues, connection) do
+      if connection.ping_time && connection.ping_time > 1000 do
+        ["High ping: #{connection.ping_time}ms" | issues]
+      else
+        issues
       end
     end
 

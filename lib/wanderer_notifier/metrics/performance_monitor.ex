@@ -11,9 +11,9 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
 
   alias WandererNotifier.Metrics.Collector
 
-  # Monitoring configuration
-  # 10 seconds
-  @default_monitoring_interval 10_000
+  # Monitoring configuration  
+  # 30 seconds (reduced frequency to prevent feedback loops)
+  @default_monitoring_interval 30_000
   # 5 minutes
   @default_alert_cooldown 300_000
   # 1 hour
@@ -262,7 +262,8 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       performance_score: get_performance_score(current_metrics)
     }
 
-    %{state | anomaly_history: [anomaly_entry | Enum.take(state.anomaly_history, 49)]}
+    # Limit anomaly history to 10 entries to reduce memory usage
+    %{state | anomaly_history: [anomaly_entry | Enum.take(state.anomaly_history, 9)]}
   end
 
   defp update_performance_stats(state, anomalies, new_alerts, start_time) do
@@ -281,7 +282,8 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     %{
       state
       | performance_baseline: updated_baseline,
-        recent_alerts: Enum.take(new_alerts ++ state.recent_alerts, 50)
+        # Limit recent alerts to 20 to reduce memory usage  
+        recent_alerts: Enum.take(new_alerts ++ state.recent_alerts, 20)
     }
   end
 
@@ -516,7 +518,7 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
   defp generate_alerts_for_anomalies(anomalies, recent_alerts, cooldown) do
     now = System.system_time(:millisecond)
 
-    # Filter out alerts that are in cooldown
+    # Filter out alerts that are in cooldown AND prevent memory spike feedback loops
     active_alert_types =
       recent_alerts
       |> Enum.filter(fn alert ->
@@ -525,9 +527,12 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
       |> Enum.map(& &1.type)
       |> MapSet.new()
 
-    # Generate new alerts for anomalies not in cooldown
+    # Generate new alerts for anomalies not in cooldown, but limit memory spike alerts
     anomalies
-    |> Enum.reject(fn anomaly -> MapSet.member?(active_alert_types, anomaly.type) end)
+    |> Enum.reject(fn anomaly ->
+      MapSet.member?(active_alert_types, anomaly.type) or
+        should_suppress_memory_alert(anomaly, recent_alerts, now)
+    end)
     |> Enum.map(fn anomaly ->
       %Alert{
         id: generate_alert_id(),
@@ -705,4 +710,20 @@ defmodule WandererNotifier.Metrics.PerformanceMonitor do
     timer = Process.send_after(self(), :monitor_performance, state.monitoring_interval)
     %{state | monitoring_timer: timer}
   end
+
+  # Prevent memory spike feedback loops by suppressing excessive memory alerts
+  defp should_suppress_memory_alert(%{type: :memory_spike}, recent_alerts, now) do
+    # Count recent memory spike alerts in last 5 minutes
+    recent_memory_alerts =
+      recent_alerts
+      |> Enum.filter(fn alert ->
+        alert.type == :memory_spike and now - alert.timestamp < 300_000
+      end)
+      |> length()
+
+    # Suppress if we already have 3+ memory alerts in last 5 minutes
+    recent_memory_alerts >= 3
+  end
+
+  defp should_suppress_memory_alert(_, _, _), do: false
 end

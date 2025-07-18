@@ -71,6 +71,7 @@ defmodule WandererNotifier.Telemetry do
   """
   def killmail_received(kill_id) do
     Stats.track_killmail_received()
+    Stats.update_last_activity()
     emit(:killmail, :received, %{kill_id: kill_id})
   end
 

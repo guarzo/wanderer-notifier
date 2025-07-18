@@ -1,23 +1,21 @@
-defmodule WandererNotifier.Api.Controllers.DashboardController do
+defmodule WandererNotifierWeb.DashboardController do
   @moduledoc """
-  Controller for the web dashboard.
+  Phoenix controller for the web dashboard.
   """
-  use WandererNotifier.Api.ApiPipeline
-  use WandererNotifier.Api.Controllers.ControllerHelpers
+  use WandererNotifierWeb, :controller
 
   alias WandererNotifier.Api.Controllers.SystemInfo
 
-  # Dashboard endpoint - renders HTML
-  get "/" do
+  def index(conn, _params) do
     # Get the same data as /health/details plus extended stats
     detailed_status = SystemInfo.collect_extended_status()
 
-    # Render HTML
-    html = render_dashboard(detailed_status)
+    # Render HTML directly
+    html_content = render_dashboard(detailed_status)
 
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, html)
+    |> send_resp(200, html_content)
   end
 
   defp render_dashboard(data) do
@@ -373,26 +371,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
                 50% { opacity: 0.5; }
             }
 
-            /* Charts */
-            .chart-container {
-                height: 200px;
-                background: rgba(255, 255, 255, 0.02);
-                border-radius: 12px;
-                padding: 1rem;
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                position: relative;
-                overflow: hidden;
-            }
-
-            .chart-grid {
-                position: absolute;
-                inset: 0;
-                background-image: 
-                    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-                background-size: 20px 20px;
-            }
-
             /* Info Lists */
             .info-list {
                 display: flex;
@@ -626,6 +604,7 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
     """
   end
 
+  # Import all the helper functions from the original dashboard controller
   defp format_uptime(seconds) do
     days = div(seconds, 86_400)
     hours = div(rem(seconds, 86_400), 3600)
@@ -644,7 +623,6 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
   end
 
   defp format_time(datetime) do
-    # Format time as HH:MM:SS
     datetime
     |> DateTime.to_time()
     |> Time.to_string()
@@ -1115,9 +1093,5 @@ defmodule WandererNotifier.Api.Controllers.DashboardController do
         </div>
     </div>
     """
-  end
-
-  match _ do
-    send_error(conn, 404, "not_found")
   end
 end

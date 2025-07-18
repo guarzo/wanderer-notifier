@@ -23,7 +23,7 @@ defmodule WandererNotifier.Cache.CacheBehaviour do
      - Implementations should be optimized for high-volume operations
      - Consider using batch operations where possible
      - Handle concurrent access appropriately
-     - Support cache warming and preloading strategies
+     - Cache is populated on-demand for optimal startup performance
 
   4. Versioning and deployment:
      - Support versioned cache keys for safe deployments

@@ -14,31 +14,32 @@ defmodule WandererNotifier.Map.Initializer do
   Initializes map data by fetching systems and characters from the API.
 
   This function is called during application startup to ensure we have
-  initial data before SSE starts.
+  initial data before SSE starts. Uses sequential loading to prevent
+  memory spikes from parallel bulk API calls.
   """
   @spec initialize_map_data() :: :ok
   def initialize_map_data do
-    AppLogger.api_info("Initializing map data")
+    AppLogger.api_info("Initializing map data (sequential loading for memory efficiency)")
 
-    # Fetch both systems and characters in parallel
-    tasks = [
-      Task.async(fn -> fetch_systems() end),
-      Task.async(fn -> fetch_characters() end)
-    ]
-
-    # Wait for both tasks with extended timeout for startup
-    # Increased to 60 seconds for startup robustness
-    timeout = 60_000
-
+    # Fetch sequentially to prevent memory spikes from parallel bulk operations
     try do
-      results = Task.await_many(tasks, timeout)
+      # First fetch systems
+      systems_result = fetch_systems()
+
+      # Add delay between bulk operations to allow GC
+      Process.sleep(1000)
+
+      # Then fetch characters
+      characters_result = fetch_characters()
+
+      # Process results
+      results = [systems_result, characters_result]
       process_results(results)
     rescue
       e in HTTPoison.Error ->
         # Network/HTTP errors
         AppLogger.api_error("Map initialization network error",
-          error: Exception.message(e),
-          timeout: timeout
+          error: Exception.message(e)
         )
 
         # Continue startup even if map data fails
@@ -48,27 +49,16 @@ defmodule WandererNotifier.Map.Initializer do
         # Other unexpected errors
         AppLogger.api_error("Map initialization unexpected error",
           error: inspect(e),
-          exception_type: e.__struct__,
-          timeout: timeout
+          exception_type: e.__struct__
         )
 
         # Continue startup even if map data fails
         :ok
     catch
-      :exit, {:timeout, _} ->
-        # Specific timeout handling
-        AppLogger.api_error("Map initialization timed out after #{timeout}ms",
-          timeout: timeout
-        )
-
-        # Continue startup even if map data fails
-        :ok
-
       :exit, reason ->
-        # Other exit reasons
+        # Exit handling
         AppLogger.api_error("Map initialization process exited",
-          reason: inspect(reason),
-          timeout: timeout
+          reason: inspect(reason)
         )
 
         # Continue startup even if map data fails

@@ -69,8 +69,8 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
     eviction_rate_threshold: 0.10,
     # 5 minutes between alerts
     alert_cooldown: 300_000,
-    # Number of samples for trend analysis
-    trend_analysis_window: 10
+    # Number of samples for trend analysis (reduced to prevent memory growth)
+    trend_analysis_window: 5
   }
 
   @doc """
@@ -457,6 +457,7 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
   end
 
   defp update_performance_history(performance_data, history, max_size) do
+    # Ensure we never exceed max_size to prevent memory leaks
     new_history = [performance_data | history]
     Enum.take(new_history, max_size)
   end
@@ -484,7 +485,6 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
               "Cache hit ratio is below threshold (#{Float.round(performance_data.hit_ratio * 100, 2)}%)",
             actions: [
               "Consider increasing cache TTL for frequently accessed data",
-              "Implement cache warming strategies",
               "Review cache eviction policies"
             ]
           }
@@ -560,8 +560,7 @@ defmodule WandererNotifier.Cache.PerformanceMonitor do
           description: "Cache hit ratio is showing a declining trend",
           actions: [
             "Investigate recent changes that might affect cache effectiveness",
-            "Review cache invalidation patterns",
-            "Consider adjusting cache warming strategies"
+            "Review cache invalidation patterns"
           ]
         }
       ]

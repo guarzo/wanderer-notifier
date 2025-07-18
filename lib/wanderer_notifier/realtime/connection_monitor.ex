@@ -190,7 +190,11 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
 
         updated_connection =
           if status == :connected and connection.connected_at == nil do
-            %{updated_connection | connected_at: DateTime.utc_now()}
+            connected_connection = %{updated_connection | connected_at: DateTime.utc_now()}
+            # Immediately calculate uptime for new connections
+            connected_connection
+            |> update_connection_quality()
+            |> update_uptime_percentage()
           else
             updated_connection
           end

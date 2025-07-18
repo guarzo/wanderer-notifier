@@ -378,20 +378,14 @@ defmodule WandererNotifier.Cache.Insights do
 
   defp generate_health_recommendations(
          overall_score,
-         hit_rate_score,
+         _hit_rate_score,
          performance_score,
          efficiency_score,
          reliability_score
        ) do
     recommendations = []
 
-    # Hit rate recommendations
-    recommendations =
-      if hit_rate_score < 0.8 do
-        ["Implement cache warming strategies to improve hit rate" | recommendations]
-      else
-        recommendations
-      end
+    # Cache warming has been removed - cache is populated on-demand
 
     # Performance recommendations
     recommendations =
@@ -440,7 +434,7 @@ defmodule WandererNotifier.Cache.Insights do
             description:
               "Hit rate is below acceptable threshold (#{Float.round(usage_report.hit_rate * 100, 1)}%)",
             impact: "Poor hit rate increases response times and external API calls",
-            implementation: "Implement cache warming for frequently accessed data",
+            implementation: "Cache is populated on-demand (warming removed)",
             estimated_improvement: 0.15
           }
           | recommendations
@@ -459,7 +453,7 @@ defmodule WandererNotifier.Cache.Insights do
             description:
               "#{type} data has low hit rate (#{Float.round(stats.hit_rate * 100, 1)}%)",
             impact: "Poor hit rate for #{type} data affects user experience",
-            implementation: "Implement specific warming strategy for #{type} data",
+            implementation: "#{type} cache populated on-demand (warming removed)",
             estimated_improvement: 0.10
           }
           | acc

@@ -16,11 +16,11 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
   ## Usage
 
       # Simple rate limiting with defaults
-      Client.request(:get, "https://api.example.com/data", 
+      Client.request(:get, "https://api.example.com/data",
         middlewares: [RateLimiter])
-      
+
       # Custom rate limiting configuration
-      Client.request(:get, "https://api.example.com/data", 
+      Client.request(:get, "https://api.example.com/data",
         middlewares: [RateLimiter],
         rate_limit_options: [
           requests_per_second: 10,
@@ -83,22 +83,22 @@ defmodule WandererNotifier.Http.Middleware.RateLimiter do
     bucket_id = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
 
     # Debug logging to see what's happening
-    AppLogger.api_info("Rate limit check", %{
-      host: host,
-      bucket_id: bucket_id,
-      requests_per_second: requests_per_second,
-      options: options
-    })
+    # AppLogger.api_info("Rate limit check", %{
+    #   host: host,
+    #   bucket_id: bucket_id,
+    #   requests_per_second: requests_per_second,
+    #   options: options
+    # })
 
     # Use Hammer to check rate limit
     case Hammer.check_rate(bucket_id, @default_scale_ms, requests_per_second) do
-      {:allow, count} ->
-        AppLogger.api_info("Rate limit allowed", %{
-          host: host,
-          bucket_id: bucket_id,
-          current_count: count,
-          limit: requests_per_second
-        })
+      {:allow, _count} ->
+        # AppLogger.api_info("Rate limit allowed", %{
+        #   host: host,
+        #   bucket_id: bucket_id,
+        #   current_count: count,
+        #   limit: requests_per_second
+        # })
 
         :ok
 

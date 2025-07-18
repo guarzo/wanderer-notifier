@@ -148,8 +148,44 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
-    # Delegate to the existing HTTP module to avoid code duplication
-    WandererNotifier.HTTP.request(method, url, headers, body, opts)
+    # Use Req directly to avoid circular dependency
+    req_opts = build_req_opts(opts, headers, body)
+
+    case Req.request([method: method, url: url] ++ req_opts) do
+      {:ok, %Req.Response{status: status, body: response_body, headers: response_headers}} ->
+        {:ok, %{status_code: status, body: response_body, headers: response_headers}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp build_req_opts(opts, headers, body) do
+    req_opts = []
+
+    # Add headers if provided
+    req_opts = if headers != [], do: Keyword.put(req_opts, :headers, headers), else: req_opts
+
+    # Add body if provided
+    req_opts = if body != nil, do: Keyword.put(req_opts, :body, body), else: req_opts
+
+    # Add timeout options
+    req_opts =
+      if Keyword.has_key?(opts, :timeout),
+        do: Keyword.put(req_opts, :receive_timeout, Keyword.get(opts, :timeout)),
+        else: req_opts
+
+    req_opts =
+      if Keyword.has_key?(opts, :recv_timeout),
+        do: Keyword.put(req_opts, :receive_timeout, Keyword.get(opts, :recv_timeout)),
+        else: req_opts
+
+    req_opts =
+      if Keyword.has_key?(opts, :connect_timeout),
+        do: Keyword.put(req_opts, :connect_timeout, Keyword.get(opts, :connect_timeout)),
+        else: req_opts
+
+    req_opts
   end
 
   defp prepare_body(nil), do: nil

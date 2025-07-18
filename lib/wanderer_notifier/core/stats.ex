@@ -84,7 +84,8 @@ defmodule WandererNotifier.Core.Stats do
               metrics: %{},
               killmails_received: 0,
               systems_count: 0,
-              characters_count: 0
+              characters_count: 0,
+              websocket: %{}
 
     @doc """
     Creates a new Stats state with default values.
@@ -162,6 +163,20 @@ defmodule WandererNotifier.Core.Stats do
   """
   def track_killmail_received do
     GenServer.cast(__MODULE__, {:track_killmail_received})
+  end
+
+  @doc """
+  Updates the last activity timestamp.
+  """
+  def update_last_activity do
+    GenServer.cast(__MODULE__, {:update_last_activity})
+  end
+
+  @doc """
+  Updates WebSocket connection stats.
+  """
+  def update_websocket_stats(stats) do
+    GenServer.cast(__MODULE__, {:update_websocket_stats, stats})
   end
 
   @doc """
@@ -349,6 +364,17 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @impl true
+  def handle_cast({:update_last_activity}, state) do
+    updated_redisq = Map.put(state.redisq, :last_message, DateTime.utc_now())
+    {:noreply, %{state | redisq: updated_redisq}}
+  end
+
+  @impl true
+  def handle_cast({:update_websocket_stats, stats}, state) do
+    {:noreply, %{state | websocket: stats}}
+  end
+
+  @impl true
   def handle_cast({:update_counts, systems_count, characters_count, notifications_count}, state) do
     # Update only the provided counts, leave others unchanged
     state =
@@ -394,7 +420,8 @@ defmodule WandererNotifier.Core.Stats do
       systems_count: Map.get(state, :systems_count, 0),
       characters_count: Map.get(state, :characters_count, 0),
       metrics: state.metrics || %{},
-      killmails_received: Map.get(state, :killmails_received, 0)
+      killmails_received: Map.get(state, :killmails_received, 0),
+      websocket: Map.get(state, :websocket, %{})
     }
 
     {:reply, stats, state}

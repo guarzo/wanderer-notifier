@@ -111,10 +111,53 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   @doc """
   Fetches systems from the API and populates the cache.
   This is used during initialization to ensure we have system data.
+  Uses memory-efficient sequential processing to prevent startup spikes.
   """
   def fetch_and_cache_systems do
-    AppLogger.api_info("Fetching systems from API for initialization")
-    # Fetch with empty cache to trigger the fetch, but suppress notifications
-    fetch_and_process(api_url(), headers(), [], suppress_notifications: true)
+    AppLogger.api_info("Fetching systems from API for initialization (memory-efficient mode)")
+
+    with {:ok, decoded} <-
+           WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode(api_url(), headers()),
+         {:ok, systems} <- extract_data(decoded),
+         :ok <- validate_data(systems) do
+      # Process systems in smaller batches to prevent memory spikes
+      batch_size = 50
+      batched_systems = Enum.chunk_every(systems, batch_size)
+
+      AppLogger.api_info("Processing systems in batches",
+        total_systems: length(systems),
+        batch_size: batch_size,
+        batch_count: length(batched_systems)
+      )
+
+      # Process each batch with a small delay for GC
+      final_systems = process_systems_in_batches(batched_systems, [])
+
+      # Cache all processed systems at once
+      WandererNotifier.Map.Clients.BaseMapClient.cache_put(
+        cache_key(),
+        final_systems,
+        cache_ttl()
+      )
+    else
+      error ->
+        AppLogger.api_error("Failed to fetch and cache systems", error: inspect(error))
+        error
+    end
+  end
+
+  defp process_systems_in_batches([], accumulated) do
+    accumulated
+  end
+
+  defp process_systems_in_batches([batch | remaining_batches], accumulated) do
+    # Process current batch
+    processed_batch = Enum.map(batch, &enrich_item/1)
+
+    # Add small delay between batches to allow garbage collection
+    Process.sleep(50)
+
+    # Continue with remaining batches
+    process_systems_in_batches(remaining_batches, accumulated ++ processed_batch)
   end
 end

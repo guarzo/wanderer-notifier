@@ -24,14 +24,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def fetch_and_decode(url, headers) do
     log_request_start(url, headers)
 
-    # Use our centralized HTTP client with higher rate limits for internal map API
-    # These are our own servers so we can afford higher limits
+    # Use our centralized HTTP client with no middleware for internal map API
+    # These are our own servers so we don't need rate limiting
     opts = [
-      rate_limit_options: [
-        # Much higher limit for internal APIs
-        requests_per_second: 1000,
-        per_host: true
-      ],
+      middlewares: [],
       timeout: 45_000,
       recv_timeout: 45_000
     ]
@@ -62,10 +58,17 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp handle_success_response(body, url) do
+    body_size =
+      case body do
+        body when is_binary(body) -> byte_size(body)
+        body when is_map(body) -> "parsed_json"
+        _ -> "unknown"
+      end
+
     AppLogger.api_info("HTTP request successful",
       url: url,
       status: 200,
-      body_size: byte_size(body)
+      body_size: body_size
     )
 
     decode_body(body)
@@ -95,6 +98,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       {:ok, decoded} -> {:ok, decoded}
       {:error, _} -> {:error, :json_decode_error}
     end
+  end
+
+  defp decode_body(body) when is_map(body) do
+    # Body is already parsed JSON (e.g., by Req)
+    {:ok, body}
   end
 
   defp decode_body(_), do: {:error, :invalid_body}

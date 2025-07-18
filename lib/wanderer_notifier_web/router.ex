@@ -15,6 +15,18 @@ defmodule WandererNotifierWeb.Router do
     plug(:accepts, ["json"])
   end
 
+  pipeline :browser do
+    plug(:accepts, ["html"])
+    plug(:put_secure_browser_headers)
+  end
+
+  # Dashboard route (root)
+  scope "/", WandererNotifierWeb do
+    pipe_through(:browser)
+
+    get("/", DashboardController, :index)
+  end
+
   scope "/api", WandererNotifierWeb do
     pipe_through(:api)
 

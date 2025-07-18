@@ -4,17 +4,7 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
   alias WandererNotifier.Http.Middleware.RateLimiter
 
   setup do
-    # Clear ETS table before each test to prevent interference
-    table_name = RateLimiter.table_name()
-
-    case :ets.whereis(table_name) do
-      :undefined ->
-        :ok
-
-      table ->
-        :ets.delete_all_objects(table)
-    end
-
+    # Hammer manages its own ETS tables, no need to clear them
     :ok
   end
 
@@ -27,7 +17,10 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
     end
 
     test "blocks requests when rate limit exceeded" do
-      request = build_request(requests_per_second: 1, burst_capacity: 1)
+      # Use a unique URL to avoid conflicts with other tests
+      unique_url = "https://test-#{System.unique_integer([:positive])}.example.com/test"
+
+      request = build_request([requests_per_second: 1], unique_url)
       next = fn _req -> {:ok, %{status_code: 200, body: "success", headers: []}} end
 
       # First request should succeed
@@ -145,17 +138,19 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
       assert {:ok, %{status_code: 200, body: "success"}} = RateLimiter.call(request, next)
     end
 
-    test "allows burst capacity before rate limiting" do
-      # Set burst capacity to 3, requests per second to 1
-      request = build_request(requests_per_second: 1, burst_capacity: 3)
+    test "enforces rate limiting after threshold" do
+      # Use a unique URL to avoid conflicts with other tests
+      unique_url = "https://test-#{System.unique_integer([:positive])}.example.com/test"
+
+      # Set requests per second to 2
+      request = build_request([requests_per_second: 2], unique_url)
       next = fn _req -> {:ok, %{status_code: 200, body: "success", headers: []}} end
 
-      # Should allow 3 rapid requests (burst capacity)
-      assert {:ok, %{status_code: 200}} = RateLimiter.call(request, next)
+      # Should allow 2 requests within a second
       assert {:ok, %{status_code: 200}} = RateLimiter.call(request, next)
       assert {:ok, %{status_code: 200}} = RateLimiter.call(request, next)
 
-      # Fourth request should be rate limited
+      # Third request should be rate limited
       assert {:error, {:rate_limited, _message}} = RateLimiter.call(request, next)
     end
   end

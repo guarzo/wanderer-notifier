@@ -56,7 +56,6 @@ defmodule WandererNotifier.Application do
         [
           {WandererNotifier.Cache.Metrics, []},
           {WandererNotifier.Cache.PerformanceMonitor, []},
-          {WandererNotifier.Cache.Warmer, []},
           {WandererNotifier.Cache.Versioning, []},
           {WandererNotifier.Cache.Analytics, []}
         ]

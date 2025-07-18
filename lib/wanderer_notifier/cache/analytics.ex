@@ -351,15 +351,15 @@ defmodule WandererNotifier.Cache.Analytics do
     # Update counters
     {hit_count, miss_count} = update_counters(state.hit_count, state.miss_count, result)
 
-    # Update response times (keep last 500 for moving averages, reduced from 1000)
+    # Update response times (keep last 100 for moving averages to reduce memory)
     response_times =
       [duration | state.response_times]
-      |> Enum.take(200)
+      |> Enum.take(100)
 
-    # Limit operations to 200 to further reduce memory usage (was previously unbounded)
-    limited_operations = [operation_record | state.operations] |> Enum.take(200)
+    # Limit operations to 100 to reduce memory usage (was previously unbounded)
+    limited_operations = [operation_record | state.operations] |> Enum.take(100)
 
-    # Clean up old key stats (keep only last 500 accessed keys) 
+    # Clean up old key stats (keep only last 500 accessed keys)
     cleaned_key_stats = cleanup_old_key_stats(key_stats)
 
     %{
@@ -396,11 +396,11 @@ defmodule WandererNotifier.Cache.Analytics do
   end
 
   defp cleanup_old_key_stats(key_stats) do
-    # If we have more than 200 keys, keep only the 200 most recently accessed
-    if map_size(key_stats) > 200 do
+    # If we have more than 100 keys, keep only the 100 most recently accessed
+    if map_size(key_stats) > 100 do
       key_stats
       |> Enum.sort_by(fn {_key, stats} -> stats.last_accessed end, :desc)
-      |> Enum.take(200)
+      |> Enum.take(100)
       |> Map.new()
     else
       key_stats
@@ -461,8 +461,8 @@ defmodule WandererNotifier.Cache.Analytics do
       avg_response_time: calculate_average_response_time(state.response_times)
     }
 
-    # 24 hours
-    new_time_series = [time_series_entry | state.time_series] |> Enum.take(1440)
+    # 24 hours but limit to 288 entries (5-minute intervals) to reduce memory usage
+    new_time_series = [time_series_entry | state.time_series] |> Enum.take(288)
 
     %{state | time_series: new_time_series, last_collection: now}
   end
@@ -714,16 +714,6 @@ defmodule WandererNotifier.Cache.Analytics do
 
   defp generate_recommendations(state) do
     recommendations = []
-
-    # Hit rate recommendations
-    hit_rate = calculate_hit_rate(state.hit_count, state.miss_count)
-
-    recommendations =
-      if hit_rate < state.config.efficiency_threshold do
-        ["Consider implementing cache warming for frequently accessed data" | recommendations]
-      else
-        recommendations
-      end
 
     # Memory recommendations
     recommendations =
