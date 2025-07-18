@@ -121,8 +121,17 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
       system_ids
       # Process in chunks to avoid overwhelming the API
       |> Enum.chunk_every(10)
-      |> Enum.map(&fetch_chunk(&1, hours))
-      |> aggregate_bulk_results()
+      |> Task.async_stream(
+        fn chunk ->
+          case fetch_systems_killmails(chunk, hours, 50) do
+            {:ok, data} -> {:ok, data}
+            {:error, reason} -> {:error, {chunk, reason}}
+          end
+        end,
+        max_concurrency: 5,
+        timeout: 30_000
+      )
+      |> aggregate_stream_results()
 
     {:ok, results}
   end
@@ -286,20 +295,10 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
 
   defp parse_system_id(system_id) when is_integer(system_id), do: system_id
 
-  defp fetch_chunk(system_ids, hours) do
-    Task.async(fn ->
-      case fetch_systems_killmails(system_ids, hours, 50) do
-        {:ok, data} -> {:ok, data}
-        {:error, reason} -> {:error, {system_ids, reason}}
-      end
-    end)
-  end
-
-  defp aggregate_bulk_results(tasks) do
-    results = Task.await_many(tasks, 30_000)
-
-    Enum.reduce(results, %{loaded: 0, errors: []}, fn
-      {:ok, system_data}, acc ->
+  defp aggregate_stream_results(stream) do
+    stream
+    |> Enum.reduce(%{loaded: 0, errors: []}, fn
+      {:ok, {:ok, system_data}}, acc ->
         kill_count =
           system_data
           |> Map.values()
@@ -308,8 +307,12 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
 
         %{acc | loaded: acc.loaded + kill_count}
 
-      {:error, error}, acc ->
+      {:ok, {:error, error}}, acc ->
         %{acc | errors: [error | acc.errors]}
+
+      {:error, reason}, acc ->
+        # Handle Task.async_stream timeouts or exits
+        %{acc | errors: [{:task_error, reason} | acc.errors]}
     end)
   end
 
@@ -320,6 +323,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
     {:error, %{type: error_type, message: message}}
   end
 
+  defp categorize_error(:timeout), do: :timeout
   defp categorize_error({:timeout, _}), do: :timeout
   defp categorize_error({:connect_timeout, _}), do: :timeout
   defp categorize_error({:json_decode_error, _}), do: :invalid_response

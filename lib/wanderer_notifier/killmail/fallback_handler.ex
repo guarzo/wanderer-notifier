@@ -82,9 +82,11 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   def handle_cast(:websocket_down, state) do
     AppLogger.warn("WebSocket connection down, activating HTTP fallback")
 
-    new_state = %{state | fallback_active: true}
+    # Update tracked entities first
+    updated_state = update_tracked_entities(state)
+    new_state = %{updated_state | fallback_active: true}
 
-    # Immediately fetch recent data
+    # Immediately fetch recent data in background
     Task.start(fn -> fetch_all_recent_data(new_state) end)
 
     {:noreply, new_state}
@@ -99,8 +101,10 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
 
   @impl true
   def handle_call(:fetch_recent_data, _from, state) do
-    result = fetch_all_recent_data(state)
-    {:reply, result, %{state | last_check: DateTime.utc_now()}}
+    # Update tracked entities first
+    updated_state = update_tracked_entities(state)
+    result = fetch_all_recent_data(updated_state)
+    {:reply, result, %{updated_state | last_check: DateTime.utc_now()}}
   end
 
   @impl true
@@ -150,9 +154,6 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   end
 
   defp fetch_all_recent_data(state) do
-    # Update tracked entities
-    state = update_tracked_entities(state)
-
     AppLogger.info("Fetching recent data via HTTP API",
       systems_count: MapSet.size(state.tracked_systems),
       characters_count: MapSet.size(state.tracked_characters)
@@ -172,8 +173,9 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   end
 
   defp update_tracked_entities(state) do
-    {:ok, systems} = ExternalAdapters.get_tracked_systems()
-    {:ok, characters} = ExternalAdapters.get_tracked_characters()
+    adapter = Application.get_env(:wanderer_notifier, :external_adapters_impl, ExternalAdapters)
+    {:ok, systems} = adapter.get_tracked_systems()
+    {:ok, characters} = adapter.get_tracked_characters()
 
     tracked_systems =
       systems
@@ -237,12 +239,13 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   # Helper functions (similar to WebSocket client)
 
   defp extract_system_id(system) when is_struct(system) do
-    system.solar_system_id || system.id
+    system.solar_system_id || system.system_id || system.id
   end
 
   defp extract_system_id(system) when is_map(system) do
     system["solar_system_id"] || system[:solar_system_id] ||
-      system["system_id"] || system[:system_id]
+      system["system_id"] || system[:system_id] ||
+      system["id"] || system[:id]
   end
 
   defp extract_system_id(_), do: nil

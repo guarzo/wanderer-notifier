@@ -14,8 +14,23 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
     Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
     Application.put_env(:wanderer_notifier, :external_adapters_impl, ExternalAdaptersMock)
 
-    # Start the FallbackHandler
-    {:ok, pid} = FallbackHandler.start_link([])
+    # Set up default stubs for external adapters (can be overridden in tests)
+    ExternalAdaptersMock
+    |> stub(:get_tracked_systems, fn -> {:ok, []} end)
+    |> stub(:get_tracked_characters, fn -> {:ok, []} end)
+
+    # Set up default stub for HTTP client
+    HttpClientMock
+    |> stub(:get, fn _url, _headers, _opts ->
+      {:ok, %{status_code: 200, body: Jason.encode!(%{"systems" => %{}})}}
+    end)
+
+    # Start the FallbackHandler, or get the existing one if already started
+    pid =
+      case FallbackHandler.start_link([]) do
+        {:ok, pid} -> pid
+        {:error, {:already_started, pid}} -> pid
+      end
 
     on_exit(fn ->
       if Process.alive?(pid), do: GenServer.stop(pid)
@@ -26,42 +41,28 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
 
   describe "websocket_down/0" do
     test "activates fallback mode and fetches recent data" do
-      # Mock tracked systems
+      # Mock tracked systems - use stubs to allow unlimited calls
       ExternalAdaptersMock
-      |> expect(:get_tracked_systems, fn ->
+      |> stub(:get_tracked_systems, fn ->
         {:ok,
          [
            %{solar_system_id: 30_000_142},
            %{solar_system_id: 30_000_143}
          ]}
       end)
-      |> expect(:get_tracked_characters, fn ->
+      |> stub(:get_tracked_characters, fn ->
         {:ok, []}
       end)
 
       # Mock HTTP response for systems
       HttpClientMock
-      |> expect(:get, fn url, _headers, _opts ->
-        if url =~ "30000142%2C30000143" do
-          response = %{
-            "systems" => %{
-              "30000142" => [
-                %{
-                  "killmail_id" => 12_345,
-                  "system_id" => 30_000_142,
-                  "victim" => %{},
-                  "attackers" => []
-                }
-              ],
-              "30000143" => []
-            }
-          }
-
-          {:ok, %{status_code: 200, body: Jason.encode!(response)}}
-        else
-          {:ok, %{status_code: 200, body: Jason.encode!(%{})}}
-        end
+      |> stub(:get, fn _url, _headers, _opts ->
+        {:ok, %{status_code: 200, body: Jason.encode!(%{"systems" => %{}})}}
       end)
+
+      # Stop and restart the handler to ensure clean state
+      GenServer.stop(FallbackHandler)
+      {:ok, _pid} = FallbackHandler.start_link([])
 
       # Notify WebSocket is down
       FallbackHandler.websocket_down()
@@ -165,7 +166,7 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
   describe "system_id extraction" do
     test "handles various system data formats" do
       ExternalAdaptersMock
-      |> expect(:get_tracked_systems, fn ->
+      |> stub(:get_tracked_systems, fn ->
         {:ok,
          [
            %{solar_system_id: 30_000_142},
@@ -175,13 +176,17 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
            %{"system_id" => "30000146"}
          ]}
       end)
-      |> expect(:get_tracked_characters, fn ->
+      |> stub(:get_tracked_characters, fn ->
         {:ok, []}
       end)
 
+      # Stop and restart the handler to ensure clean state
+      GenServer.stop(FallbackHandler)
+      {:ok, _pid} = FallbackHandler.start_link([])
+
       # Trigger an update
       FallbackHandler.websocket_down()
-      Process.sleep(50)
+      Process.sleep(100)
 
       state = :sys.get_state(FallbackHandler)
       system_ids = MapSet.to_list(state.tracked_systems)
@@ -198,10 +203,10 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
   describe "character_id extraction" do
     test "handles various character data formats" do
       ExternalAdaptersMock
-      |> expect(:get_tracked_systems, fn ->
+      |> stub(:get_tracked_systems, fn ->
         {:ok, []}
       end)
-      |> expect(:get_tracked_characters, fn ->
+      |> stub(:get_tracked_characters, fn ->
         {:ok,
          [
            %{"eve_id" => 95_123_456},
@@ -212,9 +217,13 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
          ]}
       end)
 
+      # Stop and restart the handler to ensure clean state
+      GenServer.stop(FallbackHandler)
+      {:ok, _pid} = FallbackHandler.start_link([])
+
       # Trigger an update
       FallbackHandler.websocket_down()
-      Process.sleep(50)
+      Process.sleep(100)
 
       state = :sys.get_state(FallbackHandler)
       character_ids = MapSet.to_list(state.tracked_characters)

@@ -208,6 +208,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     end
   end
 
+  def handle_frame({:binary, _data}, state) do
+    # We don't expect binary frames
+    {:ok, state}
+  end
+
   defp log_frame_received(message_size) do
     # Only log detailed info for debug level, reduce memory impact
     WandererNotifier.Logger.Logger.processor_debug("WebSocket text frame received",
@@ -243,11 +248,6 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     {:ok, state}
   end
 
-  def handle_frame({:binary, _data}, state) do
-    # We don't expect binary frames
-    {:ok, state}
-  end
-
   defp truncate_message(message, message_size) when message_size > 200 do
     String.slice(message, 0, 200) <> "... (truncated)"
   end
@@ -258,6 +258,45 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     log_heartbeat_uptime(state)
     record_heartbeat_in_monitoring(state)
     send_phoenix_heartbeat(state)
+  end
+
+  def handle_info(:connect_delayed, state) do
+    # Attempt to reconnect
+    send(self(), :join_channel)
+    {:ok, state}
+  end
+
+  def handle_info(:subscription_update, state) do
+    WandererNotifier.Logger.Logger.info("Starting subscription update check")
+
+    try do
+      check_and_update_subscriptions(state)
+    rescue
+      error ->
+        handle_subscription_error(error, state)
+    end
+  end
+
+  def handle_info(:join_channel, state) do
+    WandererNotifier.Logger.Logger.info("WebSocket handling join_channel message")
+
+    try do
+      {limited_systems, limited_characters} = prepare_subscription_data()
+      join_params = build_join_params(limited_systems, limited_characters)
+      result = send_join_message(join_params, limited_systems, limited_characters, state)
+      WandererNotifier.Logger.Logger.info("Join channel result: #{inspect(result)}")
+      result
+    rescue
+      error ->
+        WandererNotifier.Logger.Logger.error("Error during channel join",
+          error: Exception.message(error),
+          stacktrace: __STACKTRACE__
+        )
+
+        # Retry after delay
+        Process.send_after(self(), :join_channel, 5_000)
+        {:ok, state}
+    end
   end
 
   defp log_heartbeat_uptime(state) do
@@ -323,45 +362,6 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
   defp schedule_next_heartbeat(state) do
     %{state | heartbeat_ref: Process.send_after(self(), :heartbeat, @heartbeat_interval)}
-  end
-
-  def handle_info(:connect_delayed, state) do
-    # Attempt to reconnect
-    send(self(), :join_channel)
-    {:ok, state}
-  end
-
-  def handle_info(:subscription_update, state) do
-    WandererNotifier.Logger.Logger.info("Starting subscription update check")
-
-    try do
-      check_and_update_subscriptions(state)
-    rescue
-      error ->
-        handle_subscription_error(error, state)
-    end
-  end
-
-  def handle_info(:join_channel, state) do
-    WandererNotifier.Logger.Logger.info("WebSocket handling join_channel message")
-
-    try do
-      {limited_systems, limited_characters} = prepare_subscription_data()
-      join_params = build_join_params(limited_systems, limited_characters)
-      result = send_join_message(join_params, limited_systems, limited_characters, state)
-      WandererNotifier.Logger.Logger.info("Join channel result: #{inspect(result)}")
-      result
-    rescue
-      error ->
-        WandererNotifier.Logger.Logger.error("Error during channel join",
-          error: Exception.message(error),
-          stacktrace: __STACKTRACE__
-        )
-
-        # Retry after delay
-        Process.send_after(self(), :join_channel, 5_000)
-        {:ok, state}
-    end
   end
 
   defp check_and_update_subscriptions(state) do
