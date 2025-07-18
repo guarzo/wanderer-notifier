@@ -11,7 +11,6 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   require Logger
 
   alias Nostrum.Cache.GuildCache
-  alias Nostrum.Struct.Channel
   alias WandererNotifier.Config
 
   @doc """
@@ -65,32 +64,63 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   ## Returns
   A list of Discord user mention strings
   """
-  @spec get_active_voice_mentions(integer()) :: [String.t()]
-  def get_active_voice_mentions(guild_id) when is_integer(guild_id) do
+  @spec get_active_voice_mentions(integer() | any()) :: [String.t()]
+  def get_active_voice_mentions(guild_id) when is_integer(guild_id) and guild_id > 0 do
     try do
       guild = GuildCache.get!(guild_id)
 
-      # Find all voice channel IDs except AFK
-      voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
+      # Validate guild data
+      case guild do
+        nil ->
+          Logger.warning("Guild not found in cache for ID: #{guild_id}")
+          []
 
-      # Gather voice participants and build mentions
-      # voice_states is a map of user_id => voice_state_map
-      guild.voice_states
-      |> Map.values()
-      |> Enum.filter(fn voice_state ->
-        channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
-        channel_id in voice_channel_ids
-      end)
-      |> Enum.map(fn voice_state ->
-        user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
-        "<@#{user_id}>"
-      end)
-      |> Enum.uniq()
+        %{voice_states: nil} ->
+          Logger.debug("No voice states available for guild #{guild_id}")
+          []
+
+        %{voice_states: voice_states} when is_map(voice_states) ->
+          # Find all voice channel IDs except AFK
+          voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
+
+          # Gather voice participants and build mentions
+          # voice_states is a map of user_id => voice_state_map
+          voice_states
+          |> Map.values()
+          |> Enum.filter(fn voice_state ->
+            channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
+            channel_id in voice_channel_ids
+          end)
+          |> Enum.map(fn voice_state ->
+            user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
+            "<@#{user_id}>"
+          end)
+          |> Enum.uniq()
+
+        _ ->
+          Logger.warning("Unexpected guild structure for ID: #{guild_id}")
+          []
+      end
     rescue
       error ->
         Logger.error("Failed to get voice participants for guild #{guild_id}: #{inspect(error)}")
         []
     end
+  end
+
+  # Handle zero or negative integers  
+  def get_active_voice_mentions(guild_id) when is_integer(guild_id) and guild_id <= 0 do
+    Logger.warning("Invalid guild ID (must be positive): #{guild_id}")
+    []
+  end
+
+  # Handle non-integer guild_id inputs
+  def get_active_voice_mentions(invalid_guild_id) do
+    Logger.warning(
+      "Invalid guild ID type provided to get_active_voice_mentions: #{inspect(invalid_guild_id)}, expected positive integer"
+    )
+
+    []
   end
 
   # Gets all voice channel IDs in the guild, excluding the AFK channel.
@@ -104,29 +134,29 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   end
 
   # Extracts channels from guild, handling nil case
-  @spec extract_channels(map() | nil) :: [Channel.t()]
+  @spec extract_channels(map() | nil) :: [map()]
   defp extract_channels(nil), do: []
   defp extract_channels(channels) when is_map(channels), do: Map.values(channels)
 
   # Filters channels to only include voice channels
-  @spec filter_voice_channels([Channel.t()]) :: [Channel.t()]
+  @spec filter_voice_channels([map()]) :: [map()]
   defp filter_voice_channels(channels), do: Enum.filter(channels, &voice_channel?/1)
 
   # Excludes the AFK channel from the list
-  @spec exclude_afk_channel([Channel.t()], integer() | nil) :: [Channel.t()]
+  @spec exclude_afk_channel([map()], integer() | nil) :: [map()]
   defp exclude_afk_channel(channels, afk_channel_id) do
     Enum.reject(channels, &(&1.id == afk_channel_id))
   end
 
   # Extracts channel IDs from channel structs
-  @spec extract_channel_ids([Channel.t()]) :: [integer()]
+  @spec extract_channel_ids([map()]) :: [integer()]
   defp extract_channel_ids(channels), do: Enum.map(channels, & &1.id)
 
   # Checks if a channel is a voice channel.
-  @spec voice_channel?(Channel.t()) :: boolean()
-  defp voice_channel?(%Channel{type: :voice}), do: true
+  @spec voice_channel?(map()) :: boolean()
+  defp voice_channel?(%{type: :voice}), do: true
   # Voice channel type ID
-  defp voice_channel?(%Channel{type: 2}), do: true
+  defp voice_channel?(%{type: 2}), do: true
   defp voice_channel?(_), do: false
 
   @doc """

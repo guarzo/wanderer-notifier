@@ -27,7 +27,7 @@ defmodule WandererNotifierWeb.Endpoint do
     at: "/",
     from: :wanderer_notifier,
     gzip: false,
-    only: ~w(assets fonts images favicon.ico robots.txt)
+    only: ~w(assets css js fonts images favicon.ico robots.txt)
   )
 
   # Code reloading can be explicitly enabled under the
@@ -59,7 +59,7 @@ defmodule WandererNotifierWeb.Endpoint do
   Returns static file paths for the endpoint.
   Since we're not using the full Phoenix web stack, this is minimal.
   """
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets css js fonts images favicon.ico robots.txt)
 
   @doc """
   Determines if code reloading is enabled.

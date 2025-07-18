@@ -168,7 +168,11 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
         disconnects: 0,
         heartbeats: 0,
         ping_samples: []
-      }
+      },
+      # Initialize uptime tracking fields
+      total_connected_time: 0,
+      last_disconnect_at: nil,
+      disconnect_events: []
     }
 
     # Monitor the process
@@ -196,14 +200,67 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
         updated_connection = %{connection | status: status}
 
         updated_connection =
-          if status == :connected and connection.connected_at == nil do
-            connected_connection = %{updated_connection | connected_at: DateTime.utc_now()}
-            # Immediately calculate uptime for new connections
-            connected_connection
-            |> update_connection_quality()
-            |> update_uptime_percentage()
-          else
-            updated_connection
+          case status do
+            :connected when connection.connected_at == nil ->
+              # First connection
+              connected_connection = %{updated_connection | connected_at: DateTime.utc_now()}
+
+              connected_connection
+              |> update_connection_quality()
+              |> update_uptime_percentage()
+
+            :connected ->
+              # Reconnection - update connected_at but track previous disconnect period
+              now = DateTime.utc_now()
+
+              # Update disconnect events with the disconnect duration if we were disconnected
+              updated_disconnect_events =
+                if connection.last_disconnect_at && length(connection.disconnect_events) > 0 do
+                  [last_event | rest] = connection.disconnect_events
+                  disconnect_duration = DateTime.diff(now, connection.last_disconnect_at, :second)
+                  updated_event = Map.put(last_event, :disconnect_duration, disconnect_duration)
+                  [updated_event | rest]
+                else
+                  connection.disconnect_events
+                end
+
+              %{
+                updated_connection
+                | connected_at: now,
+                  last_disconnect_at: nil,
+                  disconnect_events: updated_disconnect_events
+              }
+              |> update_connection_quality()
+              |> update_uptime_percentage()
+
+            status when status in [:disconnected, :failed] ->
+              # Track disconnect event
+              now = DateTime.utc_now()
+
+              connected_duration =
+                if connection.connected_at do
+                  DateTime.diff(now, connection.connected_at, :second)
+                else
+                  0
+                end
+
+              new_total_connected_time = connection.total_connected_time + connected_duration
+
+              new_disconnect_event = %{
+                timestamp: now,
+                duration: connected_duration,
+                reason: status
+              }
+
+              %{
+                updated_connection
+                | last_disconnect_at: now,
+                  total_connected_time: new_total_connected_time,
+                  disconnect_events: [new_disconnect_event | connection.disconnect_events]
+              }
+
+            _ ->
+              updated_connection
           end
 
         connections = Map.put(state.connections, id, updated_connection)
