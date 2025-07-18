@@ -169,16 +169,14 @@ defmodule WandererNotifier.Http.Client do
     # Add body if provided
     req_opts = if body != nil, do: Keyword.put(req_opts, :body, body), else: req_opts
 
-    # Add timeout options
-    req_opts =
-      if Keyword.has_key?(opts, :timeout),
-        do: Keyword.put(req_opts, :receive_timeout, Keyword.get(opts, :timeout)),
-        else: req_opts
+    # Add timeout options - prioritize recv_timeout over timeout if both are present
+    receive_timeout = cond do
+      Keyword.has_key?(opts, :recv_timeout) -> Keyword.get(opts, :recv_timeout)
+      Keyword.has_key?(opts, :timeout) -> Keyword.get(opts, :timeout)
+      true -> nil
+    end
 
-    req_opts =
-      if Keyword.has_key?(opts, :recv_timeout),
-        do: Keyword.put(req_opts, :receive_timeout, Keyword.get(opts, :recv_timeout)),
-        else: req_opts
+    req_opts = if receive_timeout, do: Keyword.put(req_opts, :receive_timeout, receive_timeout), else: req_opts
 
     req_opts =
       if Keyword.has_key?(opts, :connect_timeout),
@@ -211,10 +209,9 @@ defmodule WandererNotifier.Http.Client do
   end
 
   defp default_middlewares do
-    # Default middleware chain with retry and telemetry
+    # Default middleware chain with retry, rate limiting, and telemetry
     # Telemetry should be first to capture all metrics
-    # Rate limiting removed to prevent startup issues
     # Can be overridden per request
-    [Telemetry, Retry]
+    [Telemetry, RateLimiter, Retry]
   end
 end

@@ -4,6 +4,8 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
   Tracks counts for each notification type using the License.Service GenServer.
   """
 
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
   @max_rich 5
 
   # Get the license service implementation - can be mocked in tests
@@ -19,15 +21,25 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
     case get_license_status_with_timeout() do
       {:ok, license} -> check_license_validity(license, type)
       # Default to allowing rich notifications if license service is unavailable
-      {:error, _} -> true
+      {:error, reason} ->
+        AppLogger.license_warn("License service unavailable, allowing rich notification",
+          type: type,
+          reason: inspect(reason)
+        )
+        true
     end
   end
 
   def increment(type) when type in [:system, :character, :killmail] do
     case get_license_status_with_timeout() do
       {:ok, license} -> maybe_increment_count(license, type)
-      # Ignore if license service is unavailable
-      {:error, _} -> :ok
+      # Log error but don't block notification flow
+      {:error, reason} ->
+        AppLogger.license_error("Failed to increment notification count",
+          type: type,
+          reason: inspect(reason)
+        )
+        :ok
     end
   end
 
@@ -44,7 +56,12 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
     case get_notification_count_with_timeout(type) do
       {:ok, count} -> count < @max_rich
       # Default to allowing rich notifications on error
-      {:error, _} -> true
+      {:error, reason} ->
+        AppLogger.license_error("Failed to get notification count",
+          type: type,
+          reason: inspect(reason)
+        )
+        true
     end
   end
 
@@ -60,8 +77,13 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
       try do
         license_service().increment_notification_count(type)
       rescue
-        # Ignore errors in background increment
-        _ -> :ok
+        error ->
+          AppLogger.license_error("Failed to increment notification count in background task",
+            type: type,
+            error: Exception.message(error),
+            stacktrace: __STACKTRACE__
+          )
+          :ok
       end
     end)
   end

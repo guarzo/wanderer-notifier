@@ -220,7 +220,11 @@ defmodule WandererNotifier.Config.Validator do
           acc
 
         field_schema ->
-          validate_single_field(field, value, field_schema) ++ acc
+          # Prepend errors for O(1) performance
+          case validate_single_field(field, value, field_schema) do
+            [] -> acc
+            field_errors -> Enum.reduce(field_errors, acc, fn error, acc2 -> [error | acc2] end)
+          end
       end
     end)
   end

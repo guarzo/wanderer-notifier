@@ -10,6 +10,9 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Cache.Keys, as: CacheKeys
 
+  @default_batch_size 50
+  @batch_size_config_key :map_systems_batch_size
+
   @impl true
   def endpoint, do: "systems"
 
@@ -121,7 +124,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
          {:ok, systems} <- extract_data(decoded),
          :ok <- validate_data(systems) do
       # Process systems in smaller batches to prevent memory spikes
-      batch_size = 50
+      batch_size = get_batch_size()
       batched_systems = Enum.chunk_every(systems, batch_size)
 
       AppLogger.api_info("Processing systems in batches",
@@ -147,7 +150,8 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   end
 
   defp process_systems_in_batches([], accumulated) do
-    accumulated
+    # Reverse the accumulated list since we prepended items
+    Enum.reverse(accumulated)
   end
 
   defp process_systems_in_batches([batch | remaining_batches], accumulated) do
@@ -158,6 +162,11 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     Process.sleep(50)
 
     # Continue with remaining batches
-    process_systems_in_batches(remaining_batches, accumulated ++ processed_batch)
+    # Prepend for O(1) performance instead of append which is O(n)
+    process_systems_in_batches(remaining_batches, Enum.reverse(processed_batch) ++ accumulated)
+  end
+
+  defp get_batch_size do
+    Application.get_env(:wanderer_notifier, @batch_size_config_key, @default_batch_size)
   end
 end

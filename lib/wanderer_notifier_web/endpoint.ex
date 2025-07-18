@@ -18,10 +18,7 @@ defmodule WandererNotifierWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  socket("/socket", WandererNotifierWeb.UserSocket,
-    websocket: true,
-    longpoll: false
-  )
+  # Phoenix channels removed - this app is a consumer, not a provider
 
   # Serve at "/" the static files from "priv/static" directory.
   # You should set gzip to true if you are running phx.digest

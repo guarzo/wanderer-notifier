@@ -93,11 +93,25 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
         :ok
 
       {:error, %{status_code: 429} = error} when retries > 0 ->
-        # Rate limited, wait and retry
+        # Rate limited, use retry-after header if available
         wait_time = extract_retry_after(error)
 
         WandererNotifier.Logger.Logger.startup_warn(
           "Rate limited registering commands, retrying in #{wait_time}ms"
+        )
+
+        Process.sleep(wait_time)
+        register_commands_with_retry(application_id, retries - 1)
+
+      {:error, %{status_code: status} = error} when status in [500, 502, 503, 504] and retries > 0 ->
+        # Server error, use exponential backoff
+        attempt = 3 - retries + 1
+        wait_time = calculate_exponential_backoff(attempt)
+
+        WandererNotifier.Logger.Logger.startup_warn(
+          "Server error registering commands (#{status}), retrying in #{wait_time}ms",
+          attempt: attempt,
+          retries_left: retries - 1
         )
 
         Process.sleep(wait_time)
@@ -259,6 +273,18 @@ defmodule WandererNotifier.Discord.CommandRegistrar do
 
   # Default to 5 seconds
   defp extract_retry_after(_), do: 5000
+
+  defp calculate_exponential_backoff(attempt) do
+    # Exponential backoff: 1s, 2s, 4s, max 8s
+    base_ms = 1000
+    max_ms = 8000
+    
+    backoff = base_ms * :math.pow(2, attempt - 1)
+    # Add 10-20% jitter
+    with_jitter = backoff * (0.9 + :rand.uniform() * 0.2)
+    
+    min(trunc(with_jitter), max_ms)
+  end
 
   # Logs details about registered commands
   defp log_registered_commands do

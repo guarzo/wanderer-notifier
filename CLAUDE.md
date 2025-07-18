@@ -51,17 +51,22 @@ The application follows a domain-driven design with these core components:
 
 ### Data Flow
 1. **WebSocket Client** (`lib/wanderer_notifier/killmail/websocket_client.ex`) - Connects to external WandererKills service for real-time pre-enriched killmail data
-2. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time connection to map API for system and character updates
-3. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy ZKillboard data
-4. **ESI Service** (`lib/wanderer_notifier/esi/`) - Provides legacy enrichment for ZKillboard data (bypassed for WebSocket killmails)
-5. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via SSE real-time events
-6. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
-7. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
+2. **HTTP API Client** (`lib/wanderer_notifier/killmail/wanderer_kills_api.ex`) - Type-safe HTTP client for WandererKills API, provides fallback when WebSocket is down
+3. **Fallback Handler** (`lib/wanderer_notifier/killmail/fallback_handler.ex`) - Automatically switches to HTTP API when WebSocket connection fails
+4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time connection to map API for system and character updates
+5. **Killmail Pipeline** (`lib/wanderer_notifier/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy ZKillboard data
+6. **ESI Service** (`lib/wanderer_notifier/esi/`) - Provides legacy enrichment for ZKillboard data (bypassed for WebSocket killmails)
+7. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via SSE real-time events
+8. **Notification System** (`lib/wanderer_notifier/notifications/`) - Determines notification eligibility and formats messages
+9. **Discord Notifier** (`lib/wanderer_notifier/notifiers/discord/`) - Sends formatted notifications to Discord channels
 
 ### Key Services
 - **WebSocket Client**: Real-time connection to WandererKills service for pre-enriched killmail data
+- **HTTP API Client**: Type-safe HTTP client with automatic fallback when WebSocket is unavailable
 - **SSE Client**: Real-time Server-Sent Events connection to map API for system/character updates
 - **WandererKills HTTP Client** (`lib/wanderer_notifier/killmail/wanderer_kills_client.ex`): REST API client for recent kills lookup
+- **WandererKills API** (`lib/wanderer_notifier/killmail/wanderer_kills_api.ex`): Enhanced type-safe API client with bulk loading support
+- **Fallback Handler** (`lib/wanderer_notifier/killmail/fallback_handler.ex`): Manages automatic failover from WebSocket to HTTP
 - **Cache Layer**: Uses Cachex to minimize API calls with configurable TTLs  
 - **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic updates
 - **License Service**: Controls feature availability (premium embeds vs free text notifications)

@@ -33,13 +33,13 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
     test "handles different hosts separately when per_host is true" do
       request1 =
         build_request(
-          [per_host: true, requests_per_second: 1, burst_capacity: 1],
+          [per_host: true, requests_per_second: 1],
           "https://api1.example.com/test"
         )
 
       request2 =
         build_request(
-          [per_host: true, requests_per_second: 1, burst_capacity: 1],
+          [per_host: true, requests_per_second: 1],
           "https://api2.example.com/test"
         )
 
@@ -53,13 +53,13 @@ defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
     test "handles global rate limiting when per_host is false" do
       request1 =
         build_request(
-          [per_host: false, requests_per_second: 1, burst_capacity: 1],
+          [per_host: false, requests_per_second: 1],
           "https://api1.example.com/test"
         )
 
       request2 =
         build_request(
-          [per_host: false, requests_per_second: 1, burst_capacity: 1],
+          [per_host: false, requests_per_second: 1],
           "https://api2.example.com/test"
         )
 

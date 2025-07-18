@@ -46,6 +46,7 @@ defmodule WandererNotifier.MixProject do
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},
+      {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:plug, "~> 1.18"},
       {:plug_cowboy, "~> 2.7"},

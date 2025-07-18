@@ -228,13 +228,14 @@ defmodule WandererNotifier.Map.SSEConnection do
         new_length = current_length + param_length
 
         if new_length <= remaining_length do
-          {:cont, {acc ++ [param], new_length}}
+          {:cont, {[param | acc], new_length}}
         else
           {:halt, {acc, current_length}}
         end
       end)
 
-    params
+    # Reverse since we built the list in reverse order
+    Enum.reverse(params)
   end
 
   defp calculate_param_length(param, acc) do

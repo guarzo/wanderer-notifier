@@ -153,7 +153,8 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   end
 
   defp process_characters_in_batches([], accumulated) do
-    accumulated
+    # Reverse the accumulated list since we prepended items
+    Enum.reverse(accumulated)
   end
 
   defp process_characters_in_batches([batch | remaining_batches], accumulated) do
@@ -165,6 +166,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     Process.sleep(100)
 
     # Continue with remaining batches
-    process_characters_in_batches(remaining_batches, accumulated ++ processed_batch)
+    # Prepend for O(1) performance instead of append which is O(n)
+    process_characters_in_batches(remaining_batches, Enum.reverse(processed_batch) ++ accumulated)
   end
 end

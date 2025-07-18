@@ -22,8 +22,10 @@ defmodule WandererNotifier.Killmail.Supervisor do
 
     children = [
       # Start the pipeline worker that will process messages
-      {WandererNotifier.Killmail.PipelineWorker, []}
-      # RedisQ client will be started by the PipelineWorker which acts as its parent
+      {WandererNotifier.Killmail.PipelineWorker, []},
+      # Start the fallback handler for HTTP API access
+      {WandererNotifier.Killmail.FallbackHandler, []}
+      # WebSocket client will be started by the PipelineWorker which acts as its parent
     ]
 
     Supervisor.init(children, strategy: :one_for_all)

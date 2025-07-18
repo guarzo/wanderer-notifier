@@ -113,7 +113,9 @@ defmodule WandererNotifier.Application do
           retries_left: retries - 1
         )
 
-        Process.sleep(100)
+        # Use exponential backoff for retries
+        wait_time = calculate_backoff_ms(3 - retries)
+        Process.sleep(wait_time)
         initialize_version_manager_with_retry(retries - 1)
       else
         WandererNotifier.Logger.Logger.startup_error(
@@ -142,8 +144,8 @@ defmodule WandererNotifier.Application do
 
         # Initialize version manager and start analytics collection after supervisor tree is ready
         Task.start(fn ->
-          # Wait for GenServers to be fully started
-          Process.sleep(1000)
+          # Wait for cache GenServers to be fully started
+          wait_for_cache_services()
 
           try do
             initialize_version_manager_with_retry()
@@ -193,25 +195,87 @@ defmodule WandererNotifier.Application do
   end
 
   # Wait for the supervision tree to be fully started
-  defp wait_for_supervisor_startup do
+  defp wait_for_supervisor_startup(attempt \\ 0, max_attempts \\ 50) do
+    if attempt >= max_attempts do
+      raise "SSESupervisor failed to start after #{max_attempts} attempts"
+    end
+
     case Process.whereis(WandererNotifier.Map.SSESupervisor) do
       nil ->
-        # Supervisor not started yet, wait a bit and retry
-        Process.sleep(100)
-        wait_for_supervisor_startup()
+        # Supervisor not started yet, wait with exponential backoff
+        wait_time = calculate_backoff_ms(attempt)
+        Process.sleep(wait_time)
+        wait_for_supervisor_startup(attempt + 1, max_attempts)
 
       pid when is_pid(pid) ->
         # Supervisor is running, check if it's responsive
-        # which_children always returns a list
-        _children = Supervisor.which_children(pid)
-        # Supervisor is responsive and ready
-        :ok
+        case check_supervisor_ready(pid) do
+          :ready ->
+            :ok
+
+          :not_ready ->
+            # Supervisor exists but not ready, wait a bit
+            wait_time = calculate_backoff_ms(attempt)
+            Process.sleep(wait_time)
+            wait_for_supervisor_startup(attempt + 1, max_attempts)
+        end
     end
-  rescue
-    _ ->
-      # If there's an error, wait a bit and try again
-      Process.sleep(100)
-      wait_for_supervisor_startup()
+  end
+
+  defp check_supervisor_ready(pid) do
+    try do
+      # Check if supervisor can respond to queries
+      children = Supervisor.which_children(pid)
+      
+      # Verify at least some children are started
+      if length(children) > 0 do
+        :ready
+      else
+        :not_ready
+      end
+    rescue
+      _ ->
+        # If there's an error, supervisor is not ready
+        :not_ready
+    end
+  end
+
+  defp calculate_backoff_ms(attempt) do
+    # Exponential backoff: 10ms, 20ms, 40ms, ..., max 1000ms
+    base_ms = 10
+    max_ms = 1000
+    
+    backoff = base_ms * :math.pow(2, attempt)
+    min(trunc(backoff), max_ms)
+  end
+
+  # Wait for cache services to be ready
+  defp wait_for_cache_services(attempt \\ 0, max_attempts \\ 30) do
+    if attempt >= max_attempts do
+      raise "Cache services failed to start after #{max_attempts} attempts"
+    end
+
+    required_services = [
+      WandererNotifier.Cache.Analytics,
+      WandererNotifier.Cache.PerformanceMonitor
+    ]
+
+    all_ready = Enum.all?(required_services, &service_ready?/1)
+
+    if all_ready do
+      :ok
+    else
+      wait_time = calculate_backoff_ms(attempt)
+      Process.sleep(wait_time)
+      wait_for_cache_services(attempt + 1, max_attempts)
+    end
+  end
+
+  defp service_ready?(service) do
+    case Process.whereis(service) do
+      nil -> false
+      pid when is_pid(pid) -> Process.alive?(pid)
+    end
   end
 
   # Validates configuration on startup and logs any issues

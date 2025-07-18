@@ -60,7 +60,7 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     )
 
     # Register connection with monitoring system (skip if Integration not running)
-    connection_id = "websocket_killmail_#{:erlang.phash2(self())}"
+    connection_id = "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
 
     if Process.whereis(WandererNotifier.Realtime.Integration) do
       WandererNotifier.Realtime.Integration.register_websocket_connection(connection_id, %{
@@ -70,6 +70,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
 
       # Update connection status
       WandererNotifier.Realtime.Integration.update_connection_health(connection_id, :connected)
+    end
+
+    # Notify fallback handler that WebSocket is connected
+    if Process.whereis(WandererNotifier.Killmail.FallbackHandler) do
+      WandererNotifier.Killmail.FallbackHandler.websocket_connected()
     end
 
     # Update stats with connection time
@@ -116,6 +121,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
         :disconnected,
         %{reason: reason}
       )
+    end
+
+    # Notify fallback handler that WebSocket is down
+    if Process.whereis(WandererNotifier.Killmail.FallbackHandler) do
+      WandererNotifier.Killmail.FallbackHandler.websocket_down()
     end
 
     # Clear websocket stats on disconnect
