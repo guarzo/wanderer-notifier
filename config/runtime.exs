@@ -128,6 +128,8 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
     transport_options: [socket_opts: [:inet6]]
   ],
   server: true,
+  # Secret key base for signing sessions, cookies, and tokens
+  # IMPORTANT: The default value below is for development only and should never be used in production
   secret_key_base:
     System.get_env("SECRET_KEY_BASE") ||
       "wanderer_notifier_secret_key_base_default_for_development_only",

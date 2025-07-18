@@ -59,42 +59,44 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   defp handle_http_response(response, url) do
     case response do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        AppLogger.api_info("HTTP request successful",
-          url: url,
-          status: 200,
-          body_size: byte_size(body)
-        )
-
-        decode_body(body)
+        handle_success_response(body, url)
 
       {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
-        AppLogger.api_error("HTTP request failed with non-200 status",
-          url: url,
-          status: status,
-          body: String.slice(body, 0, 500)
-        )
-
-        {:error, {:api_error, status}}
+        handle_error_status(status, body, url)
 
       {:error, %HTTPoison.Error{reason: reason}} ->
-        AppLogger.api_error("HTTP request failed with error",
-          url: url,
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-
-      {:error, other} ->
-        AppLogger.api_error("HTTP request failed with unexpected error",
-          url: url,
-          error: inspect(other)
-        )
-
-        {:error, other}
+        handle_http_error(reason, url)
     end
   end
 
-  defp decode_body(body) when is_map(body), do: {:ok, body}
+  defp handle_success_response(body, url) do
+    AppLogger.api_info("HTTP request successful",
+      url: url,
+      status: 200,
+      body_size: byte_size(body)
+    )
+
+    decode_body(body)
+  end
+
+  defp handle_error_status(status, body, url) do
+    AppLogger.api_error("HTTP request failed with non-200 status",
+      url: url,
+      status: status,
+      body: String.slice(body, 0, 500)
+    )
+
+    {:error, {:api_error, status}}
+  end
+
+  defp handle_http_error(reason, url) do
+    AppLogger.api_error("HTTP request failed with error",
+      url: url,
+      error: inspect(reason)
+    )
+
+    {:error, reason}
+  end
 
   defp decode_body(body) when is_binary(body) do
     case Jason.decode(body) do

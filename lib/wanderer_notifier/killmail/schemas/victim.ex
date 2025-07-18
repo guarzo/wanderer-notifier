@@ -290,6 +290,19 @@ defmodule WandererNotifier.Killmail.Schemas.Victim do
 
     changeset = %__MODULE__{} |> Ecto.Changeset.change(normalized)
     changeset = SharedValidations.normalize_websocket_fields(changeset, field_mappings)
-    changeset.changes
+
+    # Validate the changeset before returning changes
+    if changeset.valid? do
+      changeset.changes
+    else
+      # Log validation errors but still return the changes
+      require Logger
+
+      Logger.warning("Validation errors in normalize_websocket_fields",
+        errors: changeset.errors
+      )
+
+      changeset.changes
+    end
   end
 end

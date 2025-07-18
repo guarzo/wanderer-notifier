@@ -531,8 +531,12 @@ defmodule WandererNotifier.Cache.VersionManager do
   defp execute_cleanup_step(plan) do
     # Silent cleanup
     case Versioning.invalidate_old_versions(plan.to_version) do
-      {:ok, _count} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, count} ->
+        Logger.debug("Cleaned up #{count} entries for version migration")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

@@ -118,23 +118,17 @@ defmodule WandererNotifier.Config do
     if explicit_name && explicit_name != "" do
       explicit_name
     else
-      # Fall back to empty string if no explicit name is set
-      ""
+      # Parse `name` query param from map_url
+      get(:map_url)
+      |> Utils.parse_map_name_from_url()
     end
   end
 
   def map_csrf_token, do: get(:map_csrf_token)
 
   def map_slug do
-    # First try the explicit MAP_NAME, which is now the preferred approach
-    name = map_name()
-
-    if name && name != "" do
-      name
-    else
-      # Fallback to map_name if no slug can be determined
-      name
-    end
+    # Slug = map_name (parsed or explicit)
+    map_name()
   end
 
   def map_api_key, do: get(:map_api_key, "")

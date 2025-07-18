@@ -253,7 +253,11 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailDataTest do
       assert get_field(changeset, :data_source) == "esi"
       assert get_field(changeset, :enriched) == true
       assert get_field(changeset, :hash) == "abc123hash"
-      assert Decimal.equal?(get_field(changeset, :total_value), Decimal.new("1000000.0"))
+
+      changeset
+      |> get_field(:total_value)
+      |> Decimal.equal?(Decimal.new("1000000.0"))
+      |> assert()
     end
   end
 

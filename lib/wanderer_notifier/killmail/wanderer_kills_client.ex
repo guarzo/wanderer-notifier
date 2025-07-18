@@ -117,7 +117,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
       rate_limit_options: [
         per_host: true,
         # Conservative rate limits - actual API limits should be confirmed
-        # TODO: Contact Wanderer API team to verify official rate limits
+        # NOTE: These values are conservative estimates; contact Wanderer API team for official limits
         requests_per_second: 10,
         burst_capacity: 20
       ],
@@ -148,26 +148,8 @@ defmodule WandererNotifier.Killmail.WandererKillsClient do
   end
 
   # Log rate limit headers for monitoring API limits
-  defp log_rate_limit_headers({:ok, %{headers: headers}}) do
-    rate_limit_headers = [
-      "x-ratelimit-limit",
-      "x-ratelimit-remaining",
-      "x-ratelimit-reset",
-      "retry-after"
-    ]
-
-    headers
-    |> Enum.filter(fn {key, _} -> String.downcase(key) in rate_limit_headers end)
-    |> case do
-      [] ->
-        :ok
-
-      found_headers ->
-        AppLogger.api_debug("WandererKills rate limit headers", %{headers: found_headers})
-    end
-  end
-
-  defp log_rate_limit_headers(_), do: :ok
+  # Note: Headers are not currently available from the HTTP client response
+  defp log_rate_limit_headers(_result), do: :ok
 
   defp handle_successful_response(body, url) do
     AppLogger.api_debug("WandererKills response OK", %{url: url, sample: sample(body)})

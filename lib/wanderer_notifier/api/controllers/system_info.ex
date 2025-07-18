@@ -468,7 +468,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
           module: __MODULE__
         )
 
-        :unknown
+        false
     end
   end
 end

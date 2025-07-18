@@ -116,6 +116,37 @@ verify_prerequisites() {
     done
 }
 
+format_uptime() {
+    local seconds=$1
+    
+    if [[ "$seconds" == "unknown" ]] || ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+        echo "$seconds"
+        return
+    fi
+    
+    local days=$((seconds / 86400))
+    local hours=$(((seconds % 86400) / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local secs=$((seconds % 60))
+    
+    local formatted=""
+    
+    if [[ $days -gt 0 ]]; then
+        formatted="${days}d "
+    fi
+    
+    if [[ $hours -gt 0 ]]; then
+        formatted="${formatted}${hours}h "
+    fi
+    
+    if [[ $minutes -gt 0 ]]; then
+        formatted="${formatted}${minutes}m "
+    fi
+    
+    formatted="${formatted}${secs}s"
+    echo "$formatted"
+}
+
 verify_basic_health() {
     log_section "Basic Health Check"
     
@@ -138,7 +169,7 @@ verify_basic_health() {
             uptime=$(echo "$response" | jq -r '.uptime // "unknown"' 2>/dev/null || echo "unknown")
             
             log_info "Version: $version"
-            log_info "Uptime: ${uptime}s"
+            log_info "Uptime: $(format_uptime "$uptime")"
         else
             log_error "Health check returned unexpected status: $status"
             return 1

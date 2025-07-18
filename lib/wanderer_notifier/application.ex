@@ -169,16 +169,10 @@ defmodule WandererNotifier.Application do
 
       pid when is_pid(pid) ->
         # Supervisor is running, check if it's responsive
-        case Supervisor.which_children(pid) do
-          children when is_list(children) ->
-            # Supervisor is responsive and ready
-            :ok
-
-          _ ->
-            # Supervisor exists but not responsive, wait and retry
-            Process.sleep(100)
-            wait_for_supervisor_startup()
-        end
+        # which_children always returns a list
+        _children = Supervisor.which_children(pid)
+        # Supervisor is responsive and ready
+        :ok
     end
   rescue
     _ ->

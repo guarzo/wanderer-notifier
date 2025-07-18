@@ -139,7 +139,16 @@ ENV REPLACE_OS_VARS=true \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TERM=xterm \
-    # Erlang VM optimization flags
+    # Erlang VM optimization flags:
+    # +fnu: Enable filename unicode support
+    # +JPperf: Enable Java-style performance counters
+    # +sub: Enable sub-microsecond time resolution
+    # +pc unicode: Use unicode for printable characters
+    # +K: Enable kernel polling for better I/O performance
+    # +A 64: Set async thread pool size to 64
+    # +sbwt none: Disable scheduler bind type
+    # +sbwtdcpu none: Disable dirty CPU scheduler bind type  
+    # +sbwtdio none: Disable dirty I/O scheduler bind type
     ELIXIR_ERL_OPTIONS="+fnu +JPperf true +sub true +pc unicode +K true +A 64" \
     ERL_FLAGS="+JPperf true +sub true +pc unicode +K true +A 64 +sbwt none +sbwtdcpu none +sbwtdio none" \
     # Memory and GC tuning

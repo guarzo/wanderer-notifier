@@ -113,6 +113,10 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
   Validates attacker list to ensure exactly one final blow attacker.
   """
   @spec validate_attacker_list([t()]) :: {:ok, [t()]} | {:error, String.t()}
+  def validate_attacker_list([]) do
+    {:error, "Attacker list cannot be empty"}
+  end
+
   def validate_attacker_list(attackers) when is_list(attackers) do
     final_blow_count =
       attackers
@@ -148,10 +152,14 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
   @doc """
   Calculates total damage done by all attackers.
   """
-  @spec total_damage([t()]) :: integer()
+  @spec total_damage([t() | Ecto.Changeset.t()]) :: integer()
   def total_damage(attackers) when is_list(attackers) do
     attackers
-    |> Enum.map(&(&1.damage_done || 0))
+    |> Enum.map(fn
+      %__MODULE__{damage_done: damage} -> damage || 0
+      %Ecto.Changeset{} = changeset -> Ecto.Changeset.get_field(changeset, :damage_done) || 0
+      _ -> 0
+    end)
     |> Enum.sum()
   end
 
@@ -373,20 +381,20 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
     # Allow zero damage for:
     # 1. Smartbomb modules (weapon type IDs in smartbomb range)
     # 2. NPC final blows (character_id is nil)
-    is_smartbomb_weapon?(weapon_type_id) or is_npc_attacker?(character_id)
+    smartbomb_weapon?(weapon_type_id) or npc_attacker?(character_id)
   end
 
   # Check if weapon is a smartbomb (approximate range, may need refinement)
-  defp is_smartbomb_weapon?(weapon_type_id) when is_integer(weapon_type_id) do
-    # Smartbomb weapon type IDs are typically in the range 9000-10000
+  defp smartbomb_weapon?(weapon_type_id) when is_integer(weapon_type_id) do
+    # Smartbomb weapon type IDs are typically in the range 9000-10_000
     # This is an approximation and may need adjustment based on actual EVE data
-    weapon_type_id >= 9000 and weapon_type_id <= 10000
+    weapon_type_id >= 9000 and weapon_type_id <= 10_000
   end
 
-  defp is_smartbomb_weapon?(_), do: false
+  defp smartbomb_weapon?(_), do: false
 
   # Check if attacker is an NPC (no character_id)
-  defp is_npc_attacker?(character_id), do: is_nil(character_id)
+  defp npc_attacker?(character_id), do: is_nil(character_id)
 
   defp normalize_websocket_fields(ws_data) when is_map(ws_data) do
     # Use shared function for common fields, add attacker-specific fields
@@ -413,6 +421,19 @@ defmodule WandererNotifier.Killmail.Schemas.Attacker do
 
     changeset = %__MODULE__{} |> Ecto.Changeset.change(normalized)
     changeset = SharedValidations.normalize_websocket_fields(changeset, field_mappings)
-    changeset.changes
+
+    # Validate the changeset before returning changes
+    if changeset.valid? do
+      changeset.changes
+    else
+      # Log validation errors but still return the changes
+      require Logger
+
+      Logger.warning("Validation errors in normalize_websocket_fields",
+        errors: changeset.errors
+      )
+
+      changeset.changes
+    end
   end
 end

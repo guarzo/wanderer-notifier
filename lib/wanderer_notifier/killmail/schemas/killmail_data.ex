@@ -270,8 +270,8 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
     cond do
       # Thera - special wormhole system
       system_id == 31_000_005 -> :thera
-      # Pochven systems (Triglavian space) - range 30006000-30006027
-      system_id >= 30_006_000 and system_id <= 30_006_027 -> :pochven
+      # Pochven systems (Triglavian space) - range 30045339-30045365
+      system_id >= 30_045_339 and system_id <= 30_045_365 -> :pochven
       # Regular wormhole systems
       system_id >= 31_000_000 and system_id < 32_000_000 -> :wormhole
       # Unknown system
@@ -447,19 +447,33 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
   end
 
   defp validate_final_blow_consistency(changeset) do
-    case get_change(changeset, :attackers) do
-      attackers when is_list(attackers) ->
-        final_blow_attackers = Enum.filter(attackers, & &1.final_blow)
+    attackers = get_change(changeset, :attackers)
 
-        case length(final_blow_attackers) do
-          1 -> changeset
-          0 -> add_error(changeset, :attackers, "Must have exactly one final blow attacker")
-          _ -> add_error(changeset, :attackers, "Cannot have multiple final blow attackers")
-        end
-
-      _ ->
-        changeset
+    if is_list(attackers) do
+      validate_final_blow_count(changeset, attackers)
+    else
+      changeset
     end
+  end
+
+  defp validate_final_blow_count(changeset, attackers) do
+    final_blow_count = count_final_blow_attackers(attackers)
+
+    case final_blow_count do
+      1 -> changeset
+      0 -> add_error(changeset, :attackers, "Must have exactly one final blow attacker")
+      _ -> add_error(changeset, :attackers, "Cannot have multiple final blow attackers")
+    end
+  end
+
+  defp count_final_blow_attackers(attackers) do
+    Enum.count(attackers, fn attacker ->
+      case attacker do
+        %Attacker{final_blow: final_blow} -> final_blow
+        %Ecto.Changeset{} = cs -> Ecto.Changeset.get_field(cs, :final_blow)
+        _ -> false
+      end
+    end)
   end
 
   defp validate_damage_consistency(changeset) do
@@ -467,7 +481,14 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
     attackers = get_change(changeset, :attackers)
 
     case {victim, attackers} do
-      {%Victim{damage_taken: victim_damage}, attackers} when is_list(attackers) ->
+      {victim_data, attackers} when is_list(attackers) ->
+        victim_damage =
+          case victim_data do
+            %Victim{damage_taken: damage} -> damage
+            %Ecto.Changeset{} = cs -> Ecto.Changeset.get_field(cs, :damage_taken)
+            _ -> nil
+          end
+
         total_attacker_damage = Attacker.total_damage(attackers)
 
         if (victim_damage && total_attacker_damage > 0) and
@@ -501,9 +522,18 @@ defmodule WandererNotifier.Killmail.Schemas.KillmailData do
 
   defp derive_npc_kill(changeset) do
     case get_change(changeset, :victim) do
-      %Victim{character_id: nil} -> put_change(changeset, :npc_kill, true)
-      %Victim{character_id: _id} -> put_change(changeset, :npc_kill, false)
-      _ -> changeset
+      victim_data ->
+        character_id =
+          case victim_data do
+            %Victim{character_id: id} -> id
+            %Ecto.Changeset{} = cs -> Ecto.Changeset.get_field(cs, :character_id)
+            _ -> nil
+          end
+
+        case character_id do
+          nil -> put_change(changeset, :npc_kill, true)
+          _id -> put_change(changeset, :npc_kill, false)
+        end
     end
   end
 

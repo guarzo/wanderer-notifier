@@ -34,16 +34,6 @@ defmodule WandererNotifier.Map.Initializer do
       results = Task.await_many(tasks, timeout)
       process_results(results)
     rescue
-      e in TaskError ->
-        # Task-specific errors (timeout, exit, etc)
-        AppLogger.api_error("Map initialization task failed",
-          error: Exception.message(e),
-          timeout: timeout
-        )
-
-        # Continue startup even if map data fails
-        :ok
-
       e in HTTPoison.Error ->
         # Network/HTTP errors
         AppLogger.api_error("Map initialization network error",
@@ -111,56 +101,37 @@ defmodule WandererNotifier.Map.Initializer do
   end
 
   defp fetch_systems do
-    AppLogger.api_info("Starting systems fetch")
-    start_time = System.monotonic_time(:millisecond)
-
-    case SystemsClient.fetch_and_cache_systems() do
-      {:ok, systems} ->
-        elapsed = System.monotonic_time(:millisecond) - start_time
-
-        AppLogger.api_info("Systems fetch completed",
-          count: length(systems),
-          elapsed_ms: elapsed
-        )
-
-        {:ok, "systems", length(systems)}
-
-      error ->
-        elapsed = System.monotonic_time(:millisecond) - start_time
-
-        AppLogger.api_error("Systems fetch failed",
-          error: inspect(error),
-          elapsed_ms: elapsed
-        )
-
-        {:error, "systems", error}
-    end
+    execute_timed_fetch(fn -> SystemsClient.fetch_and_cache_systems() end, "systems")
   end
 
   defp fetch_characters do
-    AppLogger.api_info("Starting characters fetch")
+    execute_timed_fetch(fn -> CharactersClient.fetch_and_cache_characters() end, "characters")
+  end
+
+  defp execute_timed_fetch(fetch_function, label) do
+    AppLogger.api_info("Starting #{label} fetch")
     start_time = System.monotonic_time(:millisecond)
 
-    case CharactersClient.fetch_and_cache_characters() do
-      {:ok, characters} ->
+    case fetch_function.() do
+      {:ok, items} ->
         elapsed = System.monotonic_time(:millisecond) - start_time
 
-        AppLogger.api_info("Characters fetch completed",
-          count: length(characters),
+        AppLogger.api_info("#{String.capitalize(label)} fetch completed",
+          count: length(items),
           elapsed_ms: elapsed
         )
 
-        {:ok, "characters", length(characters)}
+        {:ok, label, length(items)}
 
       error ->
         elapsed = System.monotonic_time(:millisecond) - start_time
 
-        AppLogger.api_error("Characters fetch failed",
+        AppLogger.api_error("#{String.capitalize(label)} fetch failed",
           error: inspect(error),
           elapsed_ms: elapsed
         )
 
-        {:error, "characters", error}
+        {:error, label, error}
     end
   end
 end

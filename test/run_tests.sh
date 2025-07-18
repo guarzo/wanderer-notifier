@@ -62,7 +62,7 @@ else
 fi
 
 # Integration tests (if they exist)
-if [ -d "test/integration" ]; then
+if [ -d "test/integration" ] && [ -n "$(find test/integration -name '*.exs' -type f)" ]; then
     print_status "Running integration tests..."
     if mix test test/integration/ --quiet; then
         print_status "Integration tests passed"

@@ -47,9 +47,9 @@ defmodule WandererNotifier.License.Client do
   # Make the actual API request for validation
   defp make_validation_request(url, body, headers) do
     # Disable rate limiting for license validation during startup
-    opts = [middlewares: [], headers: headers]
+    opts = [middlewares: []]
 
-    case WandererNotifier.Http.Client.post_json(url, body, opts) do
+    case WandererNotifier.HTTP.post_json(url, body, headers, opts) do
       {:ok, %{status_code: status, body: decoded}} when status in 200..299 ->
         process_successful_validation(decoded)
 
@@ -146,7 +146,7 @@ defmodule WandererNotifier.License.Client do
       ]
     ]
 
-    case WandererNotifier.Http.post_json(url, body, opts ++ [headers: headers]) do
+    case WandererNotifier.HTTP.post_json(url, body, headers, opts) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_decoded_license_data(decoded)
 
