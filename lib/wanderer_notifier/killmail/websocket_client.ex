@@ -60,7 +60,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     )
 
     # Register connection with monitoring system (skip if Integration not running)
-    connection_id = "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
+    connection_id =
+      "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
 
     if Process.whereis(WandererNotifier.Realtime.Integration) do
       WandererNotifier.Realtime.Integration.register_websocket_connection(connection_id, %{
@@ -242,16 +243,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
     {:ok, state}
   end
 
+  def handle_frame({:binary, _data}, state) do
+    # We don't expect binary frames
+    {:ok, state}
+  end
+
   defp truncate_message(message, message_size) when message_size > 200 do
     String.slice(message, 0, 200) <> "... (truncated)"
   end
 
   defp truncate_message(message, _message_size), do: message
-
-  def handle_frame({:binary, _data}, state) do
-    # We don't expect binary frames
-    {:ok, state}
-  end
 
   def handle_info(:heartbeat, state) do
     log_heartbeat_uptime(state)

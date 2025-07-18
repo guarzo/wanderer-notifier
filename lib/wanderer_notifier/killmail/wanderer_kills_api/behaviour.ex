@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Killmail.WandererKillsAPI.Behaviour do
   @moduledoc """
   Behaviour definition for the WandererKills API client.
-  
+
   This behaviour ensures type safety and allows for easy mocking in tests.
   Any implementation must provide these functions with the specified signatures.
   """

@@ -46,7 +46,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Application.Service, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},
-      # Phoenix endpoint for API and WebSocket functionality  
+      # Phoenix endpoint for API and WebSocket functionality
       {WandererNotifierWeb.Endpoint, []}
     ]
 
@@ -139,7 +139,7 @@ defmodule WandererNotifier.Application do
         # Initialize cache metrics telemetry
         WandererNotifier.Cache.Metrics.init()
 
-        # All cache services (PerformanceMonitor, Analytics, Versioning) 
+        # All cache services (PerformanceMonitor, Analytics, Versioning)
         # start automatically when their GenServers start
 
         # Initialize version manager and start analytics collection after supervisor tree is ready
@@ -200,33 +200,31 @@ defmodule WandererNotifier.Application do
       raise "SSESupervisor failed to start after #{max_attempts} attempts"
     end
 
-    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
-      nil ->
-        # Supervisor not started yet, wait with exponential backoff
-        wait_time = calculate_backoff_ms(attempt)
-        Process.sleep(wait_time)
-        wait_for_supervisor_startup(attempt + 1, max_attempts)
-
-      pid when is_pid(pid) ->
-        # Supervisor is running, check if it's responsive
-        case check_supervisor_ready(pid) do
-          :ready ->
-            :ok
-
-          :not_ready ->
-            # Supervisor exists but not ready, wait a bit
-            wait_time = calculate_backoff_ms(attempt)
-            Process.sleep(wait_time)
-            wait_for_supervisor_startup(attempt + 1, max_attempts)
-        end
+    case check_supervisor_state() do
+      :ready -> :ok
+      :not_found -> wait_and_retry_supervisor(attempt, max_attempts)
+      :not_ready -> wait_and_retry_supervisor(attempt, max_attempts)
     end
+  end
+
+  defp check_supervisor_state do
+    case Process.whereis(WandererNotifier.Map.SSESupervisor) do
+      nil -> :not_found
+      pid when is_pid(pid) -> check_supervisor_ready(pid)
+    end
+  end
+
+  defp wait_and_retry_supervisor(attempt, max_attempts) do
+    wait_time = calculate_backoff_ms(attempt)
+    Process.sleep(wait_time)
+    wait_for_supervisor_startup(attempt + 1, max_attempts)
   end
 
   defp check_supervisor_ready(pid) do
     try do
       # Check if supervisor can respond to queries
       children = Supervisor.which_children(pid)
-      
+
       # Verify at least some children are started
       if length(children) > 0 do
         :ready
@@ -244,7 +242,7 @@ defmodule WandererNotifier.Application do
     # Exponential backoff: 10ms, 20ms, 40ms, ..., max 1000ms
     base_ms = 10
     max_ms = 1000
-    
+
     backoff = base_ms * :math.pow(2, attempt)
     min(trunc(backoff), max_ms)
   end

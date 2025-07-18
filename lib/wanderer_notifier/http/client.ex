@@ -170,13 +170,17 @@ defmodule WandererNotifier.Http.Client do
     req_opts = if body != nil, do: Keyword.put(req_opts, :body, body), else: req_opts
 
     # Add timeout options - prioritize recv_timeout over timeout if both are present
-    receive_timeout = cond do
-      Keyword.has_key?(opts, :recv_timeout) -> Keyword.get(opts, :recv_timeout)
-      Keyword.has_key?(opts, :timeout) -> Keyword.get(opts, :timeout)
-      true -> nil
-    end
+    receive_timeout =
+      cond do
+        Keyword.has_key?(opts, :recv_timeout) -> Keyword.get(opts, :recv_timeout)
+        Keyword.has_key?(opts, :timeout) -> Keyword.get(opts, :timeout)
+        true -> nil
+      end
 
-    req_opts = if receive_timeout, do: Keyword.put(req_opts, :receive_timeout, receive_timeout), else: req_opts
+    req_opts =
+      if receive_timeout,
+        do: Keyword.put(req_opts, :receive_timeout, receive_timeout),
+        else: req_opts
 
     req_opts =
       if Keyword.has_key?(opts, :connect_timeout),

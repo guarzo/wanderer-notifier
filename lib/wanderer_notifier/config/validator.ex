@@ -215,18 +215,26 @@ defmodule WandererNotifier.Config.Validator do
   defp validate_field_values(errors, config, schema) do
     config
     |> Enum.reduce(errors, fn {field, value}, acc ->
-      case Map.get(schema, field) do
-        nil ->
-          acc
-
-        field_schema ->
-          # Prepend errors for O(1) performance
-          case validate_single_field(field, value, field_schema) do
-            [] -> acc
-            field_errors -> Enum.reduce(field_errors, acc, fn error, acc2 -> [error | acc2] end)
-          end
-      end
+      validate_field_value(acc, field, value, schema)
     end)
+  end
+
+  defp validate_field_value(acc, field, value, schema) do
+    case Map.get(schema, field) do
+      nil ->
+        acc
+
+      field_schema ->
+        # Prepend errors for O(1) performance
+        case validate_single_field(field, value, field_schema) do
+          [] -> acc
+          field_errors -> prepend_errors(field_errors, acc)
+        end
+    end
+  end
+
+  defp prepend_errors(field_errors, acc) do
+    Enum.reduce(field_errors, acc, fn error, acc2 -> [error | acc2] end)
   end
 
   defp validate_single_field(field, value, %{validator: validator}) when is_function(validator) do

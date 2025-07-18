@@ -149,10 +149,11 @@ defmodule WandererNotifier.EventSourcing.Event do
   Gets the age of an event in milliseconds.
   Uses monotonic time if available to handle system clock changes.
   """
-  def age(%__MODULE__{monotonic_timestamp: monotonic_timestamp}) when not is_nil(monotonic_timestamp) do
+  def age(%__MODULE__{monotonic_timestamp: monotonic_timestamp})
+      when not is_nil(monotonic_timestamp) do
     System.monotonic_time(:millisecond) - monotonic_timestamp
   end
-  
+
   def age(%__MODULE__{timestamp: timestamp}) do
     # Fallback for events without monotonic timestamp
     System.system_time(:millisecond) - timestamp

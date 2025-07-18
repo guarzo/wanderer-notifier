@@ -587,12 +587,12 @@ defmodule WandererNotifier.Contexts.ExternalAdaptersBehaviour do
   @moduledoc """
   Behaviour for ExternalAdapters to enable mocking.
   """
-  
+
   @callback get_tracked_systems() :: {:ok, list()} | {:error, any()}
   @callback get_tracked_characters() :: {:ok, list()} | {:error, any()}
 end
 
 # Define mock for ExternalAdapters
-Mox.defmock(WandererNotifier.ExternalAdaptersMock, 
+Mox.defmock(WandererNotifier.ExternalAdaptersMock,
   for: WandererNotifier.Contexts.ExternalAdaptersBehaviour
 )

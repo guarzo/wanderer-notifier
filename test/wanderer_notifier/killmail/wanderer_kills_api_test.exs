@@ -16,23 +16,23 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
   describe "fetch_system_killmails/3" do
     test "returns transformed killmails with enriched flag" do
-      system_id = 30000142
+      system_id = 30_000_142
 
       expected_response = %{
         "kills" => [
           %{
-            "killmail_id" => 12345,
+            "killmail_id" => 12_345,
             "kill_time" => "2024-01-01T00:00:00Z",
             "system_id" => system_id,
             "victim" => %{
-              "character_id" => 95123456,
+              "character_id" => 95_123_456,
               "ship_type_id" => 587
             },
             "attackers" => [
               %{
-                "character_id" => 95654321,
+                "character_id" => 95_654_321,
                 "final_blow" => true,
-                "ship_type_id" => 11567
+                "ship_type_id" => 11_567
               }
             ]
           }
@@ -46,47 +46,47 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       assert {:ok, kills} = WandererKillsAPI.fetch_system_killmails(system_id, 24, 100)
       assert length(kills) == 1
-      
+
       [kill | _] = kills
       assert kill["enriched"] == true
-      assert kill["killmail_id"] == 12345
+      assert kill["killmail_id"] == 12_345
       assert is_map(kill["victim"])
       assert is_list(kill["attackers"])
     end
 
     test "returns proper error response on failure" do
-      system_id = 30000142
+      system_id = 30_000_142
 
       HttpClientMock
       |> expect(:get, fn _url, _headers, _opts ->
         {:error, :timeout}
       end)
 
-      assert {:error, %{type: :timeout, message: message}} = 
-        WandererKillsAPI.fetch_system_killmails(system_id)
-      
+      assert {:error, %{type: :timeout, message: message}} =
+               WandererKillsAPI.fetch_system_killmails(system_id)
+
       assert message =~ "fetch_system_killmails failed"
     end
   end
 
   describe "fetch_systems_killmails/3" do
     test "returns map of system_id to killmails" do
-      system_ids = [30000142, 30000143]
+      system_ids = [30_000_142, 30_000_143]
 
       expected_response = %{
         "systems" => %{
           "30000142" => [
             %{
-              "killmail_id" => 12345,
-              "system_id" => 30000142,
+              "killmail_id" => 12_345,
+              "system_id" => 30_000_142,
               "victim" => %{},
               "attackers" => []
             }
           ],
           "30000143" => [
             %{
-              "killmail_id" => 67890,
-              "system_id" => 30000143,
+              "killmail_id" => 67_890,
+              "system_id" => 30_000_143,
               "victim" => %{},
               "attackers" => []
             }
@@ -101,19 +101,19 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
       end)
 
       assert {:ok, result} = WandererKillsAPI.fetch_systems_killmails(system_ids, 24, 50)
-      assert Map.has_key?(result, 30000142)
-      assert Map.has_key?(result, 30000143)
-      assert length(result[30000142]) == 1
-      assert length(result[30000143]) == 1
+      assert Map.has_key?(result, 30_000_142)
+      assert Map.has_key?(result, 30_000_143)
+      assert length(result[30_000_142]) == 1
+      assert length(result[30_000_143]) == 1
     end
 
     test "handles string system_ids in response" do
-      system_ids = [30000142]
+      system_ids = [30_000_142]
 
       expected_response = %{
         "systems" => %{
           "30000142" => [
-            %{"killmail_id" => 12345}
+            %{"killmail_id" => 12_345}
           ]
         }
       }
@@ -124,17 +124,17 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
       end)
 
       assert {:ok, result} = WandererKillsAPI.fetch_systems_killmails(system_ids)
-      assert Map.has_key?(result, 30000142)
+      assert Map.has_key?(result, 30_000_142)
     end
   end
 
   describe "get_killmail/1" do
     test "fetches single killmail by ID" do
-      killmail_id = 12345
+      killmail_id = 12_345
 
       expected_killmail = %{
         "killmail_id" => killmail_id,
-        "victim" => %{"character_id" => 95123456},
+        "victim" => %{"character_id" => 95_123_456},
         "attackers" => []
       }
 
@@ -153,7 +153,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
   describe "subscribe_to_killmails/3" do
     test "creates subscription and returns subscription ID" do
       subscriber_id = "test_subscriber"
-      system_ids = [30000142, 30000143]
+      system_ids = [30_000_142, 30_000_143]
       callback_url = "https://example.com/webhook"
 
       expected_response = %{
@@ -166,18 +166,18 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
         assert decoded_body["subscriber_id"] == subscriber_id
         assert decoded_body["system_ids"] == system_ids
         assert decoded_body["callback_url"] == callback_url
-        
+
         {:ok, %{status_code: 201, body: Jason.encode!(expected_response)}}
       end)
 
-      assert {:ok, "sub_12345"} = 
-        WandererKillsAPI.subscribe_to_killmails(subscriber_id, system_ids, callback_url)
+      assert {:ok, "sub_12345"} =
+               WandererKillsAPI.subscribe_to_killmails(subscriber_id, system_ids, callback_url)
     end
   end
 
   describe "bulk_load_system_kills/2" do
     test "successfully loads kills from multiple systems" do
-      system_ids = [30000142, 30000143, 30000144]
+      system_ids = [30_000_142, 30_000_143, 30_000_144]
 
       # Mock successful responses for chunks
       HttpClientMock
@@ -188,18 +188,19 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
             "30000143" => [%{"killmail_id" => 3}]
           }
         }
+
         {:ok, %{status_code: 200, body: Jason.encode!(response)}}
       end)
 
-      assert {:ok, %{loaded: loaded, errors: errors}} = 
-        WandererKillsAPI.bulk_load_system_kills(system_ids, 24)
-      
+      assert {:ok, %{loaded: loaded, errors: errors}} =
+               WandererKillsAPI.bulk_load_system_kills(system_ids, 24)
+
       assert loaded == 3
       assert errors == []
     end
 
     test "handles partial failures in bulk load" do
-      system_ids = [30000142, 30000143]
+      system_ids = [30_000_142, 30_000_143]
 
       # First call succeeds, second fails
       HttpClientMock
@@ -207,9 +208,9 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
         {:error, :timeout}
       end)
 
-      assert {:ok, %{loaded: 0, errors: errors}} = 
-        WandererKillsAPI.bulk_load_system_kills(system_ids, 24)
-      
+      assert {:ok, %{loaded: 0, errors: errors}} =
+               WandererKillsAPI.bulk_load_system_kills(system_ids, 24)
+
       assert length(errors) == 1
     end
   end
@@ -245,12 +246,12 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
   describe "transform_kill/1" do
     test "ensures consistent killmail structure" do
       raw_kill = %{
-        "killmail_id" => 12345,
+        "killmail_id" => 12_345,
         "victim" => %{
-          "character_id" => 95123456
+          "character_id" => 95_123_456
         },
         "attackers" => [
-          %{"character_id" => 95654321}
+          %{"character_id" => 95_654_321}
         ]
       }
 
@@ -259,14 +260,14 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
         {:ok, %{status_code: 200, body: Jason.encode!(raw_kill)}}
       end)
 
-      assert {:ok, kill} = WandererKillsAPI.get_killmail(12345)
-      
+      assert {:ok, kill} = WandererKillsAPI.get_killmail(12_345)
+
       # Check victim normalization
       assert kill["victim"]["character_name"] == nil
       assert kill["victim"]["corporation_name"] == nil
       assert kill["victim"]["alliance_name"] == nil
       assert kill["victim"]["ship_name"] == nil
-      
+
       # Check attacker normalization
       [attacker | _] = kill["attackers"]
       assert Map.has_key?(attacker, "character_name")

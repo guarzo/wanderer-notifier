@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Killmail.WandererKillsAPI do
   @moduledoc """
   Enhanced type-safe HTTP client for the WandererKills API.
-  
+
   This module provides a comprehensive interface to the WandererKills service,
   implementing type-safe patterns and supporting all available endpoints.
   It can be used as a fallback when WebSocket connection is unavailable or
@@ -37,9 +37,8 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   @spec fetch_system_killmails(system_id(), integer(), integer()) ::
           {:ok, [killmail()]} | error_response()
   def fetch_system_killmails(system_id, hours \\ 24, limit \\ 100) do
-    with {:ok, kills} <- WandererKillsClient.get_system_kills(system_id, limit, hours) do
-      {:ok, transform_kills(kills)}
-    else
+    case WandererKillsClient.get_system_kills(system_id, limit, hours) do
+      {:ok, kills} -> {:ok, transform_kills(kills)}
       {:error, reason} -> format_error(reason, :fetch_system_killmails)
     end
   end
@@ -53,7 +52,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
           {:ok, %{system_id() => [killmail()]}} | error_response()
   def fetch_systems_killmails(system_ids, hours \\ 24, limit_per_system \\ 50) do
     url = build_multi_system_url(system_ids, hours, limit_per_system)
-    
+
     case perform_request(url) do
       {:ok, response} -> parse_multi_system_response(response)
       {:error, reason} -> format_error(reason, :fetch_systems_killmails)
@@ -67,7 +66,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   @spec get_killmail(killmail_id()) :: {:ok, killmail()} | error_response()
   def get_killmail(killmail_id) do
     url = "#{@base_url}/api/v1/kills/#{killmail_id}"
-    
+
     case perform_request(url) do
       {:ok, kill} -> {:ok, transform_kill(kill)}
       {:error, reason} -> format_error(reason, :get_killmail)
@@ -83,13 +82,13 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
           {:ok, String.t()} | error_response()
   def subscribe_to_killmails(subscriber_id, system_ids, callback_url \\ nil) do
     url = "#{@base_url}/api/v1/subscriptions"
-    
+
     body = %{
       subscriber_id: subscriber_id,
       system_ids: system_ids,
       callback_url: callback_url
     }
-    
+
     case perform_post_request(url, body) do
       {:ok, %{"subscription_id" => sub_id}} -> {:ok, sub_id}
       {:error, reason} -> format_error(reason, :subscribe_to_killmails)
@@ -103,9 +102,8 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   @spec fetch_character_killmails(character_id(), integer(), integer()) ::
           {:ok, [killmail()]} | error_response()
   def fetch_character_killmails(character_id, hours \\ 24, limit \\ 100) do
-    with {:ok, kills} <- WandererKillsClient.get_character_kills(character_id, limit, hours) do
-      {:ok, transform_kills(kills)}
-    else
+    case WandererKillsClient.get_character_kills(character_id, limit, hours) do
+      {:ok, kills} -> {:ok, transform_kills(kills)}
       {:error, reason} -> format_error(reason, :fetch_character_killmails)
     end
   end
@@ -118,13 +116,14 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
           {:ok, %{loaded: integer(), errors: [any()]}} | error_response()
   def bulk_load_system_kills(system_ids, hours \\ 24) do
     AppLogger.info("Starting bulk load for #{length(system_ids)} systems")
-    
-    results = 
+
+    results =
       system_ids
-      |> Enum.chunk_every(10) # Process in chunks to avoid overwhelming the API
+      # Process in chunks to avoid overwhelming the API
+      |> Enum.chunk_every(10)
       |> Enum.map(&fetch_chunk(&1, hours))
       |> aggregate_bulk_results()
-    
+
     {:ok, results}
   end
 
@@ -135,7 +134,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   @spec health_check() :: {:ok, map()} | {:error, any()}
   def health_check do
     url = "#{@base_url}/api/v1/health"
-    
+
     case perform_request(url, timeout: 5_000) do
       {:ok, response} -> {:ok, response}
       {:error, _} = error -> error
@@ -150,13 +149,13 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
       since_hours: hours,
       limit_per_system: limit_per_system
     }
-    
+
     query = URI.encode_query(params)
     "#{@base_url}/api/v1/kills/systems?#{query}"
   end
 
   defp perform_request(url, extra_opts \\ []) do
-    opts = 
+    opts =
       [
         retry_options: [
           max_attempts: @max_retries,
@@ -174,9 +173,9 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
         recv_timeout: 10_000
       ]
       |> Keyword.merge(extra_opts)
-    
+
     result = HTTP.get(url, http_headers(), opts)
-    
+
     case ResponseHandler.handle_response(result,
            success_codes: [200],
            log_context: %{client: "WandererKillsAPI", url: url}
@@ -188,7 +187,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
 
   defp perform_post_request(url, body) do
     json_body = Jason.encode!(body)
-    
+
     opts = [
       retry_options: [
         max_attempts: @max_retries,
@@ -196,9 +195,9 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
       ],
       timeout: 10_000
     ]
-    
+
     result = HTTP.post(url, json_body, http_headers(), opts)
-    
+
     case ResponseHandler.handle_response(result,
            success_codes: [200, 201],
            log_context: %{client: "WandererKillsAPI", url: url}
@@ -246,10 +245,14 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
 
   defp ensure_attackers_structure(kill) do
     case Map.get(kill, "attackers") do
-      nil -> Map.put(kill, "attackers", [])
+      nil ->
+        Map.put(kill, "attackers", [])
+
       attackers when is_list(attackers) ->
         Map.put(kill, "attackers", Enum.map(attackers, &normalize_participant/1))
-      _ -> Map.put(kill, "attackers", [])
+
+      _ ->
+        Map.put(kill, "attackers", [])
     end
   end
 
@@ -262,13 +265,13 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   end
 
   defp parse_multi_system_response(%{"systems" => systems}) when is_map(systems) do
-    result = 
+    result =
       systems
       |> Enum.map(fn {system_id, kills} ->
         {parse_system_id(system_id), transform_kills(kills)}
       end)
       |> Map.new()
-    
+
     {:ok, result}
   end
 
@@ -280,6 +283,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   defp parse_system_id(system_id) when is_binary(system_id) do
     String.to_integer(system_id)
   end
+
   defp parse_system_id(system_id) when is_integer(system_id), do: system_id
 
   defp fetch_chunk(system_ids, hours) do
@@ -293,17 +297,17 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
 
   defp aggregate_bulk_results(tasks) do
     results = Task.await_many(tasks, 30_000)
-    
+
     Enum.reduce(results, %{loaded: 0, errors: []}, fn
       {:ok, system_data}, acc ->
-        kill_count = 
+        kill_count =
           system_data
           |> Map.values()
           |> Enum.map(&length/1)
           |> Enum.sum()
-        
+
         %{acc | loaded: acc.loaded + kill_count}
-      
+
       {:error, error}, acc ->
         %{acc | errors: [error | acc.errors]}
     end)
@@ -312,7 +316,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPI do
   defp format_error(reason, context) do
     error_type = categorize_error(reason)
     message = format_error_message(reason, context)
-    
+
     {:error, %{type: error_type, message: message}}
   end
 

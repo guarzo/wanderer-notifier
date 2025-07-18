@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Killmail.FallbackHandler do
   @moduledoc """
   Handles fallback scenarios when WebSocket connection is unavailable.
-  
+
   This module provides resilience by using the HTTP API to fetch killmail data
   when the real-time WebSocket connection is down. It can also be used for
   bulk loading operations and data recovery.
@@ -14,8 +14,8 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Contexts.ExternalAdapters
 
-  @check_interval 30_000  # Check every 30 seconds
-  @bulk_load_hours 12     # Load last 12 hours of data when recovering
+  # Check every 30 seconds
+  @check_interval 30_000
 
   defstruct [
     :websocket_pid,
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   @impl true
   def init(opts) do
     websocket_pid = Keyword.get(opts, :websocket_pid)
-    
+
     state = %__MODULE__{
       websocket_pid: websocket_pid,
       last_check: nil,
@@ -73,7 +73,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
       tracked_systems: MapSet.new(),
       tracked_characters: MapSet.new()
     }
-    
+
     # Schedule periodic checks
     {:ok, schedule_check(state)}
   end
@@ -81,19 +81,19 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   @impl true
   def handle_cast(:websocket_down, state) do
     AppLogger.warn("WebSocket connection down, activating HTTP fallback")
-    
+
     new_state = %{state | fallback_active: true}
-    
+
     # Immediately fetch recent data
     Task.start(fn -> fetch_all_recent_data(new_state) end)
-    
+
     {:noreply, new_state}
   end
 
   @impl true
   def handle_cast(:websocket_connected, state) do
     AppLogger.info("WebSocket connection restored, deactivating HTTP fallback")
-    
+
     {:noreply, %{state | fallback_active: false}}
   end
 
@@ -106,34 +106,29 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   @impl true
   def handle_call({:bulk_load, hours}, _from, state) do
     AppLogger.info("Starting bulk load for last #{hours} hours")
-    
+
     # Update tracked entities
     state = update_tracked_entities(state)
-    
+
     # Perform bulk load
-    result = WandererKillsAPI.bulk_load_system_kills(
-      MapSet.to_list(state.tracked_systems),
-      hours
-    )
-    
+    systems_list = MapSet.to_list(state.tracked_systems)
+    result = WandererKillsAPI.bulk_load_system_kills(systems_list, hours)
+
     case result do
       {:ok, %{loaded: count, errors: errors}} ->
         AppLogger.info("Bulk load completed: #{count} killmails loaded, #{length(errors)} errors")
-        
+
         if length(errors) > 0 do
           AppLogger.warn("Bulk load errors", errors: inspect(errors))
         end
-        
-      {:error, reason} ->
-        AppLogger.error("Bulk load failed", error: inspect(reason))
     end
-    
+
     {:reply, result, state}
   end
 
   @impl true
   def handle_info(:periodic_check, state) do
-    new_state = 
+    new_state =
       if state.fallback_active do
         # Only fetch data if WebSocket is still down
         Task.start(fn -> fetch_all_recent_data(state) end)
@@ -141,7 +136,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
       else
         state
       end
-    
+
     {:noreply, schedule_check(new_state)}
   end
 
@@ -149,7 +144,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
 
   defp schedule_check(state) do
     if state.check_timer, do: Process.cancel_timer(state.check_timer)
-    
+
     timer = Process.send_after(self(), :periodic_check, @check_interval)
     %{state | check_timer: timer}
   end
@@ -157,50 +152,49 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   defp fetch_all_recent_data(state) do
     # Update tracked entities
     state = update_tracked_entities(state)
-    
+
     AppLogger.info("Fetching recent data via HTTP API",
       systems_count: MapSet.size(state.tracked_systems),
       characters_count: MapSet.size(state.tracked_characters)
     )
-    
+
     # Fetch data for all tracked systems
     system_results = fetch_system_data(state.tracked_systems)
-    
+
     # Process results through the pipeline
     process_fetched_killmails(system_results)
-    
-    {:ok, %{
-      systems_checked: MapSet.size(state.tracked_systems),
-      killmails_processed: count_killmails(system_results)
-    }}
+
+    {:ok,
+     %{
+       systems_checked: MapSet.size(state.tracked_systems),
+       killmails_processed: count_killmails(system_results)
+     }}
   end
 
   defp update_tracked_entities(state) do
     {:ok, systems} = ExternalAdapters.get_tracked_systems()
     {:ok, characters} = ExternalAdapters.get_tracked_characters()
-    
-    tracked_systems = 
+
+    tracked_systems =
       systems
       |> Enum.map(&extract_system_id/1)
       |> Enum.filter(&valid_system_id?/1)
       |> MapSet.new()
-    
+
     tracked_characters =
       characters
       |> Enum.map(&extract_character_id/1)
       |> Enum.filter(&valid_character_id?/1)
       |> MapSet.new()
-    
-    %{state | 
-      tracked_systems: tracked_systems,
-      tracked_characters: tracked_characters
-    }
+
+    %{state | tracked_systems: tracked_systems, tracked_characters: tracked_characters}
   end
 
   defp fetch_system_data(system_ids) do
     system_ids
     |> MapSet.to_list()
-    |> Enum.chunk_every(10)  # Process in chunks
+    # Process in chunks
+    |> Enum.chunk_every(10)
     |> Enum.map(&fetch_chunk/1)
     |> List.flatten()
   end
@@ -210,12 +204,13 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
       {:ok, data} ->
         data
         |> Enum.flat_map(fn {_system_id, kills} -> kills end)
-        
+
       {:error, reason} ->
         AppLogger.error("Failed to fetch killmails for chunk",
           systems: system_ids,
           error: inspect(reason)
         )
+
         []
     end
   end
@@ -226,7 +221,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
       case Process.whereis(WandererNotifier.Killmail.PipelineWorker) do
         nil ->
           AppLogger.error("PipelineWorker not found for fallback processing")
-          
+
         pid ->
           # Mark as HTTP-sourced to avoid duplicate processing
           enhanced_killmail = Map.put(killmail, "source", "http_fallback")
@@ -240,7 +235,7 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   end
 
   # Helper functions (similar to WebSocket client)
-  
+
   defp extract_system_id(system) when is_struct(system) do
     system.solar_system_id || system.id
   end
@@ -262,14 +257,14 @@ defmodule WandererNotifier.Killmail.FallbackHandler do
   end
 
   defp normalize_character_id(id) when is_integer(id), do: id
-  
+
   defp normalize_character_id(id) when is_binary(id) do
     case Integer.parse(id) do
       {int_id, ""} -> int_id
       _ -> nil
     end
   end
-  
+
   defp normalize_character_id(_), do: nil
 
   defp valid_character_id?(char_id) do
