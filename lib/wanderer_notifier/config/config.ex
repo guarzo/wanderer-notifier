@@ -168,6 +168,7 @@ defmodule WandererNotifier.Config do
   def discord_webhook_url, do: get(:discord_webhook_url)
 
   def discord_application_id, do: get(:discord_application_id)
+  def discord_guild_id, do: get(:discord_guild_id)
 
   def notification_features, do: get(:features, %{})
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
@@ -218,7 +219,9 @@ defmodule WandererNotifier.Config do
     status_messages_enabled: false,
     character_tracking_enabled: true,
     system_tracking_enabled: true,
-    test_mode_enabled: false
+    test_mode_enabled: false,
+    voice_participant_notifications_enabled: false,
+    fallback_to_here_enabled: true
   ]
 
   def features do
@@ -297,6 +300,11 @@ defmodule WandererNotifier.Config do
   end
 
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
+
+  def voice_participant_notifications_enabled?,
+    do: feature_enabled?(:voice_participant_notifications_enabled)
+
+  def fallback_to_here_enabled?, do: feature_enabled?(:fallback_to_here_enabled)
 
   # Tracking is always enabled - users can only control notifications
   def character_tracking_enabled?, do: true
