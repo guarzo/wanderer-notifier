@@ -8,10 +8,11 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
 
   setup do
     # Start Registry for SSE client naming
-    case Registry.start_link(keys: :unique, name: WandererNotifier.Registry) do
-      {:ok, registry} -> registry
-      {:error, {:already_started, registry}} -> registry
-    end
+    registry_pid =
+      case Registry.start_link(keys: :unique, name: WandererNotifier.Registry) do
+        {:ok, registry} -> registry
+        {:error, {:already_started, registry}} -> registry
+      end
 
     # Start HTTPoison/hackney
     HTTPoison.start()
@@ -20,7 +21,16 @@ defmodule WandererNotifier.Map.SSEIntegrationTest do
     map_url = Application.get_env(:wanderer_notifier, :map_url) || "https://example.com"
     Application.put_env(:wanderer_notifier, :map_url, map_url)
 
-    :ok
+    on_exit(fn ->
+      # Clean up any SSE clients that might still be running
+      try do
+        SSESupervisor.stop_sse_client("test-supervisor-map")
+      catch
+        _, _ -> :ok
+      end
+    end)
+
+    {:ok, registry: registry_pid}
   end
 
   describe "SSE Integration" do
