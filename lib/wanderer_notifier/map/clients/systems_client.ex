@@ -134,7 +134,11 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
       )
 
       # Process each batch with a small delay for GC
-      final_systems = process_systems_in_batches(batched_systems, [])
+      # Process systems and reverse the final result to maintain original order
+      final_systems =
+        batched_systems
+        |> process_systems_in_batches([])
+        |> Enum.reverse()
 
       # Cache all processed systems at once
       WandererNotifier.Map.Clients.BaseMapClient.cache_put(
@@ -150,8 +154,8 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   end
 
   defp process_systems_in_batches([], accumulated) do
-    # Reverse the accumulated list since we prepended items
-    Enum.reverse(accumulated)
+    # Return the accumulated list in correct order
+    accumulated
   end
 
   defp process_systems_in_batches([batch | remaining_batches], accumulated) do
@@ -162,8 +166,16 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     Process.sleep(50)
 
     # Continue with remaining batches
-    # Prepend for O(1) performance instead of append which is O(n)
-    process_systems_in_batches(remaining_batches, Enum.reverse(processed_batch) ++ accumulated)
+    # Prepend processed_batch items in reverse order to maintain original order
+    # This avoids O(n²) complexity from repeated list concatenation
+    new_accumulated =
+      processed_batch
+      |> Enum.reverse()
+      |> Enum.reduce(accumulated, fn item, acc ->
+        [item | acc]
+      end)
+
+    process_systems_in_batches(remaining_batches, new_accumulated)
   end
 
   defp get_batch_size do

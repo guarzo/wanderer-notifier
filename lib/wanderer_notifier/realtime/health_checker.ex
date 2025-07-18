@@ -84,29 +84,62 @@ defmodule WandererNotifier.Realtime.HealthChecker do
 
   defp calculate_uptime_from_connection_time(%Connection{} = connection, connected_at) do
     now = DateTime.utc_now()
-    total_seconds = DateTime.diff(now, connected_at, :second)
 
-    # For now, we'll use a simple calculation based on current status
-    # In a real implementation, you'd track disconnect periods
-    calculate_uptime_by_status(connection.status, total_seconds)
-  end
+    # Calculate total time since first connection
+    _time_since_first_connect = DateTime.diff(now, connected_at, :second)
 
-  defp calculate_uptime_by_status(:connected, total_seconds) do
-    # If currently connected, assume good uptime unless we track disconnections
-    # Give new connections benefit of doubt after grace period
-    if total_seconds > 300 do
-      # After 5 minutes, assume good uptime (99.0%) for stable connections
-      99.0
+    # Calculate current session time if connected
+    current_session_time =
+      if connection.status == :connected and connection.connected_at do
+        DateTime.diff(now, connection.connected_at, :second)
+      else
+        0
+      end
+
+    # Total connected time includes past sessions plus current session
+    total_connected_time = connection.total_connected_time + current_session_time
+
+    # Calculate total disconnect time from events
+    total_disconnect_time = calculate_total_disconnect_time(connection, now)
+
+    # Calculate actual uptime percentage
+    total_time = total_connected_time + total_disconnect_time
+
+    if total_time > 0 do
+      uptime = total_connected_time / total_time * 100.0
+      Float.round(uptime, 1)
     else
-      # Grace period for new connections - don't penalize them
-      99.0
+      # New connection with no history
+      if connection.status == :connected do
+        # Give new connections benefit of doubt
+        99.0
+      else
+        0.0
+      end
     end
   end
 
-  defp calculate_uptime_by_status(:connecting, _total_seconds), do: 85.0
-  defp calculate_uptime_by_status(:reconnecting, _total_seconds), do: 80.0
-  defp calculate_uptime_by_status(:failed, _total_seconds), do: 0.0
-  defp calculate_uptime_by_status(:disconnected, _total_seconds), do: 50.0
+  defp calculate_total_disconnect_time(%Connection{} = connection, now) do
+    # Sum up all completed disconnect periods
+    completed_disconnect_time =
+      connection.disconnect_events
+      |> Enum.map(fn event ->
+        # Each event tracks when disconnected and how long was connected before
+        # So we need to calculate the disconnect duration from the next connect
+        Map.get(event, :disconnect_duration, 0)
+      end)
+      |> Enum.sum()
+
+    # Add current disconnect period if currently disconnected
+    current_disconnect_time =
+      if connection.status in [:disconnected, :failed] and connection.last_disconnect_at do
+        DateTime.diff(now, connection.last_disconnect_at, :second)
+      else
+        0
+      end
+
+    completed_disconnect_time + current_disconnect_time
+  end
 
   @doc """
   Checks if a connection's heartbeat is healthy.

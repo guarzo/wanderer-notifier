@@ -40,7 +40,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
       pipeline_worker: Keyword.get(opts, :pipeline_worker),
       connected_at: nil,
       reconnect_attempts: 0,
-      connection_id: nil
+      connection_id: nil,
+      join_retry_count: 0
     }
 
     WebSockex.start_link(socket_url, __MODULE__, state,
@@ -293,9 +294,16 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
           stacktrace: __STACKTRACE__
         )
 
-        # Retry after delay
-        Process.send_after(self(), :join_channel, 5_000)
-        {:ok, state}
+        # Retry with exponential backoff
+        retry_count = Map.get(state, :join_retry_count, 0)
+        delay = calculate_backoff(retry_count)
+
+        WandererNotifier.Logger.Logger.info(
+          "Scheduling channel join retry in #{delay}ms (attempt #{retry_count + 1})"
+        )
+
+        Process.send_after(self(), :join_channel, delay)
+        {:ok, %{state | join_retry_count: retry_count + 1}}
     end
   end
 
@@ -549,8 +557,10 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
           error: inspect(reason)
         )
 
-        Process.send_after(self(), :join_channel, 5_000)
-        {:ok, state}
+        retry_count = Map.get(state, :join_retry_count, 0)
+        delay = calculate_backoff(retry_count)
+        Process.send_after(self(), :join_channel, delay)
+        {:ok, %{state | join_retry_count: retry_count + 1}}
     end
   end
 
@@ -568,7 +578,8 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
        )
        when ref == state.channel_ref do
     WandererNotifier.Logger.Logger.startup_info("Successfully joined killmails channel")
-    {:ok, state}
+    # Reset join retry count on successful join
+    {:ok, %{state | join_retry_count: 0}}
   end
 
   defp handle_phoenix_message(
@@ -576,8 +587,11 @@ defmodule WandererNotifier.Killmail.WebSocketClient do
          state
        ) do
     WandererNotifier.Logger.Logger.error("Failed to join channel", error: inspect(response))
-    Process.send_after(self(), :join_channel, 5_000)
-    {:ok, state}
+
+    retry_count = Map.get(state, :join_retry_count, 0)
+    delay = calculate_backoff(retry_count)
+    Process.send_after(self(), :join_channel, delay)
+    {:ok, %{state | join_retry_count: retry_count + 1}}
   end
 
   defp handle_phoenix_message(%{"event" => "killmail_update", "payload" => payload}, state) do

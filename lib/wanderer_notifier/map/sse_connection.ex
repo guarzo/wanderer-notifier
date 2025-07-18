@@ -52,12 +52,22 @@ defmodule WandererNotifier.Map.SSEConnection do
   - `connection` - The connection reference to close
   """
   @spec close(reference() | term()) :: :ok
-  def close(connection) do
+  def close(nil), do: :ok
+
+  def close(connection) when is_reference(connection) do
     # Handle HTTPoison async response - stream_next is safe to call
     async_response = %HTTPoison.AsyncResponse{id: connection}
-    HTTPoison.stream_next(async_response)
+
+    try do
+      HTTPoison.stream_next(async_response)
+    rescue
+      _error -> :ok
+    end
+
     :ok
   end
+
+  def close(_connection), do: :ok
 
   # Private functions
 

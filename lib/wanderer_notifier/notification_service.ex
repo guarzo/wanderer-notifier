@@ -29,6 +29,7 @@ defmodule WandererNotifier.NotificationService do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Discord.VoiceParticipants
   alias WandererNotifier.PersistentValues
   alias WandererNotifier.Config
 
@@ -279,9 +280,37 @@ defmodule WandererNotifier.NotificationService do
     base_message = "🗺️ System event detected: **#{system_name}**"
 
     if is_priority do
-      "@here #{base_message} (Priority System)"
+      priority_message = "#{base_message} (Priority System)"
+      build_notification_with_mentions(priority_message)
     else
       base_message
+    end
+  end
+
+  # Builds notification message with appropriate mentions (voice participants or @here)
+  defp build_notification_with_mentions(message) do
+    if Config.voice_participant_notifications_enabled?() do
+      voice_mentions = VoiceParticipants.get_active_voice_mentions()
+
+      case {voice_mentions, Config.fallback_to_here_enabled?()} do
+        {[], true} ->
+          # No voice participants, fallback to @here if enabled
+          AppLogger.processor_info("No voice participants found, falling back to @here")
+          "@here #{message}"
+
+        {[], false} ->
+          # No voice participants, no fallback
+          AppLogger.processor_info("No voice participants found, no fallback enabled")
+          message
+
+        {mentions, _} when is_list(mentions) and length(mentions) > 0 ->
+          # Found voice participants
+          AppLogger.processor_info("Found voice participants", count: length(mentions))
+          VoiceParticipants.build_voice_notification_message(message, mentions)
+      end
+    else
+      # Voice participant notifications disabled, use @here
+      "@here #{message}"
     end
   end
 

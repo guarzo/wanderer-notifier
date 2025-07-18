@@ -1,10 +1,35 @@
 defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Http.Middleware.RateLimiter
 
-  setup do
-    # Hammer manages its own ETS tables, no need to clear them
+  setup_all do
+    # Ensure required services are started for tests
+    try do
+      unless Process.whereis(WandererNotifier.Registry) do
+        Registry.start_link(keys: :unique, name: WandererNotifier.Registry)
+      end
+    catch
+      _, _ -> :ok
+    end
+
+    # Check if the ETS table exists before trying to start the process
+    try do
+      case :ets.whereis(WandererNotifier.RateLimiter) do
+        :undefined ->
+          # Table doesn't exist, start the process
+          unless Process.whereis(WandererNotifier.RateLimiter) do
+            WandererNotifier.RateLimiter.start_link([])
+          end
+
+        _ ->
+          # Table exists, process should be running
+          :ok
+      end
+    catch
+      _, _ -> :ok
+    end
+
     :ok
   end
 

@@ -1,0 +1,34 @@
+<div class="connection-card">
+    <div class="connection-header">
+        <h3><%= String.upcase(to_string(@connection[:type] || @connection.type || "unknown")) %></h3>
+        <span class="status status-<%= status_color(@connection[:status] || @connection.status || "unknown") %>">
+            <%= @connection[:status] || @connection.status || "unknown" %>
+        </span>
+    </div>
+    <div class="connection-body">
+        <div class="metric">
+            <span class="label">Quality</span>
+            <span class="value text-<%= status_color(@connection[:quality] || @connection.quality || "unknown") %>">
+                <%= @connection[:quality] || @connection.quality || "unknown" %>
+            </span>
+        </div>
+        <div class="metric">
+            <span class="label">Uptime</span>
+            <span class="value text-<%= percentage_color(@connection[:uptime_percentage] || @connection.uptime_percentage || 0) %>">
+                <%= @connection[:uptime_percentage] || @connection.uptime_percentage || 0 %>%
+            </span>
+        </div>
+        <div class="metric">
+            <span class="label">Connected Since</span>
+            <span class="value">
+                <%= format_timestamp(@connection[:connected_at] || @connection.connected_at) %>
+            </span>
+        </div>
+        <div class="metric">
+            <span class="label">Last Heartbeat</span>
+            <span class="value">
+                <%= format_timestamp(@connection[:last_heartbeat] || @connection.last_heartbeat) %>
+            </span>
+        </div>
+    </div>
+</div>

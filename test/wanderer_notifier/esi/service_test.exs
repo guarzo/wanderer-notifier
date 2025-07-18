@@ -56,7 +56,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   # Stub the Client module
   setup do
     # Make sure the required registries are started
-    unless Process.whereis(WandererNotifier.Cache.Registry) do
+    if !Process.whereis(WandererNotifier.Cache.Registry) do
       {:ok, _} = Registry.start_link(keys: :unique, name: WandererNotifier.Cache.Registry)
     end
 

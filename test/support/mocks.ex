@@ -297,6 +297,25 @@ defmodule WandererNotifier.MockConfig do
   def track_kspace_systems?, do: true
 
   def deduplication_module, do: WandererNotifier.MockDeduplication
+
+  def get_config do
+    %{
+      notifications: %{
+        enabled: true,
+        kill: %{
+          enabled: true,
+          system: %{enabled: true},
+          character: %{enabled: true},
+          min_value: 100_000_000,
+          min_isk_per_character: 50_000_000,
+          min_isk_per_corporation: 50_000_000,
+          min_isk_per_alliance: 50_000_000,
+          min_isk_per_ship: 50_000_000,
+          min_isk_per_system: 50_000_000
+        }
+      }
+    }
+  end
 end
 
 defmodule WandererNotifier.MockCacheHelpers do

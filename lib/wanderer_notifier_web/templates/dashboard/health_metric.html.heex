@@ -1,0 +1,13 @@
+<div class="health-metric">
+    <div class="metric-header">
+        <h4><%= @title %></h4>
+        <span class="badge badge-<%= @status %>"><%= @status %></span>
+    </div>
+    <div class="metric-value">
+        <span class="value"><%= @value %></span>
+        <span class="unit"><%= @unit %></span>
+    </div>
+    <div class="progress-bar">
+        <div class="progress-fill progress-<%= @status %>" style="width: <%= Kernel.min(100, @value / @max * 100) %>%"></div>
+    </div>
+</div>

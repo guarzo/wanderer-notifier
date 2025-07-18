@@ -10,7 +10,8 @@ Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-t
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications with real-time updates
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
 - **Discord Slash Commands:** Full Discord bot integration with slash commands to manage priority systems and check bot status
-- **Priority Systems:** Mark critical systems for special notifications with @here mentions, with priority-only mode support
+- **Priority Systems:** Mark critical systems for special notifications with targeted mentions, with priority-only mode support
+- **Voice Participant Notifications:** Target only active voice channel users instead of @here mentions for better notification targeting
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management and unified key generation
 - **Data Enrichment:** Integrates with EVE's ESI API for additional enrichment when needed (most data comes pre-enriched)
@@ -85,10 +86,19 @@ The notifier supports Discord slash commands for managing your notification pref
 ### Priority Systems
 
 Priority systems receive special treatment in notifications:
-- Kill notifications in priority systems include @here mentions
+- System notifications in priority systems include targeted mentions (@here or voice participants)
 - Ensures critical systems get immediate attention
 - Priority status persists between bot restarts
 - Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
+
+### Voice Participant Notifications
+
+For more targeted notifications, the system can now notify only users actively in Discord voice channels:
+
+- **Smart Targeting**: Only mentions users currently in voice channels (excludes AFK channel)
+- **Fallback Support**: Optionally falls back to @here if no voice participants are found
+- **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
+- **Configurable**: Disabled by default, requires Discord Guild ID to enable
 
 ## Requirements
 
@@ -199,11 +209,16 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: false)
    - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
-5. **Service URLs (Optional)**
+5. **Voice Participant Notifications**
+   - `DISCORD_GUILD_ID`: Discord server/guild ID for voice participant queries (required for voice notifications)
+   - `VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED`: Target only active voice channel users (default: false)
+   - `FALLBACK_TO_HERE_ENABLED`: Fallback to @here if no voice participants found (default: true)
+
+6. **Service URLs (Optional)**
    - `WEBSOCKET_URL`: WebSocket URL for killmail data (default: "ws://host.docker.internal:4004")
    - `WANDERER_KILLS_URL`: Base URL for WandererKills API (default: "http://host.docker.internal:4004")
 
-6. **Additional Configuration**
+7. **Additional Configuration**
    - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking
 
 ## Development

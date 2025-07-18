@@ -80,6 +80,11 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
 # CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
 
+# Voice Participant Notifications (NEW)
+# DISCORD_GUILD_ID=your_discord_guild_id  # Required for voice participant notifications
+# VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED=false  # Target only active voice channel users
+# FALLBACK_TO_HERE_ENABLED=true  # Fallback to @here if no voice participants
+
 # Character Configuration
 # CHARACTER_EXCLUDE_LIST=character_id1,character_id2
 
@@ -165,10 +170,19 @@ Wanderer Notifier supports Discord slash commands for managing your notification
 ### Priority Systems
 
 Priority systems receive special treatment in notifications:
-- Kill notifications in priority systems include @here mentions
+- System notifications in priority systems include targeted mentions (@here or voice participants)
 - Ensures critical systems get immediate attention
 - Priority status persists between bot restarts
 - Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
+
+### Voice Participant Notifications (NEW)
+
+For more targeted notifications, the system can now notify only users actively in Discord voice channels:
+
+- **Smart Targeting**: Only mentions users currently in voice channels (excludes AFK channel)
+- **Fallback Support**: Optionally falls back to @here if no voice participants are found
+- **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
+- **Configurable**: Disabled by default, requires Discord Guild ID to enable
 
 ## Configuration Validation
 
@@ -182,7 +196,8 @@ On startup, the application validates all configuration settings. If there are i
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
 - **Discord Slash Commands:** Manage priority systems and check bot status directly from Discord
-- **Priority Systems:** Mark critical systems for special notifications with @here mentions
+- **Priority Systems:** Mark critical systems for special notifications with targeted mentions
+- **Voice Participant Notifications:** Target only active voice channel users instead of @here mentions
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
 - **Data Enrichment:** Integrates with EVE's ESI API when needed (pre-enriched data used when available)

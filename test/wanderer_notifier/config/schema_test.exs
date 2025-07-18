@@ -156,7 +156,7 @@ defmodule WandererNotifier.Config.SchemaTest do
       for {field, config} <- schema do
         env_var = config.env_var
 
-        unless field == :wanderer_kills_url do
+        if field != :wanderer_kills_url do
           refute String.starts_with?(env_var, "WANDERER_"),
                  "#{field} env var #{env_var} should not have WANDERER_ prefix"
         end

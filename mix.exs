@@ -55,11 +55,12 @@ defmodule WandererNotifier.MixProject do
       {:logger_file_backend, "~> 0.0.14"},
       # Phoenix & Ecto
       {:phoenix, "~> 1.7.14"},
+      {:phoenix_html, "~> 4.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:ecto, "~> 3.12"},
       {:mint_web_socket, "~> 1.0"},
       # Rate limiting
-      {:hammer, "~> 6.2"},
+      {:hammer, "~> 7.0"},
       # Development & Testing
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},

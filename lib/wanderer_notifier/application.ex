@@ -36,6 +36,8 @@ defmodule WandererNotifier.Application do
       # Add Registry for SSE client naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
       create_cache_child_spec(),
+      # Add rate limiter for HTTP requests
+      {WandererNotifier.RateLimiter, []},
       # Add persistent storage modules before Discord consumer
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
