@@ -4,7 +4,7 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
 
   This module provides functionality to:
   - Query active voice participants in a Discord guild
-  - Filter out bot users and AFK channel participants
+  - Filter out AFK channel participants
   - Generate individual user mentions for notifications
   """
 
@@ -19,7 +19,6 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
 
   Returns a list of Discord user mentions (e.g., ["<@123>", "<@456>"]) for users
   currently connected to voice channels, excluding:
-  - Bot users
   - Users in the AFK channel
   - Users in non-voice channels
 
@@ -80,9 +79,7 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
       |> Map.values()
       |> Enum.filter(fn voice_state ->
         channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
-        user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
-
-        channel_id in voice_channel_ids and not user_is_bot?(user_id)
+        channel_id in voice_channel_ids
       end)
       |> Enum.map(fn voice_state ->
         user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
@@ -99,24 +96,31 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   # Gets all voice channel IDs in the guild, excluding the AFK channel.
   @spec get_voice_channel_ids(map(), integer() | nil) :: [integer()]
   defp get_voice_channel_ids(guild, afk_channel_id) do
-    case guild.channels do
-      nil ->
-        []
-
-      channels when is_map(channels) ->
-        channels
-        |> Map.values()
-        |> Enum.filter(&voice_channel?/1)
-        |> Enum.reject(&(&1.id == afk_channel_id))
-        |> Enum.map(& &1.id)
-
-      channels when is_list(channels) ->
-        channels
-        |> Enum.filter(&voice_channel?/1)
-        |> Enum.reject(&(&1.id == afk_channel_id))
-        |> Enum.map(& &1.id)
-    end
+    guild.channels
+    |> extract_channels()
+    |> filter_voice_channels()
+    |> exclude_afk_channel(afk_channel_id)
+    |> extract_channel_ids()
   end
+
+  # Extracts channels from guild, handling nil case
+  @spec extract_channels(map() | nil) :: [Channel.t()]
+  defp extract_channels(nil), do: []
+  defp extract_channels(channels) when is_map(channels), do: Map.values(channels)
+
+  # Filters channels to only include voice channels
+  @spec filter_voice_channels([Channel.t()]) :: [Channel.t()]
+  defp filter_voice_channels(channels), do: Enum.filter(channels, &voice_channel?/1)
+
+  # Excludes the AFK channel from the list
+  @spec exclude_afk_channel([Channel.t()], integer() | nil) :: [Channel.t()]
+  defp exclude_afk_channel(channels, afk_channel_id) do
+    Enum.reject(channels, &(&1.id == afk_channel_id))
+  end
+
+  # Extracts channel IDs from channel structs
+  @spec extract_channel_ids([Channel.t()]) :: [integer()]
+  defp extract_channel_ids(channels), do: Enum.map(channels, & &1.id)
 
   # Checks if a channel is a voice channel.
   @spec voice_channel?(Channel.t()) :: boolean()
@@ -124,53 +128,6 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   # Voice channel type ID
   defp voice_channel?(%Channel{type: 2}), do: true
   defp voice_channel?(_), do: false
-
-  # Checks if a user is a bot by querying the Discord API.
-  # This function includes caching to avoid repeated API calls for the same user.
-  @spec user_is_bot?(integer()) :: boolean()
-  defp user_is_bot?(user_id) do
-    # Use a simple cache key for bot status
-    cache_key = {:bot_status, user_id}
-
-    case :persistent_term.get(cache_key, :not_cached) do
-      :not_cached ->
-        bot_status = fetch_user_bot_status(user_id)
-        # Cache for 5 minutes (bot status doesn't change frequently)
-        :persistent_term.put(cache_key, {bot_status, System.system_time(:second) + 300})
-        bot_status
-
-      {cached_status, expires_at} ->
-        current_time = System.system_time(:second)
-
-        if current_time > expires_at do
-          # Cache expired, refresh
-          bot_status = fetch_user_bot_status(user_id)
-          :persistent_term.put(cache_key, {bot_status, current_time + 300})
-          bot_status
-        else
-          cached_status
-        end
-    end
-  end
-
-  # Fetches bot status from Discord API.
-  @spec fetch_user_bot_status(integer()) :: boolean()
-  defp fetch_user_bot_status(user_id) do
-    case Nostrum.Api.User.get(user_id) do
-      {:ok, %{bot: true}} ->
-        true
-
-      {:ok, %{"bot" => true}} ->
-        true
-
-      {:ok, _user} ->
-        false
-
-      {:error, _reason} ->
-        # If we can't determine bot status, assume not a bot to be safe
-        false
-    end
-  end
 
   @doc """
   Builds a notification message with voice participant mentions.
@@ -188,19 +145,5 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   def build_voice_notification_message(base_message, mentions) when is_list(mentions) do
     mention_string = Enum.join(mentions, " ")
     "#{mention_string} #{base_message}"
-  end
-
-  @doc """
-  Clears the bot status cache. Useful for testing or manual cache invalidation.
-  """
-  @spec clear_bot_cache() :: :ok
-  def clear_bot_cache do
-    :persistent_term.get()
-    |> Enum.each(fn
-      {{:bot_status, _user_id}, _value} = key -> :persistent_term.erase(key)
-      _ -> :ok
-    end)
-
-    :ok
   end
 end

@@ -27,8 +27,8 @@ Successfully implemented voice participant notifications for the Wanderer Notifi
 
 ### 1. Voice Participant Detection
 - Queries Discord guild voice channels (excluding AFK)
-- Filters out bot users using cached API calls
-- Generates individual `<@user_id>` mentions
+- Generates individual `<@user_id>` mentions for all voice participants
+- Simplified implementation without bot filtering for better performance
 
 ### 2. Fallback Behavior
 - **Voice participants found**: Uses individual mentions
@@ -40,9 +40,10 @@ Successfully implemented voice participant notifications for the Wanderer Notifi
 - `FALLBACK_TO_HERE_ENABLED` - Fallback to `@here` when no voice participants
 - `DISCORD_GUILD_ID` - Guild ID for voice participant queries
 
-### 4. Caching
-- Bot status cached for 5 minutes using `:persistent_term`
-- Reduces Discord API calls for repeated user queries
+### 4. Performance Optimizations
+- Simplified voice participant detection without API calls
+- Efficient channel filtering using guild cache data
+- Minimal memory footprint with targeted queries
 
 ## Usage
 

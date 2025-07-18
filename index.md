@@ -180,7 +180,6 @@ Priority systems receive special treatment in notifications:
 For more targeted notifications, the system can now notify only users actively in Discord voice channels:
 
 - **Smart Targeting**: Only mentions users currently in voice channels (excludes AFK channel)
-- **Bot Filtering**: Automatically excludes bot users from mentions
 - **Fallback Support**: Optionally falls back to @here if no voice participants are found
 - **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
 - **Configurable**: Disabled by default, requires Discord Guild ID to enable
