@@ -197,77 +197,13 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
       connection ->
         Logger.debug("Connection #{id} status changed to #{status}")
 
-        updated_connection = %{connection | status: status}
-
         updated_connection =
-          case status do
-            :connected when connection.connected_at == nil ->
-              # First connection
-              connected_connection = %{updated_connection | connected_at: DateTime.utc_now()}
+          connection
+          |> set_connection_status(status)
+          |> apply_status_specific_changes(status)
 
-              connected_connection
-              |> update_connection_quality()
-              |> update_uptime_percentage()
-
-            :connected ->
-              # Reconnection - update connected_at but track previous disconnect period
-              now = DateTime.utc_now()
-
-              # Update disconnect events with the disconnect duration if we were disconnected
-              updated_disconnect_events =
-                if connection.last_disconnect_at && length(connection.disconnect_events) > 0 do
-                  [last_event | rest] = connection.disconnect_events
-                  disconnect_duration = DateTime.diff(now, connection.last_disconnect_at, :second)
-                  updated_event = Map.put(last_event, :disconnect_duration, disconnect_duration)
-                  [updated_event | rest]
-                else
-                  connection.disconnect_events
-                end
-
-              %{
-                updated_connection
-                | connected_at: now,
-                  last_disconnect_at: nil,
-                  disconnect_events: updated_disconnect_events
-              }
-              |> update_connection_quality()
-              |> update_uptime_percentage()
-
-            status when status in [:disconnected, :failed] ->
-              # Track disconnect event
-              now = DateTime.utc_now()
-
-              connected_duration =
-                if connection.connected_at do
-                  DateTime.diff(now, connection.connected_at, :second)
-                else
-                  0
-                end
-
-              new_total_connected_time = connection.total_connected_time + connected_duration
-
-              new_disconnect_event = %{
-                timestamp: now,
-                duration: connected_duration,
-                reason: status
-              }
-
-              %{
-                updated_connection
-                | last_disconnect_at: now,
-                  total_connected_time: new_total_connected_time,
-                  disconnect_events: [new_disconnect_event | connection.disconnect_events]
-              }
-
-            _ ->
-              updated_connection
-          end
-
-        connections = Map.put(state.connections, id, updated_connection)
-        new_state = %{state | connections: connections}
-        updated_state = update_global_metrics(new_state)
-
-        {:noreply, updated_state}
+        new_state = update_state_with_connection(state, id, updated_connection)
+        {:noreply, new_state}
     end
   end
 
@@ -422,5 +358,93 @@ defmodule WandererNotifier.Realtime.ConnectionMonitor do
       [] -> 0
       times -> (Enum.sum(times) / length(times)) |> round()
     end
+  end
+
+  # Helper functions for handle_cast status updates
+
+  defp set_connection_status(connection, status) do
+    %{connection | status: status}
+  end
+
+  defp apply_status_specific_changes(connection, status) do
+    case status do
+      :connected when connection.connected_at == nil ->
+        handle_first_connection(connection)
+
+      :connected ->
+        handle_reconnection(connection)
+
+      status when status in [:disconnected, :failed] ->
+        handle_disconnection(connection, status)
+
+      _ ->
+        connection
+    end
+  end
+
+  defp handle_first_connection(connection) do
+    connected_connection = %{connection | connected_at: DateTime.utc_now()}
+
+    connected_connection
+    |> update_connection_quality()
+    |> update_uptime_percentage()
+  end
+
+  defp handle_reconnection(connection) do
+    now = DateTime.utc_now()
+    updated_disconnect_events = update_disconnect_events(connection, now)
+
+    %{
+      connection
+      | connected_at: now,
+        last_disconnect_at: nil,
+        disconnect_events: updated_disconnect_events
+    }
+    |> update_connection_quality()
+    |> update_uptime_percentage()
+  end
+
+  defp handle_disconnection(connection, status) do
+    now = DateTime.utc_now()
+    connected_duration = calculate_connected_duration(connection, now)
+    new_total_connected_time = connection.total_connected_time + connected_duration
+
+    new_disconnect_event = %{
+      timestamp: now,
+      duration: connected_duration,
+      reason: status
+    }
+
+    %{
+      connection
+      | last_disconnect_at: now,
+        total_connected_time: new_total_connected_time,
+        disconnect_events: [new_disconnect_event | connection.disconnect_events]
+    }
+  end
+
+  defp update_disconnect_events(connection, now) do
+    if connection.last_disconnect_at && length(connection.disconnect_events) > 0 do
+      [last_event | rest] = connection.disconnect_events
+      disconnect_duration = DateTime.diff(now, connection.last_disconnect_at, :second)
+      updated_event = Map.put(last_event, :disconnect_duration, disconnect_duration)
+      [updated_event | rest]
+    else
+      connection.disconnect_events
+    end
+  end
+
+  defp calculate_connected_duration(connection, now) do
+    if connection.connected_at do
+      DateTime.diff(now, connection.connected_at, :second)
+    else
+      0
+    end
+  end
+
+  defp update_state_with_connection(state, id, updated_connection) do
+    connections = Map.put(state.connections, id, updated_connection)
+    new_state = %{state | connections: connections}
+    update_global_metrics(new_state)
   end
 end

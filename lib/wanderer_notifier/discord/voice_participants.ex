@@ -67,40 +67,9 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
   @spec get_active_voice_mentions(integer() | any()) :: [String.t()]
   def get_active_voice_mentions(guild_id) when is_integer(guild_id) and guild_id > 0 do
     try do
-      guild = GuildCache.get!(guild_id)
-
-      # Validate guild data
-      case guild do
-        nil ->
-          Logger.warning("Guild not found in cache for ID: #{guild_id}")
-          []
-
-        %{voice_states: nil} ->
-          Logger.debug("No voice states available for guild #{guild_id}")
-          []
-
-        %{voice_states: voice_states} when is_map(voice_states) ->
-          # Find all voice channel IDs except AFK
-          voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
-
-          # Gather voice participants and build mentions
-          # voice_states is a map of user_id => voice_state_map
-          voice_states
-          |> Map.values()
-          |> Enum.filter(fn voice_state ->
-            channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
-            channel_id in voice_channel_ids
-          end)
-          |> Enum.map(fn voice_state ->
-            user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
-            "<@#{user_id}>"
-          end)
-          |> Enum.uniq()
-
-        _ ->
-          Logger.warning("Unexpected guild structure for ID: #{guild_id}")
-          []
-      end
+      guild_id
+      |> get_guild_safely()
+      |> extract_voice_participants()
     rescue
       error ->
         Logger.error("Failed to get voice participants for guild #{guild_id}: #{inspect(error)}")
@@ -121,6 +90,73 @@ defmodule WandererNotifier.Discord.VoiceParticipants do
     )
 
     []
+  end
+
+  # Gets guild safely and logs debug info
+  @spec get_guild_safely(integer()) :: map()
+  defp get_guild_safely(guild_id) do
+    GuildCache.get!(guild_id)
+  end
+
+  # Extracts voice participants from guild
+  @spec extract_voice_participants(map()) :: [String.t()]
+  defp extract_voice_participants(guild) do
+    case guild.voice_states do
+      nil ->
+        Logger.debug("No voice states available for guild #{guild.id}")
+        []
+
+      voice_states when is_map(voice_states) ->
+        process_voice_states_map(voice_states, guild)
+
+      voice_states when is_list(voice_states) ->
+        process_voice_states_list(voice_states, guild)
+
+      _ ->
+        Logger.warning("Unexpected voice_states structure for guild #{guild.id}")
+        []
+    end
+  end
+
+  # Processes voice states when they're in map format
+  @spec process_voice_states_map(map(), map()) :: [String.t()]
+  defp process_voice_states_map(voice_states, guild) do
+    voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
+
+    voice_states
+    |> Map.values()
+    |> filter_by_voice_channels(voice_channel_ids)
+    |> build_user_mentions()
+  end
+
+  # Processes voice states when they're in list format
+  @spec process_voice_states_list(list(), map()) :: [String.t()]
+  defp process_voice_states_list(voice_states, guild) do
+    voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
+
+    voice_states
+    |> filter_by_voice_channels(voice_channel_ids)
+    |> build_user_mentions()
+  end
+
+  # Filters voice states to only include those in voice channels
+  @spec filter_by_voice_channels(list(), [integer()]) :: list()
+  defp filter_by_voice_channels(voice_states, voice_channel_ids) do
+    Enum.filter(voice_states, fn voice_state ->
+      channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
+      channel_id in voice_channel_ids
+    end)
+  end
+
+  # Builds user mentions from voice states
+  @spec build_user_mentions(list()) :: [String.t()]
+  defp build_user_mentions(voice_states) do
+    voice_states
+    |> Enum.map(fn voice_state ->
+      user_id = Map.get(voice_state, :user_id) || Map.get(voice_state, "user_id")
+      "<@#{user_id}>"
+    end)
+    |> Enum.uniq()
   end
 
   # Gets all voice channel IDs in the guild, excluding the AFK channel.

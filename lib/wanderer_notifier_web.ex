@@ -42,6 +42,35 @@ defmodule WandererNotifierWeb do
     end
   end
 
+  def view do
+    quote do
+      use Phoenix.View,
+        root: "lib/wanderer_notifier_web/templates",
+        namespace: WandererNotifierWeb
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller, only: [get_flash: 1, get_flash: 2, view_module: 1]
+
+      # Include shared imports and aliases for views
+      unquote(view_helpers())
+    end
+  end
+
+  defp view_helpers do
+    quote do
+      # Use all HTML functionality (forms, tags, etc)
+      use Phoenix.HTML
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller, only: [get_flash: 1, get_flash: 2, view_module: 1]
+
+      # Common helpers
+      import Phoenix.HTML.Form
+      import Phoenix.HTML.Tag
+      import Phoenix.HTML.Link
+    end
+  end
+
   @doc """
   When used, dispatch to the appropriate controller/view/etc.
   """

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content={@refresh_interval}>
+    <title>Wanderer Notifier Dashboard</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Wanderer Notifier Dashboard</h1>
+            <div class="header-stats">
+                <div class="stat">
+                    <span class="label">Uptime</span>
+                    <span class="value"><%= format_uptime(@data.system.uptime_seconds) %></span>
+                </div>
+                <div class="stat">
+                    <span class="label">Version</span>
+                    <span class="value"><%= @data.version %></span>
+                </div>
+                <div class="stat">
+                    <span class="label">Environment</span>
+                    <span class="value"><%= @data.environment %></span>
+                </div>
+            </div>
+        </header>
+        
+        <main class="content">
+            <!-- Connection Status -->
+            <section class="section">
+                <h2>Connection Status</h2>
+                <div class="grid">
+                    <%= render "connection_card.html", connection: @data.connections.websocket %>
+                    <%= render "connection_card.html", connection: @data.connections.sse %>
+                </div>
+            </section>
+
+            <!-- System Health -->
+            <section class="section">
+                <h2>System Health</h2>
+                <div class="grid">
+                    <%= render "health_metric.html", title: "Memory Usage", value: @data.system.memory_mb, unit: "MB", max: 1024, status: memory_status(@data.system.memory_mb) %>
+                    <%= render "health_metric.html", title: "Process Count", value: @data.system.process_count, unit: "", max: 10000, status: process_status(@data.system.process_count) %>
+                    <%= render "health_metric.html", title: "Message Queue", value: @data.system.message_queue_length, unit: "", max: 1000, status: queue_status(@data.system.message_queue_length) %>
+                </div>
+            </section>
+
+            <!-- Processing Statistics -->
+            <section class="section">
+                <h2>Processing Statistics</h2>
+                <div class="stats-grid">
+                    <%= render "stat_card.html", label: "Events Processed", value: @data.metrics.events_processed %>
+                    <%= render "stat_card.html", label: "Notifications Sent", value: @data.metrics.notifications_sent %>
+                    <%= render "stat_card.html", label: "Processing Rate", value: "#{@data.metrics.processing_rate}/min" %>
+                    <%= render "stat_card.html", label: "Success Rate", value: "#{@data.metrics.success_rate}%" %>
+                </div>
+            </section>
+
+            <!-- Tracking Summary -->
+            <section class="section">
+                <h2>Tracking Summary</h2>
+                <div class="tracking-grid">
+                    <div class="tracking-card">
+                        <h3>Systems</h3>
+                        <div class="tracking-stats">
+                            <div>Total: <%= Map.get(@data.tracking || %{}, :total_systems, 0) %></div>
+                            <div>Priority: <%= Map.get(@data.tracking || %{}, :priority_systems, 0) %></div>
+                            <div>K-Space: <%= if Map.get(@data.tracking || %{}, :kspace_enabled, false), do: "Enabled", else: "Disabled" %></div>
+                        </div>
+                    </div>
+                    <div class="tracking-card">
+                        <h3>Characters</h3>
+                        <div class="tracking-stats">
+                            <div>Total: <%= Map.get(@data.tracking || %{}, :total_characters, 0) %></div>
+                            <div>Active: <%= Map.get(@data.tracking || %{}, :active_characters, 0) %></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Activity -->
+            <section class="section">
+                <h2>Recent Activity</h2>
+                <div class="activity-list">
+                    <%= if Enum.empty?(@data.recent_events) do %>
+                        <div class="empty-state">No recent activity</div>
+                    <% else %>
+                        <%= for event <- Enum.take(@data.recent_events, 10) do %>
+                            <%= render "activity_item.html", event: event %>
+                        <% end %>
+                    <% end %>
+                </div>
+            </section>
+        </main>
+        
+        <footer class="footer">
+            <div>Last updated: <%= format_timestamp(DateTime.utc_now()) %></div>
+            <div>Auto-refresh: <%= @refresh_interval %>s</div>
+        </footer>
+    </div>
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>

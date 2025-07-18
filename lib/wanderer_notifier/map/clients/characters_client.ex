@@ -173,7 +173,9 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     # Prepend processed_batch items in reverse order to maintain original order
     # This avoids O(n²) complexity from repeated list concatenation
     new_accumulated =
-      Enum.reduce(Enum.reverse(processed_batch), accumulated, fn item, acc ->
+      processed_batch
+      |> Enum.reverse()
+      |> Enum.reduce(accumulated, fn item, acc ->
         [item | acc]
       end)
 
