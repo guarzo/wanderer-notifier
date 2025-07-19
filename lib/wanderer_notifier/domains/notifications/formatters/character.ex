@@ -58,11 +58,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Character do
 
     case has_corporation do
       true ->
+        corporation_ticker = Map.get(character, :corporation_ticker, "")
+
         corporation_link =
-          Base.create_corporation_link(
-            Map.get(character, :corporation_ticker, ""),
-            character.corporation_id
-          )
+          Base.create_corporation_link(corporation_ticker, character.corporation_id)
 
         [Base.build_field("Corporation", corporation_link, true)]
 

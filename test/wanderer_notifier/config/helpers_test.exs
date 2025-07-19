@@ -2,8 +2,8 @@ defmodule WandererNotifier.Config.HelpersTest do
   use ExUnit.Case, async: true
 
   defmodule TestConfig do
-    require WandererNotifier.Config.Helpers
-    import WandererNotifier.Config.Helpers, except: [get: 1, get: 2, feature_enabled?: 1]
+    require WandererNotifier.Shared.Config.Helpers
+    import WandererNotifier.Shared.Config.Helpers, except: [get: 1, get: 2, feature_enabled?: 1]
 
     # Test simple configuration accessors
     defconfig(:simple, [

@@ -3,7 +3,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   import Mox
 
   alias WandererNotifier.ESI.Service
-  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance}
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Cache.Facade
   alias WandererNotifier.ESI.ServiceMock
 

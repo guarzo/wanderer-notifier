@@ -3,7 +3,13 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
   import Mox
 
   alias WandererNotifier.ESI.ServiceV2
-  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
+
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{
+    Character,
+    Corporation,
+    Alliance,
+    SolarSystem
+  }
 
   setup :verify_on_exit!
 
