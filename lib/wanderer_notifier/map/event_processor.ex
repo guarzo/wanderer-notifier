@@ -21,9 +21,9 @@ defmodule WandererNotifier.Map.EventProcessor do
   """
 
   require Logger
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Map.EventHandlers.SystemHandler
-  alias WandererNotifier.Map.EventHandlers.CharacterHandler
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Domains.SystemTracking.EventHandler
+  alias WandererNotifier.Domains.CharacterTracking.EventHandler
 
   @doc """
   Processes a single event from the SSE stream.
@@ -134,15 +134,18 @@ defmodule WandererNotifier.Map.EventProcessor do
   # System event handlers
   @spec handle_system_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
   defp handle_system_event("add_system", event, map_slug) do
-    SystemHandler.handle_system_added(event, map_slug)
+    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_added(event, map_slug)
   end
 
   defp handle_system_event("deleted_system", event, map_slug) do
-    SystemHandler.handle_system_deleted(event, map_slug)
+    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_deleted(event, map_slug)
   end
 
   defp handle_system_event("system_metadata_changed", event, map_slug) do
-    SystemHandler.handle_system_metadata_changed(event, map_slug)
+    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_metadata_changed(
+      event,
+      map_slug
+    )
   end
 
   # Connection event handlers (not implemented yet)
@@ -162,11 +165,17 @@ defmodule WandererNotifier.Map.EventProcessor do
   # Character event handlers
   @spec handle_character_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
   defp handle_character_event("character_added", event, map_slug) do
-    CharacterHandler.handle_character_added(event, map_slug)
+    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_added(
+      event,
+      map_slug
+    )
   end
 
   defp handle_character_event("character_removed", event, map_slug) do
-    CharacterHandler.handle_character_removed(event, map_slug)
+    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_removed(
+      event,
+      map_slug
+    )
   end
 
   defp handle_character_event("character_updated", event, map_slug) do
@@ -181,7 +190,10 @@ defmodule WandererNotifier.Map.EventProcessor do
       )
     end
 
-    CharacterHandler.handle_character_updated(event, map_slug)
+    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_updated(
+      event,
+      map_slug
+    )
   end
 
   # ACL event handlers (legacy - keeping for compatibility)

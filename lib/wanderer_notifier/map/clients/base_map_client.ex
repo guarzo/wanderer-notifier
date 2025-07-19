@@ -4,8 +4,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   These clients handle fetching and caching data from the map API.
   """
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   require Logger
   alias MapSet
 
@@ -110,7 +110,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def cache_get(cache_key) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
-    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
+    case WandererNotifier.Infrastructure.Cache.Adapter.get(cache_name, cache_key) do
       {:ok, data} ->
         handle_cache_data(data, cache_key)
 
@@ -170,7 +170,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp perform_cache_set(cache_name, cache_key, data, ttl) do
-    case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl) do
+    case WandererNotifier.Infrastructure.Cache.Adapter.set(cache_name, cache_key, data, ttl) do
       {:ok, _} ->
         {:ok, data}
 

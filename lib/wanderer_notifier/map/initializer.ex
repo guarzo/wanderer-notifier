@@ -6,9 +6,9 @@ defmodule WandererNotifier.Map.Initializer do
   the SSE connection starts receiving real-time updates.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Map.Clients.SystemsClient
-  alias WandererNotifier.Map.Clients.CharactersClient
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Domains.SystemTracking.Client
+  alias WandererNotifier.Domains.CharacterTracking.Client
 
   @doc """
   Initializes map data by fetching systems and characters from the API.
@@ -76,9 +76,14 @@ defmodule WandererNotifier.Map.Initializer do
 
         # Update the stats tracking
         case type do
-          "systems" -> WandererNotifier.Core.Stats.set_tracked_count(:systems, count)
-          "characters" -> WandererNotifier.Core.Stats.set_tracked_count(:characters, count)
-          _ -> :ok
+          "systems" ->
+            WandererNotifier.Application.Services.Stats.set_tracked_count(:systems, count)
+
+          "characters" ->
+            WandererNotifier.Application.Services.Stats.set_tracked_count(:characters, count)
+
+          _ ->
+            :ok
         end
 
       {:error, type, reason} ->
@@ -91,11 +96,17 @@ defmodule WandererNotifier.Map.Initializer do
   end
 
   defp fetch_systems do
-    execute_timed_fetch(fn -> SystemsClient.fetch_and_cache_systems() end, "systems")
+    execute_timed_fetch(
+      fn -> WandererNotifier.Domains.SystemTracking.Client.fetch_and_cache_systems() end,
+      "systems"
+    )
   end
 
   defp fetch_characters do
-    execute_timed_fetch(fn -> CharactersClient.fetch_and_cache_characters() end, "characters")
+    execute_timed_fetch(
+      fn -> WandererNotifier.Domains.CharacterTracking.Client.fetch_and_cache_characters() end,
+      "characters"
+    )
   end
 
   defp execute_timed_fetch(fetch_function, label) do

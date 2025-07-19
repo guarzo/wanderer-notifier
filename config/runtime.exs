@@ -1,5 +1,5 @@
 import Config
-alias WandererNotifier.Config.Helpers
+alias WandererNotifier.Config.Utils
 
 # This file provides compile-time configuration defaults.
 # Runtime configuration is handled by WandererNotifier.Config.Provider
@@ -63,7 +63,7 @@ feature_env_vars =
       |> String.downcase()
       |> String.to_atom()
 
-    {feature_name, Helpers.parse_bool(value, true)}
+    {feature_name, Utils.parse_bool(value, true)}
   end)
   |> Enum.into(%{})
 
@@ -80,13 +80,13 @@ config :wanderer_notifier,
   discord_bot_token: System.get_env("DISCORD_BOT_TOKEN"),
 
   # Priority systems only mode
-  priority_systems_only: Helpers.parse_bool(System.get_env("PRIORITY_SYSTEMS_ONLY"), false),
+  priority_systems_only: Utils.parse_bool(System.get_env("PRIORITY_SYSTEMS_ONLY"), false),
 
   # Explicitly set config module
   config: WandererNotifier.Config,
 
   # Optional settings with sensible defaults
-  port: Helpers.parse_int(System.get_env("PORT"), 4000),
+  port: Utils.parse_int(System.get_env("PORT"), 4000),
   discord_system_kill_channel_id: System.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
   discord_character_kill_channel_id: System.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
   discord_system_channel_id: System.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
@@ -96,15 +96,14 @@ config :wanderer_notifier,
   features:
     Map.merge(
       %{
-        notifications_enabled: Helpers.parse_bool(System.get_env("NOTIFICATIONS_ENABLED"), true),
+        notifications_enabled: Utils.parse_bool(System.get_env("NOTIFICATIONS_ENABLED"), true),
         kill_notifications_enabled:
-          Helpers.parse_bool(System.get_env("KILL_NOTIFICATIONS_ENABLED"), true),
+          Utils.parse_bool(System.get_env("KILL_NOTIFICATIONS_ENABLED"), true),
         system_notifications_enabled:
-          Helpers.parse_bool(System.get_env("SYSTEM_NOTIFICATIONS_ENABLED"), true),
+          Utils.parse_bool(System.get_env("SYSTEM_NOTIFICATIONS_ENABLED"), true),
         character_notifications_enabled:
-          Helpers.parse_bool(System.get_env("CHARACTER_NOTIFICATIONS_ENABLED"), true),
-        status_messages_enabled:
-          Helpers.parse_bool(System.get_env("ENABLE_STATUS_MESSAGES"), false)
+          Utils.parse_bool(System.get_env("CHARACTER_NOTIFICATIONS_ENABLED"), true),
+        status_messages_enabled: Utils.parse_bool(System.get_env("ENABLE_STATUS_MESSAGES"), false)
       },
       feature_env_vars
     ),
@@ -120,11 +119,11 @@ config :wanderer_notifier,
 config :wanderer_notifier, WandererNotifierWeb.Endpoint,
   url: [
     host: System.get_env("HOST") || "localhost",
-    port: Helpers.parse_int(System.get_env("PORT"), 4000),
+    port: Utils.parse_int(System.get_env("PORT"), 4000),
     scheme: System.get_env("SCHEME") || "http"
   ],
   http: [
-    port: Helpers.parse_int(System.get_env("PORT"), 4000),
+    port: Utils.parse_int(System.get_env("PORT"), 4000),
     transport_options: [socket_opts: [:inet6]]
   ],
   server: true,
@@ -147,9 +146,9 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   # SSE Configuration - always enabled, no toggles needed
   sse_reconnect_initial_delay:
-    Helpers.parse_int(System.get_env("SSE_RECONNECT_INITIAL_DELAY"), 1000),
-  sse_reconnect_max_delay: Helpers.parse_int(System.get_env("SSE_RECONNECT_MAX_DELAY"), 30000),
-  sse_event_buffer_size: Helpers.parse_int(System.get_env("SSE_EVENT_BUFFER_SIZE"), 1000)
+    Utils.parse_int(System.get_env("SSE_RECONNECT_INITIAL_DELAY"), 1000),
+  sse_reconnect_max_delay: Utils.parse_int(System.get_env("SSE_RECONNECT_MAX_DELAY"), 30000),
+  sse_event_buffer_size: Utils.parse_int(System.get_env("SSE_EVENT_BUFFER_SIZE"), 1000)
 
 # Configure cache directory
 config :wanderer_notifier, :cache, directory: System.get_env("CACHE_DIR") || "/app/data/cache"

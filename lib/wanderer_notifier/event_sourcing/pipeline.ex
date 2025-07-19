@@ -10,7 +10,7 @@ defmodule WandererNotifier.EventSourcing.Pipeline do
   require Logger
 
   alias WandererNotifier.EventSourcing.{Event, Handlers}
-  alias WandererNotifier.Realtime.Deduplicator
+  alias WandererNotifier.Infrastructure.Messaging.Deduplicator
 
   # Pipeline configuration
   @default_batch_size 100

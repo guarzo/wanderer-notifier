@@ -9,8 +9,8 @@ defmodule WandererNotifier.Map.SSESupervisor do
   use Supervisor
   require Logger
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.SSEClient
 
   @doc """
@@ -169,7 +169,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
     Process.sleep(1000)
 
     # Signal the WebSocket client that it can start now
-    case Process.whereis(WandererNotifier.Killmail.PipelineWorker) do
+    case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
       nil ->
         AppLogger.api_warn("PipelineWorker not found - cannot signal map initialization complete")
 

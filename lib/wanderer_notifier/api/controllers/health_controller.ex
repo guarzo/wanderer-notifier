@@ -12,8 +12,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.Controllers.ControllerHelpers
 
   alias WandererNotifier.Api.Controllers.SystemInfo
-  alias WandererNotifier.Cache.Facade, as: Cache
-  alias WandererNotifier.Config
+  alias WandererNotifier.Infrastructure.Cache.Facade, as: Cache
+  alias WandererNotifier.Shared.Config
 
   # Basic health check endpoint - optimized for load balancers
   get "/" do
@@ -84,7 +84,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     try do
       status = %{
         status: "OK",
-        timestamp: WandererNotifier.Utils.TimeUtils.log_timestamp(),
+        timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
         version: Config.version(),
         uptime: get_uptime_seconds()
       }
@@ -111,7 +111,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
           {:ok,
            %{
              status: "ready",
-             timestamp: WandererNotifier.Utils.TimeUtils.log_timestamp(),
+             timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
              checks: checks |> Enum.map(fn {name, _} -> {name, "ok"} end) |> Map.new()
            }}
 
@@ -140,7 +140,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
         {:ok,
          %{
            status: "alive",
-           timestamp: WandererNotifier.Utils.TimeUtils.log_timestamp(),
+           timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
            process_count: process_count,
            memory_bytes: memory_usage
          }}
