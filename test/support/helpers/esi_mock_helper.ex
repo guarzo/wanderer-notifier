@@ -5,7 +5,7 @@ defmodule WandererNotifier.Test.Support.Helpers.ESIMockHelper do
 
   import Mox
 
-  alias WandererNotifier.ESI.ServiceMock
+  alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
 
   @doc """
   Sets up common ESI service mocks for testing.

@@ -154,7 +154,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Override default character tracking (false) to return true for this test  
+      # Override default character tracking (false) to return true for this test
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
 
@@ -185,7 +185,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Character tracking expectation 
+      # Character tracking expectation
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 

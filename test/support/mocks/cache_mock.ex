@@ -3,10 +3,10 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   Mock implementation of the cache behavior for testing.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
 
-  @behaviour WandererNotifier.Cache.CacheBehaviour
+  @behaviour WandererNotifier.Infrastructure.Cache.CacheBehaviour
 
   # Mock state that can be configured per test
   def configure(systems, characters) do

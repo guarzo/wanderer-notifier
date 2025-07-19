@@ -3,7 +3,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
   Ecto embedded schema for wormhole connection data.
 
   Represents static and dynamic wormhole connections between systems,
-  including connection properties like mass limits, lifetime, and 
+  including connection properties like mass limits, lifetime, and
   current status. Supports both K162 signatures and named statics.
   """
 
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
   embedded_schema do
     # Connection identification
     field(:connection_id, :string)
-    # e.g., "ABC-123" 
+    # e.g., "ABC-123"
     field(:signature_id, :string)
     # "static", "wandering", "k162", "frigate"
     field(:connection_type, :string)
@@ -346,7 +346,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
   """
   @spec active?(t()) :: boolean()
   def active?(%__MODULE__{mass_status: "collapsed"}), do: false
-  def active?(%__MODULE__{collapsed_at: collapsed}) when not is_nil(collapsed), do: false
+  def active?(%__MODULE__{collapsed_at: %DateTime{}}), do: false
   def active?(_), do: true
 
   @doc """
@@ -355,7 +355,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
   @spec end_of_life?(t()) :: boolean()
   def end_of_life?(%__MODULE__{time_status: "eol"}), do: true
 
-  def end_of_life?(%__MODULE__{estimated_eol_at: eol}) when not is_nil(eol) do
+  def end_of_life?(%__MODULE__{estimated_eol_at: %DateTime{} = eol}) do
     DateTime.compare(DateTime.utc_now(), eol) != :lt
   end
 
@@ -595,7 +595,7 @@ defmodule WandererNotifier.Map.Schemas.WormholeConnection do
       {nil, "collapsed"} ->
         add_error(changeset, :collapsed_at, "Required when mass status is collapsed")
 
-      {time, status} when not is_nil(time) and status != "collapsed" ->
+      {%DateTime{}, status} when status != "collapsed" ->
         add_error(changeset, :mass_status, "Must be collapsed when collapse time is set")
 
       _ ->

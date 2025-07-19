@@ -3,8 +3,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   Shared module for collecting system information used by health and dashboard endpoints.
   """
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     memory_info = :erlang.memory()
 
     # Get uptime from stats which tracks startup time
-    stats = WandererNotifier.Core.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.Stats.get_stats()
     uptime_seconds = stats[:uptime_seconds] || 0
 
     %{
@@ -39,7 +39,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   """
   def collect_extended_status do
     base_status = collect_detailed_status()
-    stats = WandererNotifier.Core.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.Stats.get_stats()
 
     extended_data = %{
       tracking: extract_tracking_stats(stats),
@@ -149,13 +149,13 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_websocket_stats do
     # Check if WebSocket client is alive and get basic stats
-    websocket_pid = Process.whereis(WandererNotifier.Killmail.WebSocketClient)
+    websocket_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
 
     {connection_uptime, uptime_formatted} =
       if websocket_pid do
         try do
           # Get connection start time from WebSocket client state
-          stats = WandererNotifier.Core.Stats.get_stats()
+          stats = WandererNotifier.Application.Services.Stats.get_stats()
           websocket_stats = stats[:websocket] || %{}
           connection_start = websocket_stats[:connection_start]
 
@@ -223,7 +223,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp format_time_ago(datetime) do
-    case WandererNotifier.Utils.TimeUtils.elapsed_seconds(datetime) do
+    case WandererNotifier.Shared.Utils.TimeUtils.elapsed_seconds(datetime) do
       seconds when seconds < 60 -> "#{seconds}s ago"
       seconds when seconds < 3_600 -> "#{div(seconds, 60)}m ago"
       seconds when seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
@@ -236,7 +236,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     activities = []
 
     # Check WebSocket status
-    websocket_pid = Process.whereis(WandererNotifier.Killmail.WebSocketClient)
+    websocket_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
 
     activities =
       if websocket_pid do
@@ -320,11 +320,14 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_cache_stats do
     try do
-      cache_name = WandererNotifier.Cache.Config.cache_name()
+      cache_name = WandererNotifier.Infrastructure.Cache.Config.cache_name()
       get_cache_stats_for_process(cache_name)
     rescue
       error ->
-        WandererNotifier.Logger.Logger.error("Exception getting cache stats: #{inspect(error)}")
+        WandererNotifier.Shared.Logger.Logger.error(
+          "Exception getting cache stats: #{inspect(error)}"
+        )
+
         empty_cache_stats()
     end
   end
@@ -340,7 +343,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp handle_missing_cache_process(cache_name) do
-    WandererNotifier.Logger.Logger.warn("Cache process not found: #{cache_name}")
+    WandererNotifier.Shared.Logger.Logger.warn("Cache process not found: #{cache_name}")
     empty_cache_stats()
   end
 
@@ -367,7 +370,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp handle_cachex_error(reason) do
-    WandererNotifier.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
+    WandererNotifier.Shared.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
     empty_cache_stats()
   end
 
@@ -397,10 +400,10 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp get_key_process_info do
     processes = [
-      {"WebSocket Client", WandererNotifier.Killmail.WebSocketClient},
-      {"Stats Server", WandererNotifier.Core.Stats},
-      {"Pipeline Worker", WandererNotifier.Killmail.PipelineWorker},
-      {"Discord Consumer", WandererNotifier.Discord.Consumer}
+      {"WebSocket Client", WandererNotifier.Domains.Killmail.WebSocketClient},
+      {"Stats Server", WandererNotifier.Application.Services.Stats},
+      {"Pipeline Worker", WandererNotifier.Domains.Killmail.PipelineWorker},
+      {"Discord Consumer", WandererNotifier.Infrastructure.Adapters.Discord.Consumer}
     ]
 
     processes
@@ -463,7 +466,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       end
     rescue
       error ->
-        WandererNotifier.Logger.Logger.error("Failed to check server status",
+        WandererNotifier.Shared.Logger.Logger.error("Failed to check server status",
           error: inspect(error),
           module: __MODULE__
         )

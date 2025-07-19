@@ -9,7 +9,7 @@ defmodule WandererNotifier.Map.SSEClient do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.EventProcessor
   alias WandererNotifier.Map.SSEParser
   alias WandererNotifier.Map.SSEConnection
@@ -130,14 +130,17 @@ defmodule WandererNotifier.Map.SSEClient do
     case do_connect(state) do
       {:ok, connection} ->
         # Register and update connection status (skip if Integration not running)
-        if Process.whereis(WandererNotifier.Realtime.Integration) do
-          WandererNotifier.Realtime.Integration.register_sse_connection(connection_id, %{
-            map_slug: state.map_slug,
-            events_filter: state.events_filter,
-            pid: self()
-          })
+        if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
+          WandererNotifier.Infrastructure.Messaging.Integration.register_sse_connection(
+            connection_id,
+            %{
+              map_slug: state.map_slug,
+              events_filter: state.events_filter,
+              pid: self()
+            }
+          )
 
-          WandererNotifier.Realtime.Integration.update_connection_health(
+          WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
             connection_id,
             :connected
           )
@@ -161,14 +164,17 @@ defmodule WandererNotifier.Map.SSEClient do
         )
 
         # Update connection status (skip if Integration not running)
-        if Process.whereis(WandererNotifier.Realtime.Integration) do
-          WandererNotifier.Realtime.Integration.register_sse_connection(connection_id, %{
-            map_slug: state.map_slug,
-            events_filter: state.events_filter,
-            pid: self()
-          })
+        if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
+          WandererNotifier.Infrastructure.Messaging.Integration.register_sse_connection(
+            connection_id,
+            %{
+              map_slug: state.map_slug,
+              events_filter: state.events_filter,
+              pid: self()
+            }
+          )
 
-          WandererNotifier.Realtime.Integration.update_connection_health(
+          WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
             connection_id,
             :failed,
             %{
@@ -381,7 +387,7 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp process_validated_event(validated_event, state) do
-    if Process.whereis(WandererNotifier.Realtime.Integration) do
+    if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
       process_with_integration(validated_event, state)
     else
       process_legacy_only(validated_event, state)
@@ -392,7 +398,10 @@ defmodule WandererNotifier.Map.SSEClient do
     event_type = Map.get(validated_event, "event", "unknown")
 
     integration_result =
-      WandererNotifier.Realtime.Integration.process_sse_event(event_type, validated_event)
+      WandererNotifier.Infrastructure.Messaging.Integration.process_sse_event(
+        event_type,
+        validated_event
+      )
 
     case integration_result do
       {:ok, :duplicate} ->

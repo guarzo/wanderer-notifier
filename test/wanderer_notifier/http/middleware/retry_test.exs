@@ -133,7 +133,7 @@ defmodule WandererNotifier.Http.Middleware.RetryTest do
     test "handles HTTP error tuples" do
       request = build_request()
 
-      # First call returns HTTP error tuple, second succeeds  
+      # First call returns HTTP error tuple, second succeeds
       agent = start_call_counter()
 
       next = fn _req ->

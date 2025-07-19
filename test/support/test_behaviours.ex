@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifications.Config.Behaviour do
+defmodule WandererNotifier.Domains.Notifications.Config.Behaviour do
   @moduledoc """
   Behaviour for notifications configuration
   """
@@ -29,7 +29,7 @@ defmodule WandererNotifier.Test.TrackingBehaviour do
   @callback is_tracked?(non_neg_integer()) :: {:ok, boolean()} | {:error, any()}
 end
 
-defmodule WandererNotifier.ESI.Service.Behaviour do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service.Behaviour do
   @moduledoc """
   Behaviour for ESI service operations
   """
@@ -42,7 +42,7 @@ defmodule WandererNotifier.ESI.Service.Behaviour do
   @callback search(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
 end
 
-defmodule WandererNotifier.Killmail.Cache.Behaviour do
+defmodule WandererNotifier.Domains.Killmail.Cache.Behaviour do
   @moduledoc """
   Behaviour for killmail cache operations
   """
@@ -73,7 +73,7 @@ defmodule WandererNotifier.Deduplication.Behaviour do
   @callback check(atom(), integer()) :: {:ok, :new | :duplicate} | {:error, term()}
 end
 
-defmodule WandererNotifier.Config.Behaviour do
+defmodule WandererNotifier.Shared.Config.Behaviour do
   @moduledoc """
   Behaviour for configuration operations
   """

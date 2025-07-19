@@ -29,7 +29,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     # Set up default cache mock behaviors
     setup_cache_mocks()
 
-    # Set up default service mock behaviors  
+    # Set up default service mock behaviors
     setup_service_mocks()
 
     # Set up default client mock behaviors
@@ -63,27 +63,31 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
   end
 
   defp setup_esi_service_mocks do
-    stub(WandererNotifier.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
       {:ok, sample_killmail_data()}
     end)
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_character, fn _id ->
       {:ok, sample_character_data()}
     end)
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id ->
-      {:ok, sample_corporation_data()}
-    end)
+    stub(
+      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
+      :get_corporation_info,
+      fn _id ->
+        {:ok, sample_corporation_data()}
+      end
+    )
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_alliance_info, fn _id ->
       {:ok, sample_alliance_data()}
     end)
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
       {:ok, Map.put(sample_system_data(), "name", "System-#{id}")}
     end)
 
-    stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_type_info, fn _id ->
       {:ok, sample_type_data()}
     end)
   end
@@ -237,7 +241,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     system_id = Keyword.get(opts, :system_id, 30_000_142)
     ship_type_id = Keyword.get(opts, :ship_type_id, 587)
 
-    %WandererNotifier.Killmail.Killmail{
+    %WandererNotifier.Domains.Killmail.Killmail{
       killmail_id: killmail_id,
       zkb: %{
         "locationID" => system_id,

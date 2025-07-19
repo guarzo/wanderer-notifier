@@ -42,7 +42,7 @@ defmodule WandererNotifier.CommandLog do
   use Agent
   require Logger
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type entry :: %{
           type: String.t(),

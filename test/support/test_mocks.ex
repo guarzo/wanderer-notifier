@@ -10,10 +10,10 @@ defmodule WandererNotifier.TestMocks do
   defmock(MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
   defmock(MockDeduplication,
-    for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
+    for: WandererNotifier.Domains.Notifications.Deduplication.DeduplicationBehaviour
   )
 
-  defmock(MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
+  defmock(MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
 
   @doc """
   Sets up default stubs for all mocks.
@@ -51,7 +51,7 @@ defmodule WandererNotifier.TestMocks do
   defp setup_esi_mocks do
     # Use the existing ServiceMock from test/support/mocks/esi_service_mock.ex
     # No need to set up stubs since the mock already has full implementations
-    WandererNotifier.ESI.ServiceMock
+    WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
   end
 
   # Mock response functions

@@ -150,7 +150,7 @@ defmodule WandererNotifier.EventSourcing.Event do
   Uses monotonic time if available to handle system clock changes.
   """
   def age(%__MODULE__{monotonic_timestamp: monotonic_timestamp})
-      when not is_nil(monotonic_timestamp) do
+      when is_integer(monotonic_timestamp) do
     System.monotonic_time(:millisecond) - monotonic_timestamp
   end
 

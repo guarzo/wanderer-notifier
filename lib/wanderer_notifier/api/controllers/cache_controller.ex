@@ -8,8 +8,8 @@ defmodule WandererNotifier.Api.Controllers.CacheController do
   use Plug.Router
   require Logger
 
-  alias WandererNotifier.Cache.Analytics
-  alias WandererNotifier.Cache.Insights
+  alias WandererNotifier.Infrastructure.Cache.Analytics
+  alias WandererNotifier.Infrastructure.Cache.Insights
 
   # Enable request parsing
   plug(Plug.Parsers,

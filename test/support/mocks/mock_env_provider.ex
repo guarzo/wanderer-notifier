@@ -1,11 +1,11 @@
-defmodule WandererNotifier.Config.MockEnvProvider do
+defmodule WandererNotifier.Shared.Config.MockEnvProvider do
   @moduledoc """
   Mock implementation of EnvProvider for testing.
   """
 
   use Agent
 
-  @behaviour WandererNotifier.Config.EnvProvider
+  @behaviour WandererNotifier.Shared.Config.EnvProvider
 
   def start_link(_opts \\ []) do
     Agent.start_link(fn -> %{} end, name: __MODULE__)

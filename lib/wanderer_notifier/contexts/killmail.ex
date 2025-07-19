@@ -4,7 +4,7 @@ defmodule WandererNotifier.Contexts.Killmail do
   Provides a clean API boundary for all killmail-related operations.
   """
 
-  alias WandererNotifier.Killmail.{
+  alias WandererNotifier.Domains.Killmail.{
     Enrichment,
     Pipeline
   }
@@ -26,7 +26,7 @@ defmodule WandererNotifier.Contexts.Killmail do
   """
   @spec process_killmail(map()) :: {:ok, String.t() | :skipped} | {:error, term()}
   def process_killmail(killmail) do
-    context = WandererNotifier.Killmail.Context.new()
+    context = WandererNotifier.Domains.Killmail.Context.new()
     Pipeline.process_killmail(killmail, context)
   end
 
@@ -46,7 +46,7 @@ defmodule WandererNotifier.Contexts.Killmail do
   @spec stream_connected?() :: boolean()
   def stream_connected? do
     # Check if PipelineWorker (which manages WebSocket client) is running
-    pipeline_pid = Process.whereis(WandererNotifier.Killmail.PipelineWorker)
+    pipeline_pid = Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker)
     is_pid(pipeline_pid) and Process.alive?(pipeline_pid)
   end
 end
