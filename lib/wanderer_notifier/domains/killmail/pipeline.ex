@@ -136,11 +136,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       get_in(data, ["attackers"]) || []
   end
 
-  defp victim_tracked?(%{"character_id" => id}) when not is_nil(id) do
+  defp victim_tracked?(%{"character_id" => id}) when is_integer(id) do
     character_tracked?(id)
   end
 
-  defp victim_tracked?(%{character_id: id}) when not is_nil(id) do
+  defp victim_tracked?(%{character_id: id}) when is_integer(id) do
     character_tracked?(id)
   end
 
@@ -327,13 +327,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     end
   end
 
-  defp notification_key(%{system_id: id}) when not is_nil(id),
+  defp notification_key(%{system_id: id}) when is_integer(id),
     do: :system_notifications_enabled
 
   defp notification_key(_),
     do: :kill_notifications_enabled
 
-  defp notification_reason(%{system_id: id}) when not is_nil(id),
+  defp notification_reason(%{system_id: id}) when is_integer(id),
     do: :system_notifications_disabled
 
   defp notification_reason(_),

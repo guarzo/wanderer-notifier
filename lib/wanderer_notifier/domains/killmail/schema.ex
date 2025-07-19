@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Killmail.Schema do
   Provides a single source of truth for all field names used in killmail processing.
   """
 
-  # Core killmail fields 
+  # Core killmail fields
   @killmail_id "killmail_id"
   @victim "victim"
   @solar_system_id "solar_system_id"

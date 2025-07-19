@@ -12,6 +12,22 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
     :ok
   end
 
+  # Helper function to test caching behavior
+  defp test_caching_behavior(data_type, id, data, service_fun, mock_fun) do
+    # First call should hit the API
+    expect(WandererNotifier.ESI.ClientMock, mock_fun, 1, fn _id, _opts ->
+      {:ok, data}
+    end)
+
+    # First call - should hit API and cache result
+    result1 = apply(ServiceV2, service_fun, [id])
+    assert {:ok, ^data} = result1
+
+    # Second call - should serve from cache without API call
+    result2 = apply(ServiceV2, service_fun, [id])
+    assert {:ok, ^data} = result2
+  end
+
   describe "ServiceV2 character operations" do
     test "get_character_info uses CacheHelper for caching" do
       character_id = 123_456
@@ -61,18 +77,13 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
         "name" => "Test Character"
       }
 
-      # First call should hit the API
-      expect(WandererNotifier.ESI.ClientMock, :get_character_info, 1, fn _id, _opts ->
-        {:ok, character_data}
-      end)
-
-      # First call
-      result1 = ServiceV2.get_character_info(character_id)
-      assert {:ok, ^character_data} = result1
-
-      # Second call should use cache (no API call expected)
-      result2 = ServiceV2.get_character_info(character_id)
-      assert {:ok, ^character_data} = result2
+      test_caching_behavior(
+        :character,
+        character_id,
+        character_data,
+        :get_character_info,
+        :get_character_info
+      )
     end
   end
 
@@ -244,13 +255,13 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
 
   describe "ServiceV2 killmail operations" do
     test "get_killmail uses custom cache key with CacheHelper" do
-      kill_id = 12345
+      kill_id = 12_345
       killmail_hash = "abc123"
 
       expected_data = %{
         "killmail_id" => kill_id,
         "killmail_time" => "2023-01-01T00:00:00Z",
-        "victim" => %{"character_id" => 98765}
+        "victim" => %{"character_id" => 98_765}
       }
 
       expect(WandererNotifier.ESI.ClientMock, :get_killmail, fn id, hash, opts ->
@@ -265,7 +276,7 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
     end
 
     test "get_killmail handles timeout errors with proper logging" do
-      kill_id = 12345
+      kill_id = 12_345
       killmail_hash = "abc123"
 
       expect(WandererNotifier.ESI.ClientMock, :get_killmail, fn _id, _hash, _opts ->
@@ -326,18 +337,13 @@ defmodule WandererNotifier.ESI.ServiceV2Test do
       character_id = 123_456
       character_data = %{"character_id" => character_id, "name" => "Test Character"}
 
-      # Should only call API once, then serve from cache
-      expect(WandererNotifier.ESI.ClientMock, :get_character_info, 1, fn _id, _opts ->
-        {:ok, character_data}
-      end)
-
-      # First call - should hit API and cache result
-      result1 = ServiceV2.get_character_info(character_id)
-      assert {:ok, ^character_data} = result1
-
-      # Second call - should serve from cache without API call
-      result2 = ServiceV2.get_character_info(character_id)
-      assert {:ok, ^character_data} = result2
+      test_caching_behavior(
+        :character,
+        character_id,
+        character_data,
+        :get_character_info,
+        :get_character_info
+      )
     end
 
     test "caches system data correctly" do

@@ -87,16 +87,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.System do
   end
 
   defp determine_system_color(type_description, is_wormhole) do
-    cond do
-      is_wormhole -> Base.resolve_color(:wormhole)
-      true -> Base.resolve_color(Base.determine_security_color(type_description))
+    if is_wormhole do
+      Base.resolve_color(:wormhole)
+    else
+      type_description
+      |> Base.determine_security_color()
+      |> Base.resolve_color()
     end
   end
 
   defp determine_system_icon(is_wormhole, type_description, _sun_type_id) do
-    cond do
-      is_wormhole -> Base.get_system_icon(:wormhole)
-      true -> Base.get_system_icon(type_description)
+    if is_wormhole do
+      Base.get_system_icon(:wormhole)
+    else
+      Base.get_system_icon(type_description)
     end
   end
 

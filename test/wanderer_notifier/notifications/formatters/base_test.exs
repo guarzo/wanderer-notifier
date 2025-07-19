@@ -204,16 +204,16 @@ defmodule WandererNotifier.Notifications.Formatters.BaseTest do
     end
 
     test "type_render_url/2" do
-      assert Base.type_render_url(12345) ==
-               "https://images.evetech.net/types/12345/render?size=64"
+      assert Base.type_render_url(12_345) ==
+               "https://images.evetech.net/types/12_345/render?size=64"
 
-      assert Base.type_render_url(12345, 512) ==
-               "https://images.evetech.net/types/12345/render?size=512"
+      assert Base.type_render_url(12_345, 512) ==
+               "https://images.evetech.net/types/12_345/render?size=512"
     end
 
     test "type_icon_url/2" do
-      assert Base.type_icon_url(54321) ==
-               "https://images.evetech.net/types/54321/icon?size=64"
+      assert Base.type_icon_url(54_321) ==
+               "https://images.evetech.net/types/54_321/icon?size=64"
     end
   end
 

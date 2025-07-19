@@ -87,7 +87,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
       {:error, {:exception, exception}}
   catch
     :exit, reason ->
-      log_error("Process exit", reason: reason)
+      log_error("Process exit", reason, %{})
       {:error, {:exit, reason}}
   end
 

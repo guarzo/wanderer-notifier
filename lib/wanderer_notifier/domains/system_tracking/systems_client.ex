@@ -5,7 +5,6 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
 
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.SystemTracking.StaticInfo
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
@@ -84,7 +83,7 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
 
   @impl true
   def enrich_item(system) do
-    case StaticInfo.enrich_system(system) do
+    case WandererNotifier.Domains.SystemTracking.StaticInfo.enrich_system(system) do
       {:ok, enriched} -> enriched
     end
   end

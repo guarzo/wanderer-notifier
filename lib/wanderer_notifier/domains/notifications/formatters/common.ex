@@ -4,7 +4,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
   Provides standardized formatting for domain data structures like Character, MapSystem, and Killmail.
   """
 
-  alias WandererNotifier.Domains.CharacterTracking.Character
   alias WandererNotifier.Domains.SystemTracking.System
   alias WandererNotifier.Shared.Types.Constants
 
@@ -47,7 +46,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
   Creates a standard formatted character notification embed/attachment from a Character struct.
   Returns data in a generic format that can be converted to platform-specific format.
   """
-  def format_character_notification(%Character{} = character) do
+  def format_character_notification(character) do
     WandererNotifier.Domains.Notifications.Formatters.Character.format_character_notification(
       character
     )

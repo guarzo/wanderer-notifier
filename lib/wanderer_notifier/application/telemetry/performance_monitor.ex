@@ -11,7 +11,7 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
 
   alias WandererNotifier.Application.Telemetry.Metrics.Collector
 
-  # Monitoring configuration  
+  # Monitoring configuration
   # 30 seconds (reduced frequency to prevent feedback loops)
   @default_monitoring_interval 30_000
   # 5 minutes
@@ -282,7 +282,7 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
     %{
       state
       | performance_baseline: updated_baseline,
-        # Limit recent alerts to 20 to reduce memory usage  
+        # Limit recent alerts to 20 to reduce memory usage
         recent_alerts: Enum.take(new_alerts ++ state.recent_alerts, 20)
     }
   end

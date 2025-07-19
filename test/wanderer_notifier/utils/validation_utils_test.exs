@@ -459,7 +459,7 @@ defmodule WandererNotifier.Utils.ValidationUtilsTest do
 
   describe "validate_killmail_data/1" do
     test "validates killmail with killmail_id" do
-      killmail = %{"killmail_id" => 12345, "other_data" => "value"}
+      killmail = %{"killmail_id" => 12_345, "other_data" => "value"}
 
       assert {:ok, ^killmail} = ValidationUtils.validate_killmail_data(killmail)
     end

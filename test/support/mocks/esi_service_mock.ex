@@ -1,4 +1,4 @@
-defmodule WandererNotifier.ESI.ServiceMock do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock do
   @moduledoc """
   Mock implementation of the ESI service for testing.
   """

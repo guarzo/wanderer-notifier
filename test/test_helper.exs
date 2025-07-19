@@ -9,26 +9,32 @@ ExUnit.start()
 Application.ensure_all_started(:mox)
 
 # Set up Mox mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.CacheBehaviour)
 Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
 Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
 Mox.defmock(WandererNotifier.MockDeduplication,
-  for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
+  for: WandererNotifier.Domains.Notifications.Deduplication.DeduplicationBehaviour
 )
 
-Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
+Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
 
 Mox.defmock(WandererNotifier.MockDispatcher,
-  for: WandererNotifier.Notifications.DispatcherBehaviour
+  for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
 )
 
 Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.HttpBehaviour)
-Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
-Mox.defmock(WandererNotifier.ESI.ClientMock, for: WandererNotifier.ESI.ClientBehaviour)
+
+Mox.defmock(WandererNotifier.ESI.ServiceMock,
+  for: WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
+)
+
+Mox.defmock(WandererNotifier.ESI.ClientMock,
+  for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
+)
 
 Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Notifications.DispatcherBehaviour
+  for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
 )
 
 # Configure application to use mocks

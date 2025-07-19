@@ -396,29 +396,29 @@ defmodule WandererNotifier.Mocks do
   """
 
   # Mocks for behaviors
-  Mox.defmock(WandererNotifier.Notifications.KillmailNotificationMock,
-    for: WandererNotifier.Notifications.KillmailNotificationBehaviour
+  Mox.defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
+    for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
   )
 
-  Mox.defmock(WandererNotifier.Notifications.DispatcherMock,
-    for: WandererNotifier.Notifications.DispatcherBehaviour
+  Mox.defmock(WandererNotifier.Domains.Notifications.DispatcherMock,
+    for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
   )
 
-  Mox.defmock(WandererNotifier.Logger.LoggerMock,
-    for: WandererNotifier.Logger.LoggerBehaviour
+  Mox.defmock(WandererNotifier.Shared.Logger.LoggerMock,
+    for: WandererNotifier.Shared.Logger.LoggerBehaviour
   )
 
-  Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
-    for: WandererNotifier.Notifications.Determiner.KillBehaviour
+  Mox.defmock(WandererNotifier.Domains.Notifications.Determiner.KillMock,
+    for: WandererNotifier.Domains.Notifications.Determiner.KillBehaviour
   )
 
-  Mox.defmock(WandererNotifier.Config.EnvProviderMock,
-    for: WandererNotifier.Config.EnvProvider
+  Mox.defmock(WandererNotifier.Shared.Config.EnvProviderMock,
+    for: WandererNotifier.Shared.Config.EnvProvider
   )
 end
 
-Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifiers.Discord.DiscordBehaviour
+Mox.defmock(WandererNotifier.Domains.Notifications.DiscordNotifierMock,
+  for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
 )
 
 defmodule WandererNotifier.Map.MapSystemMock do
@@ -592,7 +592,7 @@ defmodule WandererNotifier.Test.Mocks do
   end
 end
 
-defmodule WandererNotifier.Notifications.MockDeduplication do
+defmodule WandererNotifier.Domains.Notifications.MockDeduplication do
   @moduledoc """
   Mock implementation of the deduplication service for testing.
   """

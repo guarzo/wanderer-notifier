@@ -8,13 +8,13 @@ defmodule WandererNotifier.Killmail.WandererKillsAPIV2Test do
 
   describe "WandererKillsAPIV2 basic functionality" do
     test "get_killmail uses new base client" do
-      killmail_id = 12345
+      killmail_id = 12_345
 
       expected_response = %{
         "killmail_id" => killmail_id,
         "killmail_time" => "2023-01-01T00:00:00Z",
         "victim" => %{
-          "character_id" => 98765,
+          "character_id" => 98_765,
           "ship_type_id" => 587
         }
       }
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPIV2Test do
         {:ok, %{status_code: 429, body: "Rate limit exceeded"}}
       end)
 
-      result = WandererKillsAPIV2.get_killmail(12345)
+      result = WandererKillsAPIV2.get_killmail(12_345)
       assert {:error, %{type: :rate_limit, message: message}} = result
       assert message =~ "get_killmail failed"
     end

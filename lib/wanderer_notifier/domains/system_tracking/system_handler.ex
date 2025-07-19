@@ -9,7 +9,6 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
   require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.SystemTracking.System
-  alias WandererNotifier.Domains.SystemTracking.StaticInfo
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
@@ -160,7 +159,7 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
   defp enrich_system(system) do
     try do
       # StaticInfo.enrich_system returns {:ok, enriched_system}
-      StaticInfo.enrich_system(system)
+      WandererNotifier.Domains.SystemTracking.StaticInfo.enrich_system(system)
     rescue
       error ->
         AppLogger.api_error("Failed to enrich system",

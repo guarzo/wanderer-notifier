@@ -138,53 +138,62 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
   @spec process_parallel(Enumerable.t(), process_fun(), parallel_opts()) ::
           {:ok, list()} | {:error, list({:exit, any()} | {:error, any()})}
   def process_parallel(collection, process_fun, opts \\ []) do
-    batch_size = Keyword.get(opts, :batch_size, @default_batch_size)
-    max_concurrency = Keyword.get(opts, :max_concurrency, @default_max_concurrency)
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    on_timeout = Keyword.get(opts, :on_timeout, :kill_task)
-    log_progress = Keyword.get(opts, :log_progress, false)
-    logger_metadata = Keyword.get(opts, :logger_metadata, %{})
-
+    parallel_opts = extract_parallel_options(opts)
     items = Enum.to_list(collection)
-    total_items = length(items)
 
-    if total_items == 0 do
+    if Enum.empty?(items) do
       {:ok, []}
     else
-      batches = Enum.chunk_every(items, batch_size)
-      batch_count = length(batches)
-
-      if log_progress do
-        AppLogger.api_info(
-          "Starting parallel batch processing",
-          Map.merge(logger_metadata, %{
-            total_items: total_items,
-            batch_size: batch_size,
-            batch_count: batch_count,
-            max_concurrency: max_concurrency,
-            timeout: timeout
-          })
-        )
-      end
-
-      stream_opts = [
-        max_concurrency: max_concurrency,
-        timeout: timeout,
-        on_timeout: on_timeout
-      ]
-
-      results =
-        batches
-        |> Task.async_stream(
-          fn batch ->
-            Enum.map(batch, process_fun)
-          end,
-          stream_opts
-        )
-        |> Enum.to_list()
-
-      process_parallel_results(results, log_progress, logger_metadata)
+      execute_parallel_processing(items, process_fun, parallel_opts)
     end
+  end
+
+  defp extract_parallel_options(opts) do
+    %{
+      batch_size: Keyword.get(opts, :batch_size, @default_batch_size),
+      max_concurrency: Keyword.get(opts, :max_concurrency, @default_max_concurrency),
+      timeout: Keyword.get(opts, :timeout, @default_timeout),
+      on_timeout: Keyword.get(opts, :on_timeout, :kill_task),
+      log_progress: Keyword.get(opts, :log_progress, false),
+      logger_metadata: Keyword.get(opts, :logger_metadata, %{})
+    }
+  end
+
+  defp execute_parallel_processing(items, process_fun, opts) do
+    batches = Enum.chunk_every(items, opts.batch_size)
+
+    log_parallel_start_if_enabled(items, batches, opts)
+
+    results = process_batches_with_stream(batches, process_fun, opts)
+
+    process_parallel_results(results, opts.log_progress, opts.logger_metadata)
+  end
+
+  defp log_parallel_start_if_enabled(_items, _batches, %{log_progress: false}), do: :ok
+
+  defp log_parallel_start_if_enabled(items, batches, opts) do
+    AppLogger.api_info(
+      "Starting parallel batch processing",
+      Map.merge(opts.logger_metadata, %{
+        total_items: length(items),
+        batch_size: opts.batch_size,
+        batch_count: length(batches),
+        max_concurrency: opts.max_concurrency,
+        timeout: opts.timeout
+      })
+    )
+  end
+
+  defp process_batches_with_stream(batches, process_fun, opts) do
+    stream_opts = [
+      max_concurrency: opts.max_concurrency,
+      timeout: opts.timeout,
+      on_timeout: opts.on_timeout
+    ]
+
+    batches
+    |> Task.async_stream(fn batch -> Enum.map(batch, process_fun) end, stream_opts)
+    |> Enum.to_list()
   end
 
   @doc """
@@ -284,32 +293,38 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
   end
 
   defp process_parallel_results(results, log_progress, metadata) do
-    {successes, failures} =
-      Enum.reduce(results, {[], []}, fn
-        {:ok, batch_results}, {succ, fail} ->
-          {batch_results ++ succ, fail}
+    {successes, failures} = categorize_results(results)
 
-        {:exit, reason}, {succ, fail} ->
-          {succ, [{:exit, reason} | fail]}
+    log_completion_if_enabled(log_progress, metadata, successes, failures)
 
-        error, {succ, fail} ->
-          {succ, [error | fail]}
-      end)
-
-    if log_progress do
-      AppLogger.api_info(
-        "Parallel batch processing completed",
-        Map.merge(metadata, %{
-          successful_items: length(successes),
-          failed_items: length(failures)
-        })
-      )
-    end
-
-    if failures == [] do
-      {:ok, Enum.reverse(successes)}
-    else
-      {:error, Enum.reverse(failures)}
-    end
+    format_final_result(successes, failures)
   end
+
+  defp categorize_results(results) do
+    Enum.reduce(results, {[], []}, fn
+      {:ok, batch_results}, {succ, fail} ->
+        {batch_results ++ succ, fail}
+
+      {:exit, reason}, {succ, fail} ->
+        {succ, [{:exit, reason} | fail]}
+
+      error, {succ, fail} ->
+        {succ, [error | fail]}
+    end)
+  end
+
+  defp log_completion_if_enabled(false, _metadata, _successes, _failures), do: :ok
+
+  defp log_completion_if_enabled(true, metadata, successes, failures) do
+    AppLogger.api_info(
+      "Parallel batch processing completed",
+      Map.merge(metadata, %{
+        successful_items: length(successes),
+        failed_items: length(failures)
+      })
+    )
+  end
+
+  defp format_final_result(successes, []), do: {:ok, Enum.reverse(successes)}
+  defp format_final_result(_successes, failures), do: {:error, Enum.reverse(failures)}
 end

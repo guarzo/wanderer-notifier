@@ -4,8 +4,8 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   Provides utilities for both mock cache and ETS adapter usage.
   """
 
-  alias WandererNotifier.Cache.Adapter
-  alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache.Adapter
+  alias WandererNotifier.Infrastructure.Cache.Keys
 
   @doc """
   Sets up a clean cache for testing.
@@ -28,10 +28,10 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
 
   defp ensure_ets_table_exists(cache_name) do
     # Check if the cache process is already running
-    case Registry.lookup(WandererNotifier.Cache.Registry, cache_name) do
+    case Registry.lookup(WandererNotifier.Infrastructure.Cache.Registry, cache_name) do
       [] ->
         # Start the ETS cache if not already started
-        {:ok, _} = WandererNotifier.Cache.ETSCache.start_link(name: cache_name)
+        {:ok, _} = WandererNotifier.Infrastructure.Cache.ETSCache.start_link(name: cache_name)
 
       _ ->
         :ok

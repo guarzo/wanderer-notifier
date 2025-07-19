@@ -14,10 +14,10 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
 
       expected_response = [
         %{
-          "killmail_id" => 12345,
+          "killmail_id" => 12_345,
           "killmail_time" => "2023-01-01T00:00:00Z",
           "victim" => %{
-            "character_id" => 98765,
+            "character_id" => 98_765,
             "ship_type_id" => 587
           }
         }
@@ -40,18 +40,18 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
       result = WandererKillsClientV2.get_system_kills(system_id, limit, since_hours)
       assert {:ok, kills} = result
       assert length(kills) == 1
-      assert List.first(kills)["killmail_id"] == 12345
+      assert List.first(kills)["killmail_id"] == 12_345
     end
 
     test "get_character_kills returns character kills data" do
-      character_id = 98765
+      character_id = 98_765
       limit = 10
       since_hours = 168
 
       expected_response = %{
         "kills" => [
           %{
-            "killmail_id" => 54321,
+            "killmail_id" => 54_321,
             "killmail_time" => "2023-01-01T01:00:00Z",
             "victim" => %{
               "character_id" => character_id,
@@ -71,7 +71,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
       result = WandererKillsClientV2.get_character_kills(character_id, limit, since_hours)
       assert {:ok, kills} = result
       assert length(kills) == 1
-      assert List.first(kills)["killmail_id"] == 54321
+      assert List.first(kills)["killmail_id"] == 54_321
     end
 
     test "get_recent_kills returns recent kills data" do
@@ -80,11 +80,11 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
 
       expected_response = [
         %{
-          "killmail_id" => 99999,
+          "killmail_id" => 99_999,
           "killmail_time" => "2023-01-01T02:00:00Z"
         },
         %{
-          "killmail_id" => 88888,
+          "killmail_id" => 88_888,
           "killmail_time" => "2023-01-01T01:30:00Z"
         }
       ]
@@ -99,8 +99,8 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
       result = WandererKillsClientV2.get_recent_kills(limit, since_hours)
       assert {:ok, kills} = result
       assert length(kills) == 2
-      assert Enum.any?(kills, fn kill -> kill["killmail_id"] == 99999 end)
-      assert Enum.any?(kills, fn kill -> kill["killmail_id"] == 88888 end)
+      assert Enum.any?(kills, fn kill -> kill["killmail_id"] == 99_999 end)
+      assert Enum.any?(kills, fn kill -> kill["killmail_id"] == 88_888 end)
     end
 
     test "uses default parameters correctly" do
@@ -130,7 +130,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
         {:error, :timeout}
       end)
 
-      result = WandererKillsClientV2.get_character_kills(98765)
+      result = WandererKillsClientV2.get_character_kills(98_765)
       assert {:error, :timeout} = result
     end
 
@@ -188,7 +188,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
         {:ok, %{status_code: 200, body: nested_response}}
       end)
 
-      result = WandererKillsClientV2.get_character_kills(98765)
+      result = WandererKillsClientV2.get_character_kills(98_765)
       assert {:ok, kills} = result
       assert length(kills) == 2
     end
@@ -229,7 +229,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClientV2Test do
         {:ok, %{status_code: 200, body: []}}
       end)
 
-      WandererKillsClientV2.get_character_kills(98765)
+      WandererKillsClientV2.get_character_kills(98_765)
     end
   end
 end

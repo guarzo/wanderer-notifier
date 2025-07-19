@@ -7,6 +7,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
   alias WandererNotifier.Shared.Logger.ErrorLogger
   alias WandererNotifier.Shared.Config.Utils
   alias WandererNotifier.Domains.SystemTracking.System
+  alias WandererNotifier.Domains.Notifications.Formatters.Base, as: FormatterBase
 
   @doc """
   Creates a standard formatted kill notification embed/attachment from a Killmail struct.
@@ -211,17 +212,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
   defp build_final_blow_text(_attacker, true), do: "NPC"
 
   defp build_final_blow_text(%{character: character, ship: ship}, false)
-       when not is_nil(character) and not is_nil(ship) do
+       when is_binary(character) and is_binary(ship) do
     "#{character} in #{ship}"
   end
 
   defp build_final_blow_text(%{character: character}, false)
-       when not is_nil(character) do
+       when is_binary(character) do
     character
   end
 
   defp build_final_blow_text(%{ship: ship}, false)
-       when not is_nil(ship) do
+       when is_binary(ship) do
     ship
   end
 
@@ -280,16 +281,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
   end
 
   defp format_final_blow(%{character: character, character_id: character_id, ship: ship})
-       when not is_nil(character) and not is_nil(character_id) and not is_nil(ship) do
+       when is_binary(character) and is_integer(character_id) and is_binary(ship) do
     "[#{character}](#{build_zkillboard_url(:character, character_id)})/#{ship}"
   end
 
   defp format_final_blow(%{character: character, character_id: character_id})
-       when not is_nil(character) and not is_nil(character_id) do
+       when is_binary(character) and is_integer(character_id) do
     "[#{character}](#{build_zkillboard_url(:character, character_id)})"
   end
 
-  defp format_final_blow(%{character: character}) when not is_nil(character) do
+  defp format_final_blow(%{character: character}) when is_binary(character) do
     character
   end
 
@@ -354,10 +355,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
       title: title,
       description: description,
       color: 0xD9534F,
-      url: Base.zkillboard_killmail_url(kill_id),
+      url: FormatterBase.zkillboard_killmail_url(kill_id),
       timestamp: kill_time,
-      footer: Base.build_footer("Value: #{kill_context.formatted_value} ISK"),
-      thumbnail: Base.build_thumbnail(build_thumbnail_url(victim_info)),
+      footer: FormatterBase.build_footer("Value: #{kill_context.formatted_value} ISK"),
+      thumbnail: victim_info |> build_thumbnail_url() |> FormatterBase.build_thumbnail(),
       author: author_info,
       fields: minimal_fields,
       image: nil,

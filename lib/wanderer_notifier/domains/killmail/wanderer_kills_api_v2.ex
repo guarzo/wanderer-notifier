@@ -22,6 +22,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPIV2 do
     service_name: "wanderer_kills"
 
   alias WandererNotifier.Domains.Killmail.WandererKillsClient
+  alias WandererNotifier.Domains.Killmail.StreamUtils
   alias WandererNotifier.Shared.Types.Constants
 
   @behaviour WandererNotifier.Domains.Killmail.WandererKillsAPI.Behaviour
@@ -279,24 +280,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPIV2 do
   defp parse_system_id(system_id) when is_integer(system_id), do: system_id
 
   defp aggregate_stream_results(stream) do
-    stream
-    |> Enum.reduce(%{loaded: 0, errors: []}, fn
-      {:ok, {:ok, system_data}}, acc ->
-        kill_count =
-          system_data
-          |> Map.values()
-          |> Enum.map(&length/1)
-          |> Enum.sum()
-
-        %{acc | loaded: acc.loaded + kill_count}
-
-      {:ok, {:error, error}}, acc ->
-        %{acc | errors: [error | acc.errors]}
-
-      {:error, reason}, acc ->
-        # Handle Task.async_stream timeouts or exits
-        %{acc | errors: [{:task_error, reason} | acc.errors]}
-    end)
+    StreamUtils.aggregate_stream_results(stream)
   end
 
   defp format_error(reason, context) do

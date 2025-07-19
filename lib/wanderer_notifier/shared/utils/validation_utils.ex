@@ -77,21 +77,32 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   def validate_required_fields(data, fields) when is_map(data) and is_list(fields) do
     string_fields = Enum.map(fields, &to_string/1)
 
-    {missing, empty} =
-      Enum.reduce(string_fields, {[], []}, fn field, {missing_acc, empty_acc} ->
-        case Map.get(data, field) do
-          nil -> {[field | missing_acc], empty_acc}
-          "" -> {missing_acc, [field | empty_acc]}
-          _value -> {missing_acc, empty_acc}
-        end
-      end)
+    {missing, empty} = categorize_field_errors(data, string_fields)
 
-    cond do
-      missing != [] -> {:error, {:missing_fields, Enum.reverse(missing)}}
-      empty != [] -> {:error, {:empty_fields, Enum.reverse(empty)}}
-      true -> {:ok, data}
+    build_validation_result(data, missing, empty)
+  end
+
+  defp categorize_field_errors(data, fields) do
+    Enum.reduce(fields, {[], []}, fn field, {missing_acc, empty_acc} ->
+      categorize_field_value(data, field, missing_acc, empty_acc)
+    end)
+  end
+
+  defp categorize_field_value(data, field, missing_acc, empty_acc) do
+    case Map.get(data, field) do
+      nil -> {[field | missing_acc], empty_acc}
+      "" -> {missing_acc, [field | empty_acc]}
+      _value -> {missing_acc, empty_acc}
     end
   end
+
+  defp build_validation_result(data, [], []), do: {:ok, data}
+
+  defp build_validation_result(_data, missing, []) when missing != [],
+    do: {:error, {:missing_fields, Enum.reverse(missing)}}
+
+  defp build_validation_result(_data, _missing, empty) when empty != [],
+    do: {:error, {:empty_fields, Enum.reverse(empty)}}
 
   @doc """
   Validates optional fields, allowing nil values but checking type when present.
@@ -151,29 +162,36 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   @spec validate_map_structure(map(), map()) ::
           {:ok, map()} | {:error, {:type_errors, [{String.t(), atom(), any()}]}}
   def validate_map_structure(data, schema) when is_map(data) and is_map(schema) do
-    type_errors =
-      Enum.reduce(schema, [], fn {field, expected_type}, acc ->
-        field_str = to_string(field)
+    type_errors = collect_type_errors(data, schema)
+    format_validation_result(data, type_errors)
+  end
 
-        case Map.get(data, field_str) do
-          nil ->
-            # Missing fields should be handled by validate_required_fields
-            acc
+  defp collect_type_errors(data, schema) do
+    Enum.reduce(schema, [], fn {field, expected_type}, acc ->
+      validate_field_type(data, field, expected_type, acc)
+    end)
+  end
 
-          value ->
-            if valid_type?(value, expected_type) do
-              acc
-            else
-              [{field_str, expected_type, value} | acc]
-            end
-        end
-      end)
+  defp validate_field_type(data, field, expected_type, acc) do
+    field_str = to_string(field)
 
-    case type_errors do
-      [] -> {:ok, data}
-      errors -> {:error, {:type_errors, Enum.reverse(errors)}}
+    case Map.get(data, field_str) do
+      # Missing fields handled by validate_required_fields
+      nil -> acc
+      value -> check_type_and_accumulate(value, expected_type, field_str, acc)
     end
   end
+
+  defp check_type_and_accumulate(value, expected_type, field_str, acc) do
+    if valid_type?(value, expected_type) do
+      acc
+    else
+      [{field_str, expected_type, value} | acc]
+    end
+  end
+
+  defp format_validation_result(data, []), do: {:ok, data}
+  defp format_validation_result(_data, errors), do: {:error, {:type_errors, Enum.reverse(errors)}}
 
   @doc """
   Validates a full data structure with both required fields and type checking.

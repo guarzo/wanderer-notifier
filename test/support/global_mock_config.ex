@@ -3,7 +3,7 @@ defmodule WandererNotifier.Test.Support.GlobalMockConfig do
   Global mock config that works across processes for async Tasks.
   """
 
-  @behaviour WandererNotifier.Config.ConfigBehaviour
+  @behaviour WandererNotifier.Shared.Config.ConfigBehaviour
 
   def notifications_enabled?, do: true
   def kill_notifications_enabled?, do: true
@@ -35,9 +35,12 @@ defmodule WandererNotifier.Test.Support.GlobalMockConfig do
   def deduplication_module, do: WandererNotifier.MockDeduplication
   def system_track_module, do: WandererNotifier.MockSystem
   def character_track_module, do: WandererNotifier.MockCharacter
-  def notification_determiner_module, do: WandererNotifier.Notifications.Determiner.Kill
-  def killmail_enrichment_module, do: WandererNotifier.Killmail.Enrichment
+  def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
+  def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
   def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
-  def killmail_notification_module, do: WandererNotifier.Notifications.KillmailNotification
+
+  def killmail_notification_module,
+    do: WandererNotifier.Domains.Notifications.KillmailNotification
+
   def config_module, do: WandererNotifier.MockConfig
 end

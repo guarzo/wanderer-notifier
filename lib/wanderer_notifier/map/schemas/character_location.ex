@@ -352,7 +352,7 @@ defmodule WandererNotifier.Map.Schemas.CharacterLocation do
       {false, _, nil} ->
         add_error(changeset, :tracking_disabled_at, "Required when tracked is false")
 
-      {true, enabled, disabled} when not is_nil(enabled) and not is_nil(disabled) ->
+      {true, %DateTime{} = enabled, %DateTime{} = disabled} ->
         if DateTime.compare(enabled, disabled) == :gt do
           changeset
         else

@@ -7,8 +7,6 @@ defmodule WandererNotifier.Map.Initializer do
   """
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.SystemTracking.Client
-  alias WandererNotifier.Domains.CharacterTracking.Client
 
   @doc """
   Initializes map data by fetching systems and characters from the API.

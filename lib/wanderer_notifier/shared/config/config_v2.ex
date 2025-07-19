@@ -87,7 +87,7 @@ defmodule WandererNotifier.Shared.Config.ConfigV2 do
   def websocket_url, do: fetch("WEBSOCKET_URL", "ws://host.docker.internal:4004")
   def notification_dedup_ttl_env, do: fetch_int("NOTIFICATION_DEDUP_TTL", 3600)
 
-  # Custom transformation accessors (simplified for now)  
+  # Custom transformation accessors (simplified for now)
   def character_exclude_list do
     get(:character_exclude_list, "") |> Utils.parse_comma_list()
   end
@@ -386,27 +386,7 @@ defmodule WandererNotifier.Shared.Config.ConfigV2 do
   end
 
   def map_config_diagnostics do
-    _url = map_url()
-    token = map_token()
-    base_url = map_url()
-    name = map_name()
-
-    %{
-      map_url: base_url,
-      map_url_present: base_url |> Utils.nil_or_empty?() |> Kernel.not(),
-      map_url_explicit: get(:map_url) |> Utils.nil_or_empty?() |> Kernel.not(),
-      map_name: name,
-      map_name_present: name |> Utils.nil_or_empty?() |> Kernel.not(),
-      map_name_explicit: get(:map_name) |> Utils.nil_or_empty?() |> Kernel.not(),
-      map_token: token,
-      map_token_present: !Utils.nil_or_empty?(token),
-      map_token_length: if(token, do: String.length(token), else: 0),
-      map_slug: map_slug(),
-      map_slug_present: !Utils.nil_or_empty?(map_slug()),
-      base_map_url: base_map_url(),
-      base_map_url_present: !Utils.nil_or_empty?(base_map_url()),
-      system_tracking_enabled: system_tracking_enabled?()
-    }
+    WandererNotifier.Shared.Config.Diagnostics.map_config_diagnostics(__MODULE__)
   end
 
   def get_api_base_url do

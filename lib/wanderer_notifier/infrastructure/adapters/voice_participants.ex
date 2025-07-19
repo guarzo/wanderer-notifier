@@ -25,7 +25,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
 
       iex> get_active_voice_mentions()
       ["<@123456789>", "<@987654321>"]
-      
+
       iex> get_active_voice_mentions()
       []  # No voice participants
   """
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
     end
   end
 
-  # Handle zero or negative integers  
+  # Handle zero or negative integers
   def get_active_voice_mentions(guild_id) when is_integer(guild_id) and guild_id <= 0 do
     Logger.warning("Invalid guild ID (must be positive): #{guild_id}")
     []

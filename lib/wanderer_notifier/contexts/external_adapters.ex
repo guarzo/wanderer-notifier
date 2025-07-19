@@ -5,11 +5,9 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   Discord notifications, and third-party APIs.
   """
 
-  alias WandererNotifier.{
-    ESI.Client,
-    HTTP,
-    Notifiers.Discord.NeoClient
-  }
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Client
+  alias WandererNotifier.HTTP
+  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
 
   # ──────────────────────────────────────────────────────────────────────────────
   # HTTP Client

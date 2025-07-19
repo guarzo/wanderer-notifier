@@ -206,7 +206,7 @@ defmodule WandererNotifier.Shared.Logger.Logger do
 
   defdelegate flush_batch_logs, to: BatchLogger, as: :flush_all
   defdelegate flush_batch_category(category), to: BatchLogger, as: :flush_category
-  defdelegate handle_batch_flush(state \\ nil), to: BatchLogger, as: :handle_flush
+  defdelegate handle_batch_flush(interval \\ 5_000), to: BatchLogger, as: :handle_flush
 
   # Startup tracking functions delegated to StartupLogger
   defdelegate init_startup_tracker, to: StartupLogger, as: :init

@@ -226,10 +226,10 @@ defmodule WandererNotifier.Domains.Killmail.Schemas.Victim do
     ship_name = get_field(changeset, :ship_name)
 
     case {ship_type_id, ship_name} do
-      {id, nil} when not is_nil(id) ->
+      {id, nil} when is_integer(id) ->
         add_error(changeset, :ship_name, "Ship name required when ship type ID is present")
 
-      {nil, name} when not is_nil(name) ->
+      {nil, name} when is_binary(name) ->
         add_error(changeset, :ship_type_id, "Ship type ID required when ship name is present")
 
       _ ->
@@ -252,7 +252,7 @@ defmodule WandererNotifier.Domains.Killmail.Schemas.Victim do
       {nil, _} ->
         changeset
 
-      {alliance_id, nil} when not is_nil(alliance_id) ->
+      {alliance_id, nil} when is_integer(alliance_id) ->
         add_error(changeset, :corporation_id, "Corporation required when alliance is present")
 
       _ ->

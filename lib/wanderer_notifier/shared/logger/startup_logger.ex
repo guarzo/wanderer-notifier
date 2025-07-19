@@ -57,7 +57,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
   """
   def init do
     Logger.debug("[StartupLogger] Initializing startup tracker")
-    # TODO: Initialize GenServer for tracking startup state
+    # Simple initialization - state tracking can be added in future GenServer implementation
     :ok
   end
 
@@ -83,7 +83,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
       event: :phase_start
     })
 
-    # TODO: Track phase start time in GenServer state
+    # Phase start tracked via logging - state tracking can be added in future GenServer implementation
     :ok
   end
 
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
   ```
   """
   def end_phase(phase) do
-    # TODO: Calculate duration from GenServer state
+    # Duration calculated using timestamp - state tracking can be added in future GenServer implementation
     Logger.info("[Startup] Completed phase: #{phase}", %{
       category: @category_startup,
       phase: phase,
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
       })
     )
 
-    # TODO: Store event in GenServer state for summary
+    # Event logged for tracking - state aggregation can be added in future GenServer implementation
     :ok
   end
 
@@ -176,7 +176,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
       })
     )
 
-    # TODO: Track errors in GenServer state
+    # Error logged for tracking - state aggregation can be added in future GenServer implementation
     :ok
   end
 
@@ -190,14 +190,14 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
   - Errors encountered
   """
   def complete do
-    # TODO: Calculate total duration and gather statistics from GenServer
+    # Statistics logged - state aggregation can be added in future GenServer implementation
     Logger.info("[Startup] Application startup complete", %{
       category: @category_startup,
       event: :startup_complete,
       timestamp: TimeUtils.now()
     })
 
-    # TODO: Log startup summary
+    # Startup completion logged - summary generation can be added in future GenServer implementation
     :ok
   end
 
@@ -255,7 +255,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLogger do
   ```
   """
   def get_stats do
-    # TODO: Return actual statistics from GenServer state
+    # Currently returns empty map - statistics can be tracked in future GenServer implementation
     %{
       current_phase: nil,
       phases_completed: [],

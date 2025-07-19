@@ -89,21 +89,21 @@ defmodule WandererNotifier.Domains.Killmail.Schemas.SharedValidations do
       {nil, nil} ->
         changeset
 
-      {id, nil} when not is_nil(id) ->
+      {id, nil} when is_integer(id) ->
         add_error(
           changeset,
           name_field,
           "#{entity_type} name required when #{entity_type |> String.downcase()} ID is present"
         )
 
-      {nil, name} when not is_nil(name) ->
+      {nil, name} when is_binary(name) ->
         add_error(
           changeset,
           id_field,
           "#{entity_type} ID required when #{entity_type |> String.downcase()} name is present"
         )
 
-      {id, name} when not is_nil(id) and not is_nil(name) ->
+      {id, name} when is_integer(id) and is_binary(name) ->
         changeset
 
       _ ->

@@ -229,42 +229,28 @@ defmodule WandererNotifier.Shared.Config.Utils do
   def parse_bool("", default), do: default
 
   def parse_bool(str, default) when is_binary(str) do
-    case String.downcase(String.trim(str)) do
-      "true" ->
-        true
+    normalized_value = str |> String.trim() |> String.downcase()
 
-      "1" ->
-        true
-
-      "yes" ->
-        true
-
-      "on" ->
-        true
-
-      "false" ->
-        false
-
-      "0" ->
-        false
-
-      "no" ->
-        false
-
-      "off" ->
-        false
-
-      _ ->
-        Logger.warning(
-          "Unable to parse boolean from value #{inspect(str)} – falling back to #{default}"
-        )
-
-        default
+    cond do
+      truthy_value?(normalized_value) -> true
+      falsy_value?(normalized_value) -> false
+      true -> log_invalid_bool_and_return_default(str, default)
     end
   end
 
   def parse_bool(value, _default) when is_boolean(value), do: value
   def parse_bool(_, default), do: default
+
+  defp truthy_value?(value), do: value in ["true", "1", "yes", "on"]
+  defp falsy_value?(value), do: value in ["false", "0", "no", "off"]
+
+  defp log_invalid_bool_and_return_default(str, default) do
+    Logger.warning(
+      "Unable to parse boolean from value #{inspect(str)} – falling back to #{default}"
+    )
+
+    default
+  end
 
   @doc """
   Normalizes feature configuration to a keyword list.

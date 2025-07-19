@@ -58,12 +58,10 @@ defmodule WandererNotifier.Shared.Logger.MetadataProcessor do
   end
 
   def convert_to_keyword_list(metadata) when is_list(metadata) do
-    cond do
-      valid_keyword_list?(metadata) ->
-        add_metadata_source(metadata, "keyword_list")
-
-      true ->
-        handle_invalid_list(metadata)
+    if valid_keyword_list?(metadata) do
+      add_metadata_source(metadata, "keyword_list")
+    else
+      handle_invalid_list(metadata)
     end
   end
 

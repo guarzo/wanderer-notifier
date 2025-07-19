@@ -22,8 +22,6 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.SystemTracking.EventHandler
-  alias WandererNotifier.Domains.CharacterTracking.EventHandler
 
   @doc """
   Processes a single event from the SSE stream.

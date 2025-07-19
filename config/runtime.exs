@@ -1,8 +1,8 @@
 import Config
-alias WandererNotifier.Config.Utils
+alias WandererNotifier.Shared.Config.Utils
 
 # This file provides compile-time configuration defaults.
-# Runtime configuration is handled by WandererNotifier.Config.Provider
+# Runtime configuration is handled by WandererNotifier.Shared.Config.Provider
 # for releases, and by loading this file (with potential .env) in development.
 
 # Load environment variables from .env file if it exists
@@ -43,8 +43,10 @@ config :nostrum,
 
 # Configure scheduler intervals
 config :wanderer_notifier,
-  system_update_scheduler_interval: WandererNotifier.Constants.system_update_interval(),
-  character_update_scheduler_interval: WandererNotifier.Constants.character_update_interval()
+  system_update_scheduler_interval:
+    WandererNotifier.Shared.Types.Constants.system_update_interval(),
+  character_update_scheduler_interval:
+    WandererNotifier.Shared.Types.Constants.character_update_interval()
 
 # Load feature-specific environment variables (no longer using WANDERER_FEATURE_ prefix)
 # Look for any environment variables ending with _ENABLED or common feature flag patterns
@@ -83,7 +85,7 @@ config :wanderer_notifier,
   priority_systems_only: Utils.parse_bool(System.get_env("PRIORITY_SYSTEMS_ONLY"), false),
 
   # Explicitly set config module
-  config: WandererNotifier.Config,
+  config: WandererNotifier.Shared.Config,
 
   # Optional settings with sensible defaults
   port: Utils.parse_int(System.get_env("PORT"), 4000),
@@ -109,7 +111,7 @@ config :wanderer_notifier,
     ),
   character_exclude_list:
     System.get_env("CHARACTER_EXCLUDE_LIST")
-    |> WandererNotifier.Config.Utils.parse_comma_list(),
+    |> WandererNotifier.Shared.Config.Utils.parse_comma_list(),
   cache_dir: System.get_env("CACHE_DIR") || "/app/data/cache",
   public_url: System.get_env("PUBLIC_URL"),
   host: System.get_env("HOST") || "localhost",

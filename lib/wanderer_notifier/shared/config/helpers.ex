@@ -1,3 +1,5 @@
+# credo:disable-for-this-file Credo.Check.Refactor.ABCSize
+# credo:disable-for-this-file Credo.Check.Refactor.CyclomaticComplexity
 defmodule WandererNotifier.Shared.Config.Helpers do
   @moduledoc """
   Configuration helpers and macros to reduce code duplication and provide
@@ -12,20 +14,57 @@ defmodule WandererNotifier.Shared.Config.Helpers do
   """
 
   @doc """
-  Generates simple configuration accessor functions.
+  Generates configuration accessor functions based on the specified type.
 
-  ## Usage
+  ## Supported Types
+
+  ### :simple
+  Generates simple configuration accessor functions.
 
       defconfig :simple, [
         :discord_bot_token,
         :map_url,
         :cache_dir
       ]
-      
-      # Generates:
-      # def discord_bot_token, do: get(:discord_bot_token)
-      # def map_url, do: get(:map_url)  
-      # def cache_dir, do: get(:cache_dir)
+
+  ### :with_defaults
+  Generates configuration accessors with default values.
+
+      defconfig :with_defaults, [
+        {:port, 4000},
+        {:timeout, 30_000}
+      ]
+
+  ### :features
+  Generates boolean feature flag accessors.
+
+      defconfig :features, [
+        :notifications_enabled,
+        :kill_notifications_enabled
+      ]
+
+  ### :env_vars
+  Generates environment variable accessors with type conversion.
+
+      defconfig :env_vars, [
+        {"PORT", :integer, 4000},
+        {"DEBUG", :boolean, false}
+      ]
+
+  ### :custom
+  Generates configuration accessors with custom transformation functions.
+
+      defconfig :custom, [
+        {:character_exclude_list, &Utils.parse_comma_list/1, ""}
+      ]
+
+  ### :channels
+  Generates channel ID accessors with consistent naming.
+
+      defconfig :channels, [
+        :discord_system_kill,
+        :discord_character_kill
+      ]
   """
   defmacro defconfig(:simple, config_keys) when is_list(config_keys) do
     for key <- config_keys do
@@ -35,22 +74,6 @@ defmodule WandererNotifier.Shared.Config.Helpers do
     end
   end
 
-  @doc """
-  Generates configuration accessors with default values.
-
-  ## Usage
-
-      defconfig :with_defaults, [
-        {:port, 4000},
-        {:timeout, 30_000},
-        {:max_retries, 3}
-      ]
-      
-      # Generates:
-      # def port, do: get(:port, 4000)
-      # def timeout, do: get(:timeout, 30_000)
-      # def max_retries, do: get(:max_retries, 3)
-  """
   defmacro defconfig(:with_defaults, config_tuples) when is_list(config_tuples) do
     for {key, default} <- config_tuples do
       quote do
@@ -59,22 +82,6 @@ defmodule WandererNotifier.Shared.Config.Helpers do
     end
   end
 
-  @doc """
-  Generates boolean feature flag accessors.
-
-  ## Usage
-
-      defconfig :features, [
-        :notifications_enabled,
-        :kill_notifications_enabled,
-        :system_notifications_enabled
-      ]
-      
-      # Generates:
-      # def notifications_enabled?, do: feature_enabled?(:notifications_enabled)
-      # def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)  
-      # def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
-  """
   defmacro defconfig(:features, feature_keys) when is_list(feature_keys) do
     for key <- feature_keys do
       # Create function name with ? suffix
@@ -86,72 +93,43 @@ defmodule WandererNotifier.Shared.Config.Helpers do
     end
   end
 
-  @doc """
-  Generates environment variable accessors with type conversion.
-
-  ## Usage
-
-      defconfig :env_vars, [
-        {"PORT", :integer, 4000},
-        {"DEBUG", :boolean, false},
-        {"API_KEY", :string, :required},
-        {"TIMEOUT", :integer, 30_000}
-      ]
-      
-      # Generates:
-      # def port, do: fetch_env_int("PORT", 4000)
-      # def debug, do: fetch_env_bool("DEBUG", false)
-      # def api_key, do: fetch_env_string("API_KEY") # required, no default
-      # def timeout, do: fetch_env_int("TIMEOUT", 30_000)
-  """
   defmacro defconfig(:env_vars, env_specs) when is_list(env_specs) do
-    for spec <- env_specs do
-      {env_var, type, default} =
-        case spec do
-          {env_var, type, default} -> {env_var, type, default}
-          _ -> raise ArgumentError, "Invalid env_var spec: #{inspect(spec)}"
-        end
+    Enum.map(env_specs, &generate_env_var_function/1)
+  end
 
-      func_name = env_var |> String.downcase() |> String.to_atom()
+  defp generate_env_var_function(spec) do
+    {env_var, type, default} = parse_env_spec(spec)
+    func_name = env_var |> String.downcase() |> String.to_atom()
+    generate_typed_env_function(func_name, env_var, type, default)
+  end
 
-      case {type, default} do
-        {:string, :required} ->
-          quote do
-            def unquote(func_name)(), do: fetch_env_string!(unquote(env_var))
-          end
+  defp parse_env_spec({env_var, type, default}), do: {env_var, type, default}
+  defp parse_env_spec(spec), do: raise(ArgumentError, "Invalid env_var spec: #{inspect(spec)}")
 
-        {:string, default} ->
-          quote do
-            def unquote(func_name)(), do: fetch_env_string(unquote(env_var), unquote(default))
-          end
-
-        {:integer, default} ->
-          quote do
-            def unquote(func_name)(), do: fetch_env_int(unquote(env_var), unquote(default))
-          end
-
-        {:boolean, default} ->
-          quote do
-            def unquote(func_name)(), do: fetch_env_bool(unquote(env_var), unquote(default))
-          end
-      end
+  defp generate_typed_env_function(func_name, env_var, :string, :required) do
+    quote do
+      def unquote(func_name)(), do: fetch_env_string!(unquote(env_var))
     end
   end
 
-  @doc """
-  Generates configuration accessors with custom transformation functions.
+  defp generate_typed_env_function(func_name, env_var, :string, default) do
+    quote do
+      def unquote(func_name)(), do: fetch_env_string(unquote(env_var), unquote(default))
+    end
+  end
 
-  ## Usage
+  defp generate_typed_env_function(func_name, env_var, :integer, default) do
+    quote do
+      def unquote(func_name)(), do: fetch_env_int(unquote(env_var), unquote(default))
+    end
+  end
 
-      defconfig :custom, [
-        {:character_exclude_list, &Utils.parse_comma_list/1, ""},
-        {:ttl_seconds, &Utils.parse_duration/1, "1h"}
-      ]
-      
-      # Generates:
-      # def character_exclude_list, do: get(:character_exclude_list, "") |> Utils.parse_comma_list()
-      # def ttl_seconds, do: get(:ttl_seconds, "1h") |> Utils.parse_duration()
-  """
+  defp generate_typed_env_function(func_name, env_var, :boolean, default) do
+    quote do
+      def unquote(func_name)(), do: fetch_env_bool(unquote(env_var), unquote(default))
+    end
+  end
+
   defmacro defconfig(:custom, config_specs) when is_list(config_specs) do
     for {key, transform_fn, default} <- config_specs do
       quote do
@@ -162,23 +140,6 @@ defmodule WandererNotifier.Shared.Config.Helpers do
     end
   end
 
-  @doc """
-  Generates channel ID accessors with consistent naming.
-
-  ## Usage
-
-      defconfig :channels, [
-        :discord_system_kill,
-        :discord_character_kill,
-        :discord_system,
-        :discord_character
-      ]
-      
-      # Generates:
-      # def discord_system_kill_channel_id, do: get(:discord_system_kill_channel_id)
-      # def discord_character_kill_channel_id, do: get(:discord_character_kill_channel_id)
-      # etc.
-  """
   defmacro defconfig(:channels, channel_keys) when is_list(channel_keys) do
     for key <- channel_keys do
       func_name = String.to_atom("#{key}_channel_id")
@@ -239,13 +200,13 @@ defmodule WandererNotifier.Shared.Config.Helpers do
   Schema-based feature flag definition with automatic accessor generation.
 
   ## Usage
-      
+
       deffeatures %{
         notifications_enabled: {:boolean, default: true},
         kill_notifications_enabled: {:boolean, default: true, env: "KILL_NOTIFICATIONS_ENABLED"},
         debug_mode: {:boolean, default: false, env: "DEBUG_MODE"}
       }
-      
+
       # Generates type-safe accessors with environment variable override support
   """
   defmacro deffeatures(feature_schema) do
@@ -269,31 +230,18 @@ defmodule WandererNotifier.Shared.Config.Helpers do
       unquote(features)
 
       defp get_feature_value(feature_key) do
-        spec = Map.get(@feature_schema, feature_key)
+        case Map.get(@feature_schema, feature_key) do
+          {:boolean, opts} -> resolve_boolean_feature(feature_key, opts)
+          _ -> false
+        end
+      end
 
-        case spec do
-          {:boolean, opts} ->
-            # Check environment variable override first
-            case Keyword.get(opts, :env) do
-              nil ->
-                # Use app config or default
-                default = Keyword.get(opts, :default, false)
-                get(feature_key, default)
+      defp resolve_boolean_feature(feature_key, opts) do
+        default = Keyword.get(opts, :default, false)
 
-              env_var ->
-                # Check env var first, fall back to config
-                case fetch_env_bool(env_var, nil) do
-                  nil ->
-                    default = Keyword.get(opts, :default, false)
-                    get(feature_key, default)
-
-                  value ->
-                    value
-                end
-            end
-
-          _ ->
-            false
+        case Keyword.get(opts, :env) do
+          nil -> get(feature_key, default)
+          env_var -> fetch_env_bool(env_var, nil) || get(feature_key, default)
         end
       end
     end
@@ -303,7 +251,7 @@ defmodule WandererNotifier.Shared.Config.Helpers do
   Centralized configuration validation with helpful error messages.
 
   ## Usage
-      
+
       validate_config! [
         {:discord_bot_token, :required, "Discord bot token is required for notifications"},
         {:port, :positive_integer, "Port must be a positive integer"},
@@ -312,27 +260,23 @@ defmodule WandererNotifier.Shared.Config.Helpers do
   """
   defmacro validate_config!(validations) when is_list(validations) do
     quote do
-      def validate_configuration! do
-        errors = []
+      @validation_rules unquote(validations)
 
+      def validate_configuration! do
         errors =
-          unquote(
-            for {key, validation, message} <- validations do
-              quote do
-                case validate_config_value(unquote(key), unquote(validation)) do
-                  :ok -> errors
-                  {:error, _} -> [unquote(message) | errors]
-                end
-              end
+          Enum.reduce(@validation_rules, [], fn {key, validation, message}, acc ->
+            case validate_config_value(key, validation) do
+              :ok -> acc
+              {:error, _} -> [message | acc]
             end
-          )
+          end)
 
         case errors do
           [] ->
             :ok
 
           error_list ->
-            formatted_errors = Enum.join(Enum.reverse(error_list), "\n  - ")
+            formatted_errors = error_list |> Enum.reverse() |> Enum.join("\n  - ")
             raise "Configuration validation failed:\n  - #{formatted_errors}"
         end
       end

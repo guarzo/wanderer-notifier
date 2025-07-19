@@ -297,10 +297,10 @@ defmodule WandererNotifier.Domains.Killmail.Schemas.Attacker do
       {nil, nil} ->
         changeset
 
-      {id, nil} when not is_nil(id) ->
+      {id, nil} when is_integer(id) ->
         add_error(changeset, :ship_name, "Ship name required when ship type ID is present")
 
-      {nil, name} when not is_nil(name) ->
+      {nil, name} when is_binary(name) ->
         add_error(changeset, :ship_type_id, "Ship type ID required when ship name is present")
 
       _ ->
@@ -334,10 +334,10 @@ defmodule WandererNotifier.Domains.Killmail.Schemas.Attacker do
       {nil, nil} ->
         changeset
 
-      {id, nil} when not is_nil(id) ->
+      {id, nil} when is_integer(id) ->
         add_error(changeset, :weapon_name, "Weapon name required when weapon type ID is present")
 
-      {nil, name} when not is_nil(name) ->
+      {nil, name} when is_binary(name) ->
         add_error(
           changeset,
           :weapon_type_id,

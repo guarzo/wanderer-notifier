@@ -323,7 +323,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     )
   end
 
-  defp calculate_connection_uptime(%{connected_at: connected_at}) when not is_nil(connected_at) do
+  defp calculate_connection_uptime(%{connected_at: %DateTime{} = connected_at}) do
     DateTime.diff(DateTime.utc_now(), connected_at, :second)
   end
 
