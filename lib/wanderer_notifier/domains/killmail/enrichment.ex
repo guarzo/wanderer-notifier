@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   to WebSocket with pre-enriched data, it now only handles recent kills lookup.
   """
 
-  alias WandererNotifier.Domains.Killmail.WandererKillsClient
+  alias WandererNotifier.Infrastructure.Http
   require Logger
 
   @doc """
@@ -15,7 +15,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   @spec recent_kills_for_system(integer(), non_neg_integer()) :: String.t()
   def recent_kills_for_system(system_id, limit \\ 3) do
     try do
-      case WandererKillsClient.get_system_kills(system_id, limit) do
+      case get_system_kills(system_id, limit) do
         {:ok, kills} when is_list(kills) and length(kills) > 0 ->
           kills
           |> Enum.map(&format_wanderer_kill/1)
@@ -37,6 +37,32 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   end
 
   # --- Private Functions ---
+
+  @spec get_system_kills(integer(), non_neg_integer()) :: {:ok, [map()]} | {:error, any()}
+  defp get_system_kills(system_id, limit) do
+    base_url =
+      Application.get_env(
+        :wanderer_notifier,
+        :wanderer_kills_base_url,
+        "http://host.docker.internal:4004"
+      )
+
+    url = "#{base_url}/api/v1/kills/system/#{system_id}?limit=#{limit}&since_hours=168"
+
+    case Http.get(url) do
+      {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
+        case Jason.decode(body) do
+          {:ok, decoded} -> {:ok, decoded}
+          {:error, _} -> {:error, :invalid_json}
+        end
+
+      {:ok, %{status_code: status}} ->
+        {:error, {:http_error, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   # Format a kill from WandererKills API
   defp format_wanderer_kill(kill) do

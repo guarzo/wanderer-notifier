@@ -26,7 +26,7 @@ defmodule WandererNotifier.Application.Supervisors.Schedulers.Registry do
     excluded = [
       WandererNotifier.Application.Supervisors.Schedulers.Supervisor,
       WandererNotifier.Application.Supervisors.Schedulers.Registry,
-      WandererNotifier.Application.Supervisors.Schedulers.BaseMapScheduler
+      WandererNotifier.Schedulers.BaseScheduler
     ]
 
     mod_str = to_string(mod)
@@ -39,7 +39,7 @@ defmodule WandererNotifier.Application.Supervisors.Schedulers.Registry do
           mod.__info__(:attributes)
           |> Keyword.get(:__using__, [])
           |> Enum.any?(fn {module, _} ->
-            module == WandererNotifier.Application.Supervisors.Schedulers.BaseMapScheduler
+            module == WandererNotifier.Schedulers.BaseScheduler
           end)
       rescue
         _ -> false

@@ -83,20 +83,26 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
     log_progress = Keyword.get(opts, :log_progress, false)
     logger_metadata = Keyword.get(opts, :logger_metadata, %{})
 
-    items = Enum.to_list(collection)
-    total_items = length(items)
+    # Use Stream operations for lazy processing to handle large collections efficiently
+    stream = Stream.chunk_every(collection, batch_size)
 
-    if total_items == 0 do
+    # Only materialize the count if we need it for logging
+    {batches, batch_count} =
+      if log_progress do
+        batches_list = Enum.to_list(stream)
+        {batches_list, length(batches_list)}
+      else
+        # For non-logging case, we can process lazily
+        {stream, nil}
+      end
+
+    if log_progress and batch_count == 0 do
       []
     else
-      batches = Enum.chunk_every(items, batch_size)
-      batch_count = length(batches)
-
       if log_progress do
         AppLogger.api_info(
           "Starting batch processing",
           Map.merge(logger_metadata, %{
-            total_items: total_items,
             batch_size: batch_size,
             batch_count: batch_count,
             batch_delay: batch_delay
@@ -104,7 +110,17 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
         )
       end
 
-      process_batches_sync(batches, process_fun, batch_delay, log_progress, logger_metadata, 1)
+      process_batches_sync(
+        batches,
+        process_fun,
+        batch_delay,
+        log_progress,
+        logger_metadata,
+        1,
+        []
+      )
+      |> Enum.reverse()
+      |> List.flatten()
     end
   end
 
@@ -264,11 +280,19 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
 
   # Private helper functions
 
-  defp process_batches_sync([], _process_fun, _delay, _log, _metadata, _batch_num) do
-    []
+  defp process_batches_sync([], _process_fun, _delay, _log, _metadata, _batch_num, acc) do
+    acc
   end
 
-  defp process_batches_sync([batch | remaining], process_fun, delay, log, metadata, batch_number) do
+  defp process_batches_sync(
+         [batch | remaining],
+         process_fun,
+         delay,
+         log,
+         metadata,
+         batch_number,
+         acc
+       ) do
     if log do
       AppLogger.api_debug(
         "Processing batch",
@@ -287,9 +311,10 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
       Process.sleep(delay)
     end
 
-    # Process remaining batches and concatenate results
-    processed_batch ++
-      process_batches_sync(remaining, process_fun, delay, log, metadata, batch_number + 1)
+    # Process remaining batches using accumulator pattern
+    process_batches_sync(remaining, process_fun, delay, log, metadata, batch_number + 1, [
+      processed_batch | acc
+    ])
   end
 
   defp process_parallel_results(results, log_progress, metadata) do

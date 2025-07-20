@@ -2,11 +2,20 @@ defmodule WandererNotifier.Domains.License.Client do
   @moduledoc """
   Client for interacting with the License Manager API.
   Provides functions for validating licenses and bots.
+
+  Migrated to use the unified HTTP client with service-specific configuration.
   """
-  require Logger
+
+  alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.License.Validation
+  alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+
+  # Import logging functions for compatibility
+  defp log_api_debug(message, metadata), do: AppLogger.api_debug(message, metadata)
+  defp log_api_info(message, metadata), do: AppLogger.api_info(message, metadata)
+  defp log_api_error(message, metadata), do: AppLogger.api_error(message, metadata)
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
@@ -23,76 +32,28 @@ defmodule WandererNotifier.Domains.License.Client do
   - `{:error, reason}` if the validation failed.
   """
   def validate_bot(notifier_api_token, license_key) do
-    url = "#{Config.license_manager_api_url()}/api/validate_bot"
-
-    # Set up request parameters
-    headers = build_auth_headers(notifier_api_token)
+    url = build_url("validate_bot")
     body = %{"license_key" => license_key}
 
-    AppLogger.api_debug("Sending HTTP request for bot validation", endpoint: "validate_bot")
+    log_api_debug("Sending HTTP request for bot validation", %{endpoint: "validate_bot"})
 
-    # Make the API request and process the response
-    make_validation_request(url, body, headers)
-  end
-
-  # Build authorization headers for API requests
-  defp build_auth_headers(api_token) do
-    [
-      {"Content-Type", "application/json"},
-      {"Accept", "application/json"},
-      {"Authorization", "Bearer #{api_token}"}
-    ]
-  end
-
-  # Make the actual API request for validation
-  defp make_validation_request(url, body, headers) do
-    # Disable rate limiting for license validation during startup
-    opts = [middlewares: []]
-
-    case WandererNotifier.Infrastructure.Http.post_json(url, body, headers, opts) do
-      {:ok, %{status_code: status, body: decoded}} when status in 200..299 ->
-        process_successful_validation(decoded)
+    # Use unified HTTP client with license service configuration
+    case Http.post(url, body, [],
+           service: :license,
+           auth: [type: :bearer, token: notifier_api_token]
+         ) do
+      {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
+        process_successful_validation(response_body)
 
       {:ok, %{status_code: status, body: body}} ->
-        AppLogger.api_error("License Manager API returned error status",
-          status: status,
-          body: inspect(body)
-        )
-
-        {:error, :request_failed}
-
-      {:error, :connect_timeout} ->
-        AppLogger.api_error("License Manager API request timed out")
-        {:error, :request_failed}
-
-      {:error, :rate_limited} ->
-        AppLogger.api_error("License Manager API rate limit exceeded")
-        {:error, :rate_limited}
+        error = ErrorHandler.http_error_to_tuple(status)
+        ErrorHandler.enrich_error(error, %{body: body})
 
       {:error, reason} ->
-        AppLogger.api_error("License Manager API request failed", error: inspect(reason))
-        {:error, :request_failed}
+        normalized = ErrorHandler.normalize_error({:error, reason})
+        ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
+        normalized
     end
-  end
-
-  # Process a successful validation response
-  defp process_successful_validation(decoded) when is_map(decoded) do
-    Validation.process_validation_result({:ok, decoded})
-  end
-
-  # Handle case when response is not a map
-  defp process_successful_validation(decoded) do
-    AppLogger.config_error(
-      "License validation failed - Invalid response format: #{inspect(decoded)}"
-    )
-
-    error_response =
-      Validation.create_error_response(
-        :invalid_response,
-        "Invalid response format: #{inspect(decoded)}"
-      )
-
-    {:ok, error_response}
   end
 
   @doc """
@@ -107,61 +68,86 @@ defmodule WandererNotifier.Domains.License.Client do
   - `{:error, reason}` if the validation failed.
   """
   def validate_license(license_key, notifier_api_token) do
-    url = "#{Config.license_manager_api_url()}/api/validate_license"
-    AppLogger.api_info("Making license validation request to License Manager API")
-
-    # Prepare request parameters
-    headers = build_auth_headers(notifier_api_token)
+    url = build_url("validate_license")
     body = %{"license_key" => license_key}
 
-    AppLogger.api_debug("Sending HTTP request for license validation",
+    log_api_info("Making license validation request to License Manager API", %{})
+
+    log_api_debug("Sending HTTP request for license validation", %{
       endpoint: "validate_license"
-    )
+    })
 
-    # Make the request with error handling
-    safely_make_license_request(url, body, headers)
-  end
-
-  # Make the license validation request with error handling
-  defp safely_make_license_request(url, body, headers) do
-    make_license_validation_request(url, body, headers)
-  rescue
-    e ->
-      AppLogger.api_error("Exception during license validation",
-        exception: inspect(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+    # Use unified HTTP client with enhanced error handling and retry
+    ErrorHandler.with_error_handling(fn ->
+      ErrorHandler.with_retry(
+        fn -> make_validation_request(url, body, notifier_api_token) end,
+        max_attempts: 3,
+        retry_on: [:timeout, :network_error, :service_unavailable],
+        base_delay: 1000
       )
-
-      {:error, "Exception: #{inspect(e)}"}
+    end)
   end
 
-  # Make the actual HTTP request for license validation
-  defp make_license_validation_request(url, body, headers) do
-    # Add custom rate limiting for license endpoints - much lower rate to avoid hitting limits
-    opts = [
-      rate_limit_options: [
-        requests_per_second: 1,
-        burst_capacity: 2,
-        per_host: true
-      ]
-    ]
+  # Private functions
 
-    case WandererNotifier.Infrastructure.Http.post_json(url, body, headers, opts) do
-      {:ok, %{status_code: _status, body: decoded}} ->
-        process_decoded_license_data(decoded)
+  defp make_validation_request(url, body, notifier_api_token) do
+    case Http.post(url, body, [],
+           service: :license,
+           auth: [type: :bearer, token: notifier_api_token]
+         ) do
+      {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
+        process_decoded_license_data(response_body)
 
-      {:error, :timeout} ->
-        AppLogger.api_error("License Manager API request timed out")
-        {:error, "Request timed out"}
-
-      {:error, :rate_limited} ->
-        AppLogger.api_error("License Manager API rate limit exceeded")
-        {:error, "Rate limit exceeded"}
+      {:ok, %{status_code: status, body: body}} ->
+        error = ErrorHandler.http_error_to_tuple(status)
+        ErrorHandler.enrich_error(error, %{body: body})
 
       {:error, reason} ->
-        AppLogger.api_error("License Manager API request failed", error: inspect(reason))
-        {:error, "Request failed: #{inspect(reason)}"}
+        normalized = ErrorHandler.normalize_error({:error, reason})
+        ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
+        normalized
     end
+  end
+
+  defp build_url(endpoint) do
+    base_url = Config.license_manager_api_url() || "https://license.example.com"
+    "#{base_url}/api/#{endpoint}"
+  end
+
+  # Legacy function removed - functionality integrated into validate_bot
+  # defp make_validation_request - removed
+
+  # Legacy function removed - functionality integrated into validate_license
+  # defp safely_make_license_request - removed
+
+  # Legacy function removed - functionality integrated into validate_license
+  # defp make_license_validation_request - removed
+
+  # Legacy configuration functions removed - now handled by service configuration
+  # Service configuration :license provides:
+  # - timeout: 10_000
+  # - retry_count: 1  
+  # - rate_limit: [requests_per_second: 1, burst_capacity: 2]
+  # - middlewares: [RateLimiter]
+  # All configuration is centralized in WandererNotifier.Infrastructure.Http
+
+  # Process a successful validation response
+  defp process_successful_validation(decoded) when is_map(decoded) do
+    Validation.process_validation_result({:ok, decoded})
+  end
+
+  # Handle case when response is not a map
+  defp process_successful_validation(decoded) do
+    error_msg = "Invalid response format: #{inspect(decoded)}"
+    ErrorHandler.log_error("License validation failed", :invalid_data, %{response: decoded})
+
+    error_response =
+      Validation.create_error_response(
+        :invalid_response,
+        error_msg
+      )
+
+    {:error, error_response}
   end
 
   # Process decoded license data based on its format using pattern matching
@@ -197,8 +183,9 @@ defmodule WandererNotifier.Domains.License.Client do
 
   # Handle unknown response format
   defp process_unknown_format(decoded) do
-    AppLogger.api_warn("Unrecognized license validation response format",
-      response: inspect(decoded)
+    log_api_error(
+      "Unrecognized license validation response format",
+      %{response: inspect(decoded)}
     )
 
     {:ok,
@@ -210,29 +197,29 @@ defmodule WandererNotifier.Domains.License.Client do
 
   # Log license_valid format results
   defp log_license_valid_result(true, _) do
-    AppLogger.api_debug("License validation successful", license_valid: true)
+    log_api_debug("License validation successful", %{license_valid: true})
   end
 
   defp log_license_valid_result(false, message) do
     error_msg = message || "License not valid"
-    AppLogger.api_warn("License validation failed", reason: error_msg, license_valid: false)
+    log_api_debug("License validation failed", %{reason: error_msg, license_valid: false})
   end
 
   # Log valid format results
   defp log_valid_format_result(true, true, _) do
-    AppLogger.api_debug("License validation successful", license_valid: true, bot_assigned: true)
+    log_api_debug("License validation successful", %{license_valid: true, bot_assigned: true})
   end
 
   defp log_valid_format_result(true, false, _) do
-    AppLogger.api_warn("License validation partial",
+    log_api_debug("License validation partial", %{
       license_valid: true,
       bot_assigned: false,
       reason: "License is valid but bot is not assigned"
-    )
+    })
   end
 
   defp log_valid_format_result(false, _, message) do
     error_msg = message || "License not valid"
-    AppLogger.api_warn("License validation failed", reason: error_msg, license_valid: false)
+    log_api_debug("License validation failed", %{reason: error_msg, license_valid: false})
   end
 end

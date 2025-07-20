@@ -59,7 +59,6 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     setup_esi_service_mocks()
     setup_config_service_mocks()
     setup_deduplication_mocks()
-    setup_dispatcher_mocks()
   end
 
   defp setup_esi_service_mocks do
@@ -103,10 +102,6 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
   defp setup_deduplication_mocks do
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
     stub(WandererNotifier.MockDeduplication, :clear_key, fn _type, _id -> :ok end)
-  end
-
-  defp setup_dispatcher_mocks do
-    stub(WandererNotifier.MockDispatcher, :send_message, fn _message -> {:ok, :sent} end)
   end
 
   @doc """

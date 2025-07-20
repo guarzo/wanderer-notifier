@@ -22,7 +22,7 @@ defmodule WandererNotifier.Application.Supervisors.Schedulers.Supervisor do
     if schedulers_enabled do
       children = [
         # Only keep non-polling schedulers
-        {WandererNotifier.Application.Supervisors.Schedulers.ServiceStatusScheduler, []}
+        {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
       ]
 
       Logger.info("Starting scheduler children: #{inspect(children)}")

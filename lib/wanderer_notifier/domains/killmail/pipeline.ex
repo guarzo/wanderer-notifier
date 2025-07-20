@@ -228,7 +228,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp build_validated_websocket_killmail(killmail_id, system_id, data) do
     # Build killmail struct from pre-enriched WebSocket data
-    killmail = %WandererNotifier.Domains.Killmail.Killmail{
+    killmail = %Killmail{
       killmail_id: to_string(killmail_id),
       system_id: system_id,
       system_name: get_system_name(system_id),
@@ -309,7 +309,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # — Notification-enabled Filter ——————————————————————————————————————
 
   defp check_requirements(%Killmail{} = km, _ctx) do
-    cfg = config_module().get_config()
+    cfg = WandererNotifier.Shared.Config.get_config()
 
     # 1) Global notifications on?
     if Map.get(cfg, :notifications_enabled, false) do
@@ -424,7 +424,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp system_module, do: WandererNotifier.Application.Services.Dependencies.system_module()
   defp character_module, do: WandererNotifier.Application.Services.Dependencies.character_module()
-  defp config_module, do: WandererNotifier.Application.Services.Dependencies.config_module()
 
   defp deduplication_module,
     do: WandererNotifier.Application.Services.Dependencies.deduplication_module()

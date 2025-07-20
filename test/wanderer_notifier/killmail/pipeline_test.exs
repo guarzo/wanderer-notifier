@@ -3,7 +3,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.{Pipeline, Context}
-  alias WandererNotifier.Domains.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -18,7 +17,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def character_track_module, do: WandererNotifier.MockCharacter
     def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
     def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
-    def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
 
     def killmail_notification_module,
       do: WandererNotifier.Domains.Notifications.KillmailNotification
@@ -80,12 +78,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       :wanderer_notifier,
       :esi_service,
       WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
-    )
-
-    Application.put_env(
-      :wanderer_notifier,
-      :discord_notifier,
-      WandererNotifier.Domains.Notifications.DiscordNotifierMock
     )
 
     # Set up config module

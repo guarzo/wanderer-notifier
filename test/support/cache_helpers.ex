@@ -4,8 +4,8 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   Provides utilities for both mock cache and ETS adapter usage.
   """
 
-  alias WandererNotifier.Infrastructure.Cache.Adapter
-  alias WandererNotifier.Infrastructure.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
 
   @doc """
   Sets up a clean cache for testing.
@@ -21,7 +21,7 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
     clear_cache(cache_name)
 
     # Initialize with empty recent kills list
-    Adapter.set(cache_name, Keys.zkill_recent_kills(), [], 3600)
+    Cache.put("zkill:recent_kills", [], :timer.hours(1))
 
     Map.put(context, :cache_name, cache_name)
   end
@@ -56,17 +56,17 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   @doc """
   Adds test data to the cache.
   """
-  def seed_cache(cache_name, data) do
+  def seed_cache(_cache_name, data) do
     Enum.each(data, fn {key, value} ->
-      Adapter.set(cache_name, key, value, 3600)
+      Cache.put(key, value, :timer.hours(1))
     end)
   end
 
   @doc """
   Gets a value from the cache, returning nil if not found.
   """
-  def get_cached(cache_name, key) do
-    case Adapter.get(cache_name, key) do
+  def get_cached(_cache_name, key) do
+    case Cache.get(key) do
       {:ok, value} -> value
       _ -> nil
     end

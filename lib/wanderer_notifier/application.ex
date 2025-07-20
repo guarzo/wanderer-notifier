@@ -106,31 +106,7 @@ defmodule WandererNotifier.Application do
     result
   end
 
-  # Initialize version manager with retry logic to handle race conditions
-  defp initialize_version_manager_with_retry(retries \\ 3) do
-    WandererNotifier.Infrastructure.Cache.VersionManager.initialize()
-  rescue
-    error ->
-      if retries > 0 do
-        WandererNotifier.Shared.Logger.Logger.startup_warn(
-          "Version manager initialization failed, retrying...",
-          error: Exception.message(error),
-          retries_left: retries - 1
-        )
-
-        # Use exponential backoff for retries
-        wait_time = calculate_backoff_ms(3 - retries)
-        Process.sleep(wait_time)
-        initialize_version_manager_with_retry(retries - 1)
-      else
-        WandererNotifier.Shared.Logger.Logger.startup_error(
-          "Version manager initialization failed after all retries",
-          error: Exception.message(error)
-        )
-
-        reraise error, __STACKTRACE__
-      end
-  end
+  # Version manager functions have been removed
 
   # Initialize cache metrics and performance monitoring
   defp initialize_cache_monitoring do
@@ -141,8 +117,7 @@ defmodule WandererNotifier.Application do
       )
     else
       try do
-        # Initialize cache metrics telemetry
-        WandererNotifier.Infrastructure.Cache.Metrics.init()
+        # Cache metrics and analytics modules have been removed
 
         # All cache services (PerformanceMonitor, Analytics, Versioning)
         # start automatically when their GenServers start
@@ -153,12 +128,9 @@ defmodule WandererNotifier.Application do
           wait_for_cache_services()
 
           try do
-            initialize_version_manager_with_retry()
-            WandererNotifier.Infrastructure.Cache.Analytics.start_collection()
+            # Version manager has been removed
 
-            WandererNotifier.Shared.Logger.Logger.startup_info(
-              "Cache version manager and analytics initialized"
-            )
+            WandererNotifier.Shared.Logger.Logger.startup_info("Cache initialization completed")
           rescue
             error ->
               WandererNotifier.Shared.Logger.Logger.startup_error(
@@ -334,7 +306,7 @@ defmodule WandererNotifier.Application do
       Application.put_env(
         :wanderer_notifier,
         :cache_name,
-        WandererNotifier.Infrastructure.Cache.Config.default_cache_name()
+        WandererNotifier.Infrastructure.Cache.ConfigSimple.default_cache_name()
       )
     end
 
@@ -426,14 +398,14 @@ defmodule WandererNotifier.Application do
 
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
-    cache_name = WandererNotifier.Infrastructure.Cache.Config.cache_name()
+    cache_name = WandererNotifier.Infrastructure.Cache.ConfigSimple.cache_name()
     cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
 
     case cache_adapter do
       Cachex ->
         # Use the cache config which includes stats: true
-        cache_config = WandererNotifier.Infrastructure.Cache.Config.cache_config()
-        {Cachex, cache_config}
+        cache_opts = WandererNotifier.Infrastructure.Cache.ConfigSimple.cachex_opts()
+        {Cachex, [name: cache_name] ++ cache_opts}
 
       WandererNotifier.Infrastructure.Cache.ETSCache ->
         {WandererNotifier.Infrastructure.Cache.ETSCache, name: cache_name}

@@ -305,4 +305,25 @@ defmodule WandererNotifier.Shared.Config.Utils do
   defp format_port("https", 443), do: ""
   defp format_port(_scheme, nil), do: ""
   defp format_port(_scheme, port), do: ":#{port}"
+
+  @doc """
+  Parses system ID from various input types.
+
+  ## Examples
+      iex> parse_system_id("30000142")
+      30000142
+      
+      iex> parse_system_id(30000142)
+      30000142
+      
+      iex> parse_system_id("invalid")
+      nil
+  """
+  @spec parse_system_id(binary() | integer() | any()) :: integer() | nil
+  def parse_system_id(id) when is_binary(id) do
+    parse_int(id, nil)
+  end
+
+  def parse_system_id(id) when is_integer(id), do: id
+  def parse_system_id(_), do: nil
 end

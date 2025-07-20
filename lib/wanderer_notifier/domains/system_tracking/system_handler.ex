@@ -10,8 +10,6 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.SystemTracking.System
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
 
   @doc """
   Handles the `add_system` event.
@@ -173,7 +171,7 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
 
   defp update_system_cache(system) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    cache_key = CacheKeys.map_systems()
+    cache_key = "map:systems"
 
     cache_name
     |> Cachex.get(cache_key)
@@ -203,7 +201,7 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
 
   defp remove_system_from_cache(payload) do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-    cache_key = CacheKeys.map_systems()
+    cache_key = "map:systems"
 
     case Cachex.get(cache_name, cache_key) do
       {:ok, cached_systems} when is_list(cached_systems) ->
@@ -270,8 +268,8 @@ defmodule WandererNotifier.Domains.SystemTracking.EventHandler do
   end
 
   defp send_system_notification(system, map_slug) do
-    case DiscordNotifier.send_new_system_notification(system) do
-      {:ok, :sent} ->
+    case WandererNotifier.Application.Services.NotificationService.notify_system(system.name) do
+      :ok ->
         AppLogger.api_info("System notification sent",
           map_slug: map_slug,
           system_name: system.name

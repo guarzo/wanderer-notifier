@@ -6,8 +6,7 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
   alias WandererNotifier.Shared.Utils.ValidationUtils
   alias WandererNotifier.Shared.Utils.BatchProcessor
 
@@ -66,10 +65,10 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
   end
 
   @impl true
-  def cache_key, do: CacheKeys.map_systems()
+  def cache_key, do: Keys.map_systems()
 
   @impl true
-  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.Config.ttl_for(:map_data)
+  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.ConfigSimple.map_ttl()
 
   @impl true
   def should_notify?(system_id, system) do
@@ -78,7 +77,11 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
 
   @impl true
   def send_notification(system) do
-    DiscordNotifier.send_new_system_notification(system)
+    case WandererNotifier.Application.Services.NotificationService.notify_system(system.name) do
+      :ok -> {:ok, :sent}
+      :skip -> {:ok, :sent}
+      error -> error
+    end
   end
 
   @impl true
@@ -121,8 +124,8 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
           }
         )
 
-      # Cache all processed systems at once
-      WandererNotifier.Map.Clients.BaseMapClient.cache_put(
+      # Cache all processed systems at once using centralized Cache module
+      WandererNotifier.Infrastructure.Cache.put_with_ttl(
         cache_key(),
         final_systems,
         cache_ttl()

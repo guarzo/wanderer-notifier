@@ -9,7 +9,8 @@ ExUnit.start()
 Application.ensure_all_started(:mox)
 
 # Set up Mox mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.CacheBehaviour)
+# Cache behaviour removed in simplification - MockCache no longer needed
+# Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.CacheBehaviour)
 Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
 Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
@@ -18,10 +19,6 @@ Mox.defmock(WandererNotifier.MockDeduplication,
 )
 
 Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
-
-Mox.defmock(WandererNotifier.MockDispatcher,
-  for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
-)
 
 Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
 
@@ -33,17 +30,13 @@ Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock,
   for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
 )
 
-Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
-)
-
 # Configure application to use mocks
-Application.put_env(:wanderer_notifier, :cache_module, WandererNotifier.MockCache)
+# Cache module removed - using simplified Cache directly
+# Application.put_env(:wanderer_notifier, :cache_module, WandererNotifier.MockCache)
 Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.MockSystem)
 Application.put_env(:wanderer_notifier, :character_module, WandererNotifier.MockCharacter)
 Application.put_env(:wanderer_notifier, :deduplication_module, WandererNotifier.MockDeduplication)
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
-Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
 
 Application.put_env(
   :wanderer_notifier,
@@ -59,22 +52,8 @@ Application.put_env(
 
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
-# Set up default stubs for cache mock
-Mox.stub(WandererNotifier.MockCache, :get, fn _key, _opts -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :mget, fn _keys -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :get_kill, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :set, fn _key, value, _ttl -> {:ok, value} end)
-Mox.stub(WandererNotifier.MockCache, :put, fn _key, value -> {:ok, value} end)
-Mox.stub(WandererNotifier.MockCache, :delete, fn _key -> :ok end)
-Mox.stub(WandererNotifier.MockCache, :clear, fn -> :ok end)
-
-Mox.stub(WandererNotifier.MockCache, :get_and_update, fn _key, update_fun ->
-  {current, updated} = update_fun.(nil)
-  {:ok, {current, updated}}
-end)
-
-Mox.stub(WandererNotifier.MockCache, :get_recent_kills, fn -> [] end)
-Mox.stub(WandererNotifier.MockCache, :init_batch_logging, fn -> :ok end)
+# Cache mock stubs removed - using real Cachex in tests
+# The simplified cache system uses Cachex directly
 
 # Set up default stubs for deduplication mock
 Mox.stub(WandererNotifier.MockDeduplication, :check, fn _, _ -> {:ok, :new} end)
@@ -127,27 +106,15 @@ Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn ->
   WandererNotifier.Domains.Killmail.Enrichment
 end)
 
-Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn ->
-  WandererNotifier.MockDispatcher
-end)
-
 Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn ->
   WandererNotifier.Domains.Notifications.KillmailNotification
 end)
-
-Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)
 
 # Set up default stubs for system mock
 Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
 
 # Set up default stubs for character mock
 Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
-
-# Set up default stubs for dispatcher mock
-Mox.stub(WandererNotifier.MockDispatcher, :send_message, fn _ -> {:ok, :sent} end)
-
-# Set up default stubs for notifier factory mock
-Mox.stub(WandererNotifier.MockNotifierFactory, :send_message, fn _ -> {:ok, :sent} end)
 
 # Set up default stubs for HTTP client mock
 Mox.stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->

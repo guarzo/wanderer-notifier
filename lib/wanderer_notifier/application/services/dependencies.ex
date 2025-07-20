@@ -49,19 +49,15 @@ defmodule WandererNotifier.Application.Services.Dependencies do
   end
 
   # Configuration and Tracking Modules
-  @doc "Returns the configuration module"
-  def config_module do
-    Application.get_env(:wanderer_notifier, :config_module, WandererNotifier.Shared.Config)
-  end
 
   @doc "Returns the system tracking module"
   def system_module do
-    config_module().system_track_module()
+    WandererNotifier.Shared.Config.system_track_module()
   end
 
   @doc "Returns the character tracking module"
   def character_module do
-    config_module().character_track_module()
+    WandererNotifier.Shared.Config.character_track_module()
   end
 
   # Pipeline and Processing Modules
@@ -76,7 +72,7 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the deduplication module"
   def deduplication_module do
-    config_module().deduplication_module()
+    WandererNotifier.Shared.Config.deduplication_module()
   end
 
   # Notification Modules
@@ -86,15 +82,6 @@ defmodule WandererNotifier.Application.Services.Dependencies do
       :wanderer_notifier,
       :killmail_notification_module,
       WandererNotifier.Domains.Killmail.KillmailNotification
-    )
-  end
-
-  @doc "Returns the notification dispatcher module"
-  def dispatcher_module do
-    Application.get_env(
-      :wanderer_notifier,
-      :dispatcher_module,
-      WandererNotifier.Domains.Notifications.Factory
     )
   end
 

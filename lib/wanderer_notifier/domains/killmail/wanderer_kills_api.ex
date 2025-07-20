@@ -1,223 +1,181 @@
 defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   @moduledoc """
-  Enhanced type-safe HTTP client for the WandererKills API.
+  WandererKills API client for bulk operations and killmail management.
 
-  This module provides a comprehensive interface to the WandererKills service,
-  implementing type-safe patterns and supporting all available endpoints.
-  It can be used as a fallback when WebSocket connection is unavailable or
-  for bulk data operations.
+  This module provides an enhanced interface to the WandererKills service,
+  including bulk loading capabilities and advanced killmail operations.
   """
-
-  alias WandererNotifier.Domains.Killmail.WandererKillsClient
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.Killmail.StreamUtils
-  alias WandererNotifier.Infrastructure.Http, as: HTTP
-  alias WandererNotifier.Infrastructure.Http.ResponseHandler
-  alias WandererNotifier.Shared.Types.Constants
 
   @behaviour WandererNotifier.Domains.Killmail.WandererKillsAPI.Behaviour
 
-  @base_url Application.compile_env(
-              :wanderer_notifier,
-              :wanderer_kills_base_url,
-              "http://host.docker.internal:4004"
-            )
-  @max_retries Application.compile_env(:wanderer_notifier, :wanderer_kills_max_retries, 3)
+  alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Config
 
-  # Type definitions for better type safety
-  @type killmail_id :: integer()
-  @type system_id :: integer()
-  @type character_id :: integer()
-  @type error_response :: {:error, %{type: atom(), message: String.t()}}
-  @type killmail :: map()
+  @base_url_key :wanderer_kills_url
 
-  @doc """
-  Fetches killmails for a single system with enhanced error handling.
-  """
-  @impl true
-  @spec fetch_system_killmails(system_id(), integer(), integer()) ::
-          {:ok, [killmail()]} | error_response()
-  def fetch_system_killmails(system_id, hours \\ 24, limit \\ 100) do
-    case WandererKillsClient.get_system_kills(system_id, limit, hours) do
-      {:ok, kills} -> {:ok, transform_kills(kills)}
-      {:error, reason} -> format_error(reason, :fetch_system_killmails)
-    end
+  defp base_url do
+    Config.get(@base_url_key, "http://host.docker.internal:4004")
   end
 
-  @doc """
-  Fetches killmails for multiple systems in a single request.
-  Returns a map of system_id => [killmails].
-  """
   @impl true
-  @spec fetch_systems_killmails([system_id()], integer(), integer()) ::
-          {:ok, %{system_id() => [killmail()]}} | error_response()
-  def fetch_systems_killmails(system_ids, hours \\ 24, limit_per_system \\ 50) do
-    url = build_multi_system_url(system_ids, hours, limit_per_system)
+  def fetch_system_killmails(system_id, hours \\ 24, limit \\ 50) do
+    url = "#{base_url()}/api/v1/systems/#{system_id}/killmails"
 
-    case perform_request(url) do
-      {:ok, response} -> parse_multi_system_response(response)
-      {:error, reason} -> format_error(reason, :fetch_systems_killmails)
-    end
+    params = %{
+      "hours" => hours,
+      "limit" => limit
+    }
+
+    query_string = URI.encode_query(params)
+    full_url = "#{url}?#{query_string}"
+
+    AppLogger.api_info("Fetching system killmails",
+      system_id: system_id,
+      hours: hours,
+      limit: limit
+    )
+
+    full_url
+    |> Http.get(default_headers(), service: :wanderer_kills)
+    |> handle_killmails_response()
   end
 
-  @doc """
-  Fetches a specific killmail by ID.
-  """
   @impl true
-  @spec get_killmail(killmail_id()) :: {:ok, killmail()} | error_response()
-  def get_killmail(killmail_id) do
-    url = "#{@base_url}/api/v1/kills/#{killmail_id}"
-
-    case perform_request(url) do
-      {:ok, kill} -> {:ok, transform_kill(kill)}
-      {:error, reason} -> format_error(reason, :get_killmail)
-    end
-  end
-
-  @doc """
-  Subscribes to real-time killmail updates for specified systems.
-  This is primarily for HTTP webhook subscriptions, not WebSocket.
-  """
-  @impl true
-  @spec subscribe_to_killmails(String.t(), [system_id()], String.t() | nil) ::
-          {:ok, String.t()} | error_response()
-  def subscribe_to_killmails(subscriber_id, system_ids, callback_url \\ nil) do
-    url = "#{@base_url}/api/v1/subscriptions"
+  def fetch_systems_killmails(system_ids, hours \\ 24, limit_per_system \\ 20)
+      when is_list(system_ids) do
+    url = "#{base_url()}/api/v1/systems/bulk/killmails"
 
     body = %{
-      subscriber_id: subscriber_id,
-      system_ids: system_ids,
-      callback_url: callback_url
+      "system_ids" => system_ids,
+      "hours" => hours,
+      "limit_per_system" => limit_per_system
     }
 
-    case perform_post_request(url, body) do
-      {:ok, %{"subscription_id" => sub_id}} -> {:ok, sub_id}
-      {:error, reason} -> format_error(reason, :subscribe_to_killmails)
+    AppLogger.api_info("Fetching bulk system killmails",
+      system_count: length(system_ids),
+      hours: hours,
+      limit_per_system: limit_per_system
+    )
+
+    case Http.post(url, default_headers(), Jason.encode!(body), service: :wanderer_kills) do
+      {:ok, %{status_code: 200, body: data}} when is_map(data) ->
+        {:ok, convert_system_ids_to_integers(data)}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+
+      {:error, reason} ->
+        {:error, %{type: :network_error, message: inspect(reason)}}
     end
   end
 
-  @doc """
-  Fetches killmails for a specific character.
-  """
   @impl true
-  @spec fetch_character_killmails(character_id(), integer(), integer()) ::
-          {:ok, [killmail()]} | error_response()
-  def fetch_character_killmails(character_id, hours \\ 24, limit \\ 100) do
-    case WandererKillsClient.get_character_kills(character_id, limit, hours) do
-      {:ok, kills} -> {:ok, transform_kills(kills)}
-      {:error, reason} -> format_error(reason, :fetch_character_killmails)
+  def get_killmail(killmail_id) do
+    url = "#{base_url()}/api/v1/killmails/#{killmail_id}"
+
+    AppLogger.api_debug("Fetching killmail", killmail_id: killmail_id)
+
+    case Http.get(url, default_headers(), service: :wanderer_kills) do
+      {:ok, %{status_code: 200, body: killmail}} when is_map(killmail) ->
+        {:ok, killmail}
+
+      {:ok, %{status_code: 404}} ->
+        {:error, %{type: :not_found, message: "Killmail #{killmail_id} not found"}}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+
+      {:error, reason} ->
+        {:error, %{type: :network_error, message: inspect(reason)}}
     end
   end
 
+  @impl true
+  def subscribe_to_killmails(subscriber_id, system_ids, callback_url \\ nil) do
+    url = "#{base_url()}/api/v1/subscriptions"
+
+    body = %{
+      "subscriber_id" => subscriber_id,
+      "system_ids" => system_ids,
+      "callback_url" => callback_url
+    }
+
+    AppLogger.api_info("Creating killmail subscription",
+      subscriber_id: subscriber_id,
+      system_count: length(system_ids)
+    )
+
+    case Http.post(url, default_headers(), Jason.encode!(body), service: :wanderer_kills) do
+      {:ok, %{status_code: 201, body: %{"subscription_id" => subscription_id}}} ->
+        {:ok, subscription_id}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+
+      {:error, reason} ->
+        {:error, %{type: :network_error, message: inspect(reason)}}
+    end
+  end
+
+  @impl true
+  def fetch_character_killmails(character_id, hours \\ 24, limit \\ 50) do
+    url = "#{base_url()}/api/v1/characters/#{character_id}/killmails"
+
+    params = %{
+      "hours" => hours,
+      "limit" => limit
+    }
+
+    query_string = URI.encode_query(params)
+    full_url = "#{url}?#{query_string}"
+
+    AppLogger.api_info("Fetching character killmails",
+      character_id: character_id,
+      hours: hours,
+      limit: limit
+    )
+
+    full_url
+    |> Http.get(default_headers(), service: :wanderer_kills)
+    |> handle_killmails_response()
+  end
+
   @doc """
-  Bulk loads killmails for initial system setup or recovery scenarios.
-  Useful when WebSocket connection is down or for historical data.
+  Bulk loads system kills for the fallback handler.
+
+  This function is called by the fallback handler when WebSocket connection is down.
   """
-  @spec bulk_load_system_kills([system_id()], integer()) ::
-          {:ok, %{loaded: integer(), errors: [any()]}} | error_response()
-  def bulk_load_system_kills(system_ids, hours \\ 24) do
+  def bulk_load_system_kills(system_ids, hours \\ 1) when is_list(system_ids) do
     AppLogger.info("Starting bulk load for #{length(system_ids)} systems")
 
+    # Process in chunks to avoid overwhelming the API
+    chunk_size = 10
+    chunks = Enum.chunk_every(system_ids, chunk_size)
+
     results =
-      system_ids
-      # Process in chunks to avoid overwhelming the API
-      |> Enum.chunk_every(10)
-      |> Task.async_stream(
-        fn chunk ->
-          case fetch_systems_killmails(chunk, hours, 50) do
-            {:ok, data} -> {:ok, data}
-            {:error, reason} -> {:error, {chunk, reason}}
-          end
-        end,
-        max_concurrency: 5,
-        timeout: 30_000
-      )
-      |> aggregate_stream_results()
+      chunks
+      |> Enum.with_index()
+      |> Enum.map(fn {chunk, index} ->
+        AppLogger.debug("Processing chunk #{index + 1}/#{length(chunks)}")
+        fetch_systems_killmails(chunk, hours, 20)
+      end)
 
-    {:ok, results}
+    # Aggregate results
+    {loaded_count, errors} = aggregate_bulk_results(results)
+
+    AppLogger.info("Bulk load completed",
+      loaded: loaded_count,
+      errors: length(errors),
+      total_systems: length(system_ids)
+    )
+
+    {:ok, %{loaded: loaded_count, errors: errors}}
   end
 
-  @doc """
-  Checks if the WandererKills API is available.
-  Useful for health checks and fallback logic.
-  """
-  @spec health_check() :: {:ok, map()} | {:error, any()}
-  def health_check do
-    url = "#{@base_url}/api/v1/health"
+  # Private helper functions
 
-    case perform_request(url, timeout: 5_000) do
-      {:ok, response} -> {:ok, response}
-      {:error, _} = error -> error
-    end
-  end
-
-  # Private functions
-
-  defp build_multi_system_url(system_ids, hours, limit_per_system) do
-    params = %{
-      system_ids: Enum.join(system_ids, ","),
-      since_hours: hours,
-      limit_per_system: limit_per_system
-    }
-
-    query = URI.encode_query(params)
-    "#{@base_url}/api/v1/kills/systems?#{query}"
-  end
-
-  defp perform_request(url, extra_opts \\ []) do
-    opts =
-      [
-        retry_options: [
-          max_attempts: @max_retries,
-          base_backoff: Constants.wanderer_kills_retry_backoff(),
-          retryable_errors: [:timeout, :connect_timeout, :econnrefused],
-          retryable_status_codes: [429, 500, 502, 503, 504],
-          context: "WandererKills request"
-        ],
-        rate_limit_options: [
-          per_host: true,
-          requests_per_second: 10,
-          burst_capacity: 20
-        ],
-        timeout: 10_000,
-        recv_timeout: 10_000
-      ]
-      |> Keyword.merge(extra_opts)
-
-    result = HTTP.get(url, http_headers(), opts)
-
-    case ResponseHandler.handle_response(result,
-           success_codes: [200],
-           log_context: %{client: "WandererKillsAPI", url: url}
-         ) do
-      {:ok, body} -> decode_response(body)
-      {:error, _} = error -> error
-    end
-  end
-
-  defp perform_post_request(url, body) do
-    json_body = Jason.encode!(body)
-
-    opts = [
-      retry_options: [
-        max_attempts: @max_retries,
-        base_backoff: Constants.wanderer_kills_retry_backoff()
-      ],
-      timeout: 10_000
-    ]
-
-    result = HTTP.post(url, json_body, http_headers(), opts)
-
-    case ResponseHandler.handle_response(result,
-           success_codes: [200, 201],
-           log_context: %{client: "WandererKillsAPI", url: url}
-         ) do
-      {:ok, body} -> decode_response(body)
-      {:error, _} = error -> error
-    end
-  end
-
-  defp http_headers do
+  defp default_headers do
     [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
@@ -225,99 +183,52 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     ]
   end
 
-  defp decode_response(body) when is_binary(body) do
-    case Jason.decode(body) do
-      {:ok, decoded} -> {:ok, decoded}
-      {:error, reason} -> {:error, {:json_decode_error, reason}}
+  defp handle_killmails_response(response) do
+    case response do
+      {:ok, %{status_code: 200, body: killmails}} when is_list(killmails) ->
+        {:ok, killmails}
+
+      {:ok, %{status_code: 404}} ->
+        {:ok, []}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+
+      {:error, reason} ->
+        {:error, %{type: :network_error, message: inspect(reason)}}
     end
   end
 
-  defp decode_response(data), do: {:ok, data}
-
-  defp transform_kills(kills) when is_list(kills) do
-    Enum.map(kills, &transform_kill/1)
+  defp convert_system_ids_to_integers(data) when is_map(data) do
+    data
+    |> Enum.map(fn {system_id_str, killmails} ->
+      {String.to_integer(system_id_str), killmails}
+    end)
+    |> Map.new()
   end
 
-  defp transform_kill(kill) do
-    # Ensure consistent structure matching WebSocket format
-    kill
-    |> Map.put("enriched", true)
-    |> ensure_victim_structure()
-    |> ensure_attackers_structure()
-  end
+  defp aggregate_bulk_results(results) do
+    loaded_count =
+      results
+      |> Enum.reduce(0, fn
+        {:ok, system_killmails}, acc when is_map(system_killmails) ->
+          killmail_count =
+            system_killmails
+            |> Map.values()
+            |> Enum.map(&length/1)
+            |> Enum.sum()
 
-  defp ensure_victim_structure(kill) do
-    case Map.get(kill, "victim") do
-      nil -> Map.put(kill, "victim", %{})
-      victim -> Map.put(kill, "victim", normalize_participant(victim))
-    end
-  end
+          acc + killmail_count
 
-  defp ensure_attackers_structure(kill) do
-    case Map.get(kill, "attackers") do
-      nil ->
-        Map.put(kill, "attackers", [])
-
-      attackers when is_list(attackers) ->
-        Map.put(kill, "attackers", Enum.map(attackers, &normalize_participant/1))
-
-      _ ->
-        Map.put(kill, "attackers", [])
-    end
-  end
-
-  defp normalize_participant(participant) do
-    participant
-    |> Map.put_new("character_name", nil)
-    |> Map.put_new("corporation_name", nil)
-    |> Map.put_new("alliance_name", nil)
-    |> Map.put_new("ship_name", nil)
-  end
-
-  defp parse_multi_system_response(%{"systems" => systems}) when is_map(systems) do
-    result =
-      systems
-      |> Enum.map(fn {system_id, kills} ->
-        {parse_system_id(system_id), transform_kills(kills)}
+        _, acc ->
+          acc
       end)
-      |> Map.new()
 
-    {:ok, result}
-  end
+    errors =
+      results
+      |> Enum.filter(&match?({:error, _}, &1))
+      |> Enum.map(fn {:error, error} -> error end)
 
-  defp parse_multi_system_response(response) do
-    AppLogger.warn("Unexpected multi-system response format", response: inspect(response))
-    {:ok, %{}}
-  end
-
-  defp parse_system_id(system_id) when is_binary(system_id) do
-    String.to_integer(system_id)
-  end
-
-  defp parse_system_id(system_id) when is_integer(system_id), do: system_id
-
-  defp aggregate_stream_results(stream) do
-    StreamUtils.aggregate_stream_results(stream)
-  end
-
-  defp format_error(reason, context) do
-    error_type = categorize_error(reason)
-    message = format_error_message(reason, context)
-
-    {:error, %{type: error_type, message: message}}
-  end
-
-  defp categorize_error(:timeout), do: :timeout
-  defp categorize_error({:timeout, _}), do: :timeout
-  defp categorize_error({:connect_timeout, _}), do: :timeout
-  defp categorize_error({:json_decode_error, _}), do: :invalid_response
-  defp categorize_error({:http_error, 404}), do: :not_found
-  defp categorize_error({:http_error, 429}), do: :rate_limit
-  defp categorize_error({:http_error, code}) when code >= 500, do: :server_error
-  defp categorize_error({:http_error, code}) when code >= 400, do: :client_error
-  defp categorize_error(_), do: :unknown
-
-  defp format_error_message(reason, context) do
-    "#{context} failed: #{inspect(reason)}"
+    {loaded_count, errors}
   end
 end

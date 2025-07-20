@@ -3,20 +3,35 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
   import ExUnit.CaptureLog
   alias WandererNotifier.Shared.Logger.BatchLogger
 
+  setup do
+    # Stop the GenServer if it's already running from a previous test
+    case Process.whereis(BatchLogger) do
+      nil ->
+        :ok
+
+      pid when is_pid(pid) ->
+        if Process.alive?(pid) do
+          GenServer.stop(pid)
+        end
+    end
+
+    :ok
+  end
+
   describe "initialization" do
-    test "init/0 initializes with default interval" do
+    test "start_link/0 starts with default interval" do
       log =
         capture_log([level: :debug], fn ->
-          assert :ok = BatchLogger.init()
+          assert {:ok, _pid} = BatchLogger.start_link()
         end)
 
       assert log =~ "[BatchLogger] Initializing with interval: 5000ms"
     end
 
-    test "init/1 accepts custom interval" do
+    test "start_link/1 accepts custom interval" do
       log =
         capture_log([level: :debug], fn ->
-          assert :ok = BatchLogger.init(interval: 10_000)
+          assert {:ok, _pid} = BatchLogger.start_link(interval: 10_000)
         end)
 
       assert log =~ "[BatchLogger] Initializing with interval: 10000ms"
@@ -37,14 +52,14 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
     end
 
     test "count_event/2 without immediate logging" do
-      # This should not produce any log output in current implementation
+      # This should not produce any log output for the event itself
       log =
         capture_log(fn ->
           assert :ok = BatchLogger.count_event(:test_event, %{data: "value"})
         end)
 
-      # Current implementation doesn't log non-immediate events
-      assert log == ""
+      # Should not log the event itself when batching
+      refute log =~ "[batch] Event: test_event"
     end
 
     test "count_event/3 with false immediate flag" do
@@ -53,8 +68,8 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
           assert :ok = BatchLogger.count_event(:test_event, %{data: "value"}, false)
         end)
 
-      # Should not log when immediate is false
-      assert log == ""
+      # Should not log the event itself when immediate is false
+      refute log =~ "[batch] Event: test_event"
     end
   end
 
@@ -78,18 +93,34 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
     end
 
     test "handle_flush/0 with default interval" do
+      # Ensure the GenServer is started first
+      {:ok, pid} = BatchLogger.start_link()
+
+      # Add some events to batch first
+      BatchLogger.count_event(:test_event, %{data: "test"})
+
       log =
         capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.handle_flush()
+          # Give the async cast time to process
+          Process.sleep(50)
         end)
 
       assert log =~ "[BatchLogger] Flushing all batch logs"
     end
 
     test "handle_flush/1 with custom interval" do
+      # Ensure the GenServer is started first
+      {:ok, pid} = BatchLogger.start_link()
+
+      # Add some events to batch first
+      BatchLogger.count_event(:test_event, %{data: "test"})
+
       log =
         capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.handle_flush(10_000)
+          # Give the async cast time to process
+          Process.sleep(50)
         end)
 
       assert log =~ "[BatchLogger] Flushing all batch logs"

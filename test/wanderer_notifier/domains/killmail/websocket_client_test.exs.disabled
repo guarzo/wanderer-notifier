@@ -1,0 +1,399 @@
+defmodule WandererNotifier.Domains.Killmail.WebSocketClientTest do
+  use ExUnit.Case, async: false
+  import Mox
+
+  alias WandererNotifier.Domains.Killmail.WebSocketClient
+  alias WandererNotifier.ExternalAdaptersMock
+
+  setup :set_mox_from_context
+  setup :verify_on_exit!
+
+  setup do
+    # Mock external adapters
+    Application.put_env(:wanderer_notifier, :external_adapters_impl, ExternalAdaptersMock)
+
+    # Set up default stubs
+    ExternalAdaptersMock
+    |> stub(:get_tracked_systems, fn -> {:ok, []} end)
+    |> stub(:get_tracked_characters, fn -> {:ok, []} end)
+
+    :ok
+  end
+
+  describe "start_link/1" do
+    test "starts with default options" do
+      with_mock_websocket_start(fn ->
+        assert {:ok, _pid} = WebSocketClient.start_link()
+      end)
+    end
+
+    test "starts with custom name" do
+      with_mock_websocket_start(fn ->
+        assert {:ok, _pid} = WebSocketClient.start_link(name: :test_websocket)
+      end)
+    end
+
+    test "builds correct socket URL" do
+      Application.put_env(:wanderer_notifier, :websocket_url, "ws://test.local:4000")
+
+      with_mock_websocket_start(fn ->
+        assert {:ok, _pid} = WebSocketClient.start_link()
+      end)
+    end
+  end
+
+  describe "handle_connect/2" do
+    test "initializes state correctly on successful connection" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        channel_ref: nil,
+        heartbeat_ref: nil,
+        subscription_update_ref: nil,
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new(),
+        pipeline_worker: nil,
+        connected_at: nil,
+        reconnect_attempts: 5,
+        connection_id: nil,
+        join_retry_count: 0
+      }
+
+      # Mock the process references and stats
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end
+         ]},
+        {WandererNotifier.Application.Services.Stats, [],
+         [
+           update_websocket_stats: fn _stats -> :ok end
+         ]}
+      ]) do
+        {:ok, new_state} = WebSocketClient.handle_connect(%{}, state)
+
+        assert new_state.connected_at != nil
+        assert new_state.heartbeat_ref != nil
+        assert new_state.subscription_update_ref != nil
+        assert new_state.reconnect_attempts == 0
+        assert new_state.connection_id != nil
+        assert String.starts_with?(new_state.connection_id, "websocket_killmail_")
+      end
+    end
+
+    test "notifies fallback handler when connection established" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        channel_ref: nil,
+        heartbeat_ref: nil,
+        subscription_update_ref: nil,
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new(),
+        pipeline_worker: nil,
+        connected_at: nil,
+        reconnect_attempts: 0,
+        connection_id: nil,
+        join_retry_count: 0
+      }
+
+      # Mock required modules
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end,
+           whereis: fn
+             WandererNotifier.Domains.Killmail.FallbackHandler -> self()
+             _ -> nil
+           end
+         ]},
+        {WandererNotifier.Domains.Killmail.FallbackHandler, [],
+         [
+           websocket_connected: fn -> :ok end
+         ]},
+        {WandererNotifier.Application.Services.Stats, [],
+         [
+           update_websocket_stats: fn _stats -> :ok end
+         ]}
+      ]) do
+        assert {:ok, _new_state} = WebSocketClient.handle_connect(%{}, state)
+      end
+    end
+  end
+
+  describe "handle_disconnect/2" do
+    test "handles connection refusal gracefully" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        heartbeat_ref: make_ref(),
+        subscription_update_ref: make_ref(),
+        subscribed_systems: MapSet.new([30_000_142]),
+        subscribed_characters: MapSet.new([1_234_567_890]),
+        reconnect_attempts: 1,
+        connection_id: "test_connection_123"
+      }
+
+      disconnect_reason = {:error, {:closed, :econnrefused}}
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           cancel_timer: fn _ref -> :ok end,
+           send_after: fn _pid, _msg, _delay -> make_ref() end,
+           whereis: fn
+             WandererNotifier.Domains.Killmail.FallbackHandler -> self()
+             _ -> nil
+           end
+         ]},
+        {WandererNotifier.Domains.Killmail.FallbackHandler, [],
+         [
+           websocket_down: fn -> :ok end
+         ]},
+        {WandererNotifier.Application.Services.Stats, [],
+         [
+           update_websocket_stats: fn _stats -> :ok end
+         ]}
+      ]) do
+        {:ok, new_state} = WebSocketClient.handle_disconnect(%{reason: disconnect_reason}, state)
+
+        assert new_state.channel_ref == nil
+        assert new_state.heartbeat_ref == nil
+        assert new_state.subscription_update_ref == nil
+        assert new_state.connected_at == nil
+        assert new_state.reconnect_attempts == 2
+      end
+    end
+
+    test "handles 404 endpoint not found" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        heartbeat_ref: nil,
+        subscription_update_ref: nil,
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new(),
+        reconnect_attempts: 0,
+        connection_id: nil
+      }
+
+      disconnect_reason = {:error, {404, [], "Not Found"}}
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end,
+           whereis: fn _ -> nil end
+         ]},
+        {WandererNotifier.Application.Services.Stats, [],
+         [
+           update_websocket_stats: fn _stats -> :ok end
+         ]}
+      ]) do
+        {:ok, new_state} = WebSocketClient.handle_disconnect(%{reason: disconnect_reason}, state)
+        assert new_state.reconnect_attempts == 1
+      end
+    end
+
+    test "calculates exponential backoff correctly" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        heartbeat_ref: nil,
+        subscription_update_ref: nil,
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new(),
+        reconnect_attempts: 3,
+        connection_id: nil
+      }
+
+      disconnect_reason = {:remote, :closed}
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, delay ->
+             # For attempt 3, should be around 8s (8000ms) with jitter
+             assert delay > 6_000 and delay < 12_000
+             make_ref()
+           end,
+           whereis: fn _ -> nil end
+         ]},
+        {WandererNotifier.Application.Services.Stats, [],
+         [
+           update_websocket_stats: fn _stats -> :ok end
+         ]}
+      ]) do
+        {:ok, _new_state} = WebSocketClient.handle_disconnect(%{reason: disconnect_reason}, state)
+      end
+    end
+  end
+
+  describe "handle_frame/2" do
+    test "processes valid JSON text frames" do
+      state = %{
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new()
+      }
+
+      message =
+        %{
+          "event" => "killmail",
+          "topic" => "killmails:all",
+          "payload" => %{
+            "killmail_id" => 123_456,
+            "victim" => %{"character_id" => 1_234_567_890}
+          }
+        }
+        |> Jason.encode!()
+
+      with_mock WandererNotifier.Shared.Logger.Logger, [:passthrough],
+        processor_debug: fn _msg, _opts -> :ok end do
+        {:ok, _state} = WebSocketClient.handle_frame({:text, message}, state)
+      end
+    end
+
+    test "handles invalid JSON gracefully" do
+      state = %{
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new()
+      }
+
+      invalid_json = "{ invalid json structure"
+
+      with_mock WandererNotifier.Shared.Logger.Logger, [:passthrough],
+        error: fn _msg, _opts -> :ok end do
+        {:ok, _state} = WebSocketClient.handle_frame({:text, invalid_json}, state)
+      end
+    end
+
+    test "handles binary frames by ignoring them" do
+      state = %{}
+      binary_data = <<1, 2, 3, 4>>
+
+      {:ok, returned_state} = WebSocketClient.handle_frame({:binary, binary_data}, state)
+      assert returned_state == state
+    end
+
+    test "truncates large messages in error logs" do
+      state = %{}
+      large_message = String.duplicate("x", 300)
+
+      with_mock WandererNotifier.Shared.Logger.Logger, [:passthrough],
+        error: fn _msg, opts ->
+          preview = Keyword.get(opts, :message_preview)
+          # 200 + "..."
+          assert String.length(preview) <= 203
+          assert String.ends_with?(preview, "... (truncated)")
+          :ok
+        end do
+        {:ok, _state} = WebSocketClient.handle_frame({:text, large_message}, state)
+      end
+    end
+  end
+
+  describe "handle_info/2" do
+    test "handles heartbeat messages" do
+      state = %{
+        url: "ws://test.local/socket/websocket",
+        connected_at: DateTime.utc_now(),
+        heartbeat_ref: make_ref(),
+        connection_id: "test_connection_123"
+      }
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end,
+           whereis: fn _ -> nil end
+         ]},
+        {WebSockex, [],
+         [
+           send_frame: fn _pid, _frame -> :ok end
+         ]},
+        {WandererNotifier.Shared.Logger.Logger, [:passthrough],
+         [
+           processor_debug: fn _msg, _opts -> :ok end
+         ]}
+      ]) do
+        {:ok, new_state} = WebSocketClient.handle_info(:heartbeat, state)
+        assert new_state.heartbeat_ref != nil
+      end
+    end
+
+    test "handles delayed connection attempts" do
+      state = %{}
+
+      with_mock Process, [:passthrough], send: fn _pid, _msg -> :ok end do
+        {:ok, returned_state} = WebSocketClient.handle_info(:connect_delayed, state)
+        assert returned_state == state
+      end
+    end
+
+    test "handles subscription updates" do
+      state = %{
+        subscribed_systems: MapSet.new(),
+        subscribed_characters: MapSet.new(),
+        subscription_update_ref: make_ref(),
+        channel_ref: make_ref()
+      }
+
+      # Mock tracked systems and characters
+      ExternalAdaptersMock
+      |> expect(:get_tracked_systems, fn ->
+        {:ok, [%{solar_system_id: 30_000_142}]}
+      end)
+      |> expect(:get_tracked_characters, fn ->
+        {:ok, [%{character_id: 1_234_567_890}]}
+      end)
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end
+         ]},
+        {WebSockex, [],
+         [
+           send_frame: fn _pid, _frame -> :ok end
+         ]},
+        {WandererNotifier.Shared.Logger.Logger, [:passthrough],
+         [
+           info: fn _msg -> :ok end,
+           processor_debug: fn _msg, _opts -> :ok end
+         ]}
+      ]) do
+        {:ok, _new_state} = WebSocketClient.handle_info(:subscription_update, state)
+      end
+    end
+
+    test "handles subscription update errors gracefully" do
+      state = %{
+        subscription_update_ref: make_ref()
+      }
+
+      # Mock an error in getting tracked systems
+      ExternalAdaptersMock
+      |> expect(:get_tracked_systems, fn ->
+        raise "Database connection failed"
+      end)
+
+      with_mocks([
+        {Process, [:passthrough],
+         [
+           send_after: fn _pid, _msg, _delay -> make_ref() end
+         ]},
+        {WandererNotifier.Shared.Logger.Logger, [:passthrough],
+         [
+           info: fn _msg -> :ok end,
+           error: fn _msg, _opts -> :ok end
+         ]}
+      ]) do
+        {:ok, new_state} = WebSocketClient.handle_info(:subscription_update, state)
+        assert new_state.subscription_update_ref != nil
+      end
+    end
+  end
+
+  # Helper function to mock WebSockex.start_link
+  defp with_mock_websocket_start(test_fn) do
+    with_mock WebSockex,
+      start_link: fn _url, _module, _state, _opts -> {:ok, self()} end do
+      test_fn.()
+    end
+  end
+end

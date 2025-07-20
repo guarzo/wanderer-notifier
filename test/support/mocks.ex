@@ -396,17 +396,6 @@ defmodule WandererNotifier.Mocks do
   """
 
   # Mocks for behaviors
-  Mox.defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
-    for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
-  )
-
-  Mox.defmock(WandererNotifier.Domains.Notifications.DispatcherMock,
-    for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
-  )
-
-  Mox.defmock(WandererNotifier.Shared.Logger.LoggerMock,
-    for: WandererNotifier.Shared.Logger.LoggerBehaviour
-  )
 
   Mox.defmock(WandererNotifier.Domains.Notifications.Determiner.KillMock,
     for: WandererNotifier.Domains.Notifications.Determiner.KillBehaviour
@@ -416,10 +405,6 @@ defmodule WandererNotifier.Mocks do
     for: WandererNotifier.Shared.Config.EnvProvider
   )
 end
-
-Mox.defmock(WandererNotifier.Domains.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
-)
 
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """

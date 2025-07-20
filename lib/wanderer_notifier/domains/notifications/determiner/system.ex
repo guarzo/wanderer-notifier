@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.System do
 
   require Logger
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Infrastructure.Cache.Facade
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Domains.SystemTracking.System
 
@@ -45,7 +45,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.System do
     - false otherwise
   """
   def system_changed?(system_id, new_data) do
-    case Facade.get_system(system_id) do
+    case Cache.get_system(system_id) do
       {:ok, old_data} when old_data != nil ->
         old_data != new_data
 
@@ -82,7 +82,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.System do
   def tracked_system?(_), do: false
 
   def tracked_system_info(system_id) do
-    case Facade.get_system(system_id) do
+    case Cache.get_system(system_id) do
       {:ok, info} -> info
       {:error, :not_found} -> nil
       _ -> nil

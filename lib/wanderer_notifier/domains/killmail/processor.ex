@@ -5,8 +5,7 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
   """
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Infrastructure.Cache.Facade
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Killmail.Context
   alias WandererNotifier.Domains.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -62,7 +61,7 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
 
   @spec get_recent_kills() :: {:ok, list(kill_data())}
   def get_recent_kills do
-    case Facade.get_custom(CacheKeys.zkill_recent_kills()) do
+    case Cache.get("zkill:recent_kills") do
       {:ok, kills} when is_list(kills) -> {:ok, kills}
       {:error, :not_found} -> {:ok, []}
       _ -> {:ok, []}

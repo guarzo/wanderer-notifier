@@ -7,8 +7,7 @@ defmodule WandererNotifier.Domains.Killmail.Cache do
   name caching for the pipeline.
   """
 
-  alias WandererNotifier.Infrastructure.Cache.Config
-  alias WandererNotifier.Infrastructure.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache
 
   @doc """
   Gets a system name from the cache or from the API.
@@ -22,11 +21,10 @@ defmodule WandererNotifier.Domains.Killmail.Cache do
   def get_system_name(nil), do: "Unknown"
 
   def get_system_name(system_id) when is_integer(system_id) do
-    # Use the central cache adapter with TTL
-    cache_name = Config.cache_name()
-    cache_key = Keys.esi_data("system_name", system_id)
+    # Use the simplified cache directly
+    cache_key = "esi:system_name:#{system_id}"
 
-    case WandererNotifier.Infrastructure.Cache.Adapter.get(cache_name, cache_key) do
+    case Cache.get(cache_key) do
       {:ok, name} when is_binary(name) ->
         name
 
@@ -34,9 +32,8 @@ defmodule WandererNotifier.Domains.Killmail.Cache do
         # No cached name, fetch from ESI
         case esi_service().get_system(system_id, []) do
           {:ok, %{"name" => name}} when is_binary(name) ->
-            # Cache the name with configurable TTL
-            ttl_ms = Config.ttl_for(:system) |> :timer.seconds()
-            WandererNotifier.Infrastructure.Cache.Adapter.set(cache_name, cache_key, name, ttl_ms)
+            # Cache the name with 1 hour TTL
+            Cache.put(cache_key, name, :timer.hours(1))
             name
 
           _ ->

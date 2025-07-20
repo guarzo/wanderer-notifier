@@ -199,7 +199,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
 
     # Try to send the notification - if it fails, log but don't crash
     try do
-      WandererNotifier.Domains.Notifications.Dispatcher.send_discord_embed(embed)
+      WandererNotifier.Domains.Notifications.NotificationService.send_message(embed)
     rescue
       e ->
         # Log but don't crash the process

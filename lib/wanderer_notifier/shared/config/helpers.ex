@@ -99,7 +99,7 @@ defmodule WandererNotifier.Shared.Config.Helpers do
 
   defp generate_env_var_function(spec) do
     {env_var, type, default} = parse_env_spec(spec)
-    func_name = env_var |> String.downcase() |> String.to_atom()
+    func_name = ("env_" <> String.downcase(env_var)) |> String.to_atom()
     generate_typed_env_function(func_name, env_var, type, default)
   end
 
@@ -162,22 +162,55 @@ defmodule WandererNotifier.Shared.Config.Helpers do
 
   def fetch_env_string!(key) do
     case env_provider().get_env(key) do
-      nil -> raise "Required environment variable #{key} is not set"
-      value -> value
+      nil ->
+        raise "Required environment variable '#{key}' is not set. Please set this variable to a valid string value in your environment configuration."
+
+      "" ->
+        raise "Required environment variable '#{key}' is set but empty. Please provide a non-empty string value."
+
+      value ->
+        value
     end
   end
 
   def fetch_env_int(key, default) do
     case env_provider().get_env(key) do
-      nil -> default
-      value -> WandererNotifier.Shared.Config.Utils.parse_int(value, default)
+      nil ->
+        default
+
+      "" ->
+        raise "Environment variable '#{key}' is set but empty. Please provide a valid integer value."
+
+      value ->
+        case WandererNotifier.Shared.Config.Utils.parse_int(value, nil) do
+          nil ->
+            raise "Environment variable '#{key}' has invalid integer value '#{value}'. Please provide a valid integer."
+
+          parsed_value ->
+            parsed_value
+        end
     end
   end
 
   def fetch_env_bool(key, default) do
     case env_provider().get_env(key) do
-      nil -> default
-      value -> WandererNotifier.Shared.Config.Utils.parse_bool(value, default)
+      nil ->
+        default
+
+      "" ->
+        raise "Environment variable '#{key}' is set but empty. Please provide a valid boolean value (true/false, 1/0, yes/no, on/off)."
+
+      value ->
+        # Try to parse the boolean - if it returns the original default, it means parsing failed
+        parsed = WandererNotifier.Shared.Config.Utils.parse_bool(value, :__parse_failed__)
+
+        case parsed do
+          :__parse_failed__ ->
+            raise "Environment variable '#{key}' has invalid boolean value '#{value}'. Please use true/false, 1/0, yes/no, or on/off."
+
+          bool_value ->
+            bool_value
+        end
     end
   end
 
@@ -240,8 +273,14 @@ defmodule WandererNotifier.Shared.Config.Helpers do
         default = Keyword.get(opts, :default, false)
 
         case Keyword.get(opts, :env) do
-          nil -> get(feature_key, default)
-          env_var -> fetch_env_bool(env_var, nil) || get(feature_key, default)
+          nil ->
+            get(feature_key, default)
+
+          env_var ->
+            case fetch_env_bool(env_var, nil) do
+              nil -> get(feature_key, default)
+              bool_value -> bool_value
+            end
         end
       end
     end

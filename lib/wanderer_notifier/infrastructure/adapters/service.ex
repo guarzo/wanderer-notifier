@@ -2,6 +2,8 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @moduledoc """
   Service for interacting with EVE Online's ESI (Swagger Interface) API.
   Provides high-level functions for common ESI operations.
+
+  This service uses the cache facade for all cache operations.
   """
 
   # 30 seconds default timeout
@@ -16,8 +18,8 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
     SolarSystem
   }
 
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Infrastructure.Cache.Facade
+  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
@@ -40,75 +42,46 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_killmail(integer(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_killmail(kill_id, killmail_hash, opts \\ []) do
-    case Facade.get_killmail(kill_id, killmail_hash, opts) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+    # Get from cache or fetch from ESI
+
+    case Cache.get_killmail(kill_id, killmail_hash, opts) do
+      {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
-        fetch_from_esi(kill_id, killmail_hash, opts)
+        case esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} when is_map(data) ->
+            Cache.put_killmail(kill_id, killmail_hash, data, opts)
+            {:ok, data}
 
-      error ->
-        error
-    end
-  end
+          {:error, reason} ->
+            handle_killmail_error(reason, kill_id)
+        end
 
-  defp fetch_from_esi(kill_id, killmail_hash, opts) do
-    # Get the raw response from the client
-    response =
-      esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts))
-
-    case response do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        # Cache the data using the facade
-        Facade.put_killmail(kill_id, killmail_hash, data, opts)
-        {:ok, data}
-
-      {:ok, nil} ->
-        AppLogger.api_error("ESI Service: Received nil data for kill_id=#{kill_id}")
-        {:error, :esi_data_missing}
-
-      {:ok, data} ->
-        AppLogger.api_error(
-          "ESI Service: Invalid data format for kill_id=#{kill_id}: #{inspect(data)}"
-        )
-
-        {:error, :esi_data_missing}
-
-      {:error, :timeout} ->
-        AppLogger.api_error(
-          "ESI Service: Request timed out for kill_id=#{kill_id} after #{Keyword.get(opts, :timeout, @default_timeout)}ms"
-        )
-
-        {:error, :timeout}
-
-      error ->
-        AppLogger.api_error(
-          "ESI Service: Failed to fetch killmail data for kill_id=#{kill_id}: #{inspect(error)}"
-        )
-
-        error
+      {:error, reason} ->
+        handle_killmail_error(reason, kill_id)
     end
   end
 
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_character_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_character_info(character_id, opts \\ []) do
-    case Facade.get_character(character_id, opts) do
+    case Cache.get_character(character_id, opts) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
         case esi_client().get_character_info(character_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            Facade.put_character(character_id, data, opts)
+          {:ok, data} when is_map(data) ->
+            Cache.put_character(character_id, data, opts)
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -132,22 +105,22 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_corporation_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_corporation_info(corporation_id, opts \\ []) do
-    case Facade.get_corporation(corporation_id, opts) do
+    case Cache.get_corporation(corporation_id, opts) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
         case esi_client().get_corporation_info(corporation_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            Facade.put_corporation(corporation_id, data, opts)
+          {:ok, data} when is_map(data) ->
+            Cache.put_corporation(corporation_id, data, opts)
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -171,22 +144,22 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_alliance_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_alliance_info(alliance_id, opts \\ []) do
-    case Facade.get_alliance(alliance_id, opts) do
+    case Cache.get_alliance(alliance_id, opts) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
         case esi_client().get_alliance_info(alliance_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            Facade.put_alliance(alliance_id, data, opts)
+          {:ok, data} when is_map(data) ->
+            Cache.put_alliance(alliance_id, data, opts)
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -226,22 +199,22 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_type_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_type_info(type_id, opts \\ []) do
-    case Facade.get_type(type_id, opts) do
+    case Cache.get_type(type_id, opts) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
         case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            Facade.put_type(type_id, data, opts)
+          {:ok, data} when is_map(data) ->
+            Cache.put_type(type_id, data, opts)
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -249,24 +222,24 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    custom_key = CacheKeys.search_inventory_type(query, strict)
+    cache_key = Keys.custom("search", "inventory_type_#{query}_#{strict}")
 
-    case Facade.get_custom(custom_key, opts) do
+    case Cache.get(cache_key) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
-        case esi_client().search_inventory_type(query, Keyword.merge(retry_opts(), opts)) do
+        case esi_client().search_inventory_type(query, strict, Keyword.merge(retry_opts(), opts)) do
           {:ok, data} ->
-            Facade.put_custom(custom_key, data, opts)
+            Cache.put_with_ttl(cache_key, data, :timer.hours(1))
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -283,22 +256,22 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_system(integer() | String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_system(system_id, opts \\ []) do
-    case Facade.get_system(system_id, opts) do
+    case Cache.get_system(system_id, opts) do
       {:ok, data} ->
         {:ok, data}
 
       {:error, :not_found} ->
         case esi_client().get_system(system_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} when is_map(data) and map_size(data) > 0 ->
-            Facade.put_system(system_id, data, opts)
+          {:ok, data} when is_map(data) ->
+            Cache.put_system(system_id, data, opts)
             {:ok, data}
 
-          error ->
-            error
+          {:error, reason} ->
+            {:error, reason}
         end
 
-      error ->
-        error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -314,74 +287,80 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
     - {:error, reason} on failure
   """
   def get_system_struct(system_id, opts \\ []) do
-    case get_system(system_id, opts) do
-      {:ok, data} when is_map(data) and map_size(data) > 0 ->
-        {:ok, SolarSystem.from_esi_data(data)}
-
-      _ ->
-        {:error, :system_not_found}
+    with {:ok, data} <- get_system(system_id, opts) do
+      {:ok, SolarSystem.from_esi_data(data)}
     end
   end
 
   @doc """
-  Alias for get_system to maintain backward compatibility.
-  Fetches solar system info from ESI given a system_id.
+  Get the system information by system_id.
+  Alias for get_system/2 to maintain compatibility.
   """
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
-  @spec get_system_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec get_system_info(integer() | String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_system_info(system_id, opts \\ []) do
     get_system(system_id, opts)
   end
 
+  # Additional behaviour implementations for compatibility
+
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
-  @spec get_character(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_character(character_id, opts \\ []) do
     get_character_info(character_id, opts)
   end
 
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
-  @spec get_type(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_type(type_id, opts \\ []) do
     get_type_info(type_id, opts)
   end
 
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
-  @spec get_system_kills(integer(), integer(), keyword()) :: {:ok, list(map())} | {:error, term()}
   def get_system_kills(system_id, limit, opts \\ []) do
-    custom_key = CacheKeys.system_kills(system_id, limit)
+    # Delegate to existing system lookup or return empty list as this is primarily for ZKillboard
+    # This V2 service focuses on ESI data, not system kills tracking
+    _ = {system_id, limit, opts}
+    {:ok, []}
+  end
 
-    case Facade.get_custom(custom_key, opts) do
-      {:ok, data} ->
-        {:ok, data}
-
-      {:error, :not_found} ->
-        case esi_client().get_system_kills(system_id, limit, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} ->
-            Facade.put_custom(custom_key, data, opts)
-            {:ok, data}
-
-          error ->
-            error
-        end
-
-      error ->
-        error
+  @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
+  def search(query, categories, opts \\ []) do
+    # Simple implementation that delegates to inventory type search for backwards compatibility
+    case categories do
+      ["inventory_type" | _] -> search_inventory_type(query, true, opts)
+      _ -> {:ok, %{}}
     end
   end
 
-  # Get retry options with default values
+  # Private helper functions
+
+  defp esi_client do
+    Application.get_env(
+      :wanderer_notifier,
+      :esi_client,
+      WandererNotifier.Infrastructure.Adapters.ESI.Client
+    )
+  end
+
   defp retry_opts do
     [
-      max_attempts: 3,
-      base_timeout: 5_000,
-      max_timeout: 15_000,
-      backoff: :exponential
+      timeout: @default_timeout,
+      recv_timeout: @default_timeout
     ]
   end
 
-  defp esi_client, do: WandererNotifier.Application.Services.Dependencies.esi_client()
+  defp handle_killmail_error(reason, kill_id) do
+    case reason do
+      :timeout ->
+        AppLogger.api_error(
+          "ESI Service: Request timed out for kill_id=#{kill_id} after #{@default_timeout}ms"
+        )
 
-  @impl true
-  @spec search(String.t(), list(String.t()), keyword()) :: {:ok, map()} | {:error, term()}
-  def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
+      _ ->
+        AppLogger.api_error(
+          "ESI Service: Failed to fetch killmail data for kill_id=#{kill_id}: #{inspect(reason)}"
+        )
+    end
+
+    {:error, reason}
+  end
 end

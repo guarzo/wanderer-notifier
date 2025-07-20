@@ -320,7 +320,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_cache_stats do
     try do
-      cache_name = WandererNotifier.Infrastructure.Cache.Config.cache_name()
+      cache_name = WandererNotifier.Infrastructure.Cache.ConfigSimple.cache_name()
       get_cache_stats_for_process(cache_name)
     rescue
       error ->

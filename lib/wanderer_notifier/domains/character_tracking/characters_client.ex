@@ -6,9 +6,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Client do
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.CharacterTracking.Character
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Domains.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Shared.Utils.ValidationUtils
   alias WandererNotifier.Shared.Utils.BatchProcessor
 
@@ -19,10 +17,10 @@ defmodule WandererNotifier.Domains.CharacterTracking.Client do
   def endpoint, do: "user-characters"
 
   @impl true
-  def cache_key, do: CacheKeys.character_list()
+  def cache_key, do: "map:character_list"
 
   @impl true
-  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.Config.ttl_for(:map_data)
+  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.ConfigSimple.ttl_for(:map_data)
 
   @impl true
   def requires_slug? do
@@ -91,7 +89,11 @@ defmodule WandererNotifier.Domains.CharacterTracking.Client do
 
   @impl true
   def send_notification(character) do
-    DiscordNotifier.send_new_tracked_character_notification(character)
+    case WandererNotifier.Application.Services.NotificationService.notify_character(character) do
+      :ok -> {:ok, :sent}
+      :skip -> {:ok, :sent}
+      error -> error
+    end
   end
 
   @impl true

@@ -19,8 +19,8 @@ defmodule WandererNotifier.Domains.Killmail.Notification do
       # Create the notification using the KillmailNotification module
       notification = killmail_notification_module().create(killmail)
 
-      # Send the notification through the dispatcher
-      case dispatcher_module().send_message(notification) do
+      # Send the notification through the notification service
+      case notification_service_module().send_message(notification) do
         {:ok, :sent} ->
           {:ok, notification}
 
@@ -56,11 +56,11 @@ defmodule WandererNotifier.Domains.Killmail.Notification do
     )
   end
 
-  defp dispatcher_module do
+  defp notification_service_module do
     Application.get_env(
       :wanderer_notifier,
-      :dispatcher_module,
-      WandererNotifier.Domains.Notifications.Dispatcher
+      :notification_service_module,
+      WandererNotifier.Domains.Notifications.NotificationService
     )
   end
 

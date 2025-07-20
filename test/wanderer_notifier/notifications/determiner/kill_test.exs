@@ -26,7 +26,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
     )
 
     Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
-    Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
 
     # Default mock responses are now set up in test_helper.exs
     # System tracking returns true by default

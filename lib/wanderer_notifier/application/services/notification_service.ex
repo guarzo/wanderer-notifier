@@ -28,7 +28,7 @@ defmodule WandererNotifier.Application.Services.NotificationService do
   require Logger
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Domains.Notifications.NotificationService, as: DomainNotificationService
   alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
   alias WandererNotifier.PersistentValues
   alias WandererNotifier.Shared.Config
@@ -195,9 +195,16 @@ defmodule WandererNotifier.Application.Services.NotificationService do
         character_name: Map.get(character, :name)
       )
 
-      case DiscordNotifier.send_new_tracked_character_notification(character) do
-        :ok -> :ok
-        error -> error
+      # Create a character notification struct and send through the domain service
+      character_notification = %{
+        type: :character_notification,
+        data: character
+      }
+
+      case DomainNotificationService.send_message(character_notification) do
+        {:ok, :sent} -> :ok
+        {:error, reason} -> {:error, reason}
+        other -> other
       end
     else
       AppLogger.processor_info("Skipping character notification (disabled)")
@@ -217,9 +224,16 @@ defmodule WandererNotifier.Application.Services.NotificationService do
         killmail_id: Map.get(kill_data, :killmail_id)
       )
 
-      case DiscordNotifier.send_kill_notification(kill_data) do
-        :ok -> :ok
-        error -> error
+      # Create a kill notification struct and send through the domain service
+      kill_notification = %{
+        type: :kill_notification,
+        data: %{killmail: kill_data}
+      }
+
+      case DomainNotificationService.send_message(kill_notification) do
+        {:ok, :sent} -> :ok
+        {:error, reason} -> {:error, reason}
+        other -> other
       end
     else
       AppLogger.processor_info("Skipping kill notification (disabled)")
@@ -329,10 +343,11 @@ defmodule WandererNotifier.Application.Services.NotificationService do
 
       :ok
     else
-      # Use the existing Discord notifier infrastructure
-      case DiscordNotifier.send_message(content, channel_id) do
-        :ok -> :ok
-        error -> error
+      # Use the domain notification service
+      case DomainNotificationService.send_message(content) do
+        {:ok, :sent} -> :ok
+        {:error, reason} -> {:error, reason}
+        other -> other
       end
     end
   end

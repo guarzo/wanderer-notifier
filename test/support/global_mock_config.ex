@@ -37,7 +37,6 @@ defmodule WandererNotifier.Test.Support.GlobalMockConfig do
   def character_track_module, do: WandererNotifier.MockCharacter
   def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
   def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
-  def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
 
   def killmail_notification_module,
     do: WandererNotifier.Domains.Notifications.KillmailNotification

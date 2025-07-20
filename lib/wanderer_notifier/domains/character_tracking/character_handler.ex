@@ -8,10 +8,9 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.CharacterTracking.Character
-  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Infrastructure.Cache.Facade
+  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
   alias WandererNotifier.Domains.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
 
   @doc """
   Handles character added events.
@@ -199,13 +198,13 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   end
 
   defp add_character_to_cache(character) do
-    case Facade.get_custom(CacheKeys.character_list()) do
+    case Cache.get(Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         add_to_existing_cache(cached_characters, character)
 
       {:error, :not_found} ->
         # No cached characters, create new list
-        Facade.put_custom(CacheKeys.character_list(), [character])
+        Cache.put(Keys.map_characters(), [character])
         :ok
 
       {:error, reason} ->
@@ -221,18 +220,18 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
     else
       # Add new character
       updated_characters = [character | cached_characters]
-      Facade.put_custom(CacheKeys.character_list(), updated_characters)
+      Cache.put(Keys.map_characters(), updated_characters)
       :ok
     end
   end
 
   defp remove_character_from_cache(character) do
-    case Facade.get_custom(CacheKeys.character_list()) do
+    case Cache.get(Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         # Remove character from the list
         eve_id = character["eve_id"]
         updated_characters = Enum.reject(cached_characters, fn c -> c["eve_id"] == eve_id end)
-        Facade.put_custom(CacheKeys.character_list(), updated_characters)
+        Cache.put(Keys.map_characters(), updated_characters)
         :ok
 
       {:error, :not_found} ->
@@ -245,14 +244,14 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   end
 
   defp update_character_in_cache(character) do
-    case Facade.get_custom(CacheKeys.character_list()) do
+    case Cache.get(Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         update_cached_characters(cached_characters, character)
 
       {:error, :not_found} ->
         # No cached characters, only create if we have eve_id
         if character["eve_id"] do
-          Facade.put_custom(CacheKeys.character_list(), [character])
+          Cache.put(Keys.map_characters(), [character])
         end
 
         :ok
@@ -271,7 +270,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
       end
 
     final_characters = add_if_new(updated_characters, character, matched)
-    Facade.put_custom(CacheKeys.character_list(), final_characters)
+    Cache.put(Keys.map_characters(), final_characters)
     :ok
   end
 
@@ -398,8 +397,13 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
     # Create a MapCharacter struct for the notification
     case Character.new_safe(character) do
       {:ok, map_character} ->
-        DiscordNotifier.send_new_tracked_character_notification(map_character)
-        :ok
+        case WandererNotifier.Application.Services.NotificationService.notify_character(
+               map_character
+             ) do
+          :ok -> :ok
+          :skip -> :ok
+          error -> error
+        end
 
       {:error, reason} ->
         AppLogger.api_error("Failed to create MapCharacter for notification",

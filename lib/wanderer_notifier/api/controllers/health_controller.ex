@@ -12,7 +12,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.Controllers.ControllerHelpers
 
   alias WandererNotifier.Api.Controllers.SystemInfo
-  alias WandererNotifier.Infrastructure.Cache.Facade, as: Cache
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
 
   # Basic health check endpoint - optimized for load balancers

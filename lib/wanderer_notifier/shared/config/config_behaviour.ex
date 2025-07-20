@@ -60,17 +60,7 @@ defmodule WandererNotifier.Shared.Config.ConfigBehaviour do
   @callback killmail_enrichment_module() :: module()
 
   @doc """
-  Returns the module responsible for dispatching notifications.
-  """
-  @callback notification_dispatcher_module() :: module()
-
-  @doc """
   Returns the module responsible for killmail notifications.
   """
   @callback killmail_notification_module() :: module()
-
-  @doc """
-  Returns the main configuration module.
-  """
-  @callback config_module() :: module()
 end

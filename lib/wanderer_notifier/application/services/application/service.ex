@@ -9,7 +9,6 @@ defmodule WandererNotifier.Application.Services.Application.Service do
 
   use GenServer
 
-  alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   # --- GenServer Callbacks ---
@@ -22,8 +21,8 @@ defmodule WandererNotifier.Application.Services.Application.Service do
   def init(_opts) do
     AppLogger.processor_info("Starting application service")
 
-    # Initialize stats
-    Stats.start_link()
+    # Stats is already supervised by the main application supervisor
+    # No need to start it here
 
     # Return initial state
     {:ok, %{started_at: System.system_time(:second)}}

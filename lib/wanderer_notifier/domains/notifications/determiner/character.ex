@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.Character do
 
   require Logger
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Infrastructure.Cache.Facade
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Domains.CharacterTracking.Character
 
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.Character do
   """
   def character_changed?(character_id, new_data)
       when is_binary(character_id) or is_integer(character_id) do
-    case Facade.get_character(character_id) do
+    case Cache.get_character(character_id) do
       {:ok, old_data} when old_data != nil ->
         old_data != new_data
 

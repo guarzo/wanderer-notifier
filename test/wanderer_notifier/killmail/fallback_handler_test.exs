@@ -110,17 +110,15 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
          ]}
       end)
 
-      # Mock HTTP response
+      # Mock HTTP response for POST request (bulk fetch)
       HttpClientMock
-      |> expect(:get, fn _url, _headers, _opts ->
+      |> expect(:post, fn _url, _body, _headers, _opts ->
         response = %{
-          "systems" => %{
-            "30000142" => [%{"killmail_id" => 1}],
-            "30000143" => [%{"killmail_id" => 2}]
-          }
+          "30000142" => [%{"killmail_id" => 1}],
+          "30000143" => [%{"killmail_id" => 2}]
         }
 
-        {:ok, %{status_code: 200, body: Jason.encode!(response)}}
+        {:ok, %{status_code: 200, body: response}}
       end)
 
       assert {:ok, result} = FallbackHandler.fetch_recent_data()
@@ -143,20 +141,18 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
         {:ok, []}
       end)
 
-      # Mock bulk load response
+      # Mock bulk load response for POST request
       HttpClientMock
-      |> expect(:get, fn _url, _headers, _opts ->
+      |> expect(:post, fn _url, _body, _headers, _opts ->
         response = %{
-          "systems" => %{
-            "30000142" => [
-              %{"killmail_id" => 1},
-              %{"killmail_id" => 2},
-              %{"killmail_id" => 3}
-            ]
-          }
+          "30000142" => [
+            %{"killmail_id" => 1},
+            %{"killmail_id" => 2},
+            %{"killmail_id" => 3}
+          ]
         }
 
-        {:ok, %{status_code: 200, body: Jason.encode!(response)}}
+        {:ok, %{status_code: 200, body: response}}
       end)
 
       assert {:ok, %{loaded: 3, errors: []}} = FallbackHandler.bulk_load(12)

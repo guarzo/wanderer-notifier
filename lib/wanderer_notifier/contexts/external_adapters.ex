@@ -7,7 +7,6 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Client
   alias WandererNotifier.Infrastructure.Http, as: HTTP
-  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
 
   # ──────────────────────────────────────────────────────────────────────────────
   # HTTP Client
@@ -96,13 +95,11 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec send_discord_notification(map()) :: {:ok, any()} | {:error, term()}
   def send_discord_notification(notification) do
-    # Notifier requires a channel_id as second parameter
-    channel_id = WandererNotifier.Shared.Config.discord_channel_id()
-
-    WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_kill_notification_to_channel(
-      notification,
-      channel_id
-    )
+    case WandererNotifier.Application.Services.NotificationService.notify_kill(notification) do
+      :ok -> {:ok, :sent}
+      :skip -> {:ok, :sent}
+      error -> error
+    end
   end
 
   @doc """
@@ -119,7 +116,9 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   Gets the configured Discord channel ID.
   """
   @spec discord_channel_id() :: String.t() | nil
-  defdelegate discord_channel_id(), to: NeoClient, as: :channel_id
+  defdelegate discord_channel_id(),
+    to: WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient,
+    as: :channel_id
 
   # ──────────────────────────────────────────────────────────────────────────────
   # License Management
@@ -156,6 +155,9 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
     channel_id =
       Keyword.get(opts, :channel_id, WandererNotifier.Shared.Config.discord_channel_id())
 
-    WandererNotifier.Domains.Notifications.NeoClient.send_embed(notification, channel_id)
+    WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient.send_embed(
+      notification,
+      channel_id
+    )
   end
 end

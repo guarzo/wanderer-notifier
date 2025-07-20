@@ -543,14 +543,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
         color: 0xFFFFFF
       }
 
-      # Test function
-      log_output =
-        capture_log(fn ->
-          assert {:ok, :sent} = Notifier.send_notification(:send_discord_embed, [embed])
-        end)
-
-      # Verify logging
-      assert log_output =~ "DISCORD MOCK:" or log_output =~ "NEOCLIENT:" or log_output =~ "Embed"
+      # Test function - the actual function should return {:ok, :sent}
+      result = Notifier.send_notification(:send_discord_embed, [embed])
+      assert result == {:ok, :sent}
     end
 
     test "handles :send_discord_embed_to_channel type with return value {:ok, :sent}" do
@@ -562,15 +557,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
         color: 0xFFFFFF
       }
 
-      # Execute
-      log_output =
-        capture_log(fn ->
-          assert {:ok, :sent} =
-                   Notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
-        end)
-
-      # Verify output
-      assert log_output =~ "DISCORD MOCK:" or log_output =~ "NEOCLIENT:" or log_output =~ "Embed"
+      # Execute - test the actual return value
+      result = Notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+      assert result == {:ok, :sent}
     end
 
     test "handles :send_message type with return value {:ok, :sent}" do

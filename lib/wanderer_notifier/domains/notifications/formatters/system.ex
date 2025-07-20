@@ -220,10 +220,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.System do
     end
   end
 
-  defp parse_system_id(id) when is_binary(id) do
-    WandererNotifier.Shared.Config.Utils.parse_int(id, nil)
-  end
-
-  defp parse_system_id(id) when is_integer(id), do: id
-  defp parse_system_id(_), do: nil
+  # parse_system_id moved to WandererNotifier.Shared.Config.Utils
+  defp parse_system_id(id), do: WandererNotifier.Shared.Config.Utils.parse_system_id(id)
 end

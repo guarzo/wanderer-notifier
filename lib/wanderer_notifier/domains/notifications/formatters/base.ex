@@ -47,6 +47,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Base do
     kill: 0xD9534F
   }
 
+  # String to color mapping for safe color name resolution
+  @color_name_map %{
+    "default" => 0x3498DB,
+    "info" => 0x3498DB,
+    "success" => 0x5CB85C,
+    "warning" => 0xE28A0D,
+    "error" => 0xD9534F,
+    "wormhole" => 0x428BCA,
+    "highsec" => 0x5CB85C,
+    "lowsec" => 0xE28A0D,
+    "nullsec" => 0xD9534F,
+    "kill" => 0xD9534F
+  }
+
   # Icon constants
   @icons %{
     wormhole: "https://images.evetech.net/types/45041/icon",
@@ -544,8 +558,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Base do
         end
 
       color_name ->
-        color_atom = String.to_existing_atom(color_name)
-        Map.get(@colors, color_atom, @colors.default)
+        # Use static map lookup instead of dynamic atom conversion
+        Map.get(@color_name_map, color_name, @colors.default)
     end
   rescue
     ArgumentError -> @colors.default
