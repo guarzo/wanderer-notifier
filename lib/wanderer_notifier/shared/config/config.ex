@@ -8,7 +8,7 @@ defmodule WandererNotifier.Shared.Config do
   """
 
   require WandererNotifier.Shared.Config.Helpers
-  import WandererNotifier.Shared.Config.Helpers, except: [feature_enabled?: 1, get: 1, get: 2]
+  import WandererNotifier.Shared.Config.Helpers, except: [get: 1, get: 2, feature_enabled?: 1]
   alias WandererNotifier.Shared.Config.Utils
 
   @behaviour WandererNotifier.Shared.Config.ConfigBehaviour
@@ -175,17 +175,13 @@ defmodule WandererNotifier.Shared.Config do
   def set_debug_logging(state) when is_boolean(state),
     do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
 
-  # Cache dev mode value at compile time
-  @dev_mode Application.compile_env(:wanderer_notifier, :dev_mode, false)
-
   @doc """
   Returns whether the application is running in development mode.
   Used to enable more verbose logging and other development features.
 
-  The value is cached at compile time for better performance.
-  To change the value, you must recompile the module or restart the application.
+  The value is determined at runtime based on the MIX_ENV.
   """
-  def dev_mode?, do: @dev_mode
+  def dev_mode?, do: get(:dev_mode, false)
 
   # TTL Configuration with environment override
   @doc """
