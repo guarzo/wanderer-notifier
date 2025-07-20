@@ -2,8 +2,8 @@ defmodule WandererNotifier.Killmail.NotificationTest do
   use ExUnit.Case, async: false
   import Mox
 
-  alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Killmail.Notification
+  alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Domains.Killmail.Notification
   alias WandererNotifier.Notifications.KillmailNotificationMock
   alias WandererNotifier.Notifications.DispatcherMock
   alias WandererNotifier.Logger.LoggerMock

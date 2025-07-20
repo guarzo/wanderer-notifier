@@ -2,14 +2,14 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Killmail.Processor
+  alias WandererNotifier.Domains.Killmail.Processor
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig
   alias WandererNotifier.MockDispatcher
   alias WandererNotifier.MockDeduplication
-  alias WandererNotifier.Killmail.Pipeline
+  alias WandererNotifier.Domains.Killmail.Pipeline
   alias WandererNotifier.Utils.TimeUtils
 
   setup :verify_on_exit!

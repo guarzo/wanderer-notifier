@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.WandererKillsClientTest do
   import Mox
 
   alias WandererNotifier.HTTPMock, as: HttpClientMock
-  alias WandererNotifier.Killmail.WandererKillsClient
+  alias WandererNotifier.Domains.Killmail.WandererKillsClient
 
   setup :set_mox_from_context
   setup :verify_on_exit!

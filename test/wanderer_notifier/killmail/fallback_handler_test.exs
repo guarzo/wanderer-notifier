@@ -2,7 +2,7 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
   use ExUnit.Case, async: false
   import Mox
 
-  alias WandererNotifier.Killmail.FallbackHandler
+  alias WandererNotifier.Domains.Killmail.FallbackHandler
   alias WandererNotifier.HTTPMock, as: HttpClientMock
   alias WandererNotifier.ExternalAdaptersMock
 

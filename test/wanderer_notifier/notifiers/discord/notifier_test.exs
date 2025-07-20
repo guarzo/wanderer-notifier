@@ -5,7 +5,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
   require Logger
 
-  alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Notifiers.Discord.Notifier
   alias WandererNotifier.Domains.CharacterTracking.Character, as: MapCharacter
   alias WandererNotifier.ESI.ClientMock

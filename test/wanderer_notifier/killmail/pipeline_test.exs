@@ -2,7 +2,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Killmail.{Pipeline, Context}
+  alias WandererNotifier.Domains.Killmail.{Pipeline, Context}
   alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Cache.Keys, as: CacheKeys

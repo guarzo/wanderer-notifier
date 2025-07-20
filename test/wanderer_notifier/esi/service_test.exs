@@ -2,7 +2,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.ESI.Service
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Service
   alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Cache.Facade
   alias WandererNotifier.ESI.ServiceMock
