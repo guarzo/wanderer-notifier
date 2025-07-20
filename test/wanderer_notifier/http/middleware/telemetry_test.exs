@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Http.Middleware.TelemetryTest do
+defmodule WandererNotifier.Infrastructure.Http.Middleware.TelemetryTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Http.Middleware.Telemetry
+  alias WandererNotifier.Infrastructure.Http.Middleware.Telemetry
 
   # Mock telemetry events capture
   setup do

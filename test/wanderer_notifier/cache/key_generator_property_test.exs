@@ -1,8 +1,8 @@
-defmodule WandererNotifier.Cache.KeyGeneratorPropertyTest do
+defmodule WandererNotifier.Infrastructure.Cache.KeyGeneratorPropertyTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias WandererNotifier.Cache.KeyGenerator
+  alias WandererNotifier.Infrastructure.Cache.KeyGenerator
 
   @separator ":"
 

@@ -2,7 +2,7 @@ defmodule WandererNotifier.ESI.ClientTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.ESI.Client
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Client
 
   # Module attribute to control mock behavior in error cases
   @moduledoc false

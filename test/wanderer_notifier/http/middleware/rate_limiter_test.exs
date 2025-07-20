@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Http.Middleware.RateLimiterTest do
+defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
   use ExUnit.Case, async: false
 
-  alias WandererNotifier.Http.Middleware.RateLimiter
+  alias WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
 
   setup_all do
     # Ensure required services are started for tests

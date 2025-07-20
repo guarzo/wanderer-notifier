@@ -1,9 +1,9 @@
-defmodule WandererNotifier.Http.Middleware.CircuitBreakerTest do
+defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreakerTest do
   # Need sequential execution for state management
   use ExUnit.Case, async: false
 
-  alias WandererNotifier.Http.Middleware.CircuitBreaker
-  alias WandererNotifier.Http.CircuitBreakerState
+  alias WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker
+  alias WandererNotifier.Infrastructure.Http.CircuitBreakerState
 
   setup_all do
     # Start the circuit breaker state manager

@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Cache.KeysTest do
+defmodule WandererNotifier.Infrastructure.Cache.KeysTest do
   use ExUnit.Case
-  alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache.Keys
 
   describe "key generation macros" do
     test "system/1 generates correct key" do

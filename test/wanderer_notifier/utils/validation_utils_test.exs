@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Utils.ValidationUtilsTest do
+defmodule WandererNotifier.Shared.Utils.ValidationUtilsTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Utils.ValidationUtils
+  alias WandererNotifier.Shared.Utils.ValidationUtils
 
   describe "valid_type?/2" do
     test "validates string types correctly" do

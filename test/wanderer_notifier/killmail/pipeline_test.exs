@@ -5,8 +5,8 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.Domains.Killmail.{Pipeline, Context}
   alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   # Define MockConfig for testing
   defmodule MockConfig do
@@ -16,10 +16,10 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     def deduplication_module, do: MockDeduplication
     def system_track_module, do: WandererNotifier.MockSystem
     def character_track_module, do: WandererNotifier.MockCharacter
-    def notification_determiner_module, do: WandererNotifier.Notifications.Determiner.Kill
-    def killmail_enrichment_module, do: WandererNotifier.Killmail.Enrichment
+    def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
+    def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
     def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
-    def killmail_notification_module, do: WandererNotifier.Notifications.KillmailNotification
+    def killmail_notification_module, do: WandererNotifier.Domains.Notifications.KillmailNotification
     def config_module, do: __MODULE__
   end
 

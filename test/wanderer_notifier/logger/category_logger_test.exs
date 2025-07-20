@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Logger.CategoryLoggerTest do
+defmodule WandererNotifier.Shared.Logger.CategoryLoggerTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
-  alias WandererNotifier.Logger.CategoryLogger
+  alias WandererNotifier.Shared.Logger.CategoryLogger
 
   describe "processor category" do
     test "processor_debug/2" do

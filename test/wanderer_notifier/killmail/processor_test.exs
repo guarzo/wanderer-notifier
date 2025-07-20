@@ -10,7 +10,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   alias WandererNotifier.MockDispatcher
   alias WandererNotifier.MockDeduplication
   alias WandererNotifier.Domains.Killmail.Pipeline
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   setup :verify_on_exit!
   setup :set_mox_from_context
@@ -39,12 +39,12 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     |> stub(:system_track_module, fn -> MockSystem end)
     |> stub(:character_track_module, fn -> MockCharacter end)
     |> stub(:notification_determiner_module, fn ->
-      WandererNotifier.Notifications.Determiner.Kill
+      WandererNotifier.Domains.Notifications.Determiner.Kill
     end)
-    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Killmail.Enrichment end)
+    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Domains.Killmail.Enrichment end)
     |> stub(:notification_dispatcher_module, fn -> MockDispatcher end)
     |> stub(:killmail_notification_module, fn ->
-      WandererNotifier.Notifications.KillmailNotification
+      WandererNotifier.Domains.Notifications.KillmailNotification
     end)
     |> stub(:config_module, fn -> MockConfig end)
 

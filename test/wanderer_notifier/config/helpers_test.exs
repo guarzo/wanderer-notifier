@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Config.HelpersTest do
+defmodule WandererNotifier.Shared.Config.HelpersTest do
   use ExUnit.Case, async: true
 
   defmodule TestConfig do
@@ -90,10 +90,10 @@ defmodule WandererNotifier.Config.HelpersTest do
 
       Application.put_env(:wanderer_notifier, :env_provider, MockEnvProvider)
 
-      result = WandererNotifier.Config.Helpers.fetch_env_string("TEST_KEY", "default")
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_string("TEST_KEY", "default")
       assert result == "env_value"
 
-      result = WandererNotifier.Config.Helpers.fetch_env_string("MISSING_KEY", "fallback")
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_string("MISSING_KEY", "fallback")
       assert result == "fallback"
     end
 
@@ -107,10 +107,10 @@ defmodule WandererNotifier.Config.HelpersTest do
 
       Application.put_env(:wanderer_notifier, :env_provider, MockEnvProviderInt)
 
-      result = WandererNotifier.Config.Helpers.fetch_env_int("PORT", 4000)
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_int("PORT", 4000)
       assert result == 8080
 
-      result = WandererNotifier.Config.Helpers.fetch_env_int("MISSING_PORT", 9000)
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_int("MISSING_PORT", 9000)
       assert result == 9000
     end
 
@@ -126,13 +126,13 @@ defmodule WandererNotifier.Config.HelpersTest do
 
       Application.put_env(:wanderer_notifier, :env_provider, MockEnvProviderBool)
 
-      result = WandererNotifier.Config.Helpers.fetch_env_bool("ENABLED", false)
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_bool("ENABLED", false)
       assert result == true
 
-      result = WandererNotifier.Config.Helpers.fetch_env_bool("DISABLED", true)
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_bool("DISABLED", true)
       assert result == false
 
-      result = WandererNotifier.Config.Helpers.fetch_env_bool("MISSING", false)
+      result = WandererNotifier.Shared.Config.Helpers.fetch_env_bool("MISSING", false)
       assert result == false
     end
   end

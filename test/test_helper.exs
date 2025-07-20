@@ -109,11 +109,11 @@ Mox.stub(WandererNotifier.MockConfig, :character_track_module, fn ->
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :notification_determiner_module, fn ->
-  WandererNotifier.Notifications.Determiner.Kill
+  WandererNotifier.Domains.Notifications.Determiner.Kill
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn ->
-  WandererNotifier.Killmail.Enrichment
+  WandererNotifier.Domains.Killmail.Enrichment
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn ->
@@ -121,7 +121,7 @@ Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn ->
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn ->
-  WandererNotifier.Notifications.KillmailNotification
+  WandererNotifier.Domains.Notifications.KillmailNotification
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)

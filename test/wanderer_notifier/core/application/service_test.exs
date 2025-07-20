@@ -6,12 +6,12 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
   alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.License.Service, as: LicenseService
+  alias WandererNotifier.Domains.License.Service, as: LicenseService
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig
   alias WandererNotifier.MockDispatcher
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   setup :set_mox_from_context
   setup :verify_on_exit!

@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Logger.StartupLoggerTest do
+defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
-  alias WandererNotifier.Logger.StartupLogger
+  alias WandererNotifier.Shared.Logger.StartupLogger
 
   describe "initialization" do
     test "init/0 initializes startup tracker" do

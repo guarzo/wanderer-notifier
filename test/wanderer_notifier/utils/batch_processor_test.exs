@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Utils.BatchProcessorTest do
+defmodule WandererNotifier.Shared.Utils.BatchProcessorTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Utils.BatchProcessor
+  alias WandererNotifier.Shared.Utils.BatchProcessor
 
   describe "process_sync/3" do
     test "processes empty collection" do

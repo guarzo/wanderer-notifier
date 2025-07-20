@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Logger.MetadataProcessorTest do
+defmodule WandererNotifier.Shared.Logger.MetadataProcessorTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Logger.MetadataProcessor
+  alias WandererNotifier.Shared.Logger.MetadataProcessor
 
   describe "convert_to_keyword_list/1" do
     test "converts map to keyword list" do

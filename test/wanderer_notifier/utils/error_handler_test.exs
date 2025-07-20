@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Utils.ErrorHandlerTest do
+defmodule WandererNotifier.Shared.Utils.ErrorHandlerTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Utils.ErrorHandler
+  alias WandererNotifier.Shared.Utils.ErrorHandler
 
   describe "normalize_error/1" do
     test "converts string errors to atoms" do

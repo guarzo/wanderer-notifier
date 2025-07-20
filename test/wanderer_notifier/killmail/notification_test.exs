@@ -4,9 +4,9 @@ defmodule WandererNotifier.Killmail.NotificationTest do
 
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.Notification
-  alias WandererNotifier.Notifications.KillmailNotificationMock
-  alias WandererNotifier.Notifications.DispatcherMock
-  alias WandererNotifier.Logger.LoggerMock
+  alias WandererNotifier.Domains.Notifications.KillmailNotificationMock
+  alias WandererNotifier.Domains.Notifications.DispatcherMock
+  alias WandererNotifier.Shared.Logger.LoggerMock
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!

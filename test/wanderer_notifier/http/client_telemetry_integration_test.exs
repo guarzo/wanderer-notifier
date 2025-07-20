@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Http.ClientTelemetryIntegrationTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Http.Client
+  alias WandererNotifier.Infrastructure.Http.Client
 
   # Skip integration tests when running with mocks
   setup_all do

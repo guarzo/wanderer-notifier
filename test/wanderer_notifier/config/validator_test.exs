@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Config.ValidatorTest do
+defmodule WandererNotifier.Shared.Config.ValidatorTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Config.{Schema, Validator}
+  alias WandererNotifier.Shared.Config.{Schema, Validator}
 
   describe "validate_config/2" do
     test "passes with valid configuration" do

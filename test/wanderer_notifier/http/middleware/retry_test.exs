@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Http.Middleware.RetryTest do
+defmodule WandererNotifier.Infrastructure.Http.Middleware.RetryTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Http.Middleware.Retry
+  alias WandererNotifier.Infrastructure.Http.Middleware.Retry
 
   describe "call/2" do
     test "returns successful response without retry" do

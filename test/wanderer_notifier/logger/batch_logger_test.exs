@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Logger.BatchLoggerTest do
+defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
-  alias WandererNotifier.Logger.BatchLogger
+  alias WandererNotifier.Shared.Logger.BatchLogger
 
   describe "initialization" do
     test "init/0 initializes with default interval" do

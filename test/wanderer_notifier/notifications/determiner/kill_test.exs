@@ -1,10 +1,10 @@
 # Now define the test module
-defmodule WandererNotifier.Notifications.Determiner.KillTest do
+defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
   use ExUnit.Case, async: true
   import Mox
 
   # Set up Mox for this test
-  alias WandererNotifier.Notifications.Determiner.Kill
+  alias WandererNotifier.Domains.Notifications.Determiner.Kill
   setup(:set_mox_from_context)
 
   setup :verify_on_exit!
