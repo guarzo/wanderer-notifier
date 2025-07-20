@@ -431,7 +431,7 @@ defmodule WandererNotifier.Map.MapSystemMock do
   def is_tracked?(_system_id), do: {:ok, false}
 end
 
-defmodule WandererNotifier.Map.MapCharacterMock do
+defmodule WandererNotifier.Domains.CharacterTracking.CharacterMock do
   @moduledoc """
   Mock module for character tracking functionality.
   """

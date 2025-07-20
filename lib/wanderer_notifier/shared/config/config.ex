@@ -384,7 +384,8 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Returns the character track module to use."
   @impl true
   @spec character_track_module() :: module()
-  def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
+  def character_track_module,
+    do: get(:character_track_module, WandererNotifier.Domains.CharacterTracking.Character)
 
   @doc "Returns the system track module to use."
   @impl true

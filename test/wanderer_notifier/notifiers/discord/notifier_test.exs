@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifiers.Discord.Notifier
-  alias WandererNotifier.Map.MapCharacter
+  alias WandererNotifier.Domains.CharacterTracking.Character, as: MapCharacter
   alias WandererNotifier.ESI.ClientMock
 
   # Define mock modules for testing

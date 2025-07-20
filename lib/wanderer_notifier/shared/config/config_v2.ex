@@ -348,7 +348,8 @@ defmodule WandererNotifier.Shared.Config.ConfigV2 do
 
   @impl true
   @spec character_track_module() :: module()
-  def character_track_module, do: get(:character_track_module, WandererNotifier.Map.MapCharacter)
+  def character_track_module,
+    do: get(:character_track_module, WandererNotifier.Domains.CharacterTracking.Character)
 
   @impl true
   @spec system_track_module() :: module()

@@ -141,7 +141,7 @@ config :wanderer_notifier,
 
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
-  character_module: WandererNotifier.Map.MapCharacter,
+  character_module: WandererNotifier.Domains.CharacterTracking.Character,
   system_module: WandererNotifier.Map.MapSystem,
   deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
   config_module: WandererNotifier.Config
