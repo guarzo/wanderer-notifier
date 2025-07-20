@@ -10,10 +10,10 @@ defmodule WandererNotifier.TestMocks do
   defmock(MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
   defmock(MockDeduplication,
-    for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
+    for: WandererNotifier.Domains.Notifications.Deduplication.DeduplicationBehaviour
   )
 
-  defmock(MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
+  defmock(MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
 
   @doc """
   Sets up default stubs for all mocks.
@@ -46,12 +46,23 @@ defmodule WandererNotifier.TestMocks do
     |> stub(:system_notifications_enabled?, fn -> true end)
     |> stub(:character_notifications_enabled?, fn -> true end)
     |> stub(:get_notification_setting, fn _, _ -> true end)
+    |> stub(:config_module, fn -> MockConfig end)
+    |> stub(:deduplication_module, fn -> MockDeduplication end)
+    |> stub(:system_track_module, fn -> MockSystem end)
+    |> stub(:character_track_module, fn -> MockCharacter end)
+    |> stub(:notification_determiner_module, fn ->
+      WandererNotifier.Domains.Notifications.Determiner.Kill
+    end)
+    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Domains.Killmail.Enrichment end)
+    |> stub(:killmail_notification_module, fn ->
+      WandererNotifier.Domains.Notifications.KillmailNotification
+    end)
   end
 
   defp setup_esi_mocks do
     # Use the existing ServiceMock from test/support/mocks/esi_service_mock.ex
     # No need to set up stubs since the mock already has full implementations
-    WandererNotifier.ESI.ServiceMock
+    WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
   end
 
   # Mock response functions

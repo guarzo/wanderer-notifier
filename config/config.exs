@@ -141,10 +141,10 @@ config :wanderer_notifier,
 
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
-  character_module: WandererNotifier.Map.MapCharacter,
-  system_module: WandererNotifier.Map.MapSystem,
-  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
-  config_module: WandererNotifier.Config
+  character_module: WandererNotifier.Domains.CharacterTracking.Character,
+  system_module: WandererNotifier.Domains.SystemTracking.System,
+  deduplication_module: WandererNotifier.Domains.Notifications.Deduplication.CacheImpl,
+  config_module: WandererNotifier.Shared.Config
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

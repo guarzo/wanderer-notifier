@@ -1,6 +1,12 @@
-defmodule WandererNotifier.ESI.EntitiesTest do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.EntitiesTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
+
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{
+    Character,
+    Corporation,
+    Alliance,
+    SolarSystem
+  }
 
   describe "Character entity" do
     test "creates Character struct from ESI data" do

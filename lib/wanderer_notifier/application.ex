@@ -19,20 +19,23 @@ defmodule WandererNotifier.Application do
     # Validate configuration on startup
     validate_configuration()
 
-    WandererNotifier.Logger.Logger.startup_info("Starting WandererNotifier")
+    WandererNotifier.Shared.Logger.Logger.startup_info("Starting WandererNotifier")
 
     # Log all environment variables to help diagnose config issues
     log_environment_variables()
 
     # Log scheduler configuration
     schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
-    WandererNotifier.Logger.Logger.startup_info("Schedulers enabled: #{schedulers_enabled}")
+
+    WandererNotifier.Shared.Logger.Logger.startup_info(
+      "Schedulers enabled: #{schedulers_enabled}"
+    )
 
     base_children = [
       # Add Task.Supervisor first to prevent initialization races
       {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
       # Add Registry for cache process naming
-      {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
+      {Registry, keys: :unique, name: WandererNotifier.Infrastructure.Cache.Registry},
       # Add Registry for SSE client naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
       create_cache_child_spec(),
@@ -42,10 +45,10 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
       # Enhanced Discord consumer that handles slash commands
-      {WandererNotifier.Discord.Consumer, []},
-      {WandererNotifier.Core.Stats, []},
-      {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Application.Service, []},
+      {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
+      {WandererNotifier.Application.Services.Stats, []},
+      {WandererNotifier.Domains.License.Service, []},
+      {WandererNotifier.Application.Services.Application.Service, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},
       # Phoenix endpoint for API and WebSocket functionality
@@ -56,10 +59,10 @@ defmodule WandererNotifier.Application do
     cache_monitoring_children =
       if get_env() != :test do
         [
-          {WandererNotifier.Cache.Metrics, []},
-          {WandererNotifier.Cache.PerformanceMonitor, []},
-          {WandererNotifier.Cache.Versioning, []},
-          {WandererNotifier.Cache.Analytics, []}
+          {WandererNotifier.Infrastructure.Cache.Metrics, []},
+          {WandererNotifier.Infrastructure.Cache.PerformanceMonitor, []},
+          {WandererNotifier.Infrastructure.Cache.Versioning, []},
+          {WandererNotifier.Infrastructure.Cache.Analytics, []}
         ]
       else
         []
@@ -68,26 +71,26 @@ defmodule WandererNotifier.Application do
     # Add real-time processing integration (Sprint 3) (skip in test)
     realtime_children =
       if get_env() != :test do
-        [{WandererNotifier.Realtime.Integration, []}]
+        [{WandererNotifier.Infrastructure.Messaging.Integration, []}]
       else
         []
       end
 
     # Add Killmail processing pipeline - always enabled
-    killmail_children = [{WandererNotifier.Killmail.Supervisor, []}]
+    killmail_children = [{WandererNotifier.Domains.Killmail.Supervisor, []}]
 
     # Add SSE supervisor - always enabled for system and character tracking
     sse_children = [{WandererNotifier.Map.SSESupervisor, []}]
 
     # Add scheduler supervisor last to ensure all dependencies are started
-    scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
+    scheduler_children = [{WandererNotifier.Application.Supervisors.Schedulers.Supervisor, []}]
 
     children =
       base_children ++
         cache_monitoring_children ++
         realtime_children ++ killmail_children ++ sse_children ++ scheduler_children
 
-    WandererNotifier.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
+    WandererNotifier.Shared.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     result = Supervisor.start_link(children, opts)
@@ -103,43 +106,18 @@ defmodule WandererNotifier.Application do
     result
   end
 
-  # Initialize version manager with retry logic to handle race conditions
-  defp initialize_version_manager_with_retry(retries \\ 3) do
-    WandererNotifier.Cache.VersionManager.initialize()
-  rescue
-    error ->
-      if retries > 0 do
-        WandererNotifier.Logger.Logger.startup_warn(
-          "Version manager initialization failed, retrying...",
-          error: Exception.message(error),
-          retries_left: retries - 1
-        )
-
-        # Use exponential backoff for retries
-        wait_time = calculate_backoff_ms(3 - retries)
-        Process.sleep(wait_time)
-        initialize_version_manager_with_retry(retries - 1)
-      else
-        WandererNotifier.Logger.Logger.startup_error(
-          "Version manager initialization failed after all retries",
-          error: Exception.message(error)
-        )
-
-        reraise error, __STACKTRACE__
-      end
-  end
+  # Version manager functions have been removed
 
   # Initialize cache metrics and performance monitoring
   defp initialize_cache_monitoring do
     # Skip cache monitoring initialization in test environment
     if get_env() == :test do
-      WandererNotifier.Logger.Logger.startup_info(
+      WandererNotifier.Shared.Logger.Logger.startup_info(
         "Skipping cache monitoring initialization in test environment"
       )
     else
       try do
-        # Initialize cache metrics telemetry
-        WandererNotifier.Cache.Metrics.init()
+        # Cache metrics and analytics modules have been removed
 
         # All cache services (PerformanceMonitor, Analytics, Versioning)
         # start automatically when their GenServers start
@@ -150,25 +128,25 @@ defmodule WandererNotifier.Application do
           wait_for_cache_services()
 
           try do
-            initialize_version_manager_with_retry()
-            WandererNotifier.Cache.Analytics.start_collection()
+            # Version manager has been removed
 
-            WandererNotifier.Logger.Logger.startup_info(
-              "Cache version manager and analytics initialized"
-            )
+            WandererNotifier.Shared.Logger.Logger.startup_info("Cache initialization completed")
           rescue
             error ->
-              WandererNotifier.Logger.Logger.startup_error(
+              WandererNotifier.Shared.Logger.Logger.startup_error(
                 "Failed to initialize cache services",
                 error: Exception.message(error)
               )
           end
         end)
 
-        WandererNotifier.Logger.Logger.startup_info("Cache performance monitoring initialized")
+        WandererNotifier.Shared.Logger.Logger.startup_info(
+          "Cache performance monitoring initialized"
+        )
       rescue
         error ->
-          WandererNotifier.Logger.Logger.startup_error("Failed to initialize cache monitoring",
+          WandererNotifier.Shared.Logger.Logger.startup_error(
+            "Failed to initialize cache monitoring",
             error: Exception.message(error)
           )
       end
@@ -187,7 +165,7 @@ defmodule WandererNotifier.Application do
         WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
       rescue
         error ->
-          WandererNotifier.Logger.Logger.startup_error("Failed to initialize SSE clients",
+          WandererNotifier.Shared.Logger.Logger.startup_error("Failed to initialize SSE clients",
             error: Exception.message(error)
           )
       end
@@ -256,8 +234,8 @@ defmodule WandererNotifier.Application do
     end
 
     required_services = [
-      WandererNotifier.Cache.Analytics,
-      WandererNotifier.Cache.PerformanceMonitor
+      WandererNotifier.Infrastructure.Cache.Analytics,
+      WandererNotifier.Infrastructure.Cache.PerformanceMonitor
     ]
 
     all_ready = Enum.all?(required_services, &service_ready?/1)
@@ -282,23 +260,23 @@ defmodule WandererNotifier.Application do
   defp validate_configuration do
     environment = get_env()
 
-    case WandererNotifier.Config.Validator.validate_from_env(environment) do
+    case WandererNotifier.Shared.Config.Validator.validate_from_env(environment) do
       :ok ->
-        WandererNotifier.Logger.Logger.startup_info("Configuration validation: PASSED")
+        WandererNotifier.Shared.Logger.Logger.startup_info("Configuration validation: PASSED")
 
       {:error, errors} ->
-        WandererNotifier.Config.Validator.log_validation_errors(errors)
+        WandererNotifier.Shared.Config.Validator.log_validation_errors(errors)
 
-        summary = WandererNotifier.Config.Validator.validation_summary(errors)
+        summary = WandererNotifier.Shared.Config.Validator.validation_summary(errors)
 
-        WandererNotifier.Logger.Logger.startup_info(
+        WandererNotifier.Shared.Logger.Logger.startup_info(
           "Configuration validation summary: #{summary.total_errors} errors " <>
             "(#{summary.critical_errors} critical, #{summary.warnings} warnings)"
         )
 
         # Fail startup on critical errors in production
         if environment == :prod and summary.critical_errors > 0 do
-          error_details = WandererNotifier.Config.Validator.format_errors(errors)
+          error_details = WandererNotifier.Shared.Config.Validator.format_errors(errors)
 
           raise """
           Critical configuration errors detected. Application cannot start.
@@ -315,7 +293,7 @@ defmodule WandererNotifier.Application do
   defp ensure_critical_configuration do
     # Ensure config_module is set
     if Application.get_env(:wanderer_notifier, :config_module) == nil do
-      Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.Config)
+      Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.Shared.Config)
     end
 
     # Ensure features is set
@@ -328,7 +306,7 @@ defmodule WandererNotifier.Application do
       Application.put_env(
         :wanderer_notifier,
         :cache_name,
-        WandererNotifier.Cache.Config.default_cache_name()
+        WandererNotifier.Infrastructure.Cache.default_cache_name()
       )
     end
 
@@ -349,7 +327,7 @@ defmodule WandererNotifier.Application do
       value ->
         # Redact sensitive values
         safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-        WandererNotifier.Logger.Logger.startup_info("  #{key}: #{safe_value}")
+        WandererNotifier.Shared.Logger.Logger.startup_info("  #{key}: #{safe_value}")
     end
   end
 
@@ -358,7 +336,7 @@ defmodule WandererNotifier.Application do
   Sensitive values are redacted.
   """
   def log_environment_variables do
-    WandererNotifier.Logger.Logger.startup_info("Environment variables at startup:")
+    WandererNotifier.Shared.Logger.Logger.startup_info("Environment variables at startup:")
 
     sensitive_keys = ~w(
       DISCORD_BOT_TOKEN
@@ -399,11 +377,11 @@ defmodule WandererNotifier.Application do
   Logs key application configuration settings.
   """
   def log_application_config do
-    WandererNotifier.Logger.Logger.startup_info("Application configuration:")
+    WandererNotifier.Shared.Logger.Logger.startup_info("Application configuration:")
 
     # Log version first
     version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
-    WandererNotifier.Logger.Logger.startup_info("  version: #{version}")
+    WandererNotifier.Shared.Logger.Logger.startup_info("  version: #{version}")
 
     # Log critical config values from the application environment
     for {key, env_key} <- [
@@ -414,26 +392,25 @@ defmodule WandererNotifier.Application do
           {:schedulers_enabled, :schedulers_enabled}
         ] do
       value = Application.get_env(:wanderer_notifier, env_key)
-      WandererNotifier.Logger.Logger.startup_info("  #{key}: #{inspect(value)}")
+      WandererNotifier.Shared.Logger.Logger.startup_info("  #{key}: #{inspect(value)}")
     end
   end
 
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
-    cache_name = WandererNotifier.Cache.Config.cache_name()
+    cache_name = WandererNotifier.Infrastructure.Cache.cache_name()
     cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
 
     case cache_adapter do
       Cachex ->
-        # Use the cache config which includes stats: true
-        cache_config = WandererNotifier.Cache.Config.cache_config()
-        {Cachex, cache_config}
+        # Use default Cachex options with stats enabled
+        cache_opts = [stats: true]
+        {Cachex, [name: cache_name] ++ cache_opts}
 
-      WandererNotifier.Cache.ETSCache ->
-        {WandererNotifier.Cache.ETSCache, name: cache_name}
-
-      other ->
-        raise "Unknown cache adapter: #{inspect(other)}"
+      # ETSCache was removed, fallback to Cachex
+      _ ->
+        cache_opts = [stats: true]
+        {Cachex, [name: cache_name] ++ cache_opts}
     end
   end
 
@@ -458,7 +435,9 @@ defmodule WandererNotifier.Application do
     if get_env() == :prod do
       {:error, :not_allowed_in_production}
     else
-      WandererNotifier.Logger.Logger.config_info("Reloading modules", modules: inspect(modules))
+      WandererNotifier.Shared.Logger.Logger.config_info("Reloading modules",
+        modules: inspect(modules)
+      )
 
       # Save current compiler options
       original_compiler_options = Code.compiler_options()
@@ -473,11 +452,11 @@ defmodule WandererNotifier.Application do
           :code.load_file(module)
         end)
 
-        WandererNotifier.Logger.Logger.config_info("Module reload complete")
+        WandererNotifier.Shared.Logger.Logger.config_info("Module reload complete")
         {:ok, modules}
       rescue
         error ->
-          WandererNotifier.Logger.Logger.config_error("Error reloading modules",
+          WandererNotifier.Shared.Logger.Logger.config_error("Error reloading modules",
             error: inspect(error)
           )
 

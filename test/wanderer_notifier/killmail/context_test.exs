@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Killmail.ContextTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Killmail.Context
+  alias WandererNotifier.Domains.Killmail.Context
 
   test "creates a context with custom options" do
     context = Context.new("123", "Alice", %{source: :zkill_api, foo: :bar})

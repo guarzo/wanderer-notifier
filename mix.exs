@@ -70,6 +70,7 @@ defmodule WandererNotifier.MixProject do
       {:stream_data, "~> 1.0", only: [:dev, :test]},
       {:crontab, "~> 1.1"},
       {:excoveralls, "~> 0.18", only: :test},
+      {:benchfella, "~> 0.3", only: :dev},
       {:mix_version, "~> 2.4", only: [:dev, :test], runtime: false}
     ]
   end
@@ -81,8 +82,7 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"],
-        config_providers: [{WandererNotifier.ConfigProvider, []}]
+        overlays: ["rel/overlays"]
       ]
     ]
   end

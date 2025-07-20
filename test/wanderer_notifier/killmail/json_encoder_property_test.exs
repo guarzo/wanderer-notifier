@@ -2,7 +2,7 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Domains.Killmail.Killmail
 
   describe "JSON encoding/decoding round-trip properties" do
     property "any valid killmail can be encoded and decoded back" do

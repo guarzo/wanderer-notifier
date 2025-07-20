@@ -1,10 +1,10 @@
 # Now define the test module
-defmodule WandererNotifier.Notifications.Determiner.KillTest do
+defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
   use ExUnit.Case, async: true
   import Mox
 
   # Set up Mox for this test
-  alias WandererNotifier.Notifications.Determiner.Kill
+  alias WandererNotifier.Domains.Notifications.Determiner.Kill
   setup(:set_mox_from_context)
 
   setup :verify_on_exit!
@@ -26,7 +26,6 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     )
 
     Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
-    Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
 
     # Default mock responses are now set up in test_helper.exs
     # System tracking returns true by default

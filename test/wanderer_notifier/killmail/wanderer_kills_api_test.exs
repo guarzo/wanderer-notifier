@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
   import Mox
 
   alias WandererNotifier.HTTPMock, as: HttpClientMock
-  alias WandererNotifier.Killmail.WandererKillsAPI
+  alias WandererNotifier.Domains.Killmail.WandererKillsAPI
 
   setup :set_mox_from_context
   setup :verify_on_exit!
@@ -41,7 +41,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       HttpClientMock
       |> expect(:get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 200, body: Jason.encode!(expected_response)}}
+        {:ok, %{status_code: 200, body: expected_response}}
       end)
 
       assert {:ok, kills} = WandererKillsAPI.fetch_system_killmails(system_id, 24, 100)
@@ -62,10 +62,10 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
         {:error, :timeout}
       end)
 
-      assert {:error, %{type: :timeout, message: message}} =
+      assert {:error, %{type: :network_error, message: message}} =
                WandererKillsAPI.fetch_system_killmails(system_id)
 
-      assert message =~ "fetch_system_killmails failed"
+      assert message =~ ":timeout"
     end
   end
 
@@ -95,9 +95,10 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
       }
 
       HttpClientMock
-      |> expect(:get, fn url, _headers, _opts ->
-        assert url =~ "system_ids=30000142%2C30000143"
-        {:ok, %{status_code: 200, body: Jason.encode!(expected_response)}}
+      |> expect(:post, fn _url, body, _headers, _opts ->
+        parsed_body = Jason.decode!(body)
+        assert parsed_body["system_ids"] == [30_000_142, 30_000_143]
+        {:ok, %{status_code: 200, body: expected_response}}
       end)
 
       assert {:ok, result} = WandererKillsAPI.fetch_systems_killmails(system_ids, 24, 50)
@@ -119,8 +120,8 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
       }
 
       HttpClientMock
-      |> expect(:get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 200, body: Jason.encode!(expected_response)}}
+      |> expect(:post, fn _url, _body, _headers, _opts ->
+        {:ok, %{status_code: 200, body: expected_response}}
       end)
 
       assert {:ok, result} = WandererKillsAPI.fetch_systems_killmails(system_ids)
@@ -140,8 +141,8 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       HttpClientMock
       |> expect(:get, fn url, _headers, _opts ->
-        assert url =~ "/api/v1/kills/#{killmail_id}"
-        {:ok, %{status_code: 200, body: Jason.encode!(expected_killmail)}}
+        assert url =~ "/api/v1/killmails/#{killmail_id}"
+        {:ok, %{status_code: 200, body: expected_killmail}}
       end)
 
       assert {:ok, kill} = WandererKillsAPI.get_killmail(killmail_id)
@@ -167,7 +168,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
         assert decoded_body["system_ids"] == system_ids
         assert decoded_body["callback_url"] == callback_url
 
-        {:ok, %{status_code: 201, body: Jason.encode!(expected_response)}}
+        {:ok, %{status_code: 201, body: expected_response}}
       end)
 
       assert {:ok, "sub_12345"} =
@@ -181,7 +182,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       # Mock successful responses for chunks
       HttpClientMock
-      |> expect(:get, fn _url, _headers, _opts ->
+      |> expect(:post, fn _url, _body, _headers, _opts ->
         response = %{
           "systems" => %{
             "30000142" => [%{"killmail_id" => 1}, %{"killmail_id" => 2}],
@@ -189,7 +190,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
           }
         }
 
-        {:ok, %{status_code: 200, body: Jason.encode!(response)}}
+        {:ok, %{status_code: 200, body: response}}
       end)
 
       assert {:ok, %{loaded: loaded, errors: errors}} =
@@ -204,7 +205,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       # First call succeeds, second fails
       HttpClientMock
-      |> expect(:get, fn _url, _headers, _opts ->
+      |> expect(:post, fn _url, _body, _headers, _opts ->
         {:error, :timeout}
       end)
 
@@ -223,10 +224,9 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
       }
 
       HttpClientMock
-      |> expect(:get, fn url, _headers, opts ->
-        assert url =~ "/api/v1/health"
-        assert opts[:timeout] == 5_000
-        {:ok, %{status_code: 200, body: Jason.encode!(expected_response)}}
+      |> expect(:get, fn url, _headers, _opts ->
+        assert url =~ "/api/health"
+        {:ok, %{status_code: 200, body: expected_response}}
       end)
 
       assert {:ok, response} = WandererKillsAPI.health_check()
@@ -257,7 +257,7 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       HttpClientMock
       |> expect(:get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 200, body: Jason.encode!(raw_kill)}}
+        {:ok, %{status_code: 200, body: raw_kill}}
       end)
 
       assert {:ok, kill} = WandererKillsAPI.get_killmail(12_345)

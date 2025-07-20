@@ -1,7 +1,7 @@
-defmodule WandererNotifier.ConfigProviderTest do
+defmodule WandererNotifier.Shared.ConfigProviderTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.ConfigProvider
+  alias WandererNotifier.Shared.ConfigProvider
 
   describe "init/1" do
     test "returns config unchanged" do

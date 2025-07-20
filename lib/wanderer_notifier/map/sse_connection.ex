@@ -6,8 +6,8 @@ defmodule WandererNotifier.Map.SSEConnection do
   building URLs, handling HTTP requests, and managing connection lifecycle.
   """
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @doc """
   Establishes an SSE connection with the given configuration.

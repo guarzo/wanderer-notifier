@@ -42,16 +42,17 @@ config :wanderer_notifier,
   scheduler_supervisor_enabled: false
 
 # Configure the logger (simple format for tests)
-config :logger, level: :warning
+config :logger, level: :debug
 
 config :logger, :console,
-  format: "[$level] $message\n",
-  metadata: [:pid, :module]
+  format: "$time [$level] $message $metadata\n",
+  metadata: [:category],
+  device: :standard_error
 
 # Configure the cache - all cache settings in one place
 config :wanderer_notifier,
-  cache_name: :wanderer_test_cache,
-  cache_adapter: WandererNotifier.Cache.ETSCache
+  cache_name: :wanderer_cache_test,
+  cache_adapter: Cachex
 
 # Configure the ESI service
 config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock
@@ -71,4 +72,4 @@ config :mox, :global, true
 
 # Configure the env provider for testing - use real provider to avoid mocking issues
 config :wanderer_notifier,
-  env_provider: WandererNotifier.Config.SystemEnvProvider
+  env_provider: WandererNotifier.Shared.Config.SystemEnvProvider

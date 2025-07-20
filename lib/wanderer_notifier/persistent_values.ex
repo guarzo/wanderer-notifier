@@ -24,7 +24,7 @@ defmodule WandererNotifier.PersistentValues do
   use Agent
   require Logger
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type key :: atom()
   @type vals :: [integer()]

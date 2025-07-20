@@ -4,8 +4,9 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   These clients handle fetching and caching data from the map API.
   """
 
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Infrastructure.Cache
   require Logger
   alias MapSet
 
@@ -24,16 +25,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def fetch_and_decode(url, headers) do
     log_request_start(url, headers)
 
-    # Use our centralized HTTP client with no middleware for internal map API
-    # These are our own servers so we don't need rate limiting
-    opts = [
-      middlewares: [],
-      timeout: 45_000,
-      recv_timeout: 45_000
-    ]
-
+    # Use unified HTTP client with :map service configuration
+    # Internal service - extended timeout, no rate limiting
     url
-    |> WandererNotifier.HTTP.get(headers, opts)
+    |> WandererNotifier.Infrastructure.Http.get(headers, service: :map)
     |> handle_http_response(url)
   end
 
@@ -108,13 +103,11 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   defp decode_body(_), do: {:error, :invalid_body}
 
   def cache_get(cache_key) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
-    case WandererNotifier.Cache.Adapter.get(cache_name, cache_key) do
+    case Cache.get(cache_key) do
       {:ok, data} ->
         handle_cache_data(data, cache_key)
 
-      _ ->
+      {:error, :not_found} ->
         AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
         {:error, :cache_miss}
     end
@@ -143,42 +136,17 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   def cache_put(cache_key, data, ttl) do
-    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
     AppLogger.api_debug("Caching fetched data",
       count: length(data),
       key: cache_key,
       ttl: ttl
     )
 
-    case convert_ttl_to_ms(ttl) do
-      :error ->
-        AppLogger.api_error("Invalid TTL provided, skipping cache write", ttl: ttl)
-        {:ok, data}
-
-      valid_ttl ->
-        perform_cache_set(cache_name, cache_key, data, valid_ttl)
-    end
+    Cache.put_with_ttl(cache_key, data, ttl)
+    {:ok, data}
   end
 
-  defp convert_ttl_to_ms(ttl) do
-    case ttl do
-      :infinity -> :infinity
-      seconds when is_integer(seconds) and seconds > 0 -> :timer.seconds(seconds)
-      _ -> :error
-    end
-  end
-
-  defp perform_cache_set(cache_name, cache_key, data, ttl) do
-    case WandererNotifier.Cache.Adapter.set(cache_name, cache_key, data, ttl) do
-      {:ok, _} ->
-        {:ok, data}
-
-      error ->
-        AppLogger.api_error("Failed to cache data", error: inspect(error))
-        {:error, :cache_error}
-    end
-  end
+  # TTL conversion and cache operations are now handled by the Cache facade
 
   def build_url(endpoint) do
     base_url = Config.base_map_url()
@@ -190,6 +158,20 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   def auth_headers do
     token = Config.map_token()
     [{"Authorization", "Bearer #{token}"}]
+  end
+
+  def fetch_and_decode_with_auth(url) do
+    log_request_start(url, [])
+
+    # Use unified HTTP client with :map service configuration and authentication
+    token = Config.map_token()
+
+    url
+    |> WandererNotifier.Infrastructure.Http.get([],
+      service: :map,
+      auth: [type: :bearer, token: token]
+    )
+    |> handle_http_response(url)
   end
 
   def find_new_items(cached_items, new_items) do
@@ -221,6 +203,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
       def headers do
         WandererNotifier.Map.Clients.BaseMapClient.auth_headers()
+      end
+
+      def fetch_with_auth(url) do
+        WandererNotifier.Map.Clients.BaseMapClient.fetch_and_decode_with_auth(url)
       end
 
       def requires_slug?, do: false

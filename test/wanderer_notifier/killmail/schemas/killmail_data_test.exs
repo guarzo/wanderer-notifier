@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Killmail.Schemas.KillmailDataTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Killmail.Schemas.{KillmailData, Victim, Attacker}
+  alias WandererNotifier.Domains.Killmail.Schemas.{KillmailData, Victim, Attacker}
 
   describe "changeset/2" do
     test "creates valid changeset with required fields" do

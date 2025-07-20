@@ -5,11 +5,8 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   Discord notifications, and third-party APIs.
   """
 
-  alias WandererNotifier.{
-    ESI.Client,
-    HTTP,
-    Notifiers.Discord.NeoClient
-  }
+  alias WandererNotifier.Infrastructure.Adapters.ESI.Client
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
 
   # ──────────────────────────────────────────────────────────────────────────────
   # HTTP Client
@@ -70,7 +67,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
   def get_tracked_systems do
-    WandererNotifier.Map.Clients.SystemsClient.get_all()
+    WandererNotifier.Domains.SystemTracking.Client.get_all()
   end
 
   @doc """
@@ -78,7 +75,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
   def get_tracked_characters do
-    WandererNotifier.Map.Clients.CharactersClient.get_all()
+    WandererNotifier.Domains.CharacterTracking.Client.get_all()
   end
 
   @doc """
@@ -86,7 +83,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_system_info(integer() | String.t()) :: {:ok, map()} | {:error, term()}
   def get_system_info(system_id) do
-    WandererNotifier.Map.SystemStaticInfo.get_system_info(system_id)
+    WandererNotifier.Domains.SystemTracking.StaticInfo.get_system_info(system_id)
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -98,13 +95,11 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec send_discord_notification(map()) :: {:ok, any()} | {:error, term()}
   def send_discord_notification(notification) do
-    # Notifier requires a channel_id as second parameter
-    channel_id = WandererNotifier.Config.discord_channel_id()
-
-    WandererNotifier.Notifiers.Discord.Notifier.send_kill_notification_to_channel(
-      notification,
-      channel_id
-    )
+    case WandererNotifier.Application.Services.NotificationService.notify_kill(notification) do
+      :ok -> {:ok, :sent}
+      {:error, :notifications_disabled} -> {:ok, :sent}
+      error -> error
+    end
   end
 
   @doc """
@@ -114,14 +109,16 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   def send_status_message(message, opts \\ []) do
     # Status formatter doesn't have send_status_message, using Discord notifier directly
     _type = Keyword.get(opts, :type, :info)
-    WandererNotifier.Notifiers.Discord.Notifier.send_message(message)
+    WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_message(message)
   end
 
   @doc """
   Gets the configured Discord channel ID.
   """
   @spec discord_channel_id() :: String.t() | nil
-  defdelegate discord_channel_id(), to: NeoClient, as: :channel_id
+  defdelegate discord_channel_id(),
+    to: WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient,
+    as: :channel_id
 
   # ──────────────────────────────────────────────────────────────────────────────
   # License Management
@@ -132,7 +129,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   defdelegate validate_license(api_token, license_key),
-    to: WandererNotifier.License.Client,
+    to: WandererNotifier.Domains.License.Client,
     as: :validate_bot
 
   @doc """
@@ -140,7 +137,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec premium_features_enabled?() :: boolean()
   def premium_features_enabled? do
-    case WandererNotifier.License.Service.status() do
+    case WandererNotifier.Domains.License.Service.status() do
       %{status: :active} -> true
       _ -> false
     end
@@ -155,7 +152,12 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec send_notification(map(), keyword()) :: {:ok, any()} | {:error, term()}
   def send_notification(notification, opts \\ []) do
-    channel_id = Keyword.get(opts, :channel_id, WandererNotifier.Config.discord_channel_id())
-    WandererNotifier.Notifications.NeoClient.send_embed(notification, channel_id)
+    channel_id =
+      Keyword.get(opts, :channel_id, WandererNotifier.Shared.Config.discord_channel_id())
+
+    WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient.send_embed(
+      notification,
+      channel_id
+    )
   end
 end

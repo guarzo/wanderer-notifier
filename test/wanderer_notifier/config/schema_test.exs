@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Config.SchemaTest do
+defmodule WandererNotifier.Shared.Config.SchemaTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Config.Schema
+  alias WandererNotifier.Shared.Config.Schema
 
   describe "schema/0" do
     test "returns complete configuration schema" do
@@ -277,7 +277,10 @@ defmodule WandererNotifier.Config.SchemaTest do
       valid_id = "123456789012345678"
 
       assert :ok ==
-               WandererNotifier.Config.Validator.validate_field(:discord_application_id, valid_id)
+               WandererNotifier.Shared.Config.Validator.validate_field(
+                 :discord_application_id,
+                 valid_id
+               )
 
       # Invalid snowflakes
       # Too long
@@ -285,7 +288,10 @@ defmodule WandererNotifier.Config.SchemaTest do
 
       for id <- invalid_ids do
         assert {:error, _} =
-                 WandererNotifier.Config.Validator.validate_field(:discord_application_id, id)
+                 WandererNotifier.Shared.Config.Validator.validate_field(
+                   :discord_application_id,
+                   id
+                 )
       end
     end
 
@@ -298,14 +304,15 @@ defmodule WandererNotifier.Config.SchemaTest do
       ]
 
       for url <- valid_urls do
-        assert :ok == WandererNotifier.Config.Validator.validate_field(:map_url, url)
+        assert :ok == WandererNotifier.Shared.Config.Validator.validate_field(:map_url, url)
       end
 
       # Invalid URLs
       invalid_urls = ["not_a_url", "://example.com", ""]
 
       for url <- invalid_urls do
-        assert {:error, _} = WandererNotifier.Config.Validator.validate_field(:map_url, url)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:map_url, url)
       end
     end
 
@@ -317,14 +324,15 @@ defmodule WandererNotifier.Config.SchemaTest do
       ]
 
       for url <- valid_ws_urls do
-        assert :ok == WandererNotifier.Config.Validator.validate_field(:websocket_url, url)
+        assert :ok == WandererNotifier.Shared.Config.Validator.validate_field(:websocket_url, url)
       end
 
       # Invalid WebSocket URLs
       invalid_ws_urls = ["http://example.com", "not_a_url", "ftp://example.com"]
 
       for url <- invalid_ws_urls do
-        assert {:error, _} = WandererNotifier.Config.Validator.validate_field(:websocket_url, url)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:websocket_url, url)
       end
     end
 
@@ -333,28 +341,29 @@ defmodule WandererNotifier.Config.SchemaTest do
       valid_ports = [80, 443, 4000, 8080, 65_535]
 
       for port <- valid_ports do
-        assert :ok == WandererNotifier.Config.Validator.validate_field(:port, port)
+        assert :ok == WandererNotifier.Shared.Config.Validator.validate_field(:port, port)
       end
 
       # Invalid ports
       invalid_ports = [0, -1, 70_000, "4000"]
 
       for port <- invalid_ports do
-        assert {:error, _} = WandererNotifier.Config.Validator.validate_field(:port, port)
+        assert {:error, _} = WandererNotifier.Shared.Config.Validator.validate_field(:port, port)
       end
     end
 
     test "validates schemes correctly" do
       # Valid schemes
       for scheme <- ["http", "https"] do
-        assert :ok == WandererNotifier.Config.Validator.validate_field(:scheme, scheme)
+        assert :ok == WandererNotifier.Shared.Config.Validator.validate_field(:scheme, scheme)
       end
 
       # Invalid schemes
       invalid_schemes = ["ftp", "ws", "file", ""]
 
       for scheme <- invalid_schemes do
-        assert {:error, _} = WandererNotifier.Config.Validator.validate_field(:scheme, scheme)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:scheme, scheme)
       end
     end
   end

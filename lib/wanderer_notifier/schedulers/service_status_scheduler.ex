@@ -3,9 +3,9 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   Scheduler responsible for generating periodic service status reports.
   """
   use GenServer
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Constants
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Types.Constants
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
@@ -92,10 +92,10 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   end
 
   defp generate_service_status_report do
-    alias WandererNotifier.Notifications.Deduplication
+    alias WandererNotifier.Domains.Notifications.Deduplication
 
     # First check if status messages are enabled
-    if WandererNotifier.Config.status_messages_enabled?() do
+    if WandererNotifier.Shared.Config.status_messages_enabled?() do
       uptime_seconds = calculate_uptime()
       days = div(uptime_seconds, 86_400)
       hours = div(rem(uptime_seconds, 86_400), 3600)
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
         {:ok, :new} ->
           AppLogger.maintenance_info("📊 Status report sent | #{formatted_uptime} uptime")
 
-          WandererNotifier.Notifiers.StatusNotifier.send_status_message(
+          WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier.send_status_message(
             "WandererNotifier Service Status",
             "Automated periodic status report."
           )

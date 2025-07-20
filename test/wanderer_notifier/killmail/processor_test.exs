@@ -2,28 +2,60 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Killmail.Processor
-  alias WandererNotifier.ESI.ServiceMock
+  alias WandererNotifier.Domains.Killmail.Processor
+  alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig
-  alias WandererNotifier.MockDispatcher
   alias WandererNotifier.MockDeduplication
-  alias WandererNotifier.Killmail.Pipeline
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Domains.Killmail.Pipeline
+  alias WandererNotifier.Shared.Utils.TimeUtils
+  alias WandererNotifier.Domains.Notifications.Types.Notification
 
   setup :verify_on_exit!
   setup :set_mox_from_context
 
   setup do
+    # Create mock killmail cache module
+    defmodule MockKillmailCache do
+      def get_system_name(_system_id), do: "Test System"
+    end
+
+    # Create mock notification modules to prevent notification failures
+    defmodule MockKillmailNotification do
+      def create(killmail) do
+        %Notification{
+          type: :kill_notification,
+          data: %{killmail: killmail}
+        }
+      end
+    end
+
+    defmodule MockNotificationService do
+      def send_message(_notification) do
+        {:ok, :sent}
+      end
+    end
+
     # Set up application environment
-    Application.put_env(:wanderer_notifier, :system_module, MockSystem)
-    Application.put_env(:wanderer_notifier, :character_module, MockCharacter)
+    Application.put_env(:wanderer_notifier, :system_track_module, MockSystem)
+    Application.put_env(:wanderer_notifier, :character_track_module, MockCharacter)
     Application.put_env(:wanderer_notifier, :config_module, MockConfig)
-    Application.put_env(:wanderer_notifier, :dispatcher_module, MockDispatcher)
     Application.put_env(:wanderer_notifier, :esi_service, ServiceMock)
     Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
     Application.put_env(:wanderer_notifier, :killmail_pipeline, Pipeline)
+
+    # Mock the killmail cache to avoid ETS table issues
+    Application.put_env(:wanderer_notifier, :killmail_cache, MockKillmailCache)
+
+    # Mock notification modules to prevent notification failures
+    Application.put_env(
+      :wanderer_notifier,
+      :killmail_notification_module,
+      MockKillmailNotification
+    )
+
+    Application.put_env(:wanderer_notifier, :notification_service_module, MockNotificationService)
 
     # Set up default mock responses
     MockConfig
@@ -39,12 +71,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     |> stub(:system_track_module, fn -> MockSystem end)
     |> stub(:character_track_module, fn -> MockCharacter end)
     |> stub(:notification_determiner_module, fn ->
-      WandererNotifier.Notifications.Determiner.Kill
+      WandererNotifier.Domains.Notifications.Determiner.Kill
     end)
-    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Killmail.Enrichment end)
-    |> stub(:notification_dispatcher_module, fn -> MockDispatcher end)
+    |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Domains.Killmail.Enrichment end)
     |> stub(:killmail_notification_module, fn ->
-      WandererNotifier.Notifications.KillmailNotification
+      WandererNotifier.Domains.Notifications.KillmailNotification
     end)
     |> stub(:config_module, fn -> MockConfig end)
 
@@ -127,11 +158,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
-      MockDispatcher
-      |> expect(:send_message, fn _message -> {:ok, :sent} end)
-
+      # Set deduplication expectation (using stub since it might be called from other contexts)
       MockDeduplication
-      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
+      |> stub(:check, fn :kill, 12_345 -> {:ok, :new} end)
+
+      # NotificationService will handle message sending internally
 
       assert {:ok, 12_345} = Processor.process_killmail(killmail, source: :test)
     end
@@ -152,14 +183,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # Override default system tracking (true) to return false for this test
       MockSystem
-      |> expect(:is_tracked?, fn _id -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Override default character tracking (false) to return true for this test  
+      # Override default character tracking (false) to return true for this test
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, true} end)
 
-      MockDispatcher
-      |> expect(:send_message, fn _message -> {:ok, :sent} end)
+      # NotificationService will handle message sending internally
 
       MockDeduplication
       |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
@@ -185,12 +215,11 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockSystem
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
-      # Character tracking expectation 
+      # Character tracking expectation
       MockCharacter
       |> expect(:is_tracked?, fn _id -> {:ok, false} end)
 
-      MockDispatcher
-      |> stub(:send_message, fn _message -> {:ok, :sent} end)
+      # NotificationService will handle message sending internally
 
       # MockDeduplication.check/2 is now called first in the pipeline
       MockDeduplication

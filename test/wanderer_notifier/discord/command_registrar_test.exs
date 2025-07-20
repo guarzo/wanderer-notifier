@@ -1,7 +1,7 @@
-defmodule WandererNotifier.Discord.CommandRegistrarTest do
+defmodule WandererNotifier.Infrastructure.Adapters.Discord.CommandRegistrarTest do
   use ExUnit.Case, async: false
 
-  alias WandererNotifier.Discord.CommandRegistrar
+  alias WandererNotifier.Infrastructure.Adapters.Discord.CommandRegistrar
 
   describe "register/0" do
     setup do

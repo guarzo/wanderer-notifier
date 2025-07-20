@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Schedulers.BaseMapScheduler do
+defmodule WandererNotifier.Schedulers.BaseScheduler do
   @moduledoc """
   Base scheduler module that provides common functionality for map-related schedulers.
   These schedulers handle periodic updates of data from the map API.
@@ -7,9 +7,9 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Constants
+  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Shared.Types.Constants
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -27,11 +27,11 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour WandererNotifier.Schedulers.BaseMapScheduler
+      @behaviour WandererNotifier.Schedulers.BaseScheduler
       use GenServer
       require Logger
 
-      alias WandererNotifier.Logger.Logger, as: AppLogger
+      alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
       def start_link(opts) do
         GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       def handle_continue(:schedule, state) do
         # Use the Config module's feature_enabled? function which handles both maps and keyword lists
         feature_flag_value = feature_flag()
-        feature_enabled = WandererNotifier.Config.feature_enabled?(feature_flag_value)
+        feature_enabled = WandererNotifier.Shared.Config.feature_enabled?(feature_flag_value)
 
         AppLogger.scheduler_info("Scheduler feature check",
           module: __MODULE__,
@@ -133,10 +133,14 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           should_log =
             case __MODULE__ do
               WandererNotifier.Schedulers.SystemUpdateScheduler ->
-                not WandererNotifier.Config.feature_enabled?(:system_polling_disabled_for_sse)
+                not WandererNotifier.Shared.Config.feature_enabled?(
+                  :system_polling_disabled_for_sse
+                )
 
               WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-                not WandererNotifier.Config.feature_enabled?(:character_polling_disabled_for_sse)
+                not WandererNotifier.Shared.Config.feature_enabled?(
+                  :character_polling_disabled_for_sse
+                )
 
               _ ->
                 true

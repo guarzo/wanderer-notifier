@@ -176,6 +176,12 @@ defmodule WandererNotifier.Test.Support.Mocks do
   defdelegate get_latest_killmails, to: CacheMock
   defdelegate init_batch_logging, to: CacheMock
   defdelegate mget(keys), to: CacheMock
+
+  # Killmail cache mock functions
+  def get_system_name(nil), do: "Unknown"
+  def get_system_name(system_id) when is_integer(system_id), do: "Test System #{system_id}"
+  def get_system_name(system_id) when is_binary(system_id), do: "Test System #{system_id}"
+  def get_system_name(_), do: "Test System"
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -215,6 +221,8 @@ defmodule WandererNotifier.MockLogger do
   def api_error(_message, _metadata \\ []), do: :ok
   def websocket_info(_message, _metadata \\ []), do: :ok
   def websocket_error(_message, _metadata \\ []), do: :ok
+  def notification_info(_message, _metadata \\ []), do: :ok
+  def notification_error(_message, _metadata \\ []), do: :ok
 end
 
 defmodule WandererNotifier.MockConfig do
@@ -396,30 +404,15 @@ defmodule WandererNotifier.Mocks do
   """
 
   # Mocks for behaviors
-  Mox.defmock(WandererNotifier.Notifications.KillmailNotificationMock,
-    for: WandererNotifier.Notifications.KillmailNotificationBehaviour
+
+  Mox.defmock(WandererNotifier.Domains.Notifications.Determiner.KillMock,
+    for: WandererNotifier.Domains.Notifications.Determiner.KillBehaviour
   )
 
-  Mox.defmock(WandererNotifier.Notifications.DispatcherMock,
-    for: WandererNotifier.Notifications.DispatcherBehaviour
-  )
-
-  Mox.defmock(WandererNotifier.Logger.LoggerMock,
-    for: WandererNotifier.Logger.LoggerBehaviour
-  )
-
-  Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
-    for: WandererNotifier.Notifications.Determiner.KillBehaviour
-  )
-
-  Mox.defmock(WandererNotifier.Config.EnvProviderMock,
-    for: WandererNotifier.Config.EnvProvider
+  Mox.defmock(WandererNotifier.Shared.Config.EnvProviderMock,
+    for: WandererNotifier.Shared.Config.EnvProvider
   )
 end
-
-Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifiers.Discord.DiscordBehaviour
-)
 
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """
@@ -431,7 +424,7 @@ defmodule WandererNotifier.Map.MapSystemMock do
   def is_tracked?(_system_id), do: {:ok, false}
 end
 
-defmodule WandererNotifier.Map.MapCharacterMock do
+defmodule WandererNotifier.Domains.CharacterTracking.CharacterMock do
   @moduledoc """
   Mock module for character tracking functionality.
   """
@@ -592,7 +585,7 @@ defmodule WandererNotifier.Test.Mocks do
   end
 end
 
-defmodule WandererNotifier.Notifications.MockDeduplication do
+defmodule WandererNotifier.Domains.Notifications.MockDeduplication do
   @moduledoc """
   Mock implementation of the deduplication service for testing.
   """

@@ -4,8 +4,7 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   Provides utilities for both mock cache and ETS adapter usage.
   """
 
-  alias WandererNotifier.Cache.Adapter
-  alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache
 
   @doc """
   Sets up a clean cache for testing.
@@ -21,17 +20,17 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
     clear_cache(cache_name)
 
     # Initialize with empty recent kills list
-    Adapter.set(cache_name, Keys.zkill_recent_kills(), [], 3600)
+    Cache.put("zkill:recent_kills", [], :timer.hours(1))
 
     Map.put(context, :cache_name, cache_name)
   end
 
   defp ensure_ets_table_exists(cache_name) do
     # Check if the cache process is already running
-    case Registry.lookup(WandererNotifier.Cache.Registry, cache_name) do
+    case Registry.lookup(WandererNotifier.Infrastructure.Cache.Registry, cache_name) do
       [] ->
-        # Start the ETS cache if not already started
-        {:ok, _} = WandererNotifier.Cache.ETSCache.start_link(name: cache_name)
+        # ETS cache was removed, use Cachex directly
+        :ok
 
       _ ->
         :ok
@@ -56,17 +55,17 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   @doc """
   Adds test data to the cache.
   """
-  def seed_cache(cache_name, data) do
+  def seed_cache(_cache_name, data) do
     Enum.each(data, fn {key, value} ->
-      Adapter.set(cache_name, key, value, 3600)
+      Cache.put(key, value, :timer.hours(1))
     end)
   end
 
   @doc """
   Gets a value from the cache, returning nil if not found.
   """
-  def get_cached(cache_name, key) do
-    case Adapter.get(cache_name, key) do
+  def get_cached(_cache_name, key) do
+    case Cache.get(key) do
       {:ok, value} -> value
       _ -> nil
     end
