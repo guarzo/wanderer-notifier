@@ -38,14 +38,14 @@ fi
 
 # Clean and compile
 print_status "Cleaning previous builds..."
-mix clean --quiet
+mix clean
 
 print_status "Compiling test environment..."
-mix compile --quiet
+mix compile
 
 # Prepare test environment
 print_status "Preparing test environment..."
-mix deps.get --quiet
+mix deps.get
 
 # Run different test suites
 echo ""
@@ -54,7 +54,7 @@ echo "----------------------"
 
 # Basic unit tests
 print_status "Running unit tests..."
-if mix test --quiet; then
+if mix test; then
     print_status "Unit tests passed"
 else
     print_error "Unit tests failed"
@@ -64,7 +64,7 @@ fi
 # Integration tests (if they exist)
 if [ -d "test/integration" ] && [ -n "$(find test/integration -name '*.exs' -type f)" ]; then
     print_status "Running integration tests..."
-    if mix test test/integration/ --quiet; then
+    if mix test test/integration/; then
         print_status "Integration tests passed"
     else
         print_error "Integration tests failed"
@@ -74,7 +74,7 @@ fi
 
 # Property-based tests
 print_status "Running property-based tests..."
-if mix test --include property --quiet; then
+if mix test --include property; then
     print_status "Property tests passed"
 else
     print_warning "Some property tests may have failed (this is often normal)"
