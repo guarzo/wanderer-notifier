@@ -97,7 +97,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   def send_discord_notification(notification) do
     case WandererNotifier.Application.Services.NotificationService.notify_kill(notification) do
       :ok -> {:ok, :sent}
-      :skip -> {:ok, :sent}
+      {:error, :notifications_disabled} -> {:ok, :sent}
       error -> error
     end
   end

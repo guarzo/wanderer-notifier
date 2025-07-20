@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Infrastructure.CacheTest do
   use ExUnit.Case, async: false
-  
+
   @moduletag :skip
 
   alias WandererNotifier.Infrastructure.Cache
@@ -8,16 +8,18 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
   setup do
     # Ensure Cachex is started for testing
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
-    
+
     # Start Cachex if it's not already running
     case Process.whereis(cache_name) do
       nil ->
         # Ensure Cachex application is started
         Application.ensure_all_started(:cachex)
+
         case Cachex.start_link(name: cache_name, stats: true) do
           {:ok, _pid} -> :ok
           {:error, {:already_started, _pid}} -> :ok
         end
+
       _pid ->
         :ok
     end
@@ -26,6 +28,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     if Process.whereis(cache_name) do
       :ok = Cache.clear()
     end
+
     :ok
   end
 
@@ -48,14 +51,15 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     test "put with TTL accepts TTL parameter" do
       key = "test:ttl"
       value = "expires eventually"
-      ttl = 1000  # 1 second
+      # 1 second
+      ttl = 1000
 
       # Put with TTL should succeed
       {:ok, true} = Cache.put(key, value, ttl)
 
       # Should exist immediately
       assert {:ok, ^value} = Cache.get(key)
-      
+
       # Note: We don't test actual expiration as it's timing-dependent
       # and the important thing is that the TTL parameter is accepted
     end
@@ -114,8 +118,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
   describe "domain-specific helpers" do
     test "get_character/1 retrieves character data" do
-      character_id = 12345
-      character_data = %{name: "Test Character", corp_id: 67890}
+      character_id = 12_345
+      character_data = %{name: "Test Character", corp_id: 67_890}
 
       # Put character data directly
       key = Cache.Keys.character(character_id)
@@ -126,8 +130,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "put_character/2 stores character data with correct TTL" do
-      character_id = 12345
-      character_data = %{name: "Test Character", corp_id: 67890}
+      character_id = 12_345
+      character_data = %{name: "Test Character", corp_id: 67_890}
 
       # Use helper to store
       {:ok, true} = Cache.put_character(character_id, character_data)
@@ -137,7 +141,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "get_corporation/1 retrieves corporation data" do
-      corp_id = 67890
+      corp_id = 67_890
       corp_data = %{name: "Test Corp", ticker: "TEST"}
 
       # Put corp data directly
@@ -149,7 +153,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "put_corporation/2 stores corporation data" do
-      corp_id = 67890
+      corp_id = 67_890
       corp_data = %{name: "Test Corp", ticker: "TEST"}
 
       # Use helper to store
@@ -160,7 +164,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "get_alliance/1 retrieves alliance data" do
-      alliance_id = 111222
+      alliance_id = 111_222
       alliance_data = %{name: "Test Alliance", ticker: "TESTA"}
 
       # Put alliance data directly
@@ -172,7 +176,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "put_alliance/2 stores alliance data" do
-      alliance_id = 111222
+      alliance_id = 111_222
       alliance_data = %{name: "Test Alliance", ticker: "TESTA"}
 
       # Use helper to store
@@ -183,7 +187,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "get_system/1 retrieves system data" do
-      system_id = 30000142
+      system_id = 30_000_142
       system_data = %{name: "Jita", security_status: 0.9}
 
       # Put system data directly
@@ -195,7 +199,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
     end
 
     test "put_system/2 stores system data" do
-      system_id = 30000142
+      system_id = 30_000_142
       system_data = %{name: "Jita", security_status: 0.9}
 
       # Use helper to store
@@ -211,8 +215,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert Cache.Keys.character(123) == "esi:character:123"
       assert Cache.Keys.corporation(456) == "esi:corporation:456"
       assert Cache.Keys.alliance(789) == "esi:alliance:789"
-      assert Cache.Keys.system(30000142) == "esi:system:30000142"
-      assert Cache.Keys.killmail(987654) == "killmail:987654"
+      assert Cache.Keys.system(30_000_142) == "esi:system:30000142"
+      assert Cache.Keys.killmail(987_654) == "killmail:987654"
       assert Cache.Keys.notification_dedup("test") == "notification:dedup:test"
       assert Cache.Keys.custom("prefix", "suffix") == "prefix:suffix"
     end
@@ -220,7 +224,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
   describe "deduplication using basic operations" do
     test "can implement killmail deduplication with basic cache ops" do
-      killmail_id = 987654
+      killmail_id = 987_654
       key = Cache.Keys.killmail(killmail_id)
 
       # Initially not processed
@@ -270,7 +274,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
       # Should handle nil value storage
       assert {:ok, true} = Cache.put(key, nil)
-      
+
       # Cachex treats nil as not found, which is expected behavior
       assert {:error, :not_found} = Cache.get(key)
     end

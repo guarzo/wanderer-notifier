@@ -201,15 +201,19 @@ defmodule WandererNotifier.Shared.Config.Helpers do
         raise "Environment variable '#{key}' is set but empty. Please provide a valid boolean value (true/false, 1/0, yes/no, on/off)."
 
       value ->
-        # Try to parse the boolean - if it returns the original default, it means parsing failed
-        parsed = WandererNotifier.Shared.Config.Utils.parse_bool(value, :__parse_failed__)
+        # Try to parse the boolean - use false as default then validate the string separately
+        # First check if it's a valid boolean string
+        normalized = value |> String.trim() |> String.downcase()
 
-        case parsed do
-          :__parse_failed__ ->
+        cond do
+          normalized in ["true", "1", "yes", "on"] ->
+            true
+
+          normalized in ["false", "0", "no", "off"] ->
+            false
+
+          true ->
             raise "Environment variable '#{key}' has invalid boolean value '#{value}'. Please use true/false, 1/0, yes/no, or on/off."
-
-          bool_value ->
-            bool_value
         end
     end
   end

@@ -16,6 +16,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
       # Create the ETS table if it doesn't exist (for testing)
       :ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
     end
+
     :ok
   end
 

@@ -22,7 +22,7 @@ Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.Con
 
 Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
 
-Mox.defmock(DiscordNotifierMock, 
+Mox.defmock(DiscordNotifierMock,
   for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
 )
 

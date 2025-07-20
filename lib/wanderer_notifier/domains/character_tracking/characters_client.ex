@@ -91,7 +91,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Client do
   def send_notification(character) do
     case WandererNotifier.Application.Services.NotificationService.notify_character(character) do
       :ok -> {:ok, :sent}
-      :skip -> {:ok, :sent}
+      {:error, :notifications_disabled} -> {:ok, :sent}
       error -> error
     end
   end

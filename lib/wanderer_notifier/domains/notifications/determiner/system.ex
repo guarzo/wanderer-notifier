@@ -85,7 +85,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.System do
     case Cache.get_system(system_id) do
       {:ok, info} -> info
       {:error, :not_found} -> nil
-      _ -> nil
     end
   end
 end

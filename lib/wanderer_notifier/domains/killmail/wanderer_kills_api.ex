@@ -201,7 +201,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   end
 
   defp transform_victim(%{"victim" => victim} = killmail) when is_map(victim) do
-    normalized_victim = 
+    normalized_victim =
       victim
       |> Map.put_new("character_name", nil)
       |> Map.put_new("corporation_name", nil)
@@ -214,7 +214,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   defp transform_victim(killmail), do: killmail
 
   defp transform_attackers(%{"attackers" => attackers} = killmail) when is_list(attackers) do
-    normalized_attackers = 
+    normalized_attackers =
       Enum.map(attackers, fn attacker ->
         attacker
         |> Map.put_new("character_name", nil)
@@ -260,13 +260,13 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   end
 
   defp convert_system_ids_to_integers(%{"systems" => systems_data}) when is_map(systems_data) do
-    converted_systems = 
+    converted_systems =
       systems_data
       |> Enum.map(fn {system_id_str, killmails} ->
         {String.to_integer(system_id_str), killmails}
       end)
       |> Map.new()
-    
+
     converted_systems
   end
 

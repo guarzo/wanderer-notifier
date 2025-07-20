@@ -165,6 +165,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
       # Ensure cache is empty for this test
       # Clear any cached data for this character (only if cache is running)
       cache_key = "esi:character:123456"
+
       if Process.whereis(:wanderer_test_cache) do
         Cache.delete(cache_key)
       end
@@ -181,7 +182,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
       assert character.security_status == 0.5
       assert character.birthday == ~U[2020-01-01 00:00:00Z]
     end
-
   end
 
   describe "get_corporation_struct/2" do
@@ -189,6 +189,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
       # Ensure cache is empty for this test
       # Clear any cached data for this corporation (only if cache is running)
       cache_key = "esi:corporation:789012"
+
       if Process.whereis(:wanderer_test_cache) do
         Cache.delete(cache_key)
       end
@@ -213,6 +214,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
       # Ensure cache is empty for this test
       # Clear any cached data for this alliance (only if cache is running)
       cache_key = "esi:alliance:345678"
+
       if Process.whereis(:wanderer_test_cache) do
         Cache.delete(cache_key)
       end

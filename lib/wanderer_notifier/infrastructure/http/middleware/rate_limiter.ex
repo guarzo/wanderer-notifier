@@ -65,7 +65,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   def bucket_key(%{url: url, options: options}) do
     rate_limit_options = Keyword.get(options, :rate_limit, [])
     per_host = Keyword.get(rate_limit_options, :per_host, true)
-    
+
     if per_host do
       host = HttpUtils.extract_host(url)
       "http_rate_limit:#{host}"
@@ -109,7 +109,13 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   defp check_rate_limit(host, options) do
     # Use burst_capacity if provided, otherwise fall back to requests_per_second
-    limit = Keyword.get(options, :burst_capacity, Keyword.get(options, :requests_per_second, @default_requests_per_second))
+    limit =
+      Keyword.get(
+        options,
+        :burst_capacity,
+        Keyword.get(options, :requests_per_second, @default_requests_per_second)
+      )
+
     per_host = Keyword.get(options, :per_host, true)
 
     bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global

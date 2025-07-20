@@ -9,15 +9,16 @@ defmodule WandererNotifier.Domains.License.ServiceTest do
   setup do
     # Set up HTTP client mock
     Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
-    
+
     # Start the License Service if not already running
     case Process.whereis(WandererNotifier.Domains.License.Service) do
       nil ->
         {:ok, _pid} = WandererNotifier.Domains.License.Service.start_link([])
+
       _pid ->
         :ok
     end
-    
+
     :ok
   end
 

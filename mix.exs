@@ -82,7 +82,7 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"],
+        overlays: ["rel/overlays"]
       ]
     ]
   end

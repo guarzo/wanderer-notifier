@@ -110,10 +110,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       {:error, :not_found} ->
         AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
         {:error, :cache_miss}
-
-      {:error, _reason} ->
-        AppLogger.api_info("Cache error, fetching from API", key: cache_key)
-        {:error, :cache_miss}
     end
   end
 
@@ -146,14 +142,8 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       ttl: ttl
     )
 
-    case Cache.put_with_ttl(cache_key, data, ttl) do
-      :ok ->
-        {:ok, data}
-
-      {:error, reason} ->
-        AppLogger.api_error("Failed to cache data", error: inspect(reason))
-        {:error, :cache_error}
-    end
+    Cache.put_with_ttl(cache_key, data, ttl)
+    {:ok, data}
   end
 
   # TTL conversion and cache operations are now handled by the Cache facade

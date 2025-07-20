@@ -55,12 +55,12 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
     test "rate limiter prevents request floods" do
       # Configure very restrictive rate limit
       call_count = :counters.new(1, [])
-      
+
       WandererNotifier.HTTPMock
       |> expect(:get, 3, fn _url, _headers, _opts ->
         count = :counters.get(call_count, 1)
         :counters.add(call_count, 1, 1)
-        
+
         if count < 2 do
           {:ok, %{status_code: 200, body: "ok"}}
         else
@@ -88,12 +88,12 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
     test "circuit breaker prevents cascading failures" do
       call_count = :counters.new(1, [])
-      
+
       WandererNotifier.HTTPMock
       |> expect(:get, 4, fn _url, _headers, _opts ->
         count = :counters.get(call_count, 1)
         :counters.add(call_count, 1, 1)
-        
+
         if count < 3 do
           {:error, :connection_refused}
         else

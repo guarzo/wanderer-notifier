@@ -390,7 +390,10 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       body = %{"test" => "data"}
 
       WandererNotifier.HTTPMock
-      |> expect(:post, fn ^url, "{\"test\":\"data\"}", [{"Content-Type", "application/json"}], _opts ->
+      |> expect(:post, fn ^url,
+                          "{\"test\":\"data\"}",
+                          [{"Content-Type", "application/json"}],
+                          _opts ->
         {:ok, %{status_code: 201, body: %{"created" => true}}}
       end)
 

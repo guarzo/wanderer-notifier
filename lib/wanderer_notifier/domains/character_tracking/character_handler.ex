@@ -205,9 +205,6 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
         # No cached characters, create new list
         Cache.put(Cache.Keys.map_characters(), [character])
         :ok
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -236,9 +233,6 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
       {:error, :not_found} ->
         # No cached characters, nothing to remove
         :ok
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -254,9 +248,6 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
         end
 
         :ok
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -400,7 +391,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
                map_character
              ) do
           :ok -> :ok
-          :skip -> :ok
+          {:error, :notifications_disabled} -> :ok
           error -> error
         end
 

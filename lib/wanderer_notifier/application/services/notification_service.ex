@@ -208,7 +208,7 @@ defmodule WandererNotifier.Application.Services.NotificationService do
       end
     else
       AppLogger.processor_info("Skipping character notification (disabled)")
-      :skip
+      {:error, :notifications_disabled}
     end
   end
 
@@ -237,7 +237,7 @@ defmodule WandererNotifier.Application.Services.NotificationService do
       end
     else
       AppLogger.processor_info("Skipping kill notification (disabled)")
-      :skip
+      {:error, :notifications_disabled}
     end
   end
 

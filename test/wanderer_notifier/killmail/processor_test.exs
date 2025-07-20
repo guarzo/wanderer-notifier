@@ -44,12 +44,17 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     Application.put_env(:wanderer_notifier, :esi_service, ServiceMock)
     Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
     Application.put_env(:wanderer_notifier, :killmail_pipeline, Pipeline)
-    
+
     # Mock the killmail cache to avoid ETS table issues
     Application.put_env(:wanderer_notifier, :killmail_cache, MockKillmailCache)
-    
+
     # Mock notification modules to prevent notification failures
-    Application.put_env(:wanderer_notifier, :killmail_notification_module, MockKillmailNotification)
+    Application.put_env(
+      :wanderer_notifier,
+      :killmail_notification_module,
+      MockKillmailNotification
+    )
+
     Application.put_env(:wanderer_notifier, :notification_service_module, MockNotificationService)
 
     # Set up default mock responses

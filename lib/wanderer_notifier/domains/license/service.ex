@@ -531,6 +531,9 @@ defmodule WandererNotifier.Domains.License.Service do
     process_api_result(api_result, state)
   end
 
+  # Dialyzer warns this clause is unreachable in test environment
+  # In production, the API can return successful responses
+  @dialyzer {:nowarn_function, process_api_result: 2}
   defp process_api_result({:ok, response}, state) do
     # Check if the license is valid from the normalized response
     # The response from validate_bot is already normalized and uses "valid" field
@@ -591,6 +594,7 @@ defmodule WandererNotifier.Domains.License.Service do
     error_state
   end
 
+  @dialyzer {:nowarn_function, create_valid_license_state: 2}
   defp create_valid_license_state(response, state) do
     # Check if bot is actually assigned from the normalized response
     # The response is already normalized and uses "bot_assigned" field
@@ -624,6 +628,7 @@ defmodule WandererNotifier.Domains.License.Service do
     valid_state
   end
 
+  @dialyzer {:nowarn_function, create_invalid_license_state: 3}
   defp create_invalid_license_state(response, message, state) do
     # For invalid license, return error state with message
     error_msg = message || "License is not valid"

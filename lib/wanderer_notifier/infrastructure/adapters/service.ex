@@ -56,9 +56,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             handle_killmail_error(reason, kill_id)
         end
-
-      {:error, reason} ->
-        handle_killmail_error(reason, kill_id)
     end
   end
 
@@ -78,9 +75,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -117,9 +111,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -156,9 +147,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -211,9 +199,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -236,9 +221,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -268,9 +250,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 

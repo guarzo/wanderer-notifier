@@ -9,7 +9,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
 
   setup do
     # Set up ESI service mock
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock)
+    Application.put_env(
+      :wanderer_notifier,
+      :esi_service,
+      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+    )
+
     :ok
   end
 
@@ -19,26 +24,26 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
       Application.put_env(:wanderer_notifier, :killmail_cache_module, WandererNotifier.TestMocks)
 
       killmail = %Killmail{
-        killmail_id: 123456,
-        zkb: %{"totalValue" => 50000000},
+        killmail_id: 123_456,
+        zkb: %{"totalValue" => 50_000_000},
         attackers: [
           %{
-            "character_id" => 95654321,
+            "character_id" => 95_654_321,
             "final_blow" => true,
-            "ship_type_id" => 11567
+            "ship_type_id" => 11_567
           }
         ],
         esi_data: %{
           "killmail_time" => "2024-01-01T12:00:00Z",
           "victim" => %{
-            "character_id" => 95123456,
+            "character_id" => 95_123_456,
             "ship_type_id" => 587
           },
           "attackers" => [
             %{
-              "character_id" => 95654321,
+              "character_id" => 95_654_321,
               "final_blow" => true,
-              "ship_type_id" => 11567
+              "ship_type_id" => 11_567
             }
           ]
         }
@@ -56,7 +61,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
       Application.put_env(:wanderer_notifier, :killmail_cache_module, WandererNotifier.TestMocks)
 
       killmail = %Killmail{
-        killmail_id: 789123,
+        killmail_id: 789_123,
         zkb: %{},
         attackers: [],
         esi_data: %{
@@ -76,7 +81,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
       Application.put_env(:wanderer_notifier, :killmail_cache_module, WandererNotifier.TestMocks)
 
       killmail = %Killmail{
-        killmail_id: 456789,
+        killmail_id: 456_789,
         zkb: %{},
         attackers: [],
         esi_data: nil
@@ -93,19 +98,19 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
   describe "format/1" do
     test "formats killmail for notification" do
       killmail = %Killmail{
-        killmail_id: 123456,
-        zkb: %{"totalValue" => 50000000},
+        killmail_id: 123_456,
+        zkb: %{"totalValue" => 50_000_000},
         esi_data: %{
           "killmail_time" => "2024-01-01T12:00:00Z",
           "victim" => %{
-            "character_id" => 95123456,
+            "character_id" => 95_123_456,
             "character_name" => "Test Pilot",
             "corporation_name" => "Test Corp",
             "ship_type_name" => "Rifter"
           },
           "attackers" => [
             %{
-              "character_id" => 95654321,
+              "character_id" => 95_654_321,
               "character_name" => "Attacker Pilot",
               "corporation_name" => "Attacker Corp"
             }

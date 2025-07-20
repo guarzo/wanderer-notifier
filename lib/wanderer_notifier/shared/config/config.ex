@@ -361,7 +361,8 @@ defmodule WandererNotifier.Shared.Config do
 
   @impl true
   @spec system_track_module() :: module()
-  def system_track_module, do: get(:system_track_module, WandererNotifier.Domains.SystemTracking.System)
+  def system_track_module,
+    do: get(:system_track_module, WandererNotifier.Domains.SystemTracking.System)
 
   @impl true
   @spec deduplication_module() :: module()
@@ -378,7 +379,6 @@ defmodule WandererNotifier.Shared.Config do
   @spec killmail_enrichment_module() :: module()
   def killmail_enrichment_module,
     do: get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
-
 
   # Discord configuration aggregation
   def discord_config do
@@ -423,14 +423,14 @@ defmodule WandererNotifier.Shared.Config do
 
     %{
       map_url: base_url,
-      map_url_present: not (is_nil(base_url) or base_url == ""),
-      map_url_explicit: not (is_nil(get(:map_url)) or get(:map_url) == ""),
+      map_url_present: is_binary(base_url) and base_url != "",
+      map_url_explicit: is_binary(get(:map_url)) and get(:map_url) != "",
       map_token: token,
-      map_token_present: not (is_nil(token) or token == ""),
-      map_token_explicit: not (is_nil(get(:map_token)) or get(:map_token) == ""),
+      map_token_present: is_binary(token) and token != "",
+      map_token_explicit: is_binary(get(:map_token)) and get(:map_token) != "",
       map_name: name,
-      map_name_present: not (is_nil(name) or name == ""),
-      map_name_explicit: not (is_nil(get(:map_name)) or get(:map_name) == "")
+      map_name_present: is_binary(name) and name != "",
+      map_name_explicit: is_binary(get(:map_name)) and get(:map_name) != ""
     }
   end
 

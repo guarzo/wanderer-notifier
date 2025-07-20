@@ -214,16 +214,6 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
     {:ok, :sent}
   end
 
-  defp dispatch_kill_notification(notifier, kill) do
-    # Use Discord notification
-    AppLogger.kill_info(
-      "Using generic notification for kill",
-      %{notifier: inspect(notifier)}
-    )
-
-    send_discord_embed(kill)
-  end
-
   # Use pattern matching with guards for channel determination
   defp determine_kill_channel_id(true, _has_tracked_system, true, _system_notifications_enabled) do
     Config.discord_character_kill_channel_id()

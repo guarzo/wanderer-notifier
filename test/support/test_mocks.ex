@@ -50,9 +50,13 @@ defmodule WandererNotifier.TestMocks do
     |> stub(:deduplication_module, fn -> MockDeduplication end)
     |> stub(:system_track_module, fn -> MockSystem end)
     |> stub(:character_track_module, fn -> MockCharacter end)
-    |> stub(:notification_determiner_module, fn -> WandererNotifier.Domains.Notifications.Determiner.Kill end)
+    |> stub(:notification_determiner_module, fn ->
+      WandererNotifier.Domains.Notifications.Determiner.Kill
+    end)
     |> stub(:killmail_enrichment_module, fn -> WandererNotifier.Domains.Killmail.Enrichment end)
-    |> stub(:killmail_notification_module, fn -> WandererNotifier.Domains.Notifications.KillmailNotification end)
+    |> stub(:killmail_notification_module, fn ->
+      WandererNotifier.Domains.Notifications.KillmailNotification
+    end)
   end
 
   defp setup_esi_mocks do

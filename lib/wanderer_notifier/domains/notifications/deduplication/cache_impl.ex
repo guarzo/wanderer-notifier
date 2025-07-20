@@ -26,16 +26,15 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication.CacheImpl do
   end
 
   defp handle_cache_miss(cache_key, ttl) do
-    case Cache.put(cache_key, true, ttl) do
-      :ok -> {:ok, :new}
-      {:error, reason} -> {:error, reason}
-    end
+    Cache.put(cache_key, true, ttl)
+    {:ok, :new}
   end
 
   @impl true
   def clear_key(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
     cache_key = cache_key(type, id)
     Cache.delete(cache_key)
+    {:ok, :cleared}
   end
 
   # Private functions
