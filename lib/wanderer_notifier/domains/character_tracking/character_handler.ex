@@ -9,7 +9,6 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.CharacterTracking.Character
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
   alias WandererNotifier.Domains.Notifications.Determiner.Character, as: CharacterDeterminer
 
   @doc """
@@ -198,13 +197,13 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   end
 
   defp add_character_to_cache(character) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         add_to_existing_cache(cached_characters, character)
 
       {:error, :not_found} ->
         # No cached characters, create new list
-        Cache.put(Keys.map_characters(), [character])
+        Cache.put(Cache.Keys.map_characters(), [character])
         :ok
 
       {:error, reason} ->
@@ -220,18 +219,18 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
     else
       # Add new character
       updated_characters = [character | cached_characters]
-      Cache.put(Keys.map_characters(), updated_characters)
+      Cache.put(Cache.Keys.map_characters(), updated_characters)
       :ok
     end
   end
 
   defp remove_character_from_cache(character) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         # Remove character from the list
         eve_id = character["eve_id"]
         updated_characters = Enum.reject(cached_characters, fn c -> c["eve_id"] == eve_id end)
-        Cache.put(Keys.map_characters(), updated_characters)
+        Cache.put(Cache.Keys.map_characters(), updated_characters)
         :ok
 
       {:error, :not_found} ->
@@ -244,14 +243,14 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
   end
 
   defp update_character_in_cache(character) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, cached_characters} when is_list(cached_characters) ->
         update_cached_characters(cached_characters, character)
 
       {:error, :not_found} ->
         # No cached characters, only create if we have eve_id
         if character["eve_id"] do
-          Cache.put(Keys.map_characters(), [character])
+          Cache.put(Cache.Keys.map_characters(), [character])
         end
 
         :ok
@@ -270,7 +269,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.EventHandler do
       end
 
     final_characters = add_if_new(updated_characters, character, matched)
-    Cache.put(Keys.map_characters(), final_characters)
+    Cache.put(Cache.Keys.map_characters(), final_characters)
     :ok
   end
 

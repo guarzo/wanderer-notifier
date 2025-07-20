@@ -49,4 +49,10 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI.Behaviour do
   """
   @callback fetch_character_killmails(character_id(), hours :: integer(), limit :: integer()) ::
               {:ok, [killmail()]} | error_response()
+
+  @doc """
+  Checks the health status of the API.
+  """
+  @callback health_check() ::
+              {:ok, %{String.t() => any()}} | error_response()
 end

@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
   use WandererNotifier.Map.Clients.BaseMapClient
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Utils.ValidationUtils
   alias WandererNotifier.Shared.Utils.BatchProcessor
 
@@ -65,10 +65,10 @@ defmodule WandererNotifier.Domains.SystemTracking.Client do
   end
 
   @impl true
-  def cache_key, do: Keys.map_systems()
+  def cache_key, do: Cache.Keys.map_systems()
 
   @impl true
-  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.ConfigSimple.map_ttl()
+  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.map_ttl()
 
   @impl true
   def should_notify?(system_id, system) do

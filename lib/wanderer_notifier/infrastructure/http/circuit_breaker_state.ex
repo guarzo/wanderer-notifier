@@ -78,9 +78,9 @@ defmodule WandererNotifier.Infrastructure.Http.CircuitBreakerState do
   @doc """
   Records a failed request for a host.
   """
-  @spec record_failure(String.t()) :: :ok
-  def record_failure(host) do
-    GenServer.cast(__MODULE__, {:record_failure, host})
+  @spec record_failure(String.t(), keyword()) :: :ok
+  def record_failure(host, options \\ []) do
+    GenServer.cast(__MODULE__, {:record_failure, host, options})
   end
 
   @doc """
@@ -220,7 +220,7 @@ defmodule WandererNotifier.Infrastructure.Http.CircuitBreakerState do
   end
 
   @impl true
-  def handle_cast({:record_failure, host}, state) do
+  def handle_cast({:record_failure, host, options}, state) do
     current_time = :erlang.system_time(:millisecond)
     circuit_info = get_state(host)
 
@@ -232,15 +232,19 @@ defmodule WandererNotifier.Infrastructure.Http.CircuitBreakerState do
         last_failure_time: current_time
     }
 
+    # Get threshold from options or use default
+    failure_threshold = Keyword.get(options, :failure_threshold, @default_failure_threshold)
+    recovery_timeout_ms = Keyword.get(options, :recovery_timeout_ms, @default_recovery_timeout_ms)
+
     # Check if we should transition to open state
     final_info =
-      if new_failure_count >= @default_failure_threshold and circuit_info.state != :open do
+      if new_failure_count >= failure_threshold and circuit_info.state != :open do
         log_state_transition(host, circuit_info.state, :open)
 
         %{
           updated_info
           | state: :open,
-            next_attempt_time: current_time + @default_recovery_timeout_ms
+            next_attempt_time: current_time + recovery_timeout_ms
         }
       else
         updated_info
@@ -248,6 +252,11 @@ defmodule WandererNotifier.Infrastructure.Http.CircuitBreakerState do
 
     :ets.insert(@table_name, {host, final_info})
     {:noreply, state}
+  end
+
+  # Handle legacy calls without options
+  def handle_cast({:record_failure, host}, state) do
+    handle_cast({:record_failure, host, []}, state)
   end
 
   @impl true

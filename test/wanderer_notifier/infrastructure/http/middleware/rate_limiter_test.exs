@@ -8,8 +8,14 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
   alias WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
 
   setup do
-    # Reset rate limiter state between tests
-    :ets.delete_all_objects(:rate_limiter_buckets)
+    # Reset rate limiter state between tests if table exists
+    # Hammer creates an ETS table with the module name
+    if :ets.whereis(WandererNotifier.RateLimiter) != :undefined do
+      :ets.delete_all_objects(WandererNotifier.RateLimiter)
+    else
+      # Create the ETS table if it doesn't exist (for testing)
+      :ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
+    end
     :ok
   end
 
@@ -173,10 +179,10 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
       assert {:ok, _} = RateLimiter.call(request, next)
       assert {:error, :rate_limited} = RateLimiter.call(request, next)
 
-      # Wait for token refill (100ms = 1 token at 10/sec rate)
-      Process.sleep(110)
+      # Wait for window to reset (Hammer uses fixed windows, not gradual refill)
+      Process.sleep(1100)
 
-      # Should be allowed again
+      # Should be allowed again after window reset
       assert {:ok, _} = RateLimiter.call(request, next)
     end
 
@@ -203,6 +209,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
 
     test "different methods share the same rate limit" do
       base_request = %{
+        method: :get,
         url: "https://api.example.com/resource",
         headers: [],
         body: "",

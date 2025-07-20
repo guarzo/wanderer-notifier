@@ -63,4 +63,9 @@ defmodule WandererNotifier.Shared.Config.ConfigBehaviour do
   Returns the module responsible for killmail notifications.
   """
   @callback killmail_notification_module() :: module()
+
+  @doc """
+  Returns the configuration module itself (for dependency injection).
+  """
+  @callback config_module() :: module()
 end

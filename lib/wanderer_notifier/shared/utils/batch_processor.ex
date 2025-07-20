@@ -111,7 +111,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
       end
 
       process_batches_sync(
-        batches,
+        Enum.to_list(batches),
         process_fun,
         batch_delay,
         log_progress,

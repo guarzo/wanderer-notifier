@@ -5,7 +5,6 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
   """
 
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
 
   @doc """
   Sets up a clean cache for testing.
@@ -30,8 +29,8 @@ defmodule WandererNotifier.Test.Support.CacheHelpers do
     # Check if the cache process is already running
     case Registry.lookup(WandererNotifier.Infrastructure.Cache.Registry, cache_name) do
       [] ->
-        # Start the ETS cache if not already started
-        {:ok, _} = WandererNotifier.Infrastructure.Cache.ETSCache.start_link(name: cache_name)
+        # ETS cache was removed, use Cachex directly
+        :ok
 
       _ ->
         :ok

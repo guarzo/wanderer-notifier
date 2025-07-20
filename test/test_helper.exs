@@ -22,12 +22,20 @@ Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.Con
 
 Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
 
+Mox.defmock(DiscordNotifierMock, 
+  for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
+)
+
 Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
   for: WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
 )
 
 Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock,
   for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
+)
+
+Mox.defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
+  for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
 )
 
 # Configure application to use mocks
@@ -69,23 +77,12 @@ Mox.stub(WandererNotifier.MockConfig, :get_notification_setting, fn _type, _key 
 
 # Traditional stub for backward compatibility
 Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
-  {:ok,
-   %{
-     notifications: %{
-       enabled: true,
-       kill: %{
-         enabled: true,
-         system: %{enabled: true},
-         character: %{enabled: true},
-         min_value: 100_000_000,
-         min_isk_per_character: 50_000_000,
-         min_isk_per_corporation: 50_000_000,
-         min_isk_per_alliance: 50_000_000,
-         min_isk_per_ship: 50_000_000,
-         min_isk_per_system: 50_000_000
-       }
-     }
-   }}
+  %{
+    notifications_enabled: true,
+    kill_notifications_enabled: true,
+    system_notifications_enabled: true,
+    character_notifications_enabled: true
+  }
 end)
 
 Mox.stub(WandererNotifier.MockConfig, :deduplication_module, fn ->

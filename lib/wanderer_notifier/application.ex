@@ -306,7 +306,7 @@ defmodule WandererNotifier.Application do
       Application.put_env(
         :wanderer_notifier,
         :cache_name,
-        WandererNotifier.Infrastructure.Cache.ConfigSimple.default_cache_name()
+        WandererNotifier.Infrastructure.Cache.default_cache_name()
       )
     end
 
@@ -398,20 +398,19 @@ defmodule WandererNotifier.Application do
 
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
-    cache_name = WandererNotifier.Infrastructure.Cache.ConfigSimple.cache_name()
+    cache_name = WandererNotifier.Infrastructure.Cache.cache_name()
     cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
 
     case cache_adapter do
       Cachex ->
-        # Use the cache config which includes stats: true
-        cache_opts = WandererNotifier.Infrastructure.Cache.ConfigSimple.cachex_opts()
+        # Use default Cachex options with stats enabled
+        cache_opts = [stats: true]
         {Cachex, [name: cache_name] ++ cache_opts}
 
-      WandererNotifier.Infrastructure.Cache.ETSCache ->
-        {WandererNotifier.Infrastructure.Cache.ETSCache, name: cache_name}
-
-      other ->
-        raise "Unknown cache adapter: #{inspect(other)}"
+      # ETSCache was removed, fallback to Cachex
+      _ ->
+        cache_opts = [stats: true]
+        {Cachex, [name: cache_name] ++ cache_opts}
     end
   end
 

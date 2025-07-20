@@ -20,7 +20,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Client do
   def cache_key, do: "map:character_list"
 
   @impl true
-  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.ConfigSimple.ttl_for(:map_data)
+  def cache_ttl, do: WandererNotifier.Infrastructure.Cache.ttl_for(:map_data)
 
   @impl true
   def requires_slug? do

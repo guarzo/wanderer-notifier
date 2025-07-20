@@ -15,10 +15,10 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
 
   ## Telemetry Events
   All events are emitted under the `[:wanderer_notifier, :http]` namespace:
-  - `[:wanderer_notifier, :http, :request_start]` - Request initiated
-  - `[:wanderer_notifier, :http, :request_finish]` - Request completed successfully
-  - `[:wanderer_notifier, :http, :request_error]` - Request failed with error
-  - `[:wanderer_notifier, :http, :request_exception]` - Request raised an exception
+  - `[:wanderer_notifier, :http, :request, :start]` - Request initiated
+  - `[:wanderer_notifier, :http, :request, :stop]` - Request completed successfully
+  - `[:wanderer_notifier, :http, :request, :error]` - Request failed with error
+  - `[:wanderer_notifier, :http, :request, :exception]` - Request raised an exception
 
   ## Usage
 
@@ -60,7 +60,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
   """
   @impl true
   def call(request, next) do
-    options = get_telemetry_options(request.opts)
+    opts = Map.get(request, :opts, Map.get(request, :options, []))
+    options = get_telemetry_options(opts)
     context = build_telemetry_context(request, options)
 
     start_time = :erlang.system_time(:millisecond)
@@ -92,8 +93,9 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
   end
 
   defp build_telemetry_context(request, options) do
+    opts = Map.get(request, :opts, Map.get(request, :options, []))
     host = HttpUtils.extract_host(request.url)
-    service_name = Keyword.get(options, :service_name, host)
+    service_name = Keyword.get(options, :service_name, Keyword.get(opts, :service, :unknown))
 
     %{
       method: request.method,
@@ -116,7 +118,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
     request_size = calculate_request_size(request)
 
     measurements = %{
-      timestamp: :erlang.system_time(:millisecond),
+      system_time: :erlang.system_time(:millisecond),
       request_size_bytes: request_size
     }
 
@@ -130,7 +132,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
       }
       |> Map.merge(context.custom_metadata)
 
-    :telemetry.execute([:wanderer_notifier, :http, :request_start], measurements, metadata)
+    :telemetry.execute([:wanderer_notifier, :http, :request, :start], measurements, metadata)
 
     log_request_start(context, request_size)
   end
@@ -160,9 +162,11 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
   defp handle_result({:error, reason} = result, context, start_time, monotonic_start, _options) do
     duration_ms = :erlang.system_time(:millisecond) - start_time
     monotonic_duration = :erlang.monotonic_time(:millisecond) - monotonic_start
+    # Ensure minimum 1ms duration for telemetry
+    actual_duration = max(monotonic_duration, 1)
 
     # Emit telemetry for failed request
-    emit_request_error(context, reason, monotonic_duration)
+    emit_request_error(context, reason, actual_duration)
 
     # Record API call telemetry using existing system
     Telemetry.api_call(context.service_name, context.url, duration_ms, false)
@@ -200,7 +204,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
 
   defp emit_request_finish(context, response, duration_ms, response_size) do
     measurements = %{
-      timestamp: :erlang.system_time(:millisecond),
+      duration: duration_ms,
       duration_ms: duration_ms,
       response_size_bytes: response_size
     }
@@ -217,12 +221,12 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
       }
       |> Map.merge(context.custom_metadata)
 
-    :telemetry.execute([:wanderer_notifier, :http, :request_finish], measurements, metadata)
+    :telemetry.execute([:wanderer_notifier, :http, :request, :stop], measurements, metadata)
   end
 
   defp emit_request_error(context, reason, duration_ms) do
     measurements = %{
-      timestamp: :erlang.system_time(:millisecond),
+      duration: duration_ms,
       duration_ms: duration_ms
     }
 
@@ -233,17 +237,17 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
         service: context.service_name,
         request_id: context.request_id,
         error_type: categorize_error(reason),
-        error: format_error_for_telemetry(reason),
+        error: reason,
         url: mask_sensitive_url(context.url)
       }
       |> Map.merge(context.custom_metadata)
 
-    :telemetry.execute([:wanderer_notifier, :http, :request_error], measurements, metadata)
+    :telemetry.execute([:wanderer_notifier, :http, :request, :exception], measurements, metadata)
   end
 
   defp emit_request_exception(context, error, duration_ms) do
     measurements = %{
-      timestamp: :erlang.system_time(:millisecond),
+      duration: duration_ms,
       duration_ms: duration_ms
     }
 
@@ -254,12 +258,12 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
         service: context.service_name,
         request_id: context.request_id,
         error_type: "exception",
-        exception: format_exception_for_telemetry(error),
+        error: format_exception_for_telemetry(error),
         url: mask_sensitive_url(context.url)
       }
       |> Map.merge(context.custom_metadata)
 
-    :telemetry.execute([:wanderer_notifier, :http, :request_exception], measurements, metadata)
+    :telemetry.execute([:wanderer_notifier, :http, :request, :exception], measurements, metadata)
   end
 
   defp calculate_request_size(request) do

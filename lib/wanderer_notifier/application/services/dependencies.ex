@@ -72,10 +72,23 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the deduplication module"
   def deduplication_module do
-    WandererNotifier.Shared.Config.deduplication_module()
+    Application.get_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.Shared.Config.deduplication_module()
+    )
   end
 
   # Notification Modules
+  @doc "Returns the killmail cache module"
+  def killmail_cache_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_cache,
+      WandererNotifier.Domains.Killmail.Cache
+    )
+  end
+
   @doc "Returns the killmail notification module"
   def killmail_notification_module do
     Application.get_env(

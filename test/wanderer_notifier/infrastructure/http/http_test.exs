@@ -269,7 +269,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
     test "map service has correct configuration" do
       config = Http.service_config(:map)
 
-      assert config[:timeout] == 45_000
+      assert config[:timeout] == 60_000
       assert config[:retry_count] == 2
       assert config[:retry_delay] == 500
       assert config[:decode_json] == true
@@ -297,7 +297,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       # Create a body that can't be JSON encoded
       body = %{invalid: make_ref()}
 
-      assert_raise Jason.EncodeError, fn ->
+      assert_raise Protocol.UndefinedError, fn ->
         Http.post(url, body)
       end
     end
@@ -390,7 +390,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       body = %{"test" => "data"}
 
       WandererNotifier.HTTPMock
-      |> expect(:post_json, fn ^url, ^body, [], _opts ->
+      |> expect(:post, fn ^url, "{\"test\":\"data\"}", [{"Content-Type", "application/json"}], _opts ->
         {:ok, %{status_code: 201, body: %{"created" => true}}}
       end)
 
@@ -402,7 +402,9 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       hash = "abc123"
 
       WandererNotifier.HTTPMock
-      |> expect(:get_killmail, fn ^killmail_id, ^hash ->
+      |> expect(:get, fn url, [], [] ->
+        assert url =~ "#{killmail_id}"
+        assert url =~ hash
         {:ok, %{status_code: 200, body: [%{"killmail_id" => killmail_id}]}}
       end)
 

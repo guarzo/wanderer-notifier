@@ -45,40 +45,9 @@ config :wanderer_notifier,
 config :logger, level: :debug
 
 config :logger, :console,
-  format: "[$level] $message $metadata\n",
-  metadata: [
-    :pid,
-    :module,
-    :category,
-    :phase,
-    :event,
-    :timestamp,
-    :error,
-    :attempts,
-    :feature,
-    :enabled,
-    :url,
-    :message,
-    :event_type,
-    :batch,
-    :immediate,
-    :data,
-    :interval,
-    :max_batch_size,
-    :count,
-    :list,
-    :map,
-    :string,
-    :number,
-    :status,
-    :host,
-    :port,
-    :service_count,
-    :state_change,
-    :file,
-    :line,
-    :reason
-  ]
+  format: "$time [$level] $message $metadata\n",
+  metadata: [:category],
+  device: :standard_error
 
 # Configure the cache - all cache settings in one place
 config :wanderer_notifier,

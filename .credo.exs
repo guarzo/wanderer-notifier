@@ -101,17 +101,9 @@
           {Credo.Check.Readability.VariableNames, []},
           {Credo.Check.Readability.WithSingleClause, []},
 
-          {Credo.Check.Refactor.ABCSize, 
-           [
-             exclude: ["lib/wanderer_notifier/shared/config/helpers.ex"]
-           ]
-          },
+          {Credo.Check.Refactor.ABCSize, []},
           {Credo.Check.Refactor.CondStatements, []},
-          {Credo.Check.Refactor.CyclomaticComplexity, 
-           [
-             exclude: ["lib/wanderer_notifier/shared/config/helpers.ex"]
-           ]
-          },
+          {Credo.Check.Refactor.CyclomaticComplexity, []},
           {Credo.Check.Refactor.DoubleBooleanNegation, []},
           {Credo.Check.Refactor.FunctionArity, []},
           {Credo.Check.Refactor.MatchInCondition, []},

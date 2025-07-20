@@ -3,20 +3,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClientTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.WebSocketClient
-  alias WandererNotifier.ExternalAdaptersMock
 
   setup :set_mox_from_context
   setup :verify_on_exit!
 
   setup do
-    # Mock external adapters
-    Application.put_env(:wanderer_notifier, :external_adapters_impl, ExternalAdaptersMock)
-
-    # Set up default stubs
-    ExternalAdaptersMock
-    |> stub(:get_tracked_systems, fn -> {:ok, []} end)
-    |> stub(:get_tracked_characters, fn -> {:ok, []} end)
-
+    # Set up any test configuration here
     :ok
   end
 

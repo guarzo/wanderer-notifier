@@ -58,7 +58,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
   """
   @impl true
   def call(request, next) do
-    options = get_circuit_breaker_options(request.opts)
+    options = get_circuit_breaker_options(request.options)
     host = extract_host(request.url)
 
     # Check if request should be allowed
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
       false ->
         # Circuit breaker is open - reject request
         log_circuit_breaker_rejection(host)
-        {:error, {:circuit_breaker_open, "Circuit breaker is open for #{host}"}}
+        {:error, :circuit_open}
     end
   end
 
@@ -98,14 +98,14 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
         # Exception occurred - record as failure
         duration_ms = :erlang.system_time(:millisecond) - start_time
         log_request_exception(host, error, duration_ms)
-        CircuitBreakerState.record_failure(host)
+        CircuitBreakerState.record_failure(host, options)
         {:error, error}
     catch
       :exit, reason ->
         # Process exit - record as failure
         duration_ms = :erlang.system_time(:millisecond) - start_time
         log_request_exit(host, reason, duration_ms)
-        CircuitBreakerState.record_failure(host)
+        CircuitBreakerState.record_failure(host, options)
         {:error, {:exit, reason}}
     end
   end
@@ -117,7 +117,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
     if response.status_code in error_status_codes do
       # HTTP error status - record as failure
       log_request_failure(host, response.status_code, duration_ms)
-      CircuitBreakerState.record_failure(host)
+      CircuitBreakerState.record_failure(host, options)
     else
       # Success - record it
       log_request_success(host, response.status_code, duration_ms)
@@ -127,7 +127,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
     result
   end
 
-  defp handle_response({:error, reason} = result, host, _options, start_time) do
+  defp handle_response({:error, reason} = result, host, options, start_time) do
     duration_ms = :erlang.system_time(:millisecond) - start_time
 
     case reason do
@@ -138,7 +138,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.CircuitBreaker do
       _ ->
         # Network error or other failure - record it
         log_request_error(host, reason, duration_ms)
-        CircuitBreakerState.record_failure(host)
+        CircuitBreakerState.record_failure(host, options)
         result
     end
   end

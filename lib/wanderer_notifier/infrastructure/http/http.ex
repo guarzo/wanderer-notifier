@@ -230,7 +230,7 @@ defmodule WandererNotifier.Infrastructure.Http do
 
   def service_config(:map) do
     [
-      timeout: 45_000,
+      timeout: 60_000,
       retry_count: 2,
       retry_delay: 500,
       retryable_status_codes: [500, 502, 503, 504],
@@ -244,6 +244,8 @@ defmodule WandererNotifier.Infrastructure.Http do
   def service_config(:streaming) do
     [
       timeout: :infinity,
+      stream: true,
+      retry_count: 0,
       disable_middleware: true,
       follow_redirects: false,
       decode_json: false,

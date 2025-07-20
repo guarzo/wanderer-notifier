@@ -410,7 +410,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp get_system_name(nil), do: "unknown"
 
   defp get_system_name(system_id),
-    do: WandererNotifier.Domains.Killmail.Cache.get_system_name(system_id)
+    do: killmail_cache_module().get_system_name(system_id)
 
   defp get_system_name_from_killmail(%Killmail{system_name: name})
        when is_binary(name) and name != "" do
@@ -418,7 +418,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp get_system_name_from_killmail(%Killmail{system_id: sid}),
-    do: WandererNotifier.Domains.Killmail.Cache.get_system_name(sid)
+    do: killmail_cache_module().get_system_name(sid)
 
   # — Dependencies ——————————————————————————————————————————————————————
 
@@ -427,4 +427,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp deduplication_module,
     do: WandererNotifier.Application.Services.Dependencies.deduplication_module()
+
+  defp killmail_cache_module,
+    do: WandererNotifier.Application.Services.Dependencies.killmail_cache_module()
 end

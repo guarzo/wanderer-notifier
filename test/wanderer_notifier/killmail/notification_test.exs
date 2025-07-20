@@ -5,7 +5,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.Notification
   alias WandererNotifier.Domains.Notifications.KillmailNotificationMock
-  alias WandererNotifier.Shared.Logger.LoggerMock
+  alias WandererNotifier.MockLogger
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -40,12 +40,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     )
 
     # NotificationService doesn't require module configuration
-    Application.put_env(:wanderer_notifier, :logger_module, LoggerMock)
-
-    # Set up stub for logger to avoid actual logging in tests
-    LoggerMock
-    |> stub(:notification_info, fn _msg, _meta -> :ok end)
-    |> stub(:notification_error, fn _msg, _meta -> :ok end)
+    Application.put_env(:wanderer_notifier, :logger_module, MockLogger)
 
     # Clean up on test exit
     on_exit(fn ->

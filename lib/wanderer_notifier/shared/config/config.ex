@@ -16,6 +16,10 @@ defmodule WandererNotifier.Shared.Config do
   # Base configuration getter
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
+  # Required by behavior - returns this config module
+  @impl true
+  def config_module, do: __MODULE__
+
   # Generate simple configuration accessors
   defconfig(:simple, [
     :discord_bot_token,
@@ -357,7 +361,7 @@ defmodule WandererNotifier.Shared.Config do
 
   @impl true
   @spec system_track_module() :: module()
-  def system_track_module, do: get(:system_track_module, WandererNotifier.Map.MapSystem)
+  def system_track_module, do: get(:system_track_module, WandererNotifier.Domains.SystemTracking.System)
 
   @impl true
   @spec deduplication_module() :: module()
@@ -374,6 +378,7 @@ defmodule WandererNotifier.Shared.Config do
   @spec killmail_enrichment_module() :: module()
   def killmail_enrichment_module,
     do: get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
+
 
   # Discord configuration aggregation
   def discord_config do

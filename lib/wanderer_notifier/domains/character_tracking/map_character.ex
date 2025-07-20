@@ -32,7 +32,6 @@ defmodule WandererNotifier.Domains.CharacterTracking.Character do
   @behaviour WandererNotifier.Map.TrackingBehaviour
 
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -64,7 +63,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Character do
   end
 
   def is_tracked?(character_id_str) when is_binary(character_id_str) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, characters} when is_list(characters) ->
         result =
           Enum.any?(characters, fn char ->
@@ -204,7 +203,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Character do
   Gets a character by ID from the cache.
   """
   def get_character(character_id) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, characters} when is_list(characters) ->
         Enum.find(characters, &(&1["id"] == character_id))
 
@@ -220,7 +219,7 @@ defmodule WandererNotifier.Domains.CharacterTracking.Character do
   Gets a character by name from the cache.
   """
   def get_character_by_name(character_name) do
-    case Cache.get(Keys.map_characters()) do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, characters} when is_list(characters) ->
         Enum.find(characters, &(&1["name"] == character_name))
 

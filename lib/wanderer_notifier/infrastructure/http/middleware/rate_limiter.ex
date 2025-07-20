@@ -46,6 +46,35 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   @default_scale_ms 1_000
 
   @doc """
+  Generates a bucket key for rate limiting based on request configuration.
+
+  Returns a bucket key that can be used to group requests for rate limiting.
+  When `per_host` is true, requests are grouped by host. When false, all
+  requests use a global bucket.
+
+  ## Examples
+
+      iex> request = %{url: "https://api.example.com/path", options: [rate_limit: [per_host: true]]}
+      iex> bucket_key(request)
+      "http_rate_limit:api.example.com"
+
+      iex> request = %{url: "https://api.example.com/path", options: [rate_limit: [per_host: false]]}
+      iex> bucket_key(request)
+      :global
+  """
+  def bucket_key(%{url: url, options: options}) do
+    rate_limit_options = Keyword.get(options, :rate_limit, [])
+    per_host = Keyword.get(rate_limit_options, :per_host, true)
+    
+    if per_host do
+      host = HttpUtils.extract_host(url)
+      "http_rate_limit:#{host}"
+    else
+      :global
+    end
+  end
+
+  @doc """
   Executes the HTTP request with rate limiting applied.
 
   The middleware will enforce rate limits before making requests and handle
@@ -54,7 +83,9 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   """
   @impl true
   def call(request, next) do
-    rate_limit_options = get_rate_limit_options(request.opts)
+    # Handle both :opts and :options keys for backward compatibility
+    options = Map.get(request, :opts, Map.get(request, :options, []))
+    rate_limit_options = get_rate_limit_options(options)
     host = HttpUtils.extract_host(request.url)
 
     # Check rate limit before making request
@@ -66,38 +97,38 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
       {:error, :rate_limited} ->
         # Rate limit exceeded before request
-        {:error, {:rate_limited, "Rate limit exceeded for #{host}"}}
+        {:error, :rate_limited}
     end
   end
 
   # Private functions
 
   defp get_rate_limit_options(opts) do
-    Keyword.get(opts, :rate_limit_options, [])
+    Keyword.get(opts, :rate_limit, [])
   end
 
   defp check_rate_limit(host, options) do
-    requests_per_second = Keyword.get(options, :requests_per_second, @default_requests_per_second)
+    # Use burst_capacity if provided, otherwise fall back to requests_per_second
+    limit = Keyword.get(options, :burst_capacity, Keyword.get(options, :requests_per_second, @default_requests_per_second))
     per_host = Keyword.get(options, :per_host, true)
 
-    bucket_id = if per_host, do: "http_rate_limit:#{host}", else: "http_rate_limit:global"
+    bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global
 
     # Use Hammer to check rate limit
     case WandererNotifier.RateLimiter.check_rate(
            bucket_id,
            @default_scale_ms,
-           requests_per_second
+           limit
          ) do
       {:allow, _count} ->
         :ok
 
-      {:deny, limit} ->
+      {:deny, _limit} ->
         # Rate limit exceeded
         AppLogger.api_error("Rate limit denied", %{
           host: host,
           bucket_id: bucket_id,
-          limit: limit,
-          requests_per_second: requests_per_second
+          limit: limit
         })
 
         log_rate_limit_hit(host, bucket_id)

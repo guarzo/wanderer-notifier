@@ -19,7 +19,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   }
 
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
@@ -222,7 +221,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    cache_key = Keys.custom("search", "inventory_type_#{query}_#{strict}")
+    cache_key = Cache.Keys.custom("search", "inventory_type_#{query}_#{strict}")
 
     case Cache.get(cache_key) do
       {:ok, data} ->

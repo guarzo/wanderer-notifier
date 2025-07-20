@@ -20,17 +20,62 @@ defmodule WandererNotifier.Infrastructure.Cache do
       Cache.put_with_ttl("custom:key", value, :timer.minutes(30))
   """
 
-  alias WandererNotifier.Infrastructure.Cache.{ConfigSimple, KeysSimple}
-
-  # Aliases for easier access
-  alias ConfigSimple, as: Config
-  alias KeysSimple, as: Keys
   require Logger
+
+  # Cache configuration
+  @default_cache_name :wanderer_notifier_cache
+  @default_ttl :timer.hours(24)
+
+  # TTL configurations
+  @character_ttl :timer.hours(24)
+  @corporation_ttl :timer.hours(24)
+  @alliance_ttl :timer.hours(24)
+  @system_ttl :timer.hours(1)
+  @universe_type_ttl :timer.hours(24)
+  @killmail_ttl :timer.minutes(30)
+  @map_data_ttl :timer.hours(1)
 
   @type cache_key :: String.t()
   @type cache_value :: term()
   @type cache_result :: {:ok, cache_value()} | {:error, :not_found}
   @type ttl_value :: pos_integer() | :infinity | nil
+
+  # ============================================================================
+  # Configuration Functions
+  # ============================================================================
+
+  def cache_name, do: Application.get_env(:wanderer_notifier, :cache_name, @default_cache_name)
+  def default_cache_name, do: @default_cache_name
+
+  def character_ttl, do: @character_ttl
+  def corporation_ttl, do: @corporation_ttl
+  def alliance_ttl, do: @alliance_ttl
+  def system_ttl, do: @system_ttl
+  def universe_type_ttl, do: @universe_type_ttl
+  def killmail_ttl, do: @killmail_ttl
+  def map_ttl, do: @map_data_ttl
+
+  def ttl_for(:map_data), do: @map_data_ttl
+  def ttl_for(_), do: @default_ttl
+
+  # ============================================================================
+  # Key Generation Functions
+  # ============================================================================
+
+  defmodule Keys do
+    @moduledoc false
+
+    def character(id), do: "esi:character:#{id}"
+    def corporation(id), do: "esi:corporation:#{id}"
+    def alliance(id), do: "esi:alliance:#{id}"
+    def system(id), do: "esi:system:#{id}"
+    def universe_type(id), do: "esi:universe_type:#{id}"
+    def killmail(id), do: "killmail:#{id}"
+    def notification_dedup(key), do: "notification:dedup:#{key}"
+    def map_systems, do: "map:systems"
+    def map_characters, do: "map:characters"
+    def custom(prefix, suffix), do: "#{prefix}:#{suffix}"
+  end
 
   # ============================================================================
   # Core Cache Operations
@@ -48,7 +93,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec get(cache_key()) :: cache_result()
   def get(key) when is_binary(key) do
-    case Cachex.get(Config.cache_name(), key) do
+    case Cachex.get(cache_name(), key) do
       {:ok, nil} -> {:error, :not_found}
       {:ok, value} -> {:ok, value}
       {:error, _reason} = error -> error
@@ -67,7 +112,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put(cache_key(), cache_value(), ttl_value()) :: :ok | {:error, term()}
   def put(key, value, ttl \\ nil) when is_binary(key) do
-    cache_name = Config.cache_name()
+    cache_name = cache_name()
 
     case ttl do
       nil ->
@@ -87,7 +132,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec delete(cache_key()) :: :ok
   def delete(key) when is_binary(key) do
-    Cachex.del(Config.cache_name(), key)
+    Cachex.del(cache_name(), key)
     :ok
   end
 
@@ -100,7 +145,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec exists?(cache_key()) :: boolean()
   def exists?(key) when is_binary(key) do
-    case Cachex.exists?(Config.cache_name(), key) do
+    case Cachex.exists?(cache_name(), key) do
       {:ok, exists} -> exists
       {:error, _} -> false
     end
@@ -115,7 +160,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec clear() :: :ok
   def clear do
-    Cachex.clear(Config.cache_name())
+    Cachex.clear(cache_name())
     :ok
   end
 
@@ -136,7 +181,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_character(integer(), map()) :: :ok | {:error, term()}
   def put_character(character_id, data) when is_integer(character_id) and is_map(data) do
-    put(Keys.character(character_id), data, Config.character_ttl())
+    put(Keys.character(character_id), data, character_ttl())
   end
 
   @doc """
@@ -152,7 +197,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_corporation(integer(), map()) :: :ok | {:error, term()}
   def put_corporation(corporation_id, data) when is_integer(corporation_id) and is_map(data) do
-    put(Keys.corporation(corporation_id), data, Config.corporation_ttl())
+    put(Keys.corporation(corporation_id), data, corporation_ttl())
   end
 
   @doc """
@@ -168,7 +213,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_alliance(integer(), map()) :: :ok | {:error, term()}
   def put_alliance(alliance_id, data) when is_integer(alliance_id) and is_map(data) do
-    put(Keys.alliance(alliance_id), data, Config.alliance_ttl())
+    put(Keys.alliance(alliance_id), data, alliance_ttl())
   end
 
   @doc """
@@ -184,7 +229,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_system(integer(), map()) :: :ok | {:error, term()}
   def put_system(system_id, data) when is_integer(system_id) and is_map(data) do
-    put(Keys.system(system_id), data, Config.system_ttl())
+    put(Keys.system(system_id), data, system_ttl())
   end
 
   @doc """
@@ -200,7 +245,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_universe_type(integer(), map()) :: :ok | {:error, term()}
   def put_universe_type(type_id, data) when is_integer(type_id) and is_map(data) do
-    put(Keys.universe_type(type_id), data, Config.universe_type_ttl())
+    put(Keys.universe_type(type_id), data, universe_type_ttl())
   end
 
   # ============================================================================
@@ -302,7 +347,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @spec put_killmail(integer(), String.t(), map(), keyword()) :: :ok | {:error, term()}
   def put_killmail(kill_id, _killmail_hash, data, _opts)
       when is_integer(kill_id) and is_map(data) do
-    put(Keys.killmail(kill_id), data, Config.killmail_ttl())
+    put(Keys.killmail(kill_id), data, killmail_ttl())
   end
 
   # ============================================================================
@@ -330,7 +375,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec stats() :: map()
   def stats do
-    cache_name = Config.cache_name()
+    cache_name = cache_name()
 
     case Cachex.stats(cache_name) do
       {:ok, stats} ->
@@ -350,7 +395,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec size() :: non_neg_integer()
   def size do
-    case Cachex.size(Config.cache_name()) do
+    case Cachex.size(cache_name()) do
       {:ok, size} -> size
       {:error, _} -> 0
     end

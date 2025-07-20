@@ -58,7 +58,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       limit_per_system: limit_per_system
     )
 
-    case Http.post(url, default_headers(), Jason.encode!(body), service: :wanderer_kills) do
+    case Http.post(url, Jason.encode!(body), default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 200, body: data}} when is_map(data) ->
         {:ok, convert_system_ids_to_integers(data)}
 
@@ -78,7 +78,8 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     case Http.get(url, default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 200, body: killmail}} when is_map(killmail) ->
-        {:ok, killmail}
+        transformed = transform_kill(killmail)
+        {:ok, Map.put(transformed, "enriched", true)}
 
       {:ok, %{status_code: 404}} ->
         {:error, %{type: :not_found, message: "Killmail #{killmail_id} not found"}}
@@ -106,7 +107,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       system_count: length(system_ids)
     )
 
-    case Http.post(url, default_headers(), Jason.encode!(body), service: :wanderer_kills) do
+    case Http.post(url, Jason.encode!(body), default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 201, body: %{"subscription_id" => subscription_id}}} ->
         {:ok, subscription_id}
 
@@ -141,6 +142,24 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     |> handle_killmails_response()
   end
 
+  @impl true
+  def health_check do
+    url = "#{base_url()}/api/health"
+
+    AppLogger.api_debug("Checking API health")
+
+    case Http.get(url, default_headers(), service: :wanderer_kills) do
+      {:ok, %{status_code: 200, body: health_data}} when is_map(health_data) ->
+        {:ok, health_data}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @doc """
   Bulk loads system kills for the fallback handler.
 
@@ -173,6 +192,42 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     {:ok, %{loaded: loaded_count, errors: errors}}
   end
 
+  # Transformation functions
+
+  defp transform_kill(killmail) do
+    killmail
+    |> transform_victim()
+    |> transform_attackers()
+  end
+
+  defp transform_victim(%{"victim" => victim} = killmail) when is_map(victim) do
+    normalized_victim = 
+      victim
+      |> Map.put_new("character_name", nil)
+      |> Map.put_new("corporation_name", nil)
+      |> Map.put_new("alliance_name", nil)
+      |> Map.put_new("ship_name", nil)
+
+    Map.put(killmail, "victim", normalized_victim)
+  end
+
+  defp transform_victim(killmail), do: killmail
+
+  defp transform_attackers(%{"attackers" => attackers} = killmail) when is_list(attackers) do
+    normalized_attackers = 
+      Enum.map(attackers, fn attacker ->
+        attacker
+        |> Map.put_new("character_name", nil)
+        |> Map.put_new("corporation_name", nil)
+        |> Map.put_new("alliance_name", nil)
+        |> Map.put_new("ship_name", nil)
+      end)
+
+    Map.put(killmail, "attackers", normalized_attackers)
+  end
+
+  defp transform_attackers(killmail), do: killmail
+
   # Private helper functions
 
   defp default_headers do
@@ -188,6 +243,11 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       {:ok, %{status_code: 200, body: killmails}} when is_list(killmails) ->
         {:ok, killmails}
 
+      {:ok, %{status_code: 200, body: %{"kills" => killmails}}} when is_list(killmails) ->
+        # Transform killmails to add enriched flag
+        transformed_kills = Enum.map(killmails, &Map.put(&1, "enriched", true))
+        {:ok, transformed_kills}
+
       {:ok, %{status_code: 404}} ->
         {:ok, []}
 
@@ -197,6 +257,17 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       {:error, reason} ->
         {:error, %{type: :network_error, message: inspect(reason)}}
     end
+  end
+
+  defp convert_system_ids_to_integers(%{"systems" => systems_data}) when is_map(systems_data) do
+    converted_systems = 
+      systems_data
+      |> Enum.map(fn {system_id_str, killmails} ->
+        {String.to_integer(system_id_str), killmails}
+      end)
+      |> Map.new()
+    
+    converted_systems
   end
 
   defp convert_system_ids_to_integers(data) when is_map(data) do

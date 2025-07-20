@@ -6,8 +6,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
 
-  @behaviour WandererNotifier.Infrastructure.Cache.CacheBehaviour
-
   # Mock state that can be configured per test
   def configure(systems, characters) do
     # Create the ETS table if it doesn't exist
@@ -28,7 +26,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     :ets.insert(:mock_cache, {{:direct_character, character_id}, character_data})
   end
 
-  @impl true
   def get(key, _opts \\ []) do
     case get_by_key_type(key) do
       {:ok, value} -> {:ok, value}
@@ -41,7 +38,7 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
       key == CacheKeys.map_systems() ->
         get_systems()
 
-      key == CacheKeys.character_list() ->
+      key == CacheKeys.map_characters() ->
         get_characters()
 
       is_binary(key) ->
@@ -83,7 +80,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     end
   end
 
-  @impl true
   def set(key, value, _ttl) do
     AppLogger.cache_debug("Setting cache value with TTL",
       key: key,
@@ -94,19 +90,16 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     :ok
   end
 
-  @impl true
   def put(key, value) do
     Process.put({:cache, key}, value)
     :ok
   end
 
-  @impl true
   def delete(key) do
     Process.delete({:cache, key})
     :ok
   end
 
-  @impl true
   def clear do
     Process.get_keys()
     |> Enum.filter(fn
@@ -118,7 +111,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     :ok
   end
 
-  @impl true
   def get_and_update(key, update_fun) do
     current = Process.get({:cache, key})
     {current_value, new_value} = update_fun.(current)
@@ -126,7 +118,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     {:ok, current_value}
   end
 
-  @impl true
   def get_recent_kills do
     [
       %{
@@ -143,18 +134,15 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     ]
   end
 
-  @impl true
   def get_kill(kill_id) do
-    get(CacheKeys.kill(kill_id))
+    get(CacheKeys.killmail(kill_id))
   end
 
   def get_latest_killmails do
-    get(CacheKeys.recent_killmails_list())
+    {:ok, []}
   end
 
-  @impl true
   def init_batch_logging, do: :ok
 
-  @impl true
   def mget(_keys), do: {:error, :not_implemented}
 end

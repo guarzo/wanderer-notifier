@@ -7,7 +7,6 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication.CacheImpl do
 
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Infrastructure.Cache.KeysSimple, as: Keys
 
   @impl true
   def check(type, id) when is_atom(type) and (is_integer(id) or is_binary(id)) do
@@ -42,6 +41,6 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication.CacheImpl do
   # Private functions
 
   defp cache_key(type, id) do
-    Keys.notification_dedup("#{type}:#{id}")
+    Cache.Keys.notification_dedup("#{type}:#{id}")
   end
 end

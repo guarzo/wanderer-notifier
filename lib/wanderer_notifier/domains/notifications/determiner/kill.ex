@@ -191,7 +191,8 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.Kill do
 
   @spec get_config() :: {:ok, keyword()} | {:error, term()}
   defp get_config do
-    {:ok, Config.get_config()}
+    config_module = Application.get_env(:wanderer_notifier, :config_module, Config)
+    {:ok, config_module.get_config()}
   end
 
   @doc """

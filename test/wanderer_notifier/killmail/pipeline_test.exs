@@ -28,10 +28,10 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   defmodule MockCache do
     def get(key) do
       cond do
-        key == CacheKeys.system_list() ->
+        key == CacheKeys.map_systems() ->
           {:ok, []}
 
-        key == CacheKeys.character_list() ->
+        key == CacheKeys.map_characters() ->
           {:ok, [character_id: "100", name: "Victim"]}
 
         String.starts_with?(key, "tracked_character:") ->
