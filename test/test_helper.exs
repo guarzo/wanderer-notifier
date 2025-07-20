@@ -23,13 +23,13 @@ Mox.defmock(WandererNotifier.MockDispatcher,
   for: WandererNotifier.Domains.Notifications.DispatcherBehaviour
 )
 
-Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.HttpBehaviour)
+Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
 
-Mox.defmock(WandererNotifier.ESI.ServiceMock,
+Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
   for: WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
 )
 
-Mox.defmock(WandererNotifier.ESI.ClientMock,
+Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock,
   for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
 )
 
@@ -44,8 +44,19 @@ Application.put_env(:wanderer_notifier, :character_module, WandererNotifier.Mock
 Application.put_env(:wanderer_notifier, :deduplication_module, WandererNotifier.MockDeduplication)
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
 Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
-Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.ClientMock)
+
+Application.put_env(
+  :wanderer_notifier,
+  :esi_service,
+  WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+)
+
+Application.put_env(
+  :wanderer_notifier,
+  :esi_client,
+  WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
+)
+
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
 # Set up default stubs for cache mock
@@ -143,29 +154,68 @@ Mox.stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
   {:ok, %{status_code: 200, body: "{}"}}
 end)
 
-# Set up default stubs for ESI service mock
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_killmail, fn _id, _hash -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_universe_type, fn _id, _opts -> {:ok, %{}} end)
+Mox.stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
+  {:ok, %{status_code: 200, body: "{}"}}
+end)
 
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
+Mox.stub(WandererNotifier.HTTPMock, :post_json, fn _url, _body, _headers, _opts ->
+  {:ok, %{status_code: 200, body: "{}"}}
+end)
+
+Mox.stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _headers, _body, _opts ->
+  {:ok, %{status_code: 200, body: "{}"}}
+end)
+
+Mox.stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
+  {:ok, %{status_code: 200, body: "{}"}}
+end)
+
+# Set up default stubs for ESI service mock
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
+  {:ok, %{}}
+end)
+
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_character, fn _id ->
+  {:ok, %{}}
+end)
+
+Mox.stub(
+  WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
+  :get_corporation_info,
+  fn _id -> {:ok, %{}} end
+)
+
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_alliance_info, fn _id ->
+  {:ok, %{}}
+end)
+
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_universe_type, fn _id,
+                                                                                          _opts ->
+  {:ok, %{}}
+end)
+
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
   {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
 end)
 
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id -> {:ok, %{}} end)
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_type_info, fn _id ->
+  {:ok, %{}}
+end)
 
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system_kills, fn _id, _limit, _opts ->
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system_kills, fn _id,
+                                                                                         _limit,
+                                                                                         _opts ->
   {:ok, []}
 end)
 
-Mox.stub(WandererNotifier.ESI.ServiceMock, :search, fn _query, _categories, _opts ->
+Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :search, fn _query,
+                                                                               _categories,
+                                                                               _opts ->
   {:ok, %{}}
 end)
 
 # Configure logger level for tests
-Logger.configure(level: :warning)
+Logger.configure(level: :debug)
 
 # Initialize ETS tables
 table_opts = [

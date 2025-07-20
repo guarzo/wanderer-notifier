@@ -1,9 +1,9 @@
-defmodule WandererNotifier.Killmail.PipelineTest do
+defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   use ExUnit.Case, async: true
   import Mox
 
   alias WandererNotifier.Domains.Killmail.{Pipeline, Context}
-  alias WandererNotifier.Notifications.DiscordNotifierMock
+  alias WandererNotifier.Domains.Notifications.DiscordNotifierMock
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -19,7 +19,10 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
     def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
     def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
-    def killmail_notification_module, do: WandererNotifier.Domains.Notifications.KillmailNotification
+
+    def killmail_notification_module,
+      do: WandererNotifier.Domains.Notifications.KillmailNotification
+
     def config_module, do: __MODULE__
   end
 
@@ -73,12 +76,16 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
   setup do
     # Set up Mox for ESI.Service
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+    Application.put_env(
+      :wanderer_notifier,
+      :esi_service,
+      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+    )
 
     Application.put_env(
       :wanderer_notifier,
       :discord_notifier,
-      WandererNotifier.Notifications.DiscordNotifierMock
+      WandererNotifier.Domains.Notifications.DiscordNotifierMock
     )
 
     # Set up config module
@@ -158,7 +165,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       # Create a direct replacement for the Pipeline module just for this test
       defmodule SuccessPipeline do
         def process_killmail(_zkb_data, _context) do
-          enriched_killmail = %WandererNotifier.Killmail.Killmail{
+          enriched_killmail = %WandererNotifier.Domains.Killmail.Killmail{
             killmail_id: "12345",
             zkb: %{"hash" => "test_hash"},
             system_name: "Test System",
@@ -326,10 +333,15 @@ defmodule WandererNotifier.Killmail.PipelineTest do
         def process_killmail(_zkb_data, _context) do
           # Simulate an API error during enrichment
           reason = :rate_limited
-          error = %WandererNotifier.ESI.Service.ApiError{reason: reason, message: "Rate limited"}
+
+          error = %WandererNotifier.Infrastructure.Adapters.ESI.Service.ApiError{
+            reason: reason,
+            message: "Rate limited"
+          }
+
           raise error
         rescue
-          e in WandererNotifier.ESI.Service.ApiError ->
+          e in WandererNotifier.Infrastructure.Adapters.ESI.Service.ApiError ->
             {:error, e.reason}
         end
       end

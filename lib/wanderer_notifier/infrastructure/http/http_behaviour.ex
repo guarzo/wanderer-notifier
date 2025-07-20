@@ -1,4 +1,4 @@
-defmodule WandererNotifier.HTTP.HttpBehaviour do
+defmodule WandererNotifier.Infrastructure.Http.HttpBehaviour do
   @moduledoc """
   Behaviour for HTTP clients to enable mocking in tests.
   """

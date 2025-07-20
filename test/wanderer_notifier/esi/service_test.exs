@@ -1,11 +1,11 @@
-defmodule WandererNotifier.ESI.ServiceTest do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
   use ExUnit.Case, async: true
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Service
   alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Infrastructure.Cache.Facade
-  alias WandererNotifier.ESI.ServiceMock
+  alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
 
   # Test data
   @character_data %{
@@ -64,14 +64,18 @@ defmodule WandererNotifier.ESI.ServiceTest do
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
     adapter =
-      Application.get_env(:wanderer_notifier, :cache_adapter, WandererNotifier.Cache.ETSCache)
+      Application.get_env(
+        :wanderer_notifier,
+        :cache_adapter,
+        WandererNotifier.Infrastructure.Cache.ETSCache
+      )
 
     # Start the ETS cache if it's not already running
     case adapter do
-      WandererNotifier.Cache.ETSCache ->
+      WandererNotifier.Infrastructure.Cache.ETSCache ->
         case GenServer.whereis({:via, Registry, {WandererNotifier.Cache.Registry, cache_name}}) do
           nil ->
-            WandererNotifier.Cache.ETSCache.start_link([
+            WandererNotifier.Infrastructure.Cache.ETSCache.start_link([
               {:name, cache_name}
             ])
 

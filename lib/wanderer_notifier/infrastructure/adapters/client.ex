@@ -7,7 +7,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Infrastructure.Http.Headers
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
   @behaviour WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
 
   use WandererNotifier.Shared.Logger.ApiLoggerMacros

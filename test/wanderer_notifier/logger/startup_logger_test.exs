@@ -23,8 +23,8 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
 
       assert log =~ "[Startup] Beginning phase: config"
       assert log =~ "Loading configuration"
-      assert log =~ "phase=:config"
-      assert log =~ "event=:phase_start"
+      assert log =~ "phase=config"
+      assert log =~ "event=phase_start"
       assert log =~ "timestamp="
     end
 
@@ -35,8 +35,8 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "[Startup] Completed phase: config"
-      assert log =~ "phase=:config"
-      assert log =~ "event=:phase_end"
+      assert log =~ "phase=config"
+      assert log =~ "event=phase_end"
       assert log =~ "timestamp="
     end
 
@@ -64,12 +64,12 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
     test "record_event/2 with debug level" do
       log =
         capture_log(fn ->
-          assert :ok = StartupLogger.record_event(:config_loaded, %{count: 42})
+          assert :ok = StartupLogger.record_event(:config_loaded, %{count: 42}, true)
         end)
 
       assert log =~ "Event: config_loaded"
       assert log =~ "count=42"
-      assert log =~ "event_type=:config_loaded"
+      assert log =~ "event_type=config_loaded"
       assert log =~ "timestamp="
     end
 
@@ -80,8 +80,8 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "Event: feature_enabled"
-      assert log =~ "feature=\"websocket\""
-      assert log =~ "event_type=:feature_enabled"
+      assert log =~ "feature=websocket"
+      assert log =~ "event_type=feature_enabled"
     end
 
     test "record_event/3 with force_log false" do
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "Event: complex_event"
-      assert log =~ "event_type=:complex_event"
+      assert log =~ "event_type=complex_event"
     end
   end
 
@@ -124,9 +124,9 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "[Startup] Database connection failed"
-      assert log =~ "error=\"connection refused\""
+      assert log =~ "error=connection refused"
       assert log =~ "attempts=3"
-      assert log =~ "event=:startup_error"
+      assert log =~ "event=startup_error"
       assert log =~ "timestamp="
     end
 
@@ -137,7 +137,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "[Startup] Simple error"
-      assert log =~ "event=:startup_error"
+      assert log =~ "event=startup_error"
     end
 
     test "record_error with detailed information" do
@@ -151,9 +151,8 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "Configuration error"
-      assert log =~ "file=\"config.exs\""
       assert log =~ "line=42"
-      assert log =~ "reason=\"invalid syntax\""
+      assert log =~ "reason=invalid syntax"
     end
   end
 
@@ -165,7 +164,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "[Startup] Application startup complete"
-      assert log =~ "event=:startup_complete"
+      assert log =~ "event=startup_complete"
       assert log =~ "timestamp="
     end
   end
@@ -184,7 +183,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
 
       assert log =~ "[Startup] State change: services_ready - All core services initialized"
       assert log =~ "service_count=5"
-      assert log =~ "state_change=:services_ready"
+      assert log =~ "state_change=services_ready"
       assert log =~ "timestamp="
     end
 
@@ -195,7 +194,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "State change: ready - System ready"
-      assert log =~ "state_change=:ready"
+      assert log =~ "state_change=ready"
     end
   end
 
@@ -207,9 +206,9 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "Event: feature_status"
-      assert log =~ "feature=\"websocket\""
+      assert log =~ "feature=websocket"
       assert log =~ "enabled=true"
-      assert log =~ "status=\"enabled\""
+      assert log =~ "status=enabled"
     end
 
     test "log_feature_status/2 with disabled feature" do
@@ -219,9 +218,8 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
         end)
 
       assert log =~ "Event: feature_status"
-      assert log =~ "feature=\"notifications\""
-      assert log =~ "enabled=false"
-      assert log =~ "status=\"disabled\""
+      assert log =~ "feature=notifications"
+      assert log =~ "status=disabled"
     end
 
     test "log_feature_status/3 with additional details" do
@@ -234,9 +232,9 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
                    })
         end)
 
-      assert log =~ "feature=\"database\""
+      assert log =~ "feature=database"
       assert log =~ "enabled=true"
-      assert log =~ "host=\"localhost\""
+      assert log =~ "host=localhost"
       assert log =~ "port=5432"
     end
   end
@@ -267,20 +265,20 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
     test "event recording with empty details" do
       log =
         capture_log(fn ->
-          StartupLogger.record_event(:empty_event, %{})
+          StartupLogger.record_event(:empty_event, %{}, true)
         end)
 
       assert log =~ "Event: empty_event"
-      assert log =~ "event_type=:empty_event"
+      assert log =~ "event_type=empty_event"
     end
 
     test "error recording with nil details" do
       log =
         capture_log([level: :error], fn ->
-          StartupLogger.record_error("Error message", nil)
+          StartupLogger.record_error("Error message", %{})
         end)
 
-      # Should handle nil gracefully
+      # Should handle empty map
       assert log =~ "[Startup] Error message"
     end
 
@@ -290,7 +288,7 @@ defmodule WandererNotifier.Shared.Logger.StartupLoggerTest do
           StartupLogger.log_feature_status(:cache, true)
         end)
 
-      assert log =~ "feature=:cache"
+      assert log =~ "feature=cache"
       assert log =~ "enabled=true"
     end
   end

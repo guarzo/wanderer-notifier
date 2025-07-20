@@ -42,11 +42,43 @@ config :wanderer_notifier,
   scheduler_supervisor_enabled: false
 
 # Configure the logger (simple format for tests)
-config :logger, level: :warning
+config :logger, level: :debug
 
 config :logger, :console,
-  format: "[$level] $message\n",
-  metadata: [:pid, :module]
+  format: "[$level] $message $metadata\n",
+  metadata: [
+    :pid,
+    :module,
+    :category,
+    :phase,
+    :event,
+    :timestamp,
+    :error,
+    :attempts,
+    :feature,
+    :enabled,
+    :url,
+    :message,
+    :event_type,
+    :batch,
+    :immediate,
+    :data,
+    :interval,
+    :max_batch_size,
+    :count,
+    :list,
+    :map,
+    :string,
+    :number,
+    :status,
+    :host,
+    :port,
+    :service_count,
+    :state_change,
+    :file,
+    :line,
+    :reason
+  ]
 
 # Configure the cache - all cache settings in one place
 config :wanderer_notifier,

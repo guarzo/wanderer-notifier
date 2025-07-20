@@ -1,4 +1,4 @@
-defmodule WandererNotifier.ESI.ClientTest do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.ClientTest do
   use ExUnit.Case, async: true
   import Mox
 

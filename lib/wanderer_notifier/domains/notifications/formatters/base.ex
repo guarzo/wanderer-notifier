@@ -302,9 +302,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Base do
   Generates zKillboard killmail URL.
 
   ## Parameters
-  - `killmail_id` - Killmail ID (integer)
+  - `killmail_id` - Killmail ID (integer or string)
   """
   def zkillboard_killmail_url(killmail_id) when is_integer(killmail_id) do
+    "https://zkillboard.com/kill/#{killmail_id}/"
+  end
+
+  def zkillboard_killmail_url(killmail_id) when is_binary(killmail_id) do
     "https://zkillboard.com/kill/#{killmail_id}/"
   end
 

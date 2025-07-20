@@ -1,11 +1,11 @@
-defmodule WandererNotifier.Core.Application.ServiceTest do
+defmodule WandererNotifier.Application.Services.Application.ServiceTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Core.Application.Service
-  alias WandererNotifier.Notifications.DiscordNotifierMock
+  alias WandererNotifier.Application.Services.Application.Service
+  alias WandererNotifier.Domains.Notifications.DiscordNotifierMock
   alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
-  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Domains.License.Service, as: LicenseService
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
@@ -57,7 +57,11 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
     |> stub(:send_message, fn _notification -> :ok end)
 
     # Set up Mox for ESI.Service
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+    Application.put_env(
+      :wanderer_notifier,
+      :esi_service,
+      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+    )
 
     # Set up Mox for Deduplication
     Application.put_env(

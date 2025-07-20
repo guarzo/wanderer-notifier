@@ -1,4 +1,4 @@
-defmodule WandererNotifier.ESI.EntitiesTest do
+defmodule WandererNotifier.Infrastructure.Adapters.ESI.EntitiesTest do
   use ExUnit.Case, async: true
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{

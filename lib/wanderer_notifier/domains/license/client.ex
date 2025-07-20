@@ -49,7 +49,7 @@ defmodule WandererNotifier.Domains.License.Client do
     # Disable rate limiting for license validation during startup
     opts = [middlewares: []]
 
-    case WandererNotifier.HTTP.post_json(url, body, headers, opts) do
+    case WandererNotifier.Infrastructure.Http.post_json(url, body, headers, opts) do
       {:ok, %{status_code: status, body: decoded}} when status in 200..299 ->
         process_successful_validation(decoded)
 
@@ -146,7 +146,7 @@ defmodule WandererNotifier.Domains.License.Client do
       ]
     ]
 
-    case WandererNotifier.HTTP.post_json(url, body, headers, opts) do
+    case WandererNotifier.Infrastructure.Http.post_json(url, body, headers, opts) do
       {:ok, %{status_code: _status, body: decoded}} ->
         process_decoded_license_data(decoded)
 

@@ -130,7 +130,7 @@ defmodule WandererNotifier.Domains.SystemTracking.StaticInfo do
       ]
     ]
 
-    result = WandererNotifier.HTTP.get(url, headers, opts)
+    result = WandererNotifier.Infrastructure.Http.get(url, headers, opts)
 
     case ResponseHandler.handle_response(result,
            success_codes: [200],
@@ -313,7 +313,7 @@ defmodule WandererNotifier.Domains.SystemTracking.StaticInfo do
       ]
     ]
 
-    result = WandererNotifier.HTTP.get(url, headers, opts)
+    result = WandererNotifier.Infrastructure.Http.get(url, headers, opts)
 
     ResponseHandler.handle_response(result,
       success_codes: 200,

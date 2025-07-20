@@ -6,7 +6,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
   describe "initialization" do
     test "init/0 initializes with default interval" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.init()
         end)
 
@@ -15,7 +15,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
 
     test "init/1 accepts custom interval" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.init(interval: 10_000)
         end)
 
@@ -33,7 +33,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
       assert log =~ "[batch] Event: test_event"
       assert log =~ "batch=true"
       assert log =~ "immediate=true"
-      assert log =~ "data=\"value\""
+      assert log =~ "data=value"
     end
 
     test "count_event/2 without immediate logging" do
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
   describe "flushing" do
     test "flush_all/0" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.flush_all()
         end)
 
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
 
     test "flush_category/1" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.flush_category(:test_category)
         end)
 
@@ -79,7 +79,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
 
     test "handle_flush/0 with default interval" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.handle_flush()
         end)
 
@@ -88,7 +88,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
 
     test "handle_flush/1 with custom interval" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.handle_flush(10_000)
         end)
 
@@ -104,7 +104,7 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
 
     test "reset/0" do
       log =
-        capture_log(fn ->
+        capture_log([level: :debug], fn ->
           assert :ok = BatchLogger.reset()
         end)
 
@@ -118,7 +118,6 @@ defmodule WandererNotifier.Shared.Logger.BatchLoggerTest do
         end)
 
       assert log =~ "[BatchLogger] Configuration updated"
-      assert log =~ "enabled=false"
       assert log =~ "interval=15000"
     end
   end

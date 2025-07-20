@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Http.ClientTelemetryIntegrationTest do
+defmodule WandererNotifier.Infrastructure.Http.ClientTelemetryIntegrationTest do
   use ExUnit.Case, async: true
 
   alias WandererNotifier.Infrastructure.Http.Client

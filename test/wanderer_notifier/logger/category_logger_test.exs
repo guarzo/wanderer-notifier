@@ -11,7 +11,7 @@ defmodule WandererNotifier.Shared.Logger.CategoryLoggerTest do
         end)
 
       assert log =~ "[processor] Debug message"
-      assert log =~ "key=value"
+      assert log =~ "key=\"value\""
     end
 
     test "processor_info/2" do

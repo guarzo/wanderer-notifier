@@ -7,7 +7,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsClient do
   """
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Shared.Types.Constants
   require Logger

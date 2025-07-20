@@ -6,7 +6,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Client
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
 
   # ──────────────────────────────────────────────────────────────────────────────

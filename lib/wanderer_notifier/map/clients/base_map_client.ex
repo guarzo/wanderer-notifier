@@ -33,7 +33,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     ]
 
     url
-    |> WandererNotifier.HTTP.get(headers, opts)
+    |> WandererNotifier.Infrastructure.Http.get(headers, opts)
     |> handle_http_response(url)
   end
 

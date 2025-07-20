@@ -11,7 +11,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   alias WandererNotifier.Domains.Killmail.WandererKillsClient
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Killmail.StreamUtils
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Shared.Types.Constants
 

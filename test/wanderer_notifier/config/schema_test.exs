@@ -277,7 +277,10 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       valid_id = "123456789012345678"
 
       assert :ok ==
-               WandererNotifier.Shared.Config.Validator.validate_field(:discord_application_id, valid_id)
+               WandererNotifier.Shared.Config.Validator.validate_field(
+                 :discord_application_id,
+                 valid_id
+               )
 
       # Invalid snowflakes
       # Too long
@@ -285,7 +288,10 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
 
       for id <- invalid_ids do
         assert {:error, _} =
-                 WandererNotifier.Shared.Config.Validator.validate_field(:discord_application_id, id)
+                 WandererNotifier.Shared.Config.Validator.validate_field(
+                   :discord_application_id,
+                   id
+                 )
       end
     end
 
@@ -305,7 +311,8 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       invalid_urls = ["not_a_url", "://example.com", ""]
 
       for url <- invalid_urls do
-        assert {:error, _} = WandererNotifier.Shared.Config.Validator.validate_field(:map_url, url)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:map_url, url)
       end
     end
 
@@ -324,7 +331,8 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       invalid_ws_urls = ["http://example.com", "not_a_url", "ftp://example.com"]
 
       for url <- invalid_ws_urls do
-        assert {:error, _} = WandererNotifier.Shared.Config.Validator.validate_field(:websocket_url, url)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:websocket_url, url)
       end
     end
 
@@ -354,7 +362,8 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       invalid_schemes = ["ftp", "ws", "file", ""]
 
       for scheme <- invalid_schemes do
-        assert {:error, _} = WandererNotifier.Shared.Config.Validator.validate_field(:scheme, scheme)
+        assert {:error, _} =
+                 WandererNotifier.Shared.Config.Validator.validate_field(:scheme, scheme)
       end
     end
   end

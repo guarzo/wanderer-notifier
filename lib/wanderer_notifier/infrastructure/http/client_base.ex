@@ -32,7 +32,7 @@ defmodule WandererNotifier.Infrastructure.Http.ClientBase do
   """
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.HTTP
+  alias WandererNotifier.Infrastructure.Http, as: HTTP
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Shared.Utils.TimeUtils
 
@@ -42,7 +42,7 @@ defmodule WandererNotifier.Infrastructure.Http.ClientBase do
   defmacro __using__(opts \\ []) do
     quote do
       alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-      alias WandererNotifier.HTTP
+      alias WandererNotifier.Infrastructure.Http, as: HTTP
       alias WandererNotifier.Infrastructure.Http.ResponseHandler
       alias WandererNotifier.Infrastructure.Http.ClientBase
       alias WandererNotifier.Shared.Utils.TimeUtils

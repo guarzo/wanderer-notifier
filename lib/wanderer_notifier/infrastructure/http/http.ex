@@ -1,10 +1,10 @@
-defmodule WandererNotifier.HTTP do
+defmodule WandererNotifier.Infrastructure.Http do
   @moduledoc """
   Unified HTTP client module that handles all HTTP operations for the application.
   Provides a single interface for making HTTP requests with built-in retry logic,
   timeout management, and error handling.
   """
-  @behaviour WandererNotifier.HTTP.HttpBehaviour
+  @behaviour WandererNotifier.Infrastructure.Http.HttpBehaviour
 
   alias WandererNotifier.Infrastructure.Http.Client
   alias WandererNotifier.Infrastructure.Http.Middleware.{Retry, RateLimiter, CircuitBreaker}

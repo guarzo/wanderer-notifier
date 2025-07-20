@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Processor
-  alias WandererNotifier.ESI.ServiceMock
+  alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig

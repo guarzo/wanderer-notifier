@@ -101,7 +101,8 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtilsTest do
       data = %{"name" => ""}
       result = ValidationUtils.validate_required_fields(data, ["name", "id"])
 
-      assert {:error, {:missing_fields, ["id"]}} = result
+      # The validation now reports empty fields before missing fields
+      assert {:error, {:empty_fields, ["name"]}} = result
     end
   end
 
