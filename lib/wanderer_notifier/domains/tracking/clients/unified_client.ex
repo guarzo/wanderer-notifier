@@ -85,8 +85,6 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
       :characters -> Cache.character_ttl()
       # 1 hour for system information
       :systems -> Cache.system_ttl()
-      # fallback
-      _ -> Cache.ttl_for(:map_data)
     end
   end
 
@@ -362,7 +360,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
   # ══════════════════════════════════════════════════════════════════════════════
   # Process Variable Management (for entity context)
   # ══════════════════════════════════════════════════════════════════════════════
-  # 
+  #
   # NOTE: This uses Process dictionary for entity context management.
   # While not ideal for concurrency, it provides a simple way to thread
   # entity type through all BaseMapClient callback functions without
