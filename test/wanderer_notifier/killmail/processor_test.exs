@@ -10,7 +10,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   alias WandererNotifier.MockDeduplication
   alias WandererNotifier.Domains.Killmail.Pipeline
   alias WandererNotifier.Shared.Utils.TimeUtils
-  alias WandererNotifier.Domains.Notifications.Types.Notification
+  alias WandererNotifier.Domains.Notifications.Notification
 
   setup :verify_on_exit!
   setup :set_mox_from_context

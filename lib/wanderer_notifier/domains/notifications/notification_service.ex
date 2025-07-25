@@ -5,7 +5,7 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   """
 
   require Logger
-  alias WandererNotifier.Domains.Notifications.Types.Notification
+  alias WandererNotifier.Domains.Notifications.Notification
   alias WandererNotifier.Shared.Logger.ErrorLogger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Config

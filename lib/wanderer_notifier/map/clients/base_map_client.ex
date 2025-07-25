@@ -28,7 +28,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     # Use unified HTTP client with :map service configuration
     # Internal service - extended timeout, no rate limiting
     url
-    |> WandererNotifier.Infrastructure.Http.get(headers, service: :map)
+    |> WandererNotifier.Infrastructure.Http.request(:get, nil, headers, service: :map)
     |> handle_http_response(url)
   end
 
@@ -167,7 +167,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     token = Config.map_token()
 
     url
-    |> WandererNotifier.Infrastructure.Http.get([],
+    |> WandererNotifier.Infrastructure.Http.request(:get, nil, [],
       service: :map,
       auth: [type: :bearer, token: token]
     )

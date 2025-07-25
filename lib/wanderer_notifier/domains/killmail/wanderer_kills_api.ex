@@ -6,8 +6,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   including bulk loading capabilities and advanced killmail operations.
   """
 
-  @behaviour WandererNotifier.Domains.Killmail.WandererKillsAPI.Behaviour
-
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Config
@@ -18,7 +16,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     Config.get(@base_url_key, "http://host.docker.internal:4004")
   end
 
-  @impl true
   def fetch_system_killmails(system_id, hours \\ 24, limit \\ 50) do
     url = "#{base_url()}/api/v1/systems/#{system_id}/killmails"
 
@@ -41,7 +38,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     |> handle_killmails_response()
   end
 
-  @impl true
   def fetch_systems_killmails(system_ids, hours \\ 24, limit_per_system \\ 20)
       when is_list(system_ids) do
     url = "#{base_url()}/api/v1/systems/bulk/killmails"
@@ -70,7 +66,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     end
   end
 
-  @impl true
   def get_killmail(killmail_id) do
     url = "#{base_url()}/api/v1/killmails/#{killmail_id}"
 
@@ -92,7 +87,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     end
   end
 
-  @impl true
   def subscribe_to_killmails(subscriber_id, system_ids, callback_url \\ nil) do
     url = "#{base_url()}/api/v1/subscriptions"
 
@@ -119,7 +113,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     end
   end
 
-  @impl true
   def fetch_character_killmails(character_id, hours \\ 24, limit \\ 50) do
     url = "#{base_url()}/api/v1/characters/#{character_id}/killmails"
 
@@ -142,7 +135,6 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     |> handle_killmails_response()
   end
 
-  @impl true
   def health_check do
     url = "#{base_url()}/api/health"
 

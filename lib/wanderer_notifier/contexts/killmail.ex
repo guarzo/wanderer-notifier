@@ -26,7 +26,7 @@ defmodule WandererNotifier.Contexts.Killmail do
   """
   @spec process_killmail(map()) :: {:ok, String.t() | :skipped} | {:error, term()}
   def process_killmail(killmail) do
-    context = WandererNotifier.Domains.Killmail.Context.new()
+    context = WandererNotifier.Domains.Killmail.Processor.Context.new()
     Pipeline.process_killmail(killmail, context)
   end
 

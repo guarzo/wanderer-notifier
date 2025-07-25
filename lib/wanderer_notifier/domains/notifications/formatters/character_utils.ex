@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
   Provides helper functions for extracting and formatting character information.
   """
 
-  alias WandererNotifier.Domains.CharacterTracking.Character
+  alias WandererNotifier.Domains.Tracking.Entities.Character
 
   @doc """
   Extracts a character ID from a Character struct.

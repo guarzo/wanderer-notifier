@@ -121,183 +121,47 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     setup_tracking_defaults()
   end
 
-  @doc """
-  Creates sample killmail data for testing.
-  """
-  def sample_killmail_data do
-    %{
-      "killmail_id" => 123_456,
-      "killmail_time" => "2024-01-01T12:00:00Z",
-      "solar_system_id" => 30_000_142,
-      "victim" => %{
-        "character_id" => 1001,
-        "corporation_id" => 2001,
-        "alliance_id" => 3001,
-        "ship_type_id" => 587,
-        "damage_taken" => 5000
-      },
-      "attackers" => [
-        %{
-          "character_id" => 1002,
-          "corporation_id" => 2002,
-          "ship_type_id" => 588,
-          "final_blow" => true,
-          "damage_done" => 5000
-        }
-      ]
-    }
-  end
+  # Sample data functions - delegated to TestDataFactory for consistency
+  def sample_killmail_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_websocket_killmail_data()
 
-  @doc """
-  Creates sample character data for testing.
-  """
-  def sample_character_data do
-    %{
-      "name" => "Test Character",
-      "corporation_id" => 2001,
-      "alliance_id" => 3001,
-      "security_status" => -1.5
-    }
-  end
+  def sample_character_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_esi_character_response()
 
-  @doc """
-  Creates sample corporation data for testing.
-  """
-  def sample_corporation_data do
-    %{
-      "name" => "Test Corporation",
-      "ticker" => "TEST",
-      "alliance_id" => 3001,
-      "member_count" => 100
-    }
-  end
+  def sample_corporation_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_esi_corporation_response()
 
-  @doc """
-  Creates sample alliance data for testing.
-  """
-  def sample_alliance_data do
-    %{
-      "name" => "Test Alliance",
-      "ticker" => "TESTA",
-      "corporations_count" => 5
-    }
-  end
+  def sample_alliance_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_esi_alliance_response()
 
-  @doc """
-  Creates sample system data for testing.
-  """
-  def sample_system_data do
-    %{
-      "name" => "Jita",
-      "security_status" => 0.946,
-      "constellation_id" => 20_000_020,
-      "region_id" => 10_000_002
-    }
-  end
+  def sample_system_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_esi_system_response()
 
-  @doc """
-  Creates sample type data for testing.
-  """
-  def sample_type_data do
-    %{
-      "name" => "Rifter",
-      "group_id" => 25,
-      "category_id" => 6,
-      "volume" => 27_289.5
-    }
-  end
+  def sample_type_data,
+    do: WandererNotifier.Test.Support.Mocks.TestDataFactory.build_esi_type_response()
 
-  @doc """
-  Creates sample config data for testing.
-  """
-  def sample_config_data do
-    %{
+  def sample_config_data,
+    do: %{
       notifications_enabled: true,
       kill_notifications_enabled: true,
       system_notifications_enabled: true,
       character_notifications_enabled: true
     }
-  end
 
   @doc """
   Creates a test killmail struct with reasonable defaults.
-
-  Options:
-  - killmail_id: integer (default: 123456)
-  - victim_id: integer (default: 1001)
-  - attacker_id: integer (default: 1002)
-  - system_id: integer (default: 30000142)
-  - ship_type_id: integer (default: 587)
+  Delegates to the centralized TestDataFactory.
   """
   def create_test_killmail(opts \\ []) do
-    killmail_id = Keyword.get(opts, :killmail_id, 123_456)
-    victim_id = Keyword.get(opts, :victim_id, 1001)
-    attacker_id = Keyword.get(opts, :attacker_id, 1002)
-    system_id = Keyword.get(opts, :system_id, 30_000_142)
-    ship_type_id = Keyword.get(opts, :ship_type_id, 587)
-
-    %WandererNotifier.Domains.Killmail.Killmail{
-      killmail_id: killmail_id,
-      zkb: %{
-        "locationID" => system_id,
-        "hash" => "test_hash_#{killmail_id}",
-        "fittedValue" => 100_000_000,
-        "totalValue" => 150_000_000,
-        "points" => 1,
-        "npc" => false,
-        "solo" => false,
-        "awox" => false
-      },
-      esi_data: %{
-        "killmail_id" => killmail_id,
-        "killmail_time" => "2024-01-01T12:00:00Z",
-        "solar_system_id" => system_id,
-        "victim" => %{
-          "character_id" => victim_id,
-          "corporation_id" => 2001,
-          "ship_type_id" => ship_type_id,
-          "damage_taken" => 5000
-        },
-        "attackers" => [
-          %{
-            "character_id" => attacker_id,
-            "corporation_id" => 2002,
-            "ship_type_id" => ship_type_id + 1,
-            "final_blow" => true,
-            "damage_done" => 5000
-          }
-        ]
-      },
-      victim_name: "Test Victim",
-      victim_corporation: "Test Corp",
-      victim_corp_ticker: "TEST",
-      victim_alliance: "Test Alliance",
-      ship_name: "Rifter",
-      system_name: "Jita",
-      system_id: system_id,
-      attackers: ["Test Attacker"],
-      value: 150_000_000
-    }
+    WandererNotifier.Test.Support.Mocks.TestDataFactory.build_killmail(opts)
   end
 
   @doc """
   Sets up tracking mocks to return specific tracking states.
-
-  Options:
-  - tracked_systems: list of system IDs that should return true
-  - tracked_characters: list of character IDs that should return true
+  Delegates to UnifiedMocks for consistency.
   """
   def setup_tracking_mocks(opts \\ []) do
-    tracked_systems = Keyword.get(opts, :tracked_systems, [])
-    tracked_characters = Keyword.get(opts, :tracked_characters, [])
-
-    stub(WandererNotifier.MockSystem, :is_tracked?, fn id ->
-      {:ok, id in tracked_systems}
-    end)
-
-    stub(WandererNotifier.MockCharacter, :is_tracked?, fn id ->
-      {:ok, id in tracked_characters}
-    end)
+    WandererNotifier.Test.Support.Mocks.UnifiedMocks.setup_selective_tracking(opts)
   end
 
   @doc """

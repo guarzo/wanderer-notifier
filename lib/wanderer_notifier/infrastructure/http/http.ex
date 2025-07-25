@@ -30,7 +30,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   @behaviour WandererNotifier.Infrastructure.Http.HttpBehaviour
 
   alias WandererNotifier.Infrastructure.Http.Client
-  alias WandererNotifier.Infrastructure.Http.Middleware.{Retry, RateLimiter, CircuitBreaker}
+  alias WandererNotifier.Infrastructure.Http.Middleware.{Retry, RateLimiter}
   alias WandererNotifier.Shared.Utils.ErrorHandler
 
   @type url :: String.t()
@@ -42,125 +42,57 @@ defmodule WandererNotifier.Infrastructure.Http do
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
   @type service :: :esi | :wanderer_kills | :license | :map | :streaming | nil
 
-  @doc """
-  Makes a GET request to the specified URL.
-  """
-  @spec get(url(), headers(), opts()) :: response()
-  def get(url, headers \\ [], opts \\ []) do
-    request(:get, url, headers, nil, opts)
-  end
-
-  @doc """
-  Makes a POST request with the given body.
-  """
-  @spec post(url(), body(), headers(), opts()) :: response()
-  def post(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
-    request(:post, url, headers, body, opts)
-  end
-
-  @doc """
-  Makes a POST request with JSON body.
-  """
-  @spec post_json(url(), map(), headers(), opts()) :: response()
-  def post_json(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
-    post(url, body, headers, opts)
-  end
-
-  @doc """
-  Makes a PUT request with the given body.
-  """
-  @spec put(url(), body(), headers(), opts()) :: response()
-  def put(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
-    request(:put, url, headers, body, opts)
-  end
-
-  @doc """
-  Makes a DELETE request.
-  """
-  @spec delete(url(), headers(), opts()) :: response()
-  def delete(url, headers \\ [], opts \\ []) do
-    request(:delete, url, headers, nil, opts)
-  end
-
-  @doc """
-  Makes a PATCH request with the given body.
-  """
-  @spec patch(url(), body(), headers(), opts()) :: response()
-  def patch(url, body, headers \\ [{"Content-Type", "application/json"}], opts \\ []) do
-    request(:patch, url, headers, body, opts)
-  end
-
-  @doc """
-  Makes a HEAD request.
-  """
-  @spec head(url(), headers(), opts()) :: response()
-  def head(url, headers \\ [], opts \\ []) do
-    request(:head, url, headers, nil, opts)
-  end
-
-  @doc """
-  Makes a GET request with automatic JSON decoding.
-  """
-  @spec get_json(url(), headers(), opts()) :: response()
-  def get_json(url, headers \\ [], opts \\ []) do
-    opts_with_json = Keyword.put(opts, :decode_json, true)
-    get(url, headers, opts_with_json)
-  end
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Core HTTP Interface
+  # ══════════════════════════════════════════════════════════════════════════════
 
   @doc """
   Makes a generic HTTP request with retry logic and error handling.
-  Supports service-specific configurations and custom options.
+
+  Simplified unified interface - all HTTP methods use this single function.
+
+  ## Parameters
+  - `method` - HTTP method (:get, :post, :put, :delete, :head, :options, :patch)
+  - `url` - Target URL
+  - `body` - Request body (nil for GET/DELETE, string/map for POST/PUT)
+  - `headers` - List of {key, value} header tuples
+  - `opts` - Request options (see below)
 
   ## Options
-  - `:service` - Pre-configured service settings (:esi, :wanderer_kills, :license, :map, :streaming)
+  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :streaming)
   - `:timeout` - Request timeout in milliseconds
   - `:retry_count` - Number of retries
-  - `:retry_delay` - Base delay between retries
-  - `:decode_json` - Automatically decode JSON responses
-  - `:auth` - Authentication options [type: :bearer, token: "..."]
-  - `:rate_limit` - Rate limiting options [requests_per_second: 10, burst_capacity: 20]
-  - `:middlewares` - Custom middleware chain
-  - `:disable_middleware` - Bypass all middleware
+  - `:decode_json` - Automatically decode JSON responses (default: true)
+  - `:auth` - Authentication [type: :bearer, token: "..."] or [type: :api_key, key: "..."]
+
+  ## Examples
+
+      # Simple GET
+      request(:get, "https://api.example.com/data", nil, [], [])
+      
+      # Service-configured request
+      request(:get, url, nil, [], service: :esi)
+      
+      # POST with authentication
+      request(:post, url, %{data: "value"}, [], service: :license, auth: [type: :bearer, token: token])
   """
-  @spec request(method(), url(), headers(), body(), opts()) :: response()
-  def request(method, url, headers, body, opts) do
-    # Apply service configuration if specified
-    enhanced_opts = apply_service_config(opts)
+  @spec request(method(), url(), body(), headers(), opts()) :: response()
+  def request(method, url, body \\ nil, headers \\ [], opts \\ []) do
+    # Apply service configuration
+    final_opts = apply_service_config(opts)
 
-    # Apply authentication if specified
-    enhanced_headers = apply_auth_headers(headers, enhanced_opts)
+    # Add authentication headers
+    final_headers = apply_auth_headers(headers, final_opts)
 
-    # Check if we're in test mode and using mock
-    case Application.get_env(:wanderer_notifier, :http_client) do
-      WandererNotifier.HTTPMock ->
-        # Use the mock directly for testing
-        mock = WandererNotifier.HTTPMock
+    # Encode body if needed
+    encoded_body = encode_body(body, final_headers)
 
-        case method do
-          :get ->
-            apply(mock, :get, [url, enhanced_headers, enhanced_opts])
+    # Build client options and execute request
+    client_opts = build_client_opts(final_opts, final_headers, encoded_body)
 
-          :post ->
-            encoded_body = encode_body(body, enhanced_headers)
-            apply(mock, :post, [url, encoded_body, enhanced_headers, enhanced_opts])
-
-          :put ->
-            encoded_body = encode_body(body, enhanced_headers)
-            apply(mock, :put, [url, encoded_body, enhanced_headers, enhanced_opts])
-
-          :delete ->
-            apply(mock, :delete, [url, enhanced_headers, enhanced_opts])
-
-          _ ->
-            {:error, :method_not_supported}
-        end
-
-      _ ->
-        # Production mode - use the new middleware-based client
-        client_opts = build_client_opts(enhanced_opts, enhanced_headers, body)
-        result = Client.request(method, url, client_opts)
-        transform_response(result)
-    end
+    # Make the request using the client
+    Client.request(method, url, client_opts)
+    |> transform_response()
   end
 
   # Private implementation
@@ -186,35 +118,27 @@ defmodule WandererNotifier.Infrastructure.Http do
     Keyword.merge(service_opts, opts)
   end
 
-  @doc false
-  def service_config(:esi) do
-    [
+  # Service configurations map
+  @service_configs %{
+    esi: [
       timeout: 30_000,
       retry_count: 3,
       retry_delay: 1_000,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [requests_per_second: 20, burst_capacity: 40, per_host: true],
       middlewares: [Retry, RateLimiter],
-      decode_json: true,
-      telemetry_metadata: %{service: "esi"}
-    ]
-  end
-
-  def service_config(:wanderer_kills) do
-    [
+      decode_json: true
+    ],
+    wanderer_kills: [
       timeout: 15_000,
       retry_count: 2,
       retry_delay: 1_000,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [requests_per_second: 10, burst_capacity: 20, per_host: true],
       middlewares: [Retry, RateLimiter],
-      decode_json: true,
-      telemetry_metadata: %{service: "wanderer_kills"}
-    ]
-  end
-
-  def service_config(:license) do
-    [
+      decode_json: true
+    ],
+    license: [
       timeout: 10_000,
       retry_count: 1,
       retry_delay: 2_000,
@@ -223,37 +147,31 @@ defmodule WandererNotifier.Infrastructure.Http do
       rate_limit: [requests_per_second: 1, burst_capacity: 2, per_host: true],
       # No retry for license validation
       middlewares: [RateLimiter],
-      decode_json: true,
-      telemetry_metadata: %{service: "license"}
-    ]
-  end
-
-  def service_config(:map) do
-    [
+      decode_json: true
+    ],
+    map: [
       timeout: 60_000,
       retry_count: 2,
       retry_delay: 500,
       retryable_status_codes: [500, 502, 503, 504],
       # Internal service, no rate limiting
       disable_middleware: true,
-      decode_json: true,
-      telemetry_metadata: %{service: "map"}
-    ]
-  end
-
-  def service_config(:streaming) do
-    [
+      decode_json: true
+    ],
+    streaming: [
       timeout: :infinity,
       stream: true,
       retry_count: 0,
       disable_middleware: true,
       follow_redirects: false,
-      decode_json: false,
-      telemetry_metadata: %{service: "streaming"}
+      decode_json: false
     ]
-  end
+  }
 
-  def service_config(_unknown), do: []
+  @doc false
+  def service_config(service) when is_atom(service) do
+    Map.get(@service_configs, service, [])
+  end
 
   defp add_auth_header(headers, type: :bearer, token: token) when is_binary(token) do
     [{"Authorization", "Bearer #{token}"} | headers]
@@ -300,73 +218,19 @@ defmodule WandererNotifier.Infrastructure.Http do
       if headers != [], do: Keyword.put(client_opts, :headers, headers), else: client_opts
 
     # Add body if provided
-    client_opts = if body != nil, do: Keyword.put(client_opts, :body, body), else: client_opts
-
-    # Configure middleware chain based on options
-    middlewares = configure_middlewares(opts)
-
-    if middlewares != [] do
-      Keyword.put(client_opts, :middlewares, middlewares)
-    else
-      client_opts
-    end
-  end
-
-  defp configure_middlewares(opts) do
-    # Check if middleware was explicitly disabled
-    if Keyword.get(opts, :middlewares) == [] do
-      # Explicit bypass - no middleware at all
-      []
-    else
-      middlewares = []
-
-      # Add retry middleware if retry options are present
-      middlewares =
-        if Keyword.has_key?(opts, :retry_options) do
-          [Retry | middlewares]
-        else
-          middlewares
-        end
-
-      # Add rate limiter middleware if rate limit options are present
-      middlewares =
-        if Keyword.has_key?(opts, :rate_limit_options) do
-          [RateLimiter | middlewares]
-        else
-          middlewares
-        end
-
-      # Add circuit breaker middleware if circuit breaker options are present
-      middlewares =
-        if Keyword.has_key?(opts, :circuit_breaker_options) do
-          [CircuitBreaker | middlewares]
-        else
-          middlewares
-        end
-
-      # If no specific middleware configured, use default chain
-      if middlewares == [] do
-        # Default middleware chain (telemetry is included by default in Client)
-        [Retry, RateLimiter]
-      else
-        middlewares
-      end
-    end
+    if body != nil, do: Keyword.put(client_opts, :body, body), else: client_opts
   end
 
   defp transform_response({:ok, response}) do
-    # Response is already in the correct format from the new client
     {:ok, response}
   end
 
   defp transform_response({:error, {:http_error, status, body}}) do
-    # Transform HTTP errors to standardized format
     error = ErrorHandler.http_error_to_tuple(status)
     ErrorHandler.enrich_error(error, %{body: body})
   end
 
   defp transform_response({:error, reason}) do
-    # Normalize other errors
     ErrorHandler.normalize_error({:error, reason})
   end
 
@@ -385,7 +249,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   @spec get_killmail(integer(), String.t()) :: response()
   def get_killmail(killmail_id, hash) do
     url = build_url(killmail_id, hash)
-    get(url)
+    request(:get, url, nil, [], [])
   end
 
   @spec build_url(integer(), String.t()) :: String.t()

@@ -3,7 +3,6 @@ import Config
 # Enable hot code reloading
 config :exsync,
   reload_timeout: 150,
-  reload_callback: {WandererNotifier.Application, :reload},
   extensions: [".ex", ".exs"]
 
 # Configure watchers for automatic frontend asset building

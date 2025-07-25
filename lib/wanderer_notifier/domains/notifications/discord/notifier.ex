@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   require Logger
   alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Killmail.Cache, as: KillmailCache
+  alias WandererNotifier.Domains.Killmail.Enrichment, as: KillmailCache
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.FeatureFlags

@@ -6,9 +6,90 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
 
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Domains.Killmail.Context
   alias WandererNotifier.Domains.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Shared.Utils.TimeUtils
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Context Definition (merged from Domains.Killmail.Context)
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defmodule Context do
+    @moduledoc """
+    Defines the context for killmail processing, containing all necessary information
+    for processing a killmail through the pipeline.
+
+    This module implements the Access behaviour, allowing field access with pattern matching
+    and providing a consistent interface for passing processing context through the
+    killmail pipeline.
+    """
+
+    @type t :: %__MODULE__{
+            # Essential killmail data
+            killmail_id: String.t() | integer() | nil,
+            system_id: integer() | nil,
+            system_name: String.t() | nil,
+            # A simple map of additional options
+            options: map()
+          }
+
+    defstruct [
+      :killmail_id,
+      :system_id,
+      :system_name,
+      :options
+    ]
+
+    # Implement the Access behaviour for the Context struct
+    @behaviour Access
+
+    @impl Access
+    @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
+    def fetch(struct, key) do
+      Map.fetch(struct, key)
+    end
+
+    # This is not part of the Access behaviour, but a helpful utility function
+    @spec get(t(), atom() | String.t(), any()) :: any()
+    def get(struct, key, default \\ nil) do
+      Map.get(struct, key, default)
+    end
+
+    @impl Access
+    @spec get_and_update(t(), atom() | String.t(), (any() -> {any(), any()})) :: {any(), t()}
+    def get_and_update(struct, key, fun) do
+      current = Map.get(struct, key)
+      {get, update} = fun.(current)
+      {get, Map.put(struct, key, update)}
+    end
+
+    @impl Access
+    @spec pop(t(), atom() | String.t()) :: {any(), t()}
+    def pop(struct, key) do
+      value = Map.get(struct, key)
+      {value, Map.put(struct, key, nil)}
+    end
+
+    @doc """
+    Creates a new context for killmail processing.
+
+    ## Parameters
+    - killmail_id: The ID of the killmail
+    - system_name: The name of the system where the kill occurred
+    - options: Additional options for processing
+
+    ## Returns
+    A new context struct
+    """
+    @spec new(String.t() | integer() | nil, String.t() | nil, map()) :: t()
+    def new(killmail_id \\ nil, system_name \\ nil, options \\ %{}) do
+      %__MODULE__{
+        killmail_id: killmail_id,
+        system_id: nil,
+        system_name: system_name || "unknown",
+        options: options
+      }
+    end
+  end
 
   @type state :: term()
   @type kill_id :: String.t()
@@ -28,7 +109,8 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
   @spec process_websocket_killmail(map(), state) :: {:ok, kill_id | :skipped} | {:error, term()}
   def process_websocket_killmail(killmail, state) do
     # WebSocket killmails come pre-enriched, so we can process them directly
-    killmail_id = Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id")
+    # Data is now normalized to string keys
+    killmail_id = Map.get(killmail, "killmail_id")
 
     if killmail_id do
       case should_notify_websocket_killmail?(killmail) do
@@ -189,8 +271,9 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
 
   defp process_websocket_kill_data(killmail, state) do
     # Create context for WebSocket killmail
-    killmail_id = Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id")
-    system_id = Map.get(killmail, :system_id) || Map.get(killmail, "system_id")
+    # Data is now normalized to string keys
+    killmail_id = Map.get(killmail, "killmail_id")
+    system_id = Map.get(killmail, "system_id")
     system_name = get_system_name(system_id)
 
     context_opts = %{
@@ -223,9 +306,55 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
     end
   end
 
+  @doc """
+  Sends a notification for a killmail.
+  Merged from WandererNotifier.Domains.Killmail.Notification.
+
+  ## Parameters
+    - killmail: The killmail data to send a notification for
+    - kill_id: The ID of the kill for logging purposes
+
+  ## Returns
+    - {:ok, notification_result} on success
+    - {:error, reason} on failure
+  """
+  def send_kill_notification(killmail, kill_id) do
+    try do
+      # Create the notification using the KillmailNotification module
+      notification = killmail_notification_module().create(killmail)
+
+      # Send the notification through the notification service
+      case notification_service_module().send_message(notification) do
+        {:ok, :sent} ->
+          {:ok, notification}
+
+        {:error, :notifications_disabled} ->
+          {:ok, :disabled}
+
+        {:error, reason} = error ->
+          logger_module().notification_error("Failed to send kill notification", %{
+            kill_id: kill_id,
+            error: inspect(reason)
+          })
+
+          error
+      end
+    rescue
+      e ->
+        logger_module().notification_error("Exception sending kill notification", %{
+          kill_id: kill_id,
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        {:error, :notification_failed}
+    end
+  end
+
   defp log_skipped_websocket(killmail, reason) do
-    killmail_id = Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id")
-    system_id = Map.get(killmail, :system_id) || Map.get(killmail, "system_id")
+    # Data is now normalized to string keys
+    killmail_id = Map.get(killmail, "killmail_id")
+    system_id = Map.get(killmail, "system_id")
 
     AppLogger.processor_debug("WebSocket killmail skipped",
       killmail_id: killmail_id,
@@ -240,4 +369,29 @@ defmodule WandererNotifier.Domains.Killmail.Processor do
     do: WandererNotifier.Application.Services.Dependencies.killmail_pipeline()
 
   defp esi_service, do: WandererNotifier.Application.Services.Dependencies.esi_service()
+
+  # Dependency injection helpers (merged from Notification module)
+  defp killmail_notification_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_notification_module,
+      WandererNotifier.Domains.Notifications.KillmailNotification
+    )
+  end
+
+  defp notification_service_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :notification_service_module,
+      WandererNotifier.Domains.Notifications.NotificationService
+    )
+  end
+
+  defp logger_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :logger_module,
+      WandererNotifier.Shared.Logger.Logger
+    )
+  end
 end

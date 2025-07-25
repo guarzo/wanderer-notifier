@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Killmail.Notification
+  alias WandererNotifier.Domains.Killmail.Processor
   alias WandererNotifier.Domains.Notifications.KillmailNotificationMock
   alias WandererNotifier.MockLogger
 
@@ -94,7 +94,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
 
       # Execute - This will test the notification creation part
       # The actual sending is handled by NotificationService
-      result = Notification.send_kill_notification(killmail, killmail.killmail_id)
+      result = Processor.send_kill_notification(killmail, killmail.killmail_id)
 
       # Verify that a notification was created and attempted to be sent
       # Since we can't easily mock NotificationService, we test that
@@ -113,7 +113,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
       end)
 
       # Execute
-      result = Notification.send_kill_notification(error_killmail, error_killmail.killmail_id)
+      result = Processor.send_kill_notification(error_killmail, error_killmail.killmail_id)
 
       # Verify
       assert {:error, :notification_failed} = result

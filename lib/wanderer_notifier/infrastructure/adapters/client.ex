@@ -17,7 +17,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
     # - retry_count: 3  
     # - rate_limit: [requests_per_second: 20, burst_capacity: 40]
     # - middlewares: [Retry, RateLimiter]
-    # - telemetry_metadata: %{service: "esi"}
+    # - decode_json: true
     Keyword.merge([service: :esi], additional_opts)
   end
 

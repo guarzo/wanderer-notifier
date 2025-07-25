@@ -6,7 +6,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   require Logger
 
   alias WandererNotifier.Application.Telemetry
-  alias WandererNotifier.Domains.Killmail.{Context, Killmail, Notification, Schema}
+  alias WandererNotifier.Domains.Killmail.{Killmail, Schema}
+  alias WandererNotifier.Domains.Killmail.Processor
+  alias WandererNotifier.Domains.Killmail.Processor.Context
   alias WandererNotifier.Shared.Logger.ErrorLogger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
@@ -15,10 +17,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec process_killmail(zkb_data, Context.t()) :: result
   def process_killmail(zkb_data, context) do
-    {ctx, kill_id, system_id} = setup_context(zkb_data, context)
+    # Normalize keys to string format for consistency
+    normalized_data = normalize_killmail_keys(zkb_data)
+    {ctx, kill_id, system_id} = setup_context(normalized_data, context)
     Telemetry.processing_started(kill_id)
 
-    run_pipeline(zkb_data, ctx, kill_id, system_id)
+    run_pipeline(normalized_data, ctx, kill_id, system_id)
   rescue
     exception ->
       ErrorLogger.log_kill_error("Pipeline crash",
@@ -27,6 +31,42 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       )
 
       {:error, {:unexpected_error, exception}}
+  end
+
+  # — Data Normalization —————————————————————————————————————————————
+
+  defp normalize_killmail_keys(data) when is_map(data) do
+    data
+    |> ensure_string_key(:killmail_id, "killmail_id")
+    |> ensure_string_key(:system_id, "system_id")
+    |> ensure_string_key(:victim, "victim")
+    |> ensure_string_key(:attackers, "attackers")
+    |> ensure_string_key(:zkb, "zkb")
+    |> ensure_string_key(:kill_time, "kill_time")
+    # Normalize ZKB format
+    |> ensure_string_key(:solar_system_id, "system_id")
+    |> normalize_nested_keys()
+  end
+
+  defp ensure_string_key(data, atom_key, string_key) do
+    case Map.get(data, atom_key) do
+      nil -> data
+      value -> data |> Map.put(string_key, value) |> Map.delete(atom_key)
+    end
+  end
+
+  defp normalize_nested_keys(data) do
+    # Handle nested killmail structure from different sources
+    case get_in(data, ["killmail", Schema.solar_system_id()]) do
+      nil ->
+        case get_in(data, [Schema.solar_system_id()]) do
+          nil -> data
+          system_id -> Map.put(data, "system_id", system_id)
+        end
+
+      system_id ->
+        Map.put(data, "system_id", system_id)
+    end
   end
 
   # — Context & Extraction Helpers —————————————————————————————————————
@@ -39,15 +79,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp get_kill_id(data) do
-    # Try string key first (WebSocket format), then atom key for backward compatibility
-    Map.get(data, "killmail_id") || Map.get(data, :killmail_id) ||
-      Map.get(data, Schema.killmail_id())
+    # Data is now normalized to string keys
+    Map.get(data, "killmail_id") || Map.get(data, Schema.killmail_id())
   end
 
   defp get_system_id(data) do
-    # Try string key first (WebSocket format), then atom key for backward compatibility
+    # Data is now normalized to string keys
     Map.get(data, "system_id") ||
-      Map.get(data, :system_id) ||
       get_in(data, ["killmail", Schema.solar_system_id()]) ||
       get_in(data, [Schema.solar_system_id()])
   end
@@ -59,11 +97,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp run_pipeline(zkb_data, ctx, kill_id, system_id) do
     with {:ok, :new} <- dedupe(kill_id),
-         {:ok, %{should_notify: true}} <- should_notify_tracking?(zkb_data, kill_id, system_id),
+         {:ok, tracking_result} <- should_notify_tracking?(zkb_data, kill_id, system_id),
          {:ok, _km_id} <- extract_killmail_id(zkb_data),
          {:ok, %Killmail{} = killmail} <- build_and_enrich(zkb_data),
-         {:ok, %{should_notify: true}} <- check_requirements(killmail, ctx) do
-      send_notification(killmail, ctx)
+         {:ok, %{should_notify: true}} <-
+           check_requirements_with_validation(killmail, ctx, tracking_result) do
+      send_notification_with_validation(killmail, ctx, tracking_result)
     else
       {:ok, :duplicate} ->
         handle_notification_skipped(kill_id, system_id, :duplicate)
@@ -90,19 +129,32 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # — Tracking-based Notification Filter ——————————————————————————————————
 
   defp should_notify_tracking?(zkb_data, kill_id, system_id) do
-    case {check_system_tracking(system_id), check_character_tracking(zkb_data)} do
-      {{:ok, true}, _} ->
-        {:ok, %{should_notify: true}}
+    # Check validation mode first - this overrides normal tracking logic
+    case validation_module().check_and_consume() do
+      {:ok, :system} ->
+        # Force system notification for validation
+        {:ok, %{should_notify: true, validation_mode: :system}}
 
-      {_, {:ok, true}} ->
-        {:ok, %{should_notify: true}}
+      {:ok, :character} ->
+        # Force character notification for validation
+        {:ok, %{should_notify: true, validation_mode: :character}}
 
-      {{:ok, _}, {:ok, _}} ->
-        {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+      {:ok, :disabled} ->
+        # Normal tracking logic
+        case {check_system_tracking(system_id), check_character_tracking(zkb_data)} do
+          {{:ok, true}, _} ->
+            {:ok, %{should_notify: true}}
 
-      {{:error, r}, _} ->
-        log_flag_error("system tracking", r, kill_id, system_id)
-        {:error, r}
+          {_, {:ok, true}} ->
+            {:ok, %{should_notify: true}}
+
+          {{:ok, _}, {:ok, _}} ->
+            {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+
+          {{:error, r}, _} ->
+            log_flag_error("system tracking", r, kill_id, system_id)
+            {:error, r}
+        end
     end
   end
 
@@ -123,17 +175,16 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp extract_victim(data) do
+    # Data is now normalized to string keys
     Map.get(data, "victim") ||
-      Map.get(data, :victim) ||
       get_in(data, ["killmail", Schema.victim()]) ||
       get_in(data, [Schema.victim()])
   end
 
   defp extract_attackers(data) do
+    # Data is now normalized to string keys
     Map.get(data, "attackers") ||
-      Map.get(data, :attackers) ||
-      get_in(data, ["killmail", "attackers"]) ||
-      get_in(data, ["attackers"]) || []
+      get_in(data, ["killmail", "attackers"]) || []
   end
 
   defp victim_tracked?(%{"character_id" => id}) when is_integer(id) do
@@ -153,7 +204,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp any_attacker_tracked?(_), do: false
 
   defp attacker_tracked?(attacker) do
-    character_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
+    # Data is now normalized to string keys
+    character_id = Map.get(attacker, "character_id")
     character_tracked?(character_id)
   end
 
@@ -212,11 +264,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # — WebSocket Killmail Building ——————————————————————————————————————
 
   defp build_websocket_killmail(data) do
-    killmail_id = Map.get(data, "killmail_id") || Map.get(data, :killmail_id)
-    # Handle both WebSocket format ("system_id") and ZKillboard format ("solar_system_id")
-    system_id =
-      Map.get(data, "system_id") || Map.get(data, :system_id) ||
-        Map.get(data, "solar_system_id") || Map.get(data, :solar_system_id)
+    # Data is now normalized to string keys
+    killmail_id = Map.get(data, "killmail_id")
+    system_id = Map.get(data, "system_id")
 
     # Validate required fields
     cond do
@@ -227,84 +277,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp build_validated_websocket_killmail(killmail_id, system_id, data) do
-    # Build killmail struct from pre-enriched WebSocket data
-    killmail = %Killmail{
-      killmail_id: to_string(killmail_id),
-      system_id: system_id,
-      system_name: get_system_name(system_id),
-      victim: transform_websocket_victim(Map.get(data, "victim") || Map.get(data, :victim)),
-      attackers:
-        transform_websocket_attackers(Map.get(data, "attackers") || Map.get(data, :attackers, [])),
-      zkb: Map.get(data, "zkb") || Map.get(data, :zkb, %{}),
-      esi_data: %{
-        "killmail_id" => killmail_id,
-        "solar_system_id" => system_id,
-        "killmail_time" => Map.get(data, "kill_time") || Map.get(data, :kill_time)
-      },
-      # Mark as enriched since it came from WebSocket
-      enriched?: true
-    }
-
+    # Use the new simplified constructor
+    killmail = Killmail.from_websocket_data(to_string(killmail_id), system_id, data)
     {:ok, killmail}
   end
 
-  defp transform_websocket_victim(nil), do: %{}
-
-  defp transform_websocket_victim(victim) when is_map(victim) do
-    fields = [
-      "character_id",
-      "character_name",
-      "corporation_id",
-      "corporation_name",
-      "alliance_id",
-      "alliance_name",
-      "ship_type_id",
-      "ship_name",
-      "damage_taken"
-    ]
-
-    Map.new(fields, fn field ->
-      atom_field = String.to_atom(field)
-      {field, Map.get(victim, atom_field) || Map.get(victim, field)}
-    end)
-  end
-
-  defp transform_websocket_attackers(nil), do: []
-
-  defp transform_websocket_attackers(attackers) when is_list(attackers) do
-    Enum.map(attackers, &transform_attacker/1)
-  end
-
-  defp transform_websocket_attackers(_), do: []
-
-  defp transform_attacker(attacker) do
-    string_fields = [
-      "character_id",
-      "character_name",
-      "corporation_id",
-      "corporation_name",
-      "alliance_id",
-      "alliance_name",
-      "ship_type_id",
-      "ship_name",
-      "damage_done",
-      "security_status",
-      "weapon_type_id"
-    ]
-
-    # Take existing string keys first, then atom keys, with defaults
-    base = Map.take(attacker, string_fields)
-
-    atom_values =
-      string_fields
-      |> Enum.filter(&(not Map.has_key?(base, &1)))
-      |> Map.new(fn field ->
-        {field, Map.get(attacker, String.to_atom(field))}
-      end)
-
-    Map.merge(base, atom_values)
-    |> Map.put_new("final_blow", false)
-  end
+  # Transform functions removed - now handled by Killmail.from_websocket_data/3
 
   # — Notification-enabled Filter ——————————————————————————————————————
 
@@ -339,11 +317,42 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp notification_reason(_),
     do: :kill_notifications_disabled
 
+  # — Validation-aware Notification Checking ——————————————————————————————
+
+  defp check_requirements_with_validation(_killmail, _ctx, %{should_notify: false} = result) do
+    # If tracking says no notification, respect that even in validation mode
+    {:ok, result}
+  end
+
+  defp check_requirements_with_validation(_killmail, _ctx, %{validation_mode: validation_mode}) do
+    # In validation mode, override normal requirements
+    {:ok, %{should_notify: true, validation_mode: validation_mode}}
+  end
+
+  defp check_requirements_with_validation(killmail, ctx, _tracking_result) do
+    # Normal requirements check
+    check_requirements(killmail, ctx)
+  end
+
   # — Notification Sending & Skipping —————————————————————————————————————
+
+  defp send_notification_with_validation(killmail, ctx, %{validation_mode: validation_mode}) do
+    # Log validation mode usage
+    AppLogger.kill_info(
+      "🧪 VALIDATION MODE: #{validation_mode} - Processing killmail #{killmail.killmail_id} as #{validation_mode} notification"
+    )
+
+    send_notification(killmail, ctx)
+  end
+
+  defp send_notification_with_validation(killmail, ctx, _tracking_result) do
+    # Normal notification sending
+    send_notification(killmail, ctx)
+  end
 
   @spec send_notification(Killmail.t(), Context.t()) :: result
   defp send_notification(%Killmail{} = km, _ctx) do
-    case Notification.send_kill_notification(km, km.killmail_id) do
+    case Processor.send_kill_notification(km, km.killmail_id) do
       {:ok, _} ->
         Telemetry.processing_completed(km.killmail_id, {:ok, :notified})
         Telemetry.killmail_notified(km.killmail_id, get_system_name_from_killmail(km))
@@ -430,4 +439,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp killmail_cache_module,
     do: WandererNotifier.Application.Services.Dependencies.killmail_cache_module()
+
+  defp validation_module, do: WandererNotifier.Shared.Utils.ValidationManager
 end

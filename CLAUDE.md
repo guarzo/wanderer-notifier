@@ -49,7 +49,7 @@ docker-compose up -d  # Run locally with Docker
 
 The application follows a refactored, domain-driven design with these core components:
 
-### Refactored Module Structure
+### Refactored Module Structure (Post-Sprint 2)
 ```
 lib/wanderer_notifier/
 ├── domains/                          # Business logic domains
@@ -57,16 +57,33 @@ lib/wanderer_notifier/
 │   │   ├── websocket_client.ex       # Real-time data ingestion
 │   │   ├── fallback_handler.ex       # HTTP fallback mechanism  
 │   │   ├── pipeline.ex               # Kill processing pipeline
+│   │   ├── killmail.ex               # Flattened killmail struct (195 lines)
 │   │   └── wanderer_kills_api.ex     # WandererKills API client
+│   ├── tracking/                     # Unified tracking domain
+│   │   ├── clients/
+│   │   │   └── unified_client.ex     # Single client for characters + systems
+│   │   ├── handlers/
+│   │   │   ├── shared_event_logic.ex # Common event processing patterns
+│   │   │   ├── character_handler.ex  # Character-specific event handling
+│   │   │   └── system_handler.ex     # System-specific event handling
+│   │   └── entities/
+│   │       ├── character.ex          # Character entity with Access behavior
+│   │       └── system.ex             # System entity with validation
 │   ├── notifications/                # Notification handling domain
 │   │   ├── notifiers/discord/        # Discord-specific notifiers
-│   │   ├── formatters/               # Message formatting
+│   │   ├── formatters/
+│   │   │   ├── unified.ex            # Single formatter for all types
+│   │   │   └── utilities.ex          # Shared formatting utilities
 │   │   └── determiners/              # Notification logic
 │   └── license/                      # License management domain
 ├── infrastructure/                   # Shared infrastructure
 │   ├── adapters/                     # External service adapters (ESI)
-│   ├── cache/                        # Unified caching system
-│   ├── http/                         # Centralized HTTP client
+│   ├── cache/                        # Simplified caching system (3 modules)
+│   │   ├── cache.ex                  # Direct Cachex wrapper
+│   │   ├── config_simple.ex          # Simple TTL configuration
+│   │   └── keys_simple.ex            # Consistent key generation
+│   ├── http/
+│   │   └── http.ex                   # Single HTTP client with request/5
 │   └── messaging/                    # Event handling infrastructure
 ├── map/                              # Map tracking via SSE
 │   ├── sse_client.ex                 # SSE connection management
@@ -85,11 +102,21 @@ lib/wanderer_notifier/
 2. **Fallback Handler** (`lib/wanderer_notifier/domains/killmail/fallback_handler.ex`) - Automatically switches to HTTP API when WebSocket connection fails, ensuring data continuity
 3. **WandererKills API** (`lib/wanderer_notifier/domains/killmail/wanderer_kills_api.ex`) - Type-safe HTTP client for WandererKills API with bulk loading support
 4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time connection to map API for system and character updates
-5. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline.ex`) - Processes both pre-enriched WebSocket killmails and legacy data
-6. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
-7. **Map Integration** (`lib/wanderer_notifier/map/`) - Tracks wormhole systems and character locations via SSE real-time events
-8. **Notification System** (`lib/wanderer_notifier/domains/notifications/`) - Determines notification eligibility and formats messages
-9. **Discord Notifiers** (`lib/wanderer_notifier/domains/notifications/notifiers/discord/`) - Sends formatted notifications to Discord channels
+5. **Unified Tracking Client** (`lib/wanderer_notifier/domains/tracking/clients/unified_client.ex`) - Single client handling both characters and systems with entity context switching
+6. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline.ex`) - Processes flattened killmail data with string key normalization
+7. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
+8. **Shared Event Logic** (`lib/wanderer_notifier/domains/tracking/handlers/shared_event_logic.ex`) - Common event processing patterns for all tracking domains
+9. **Unified Notification Formatter** (`lib/wanderer_notifier/domains/notifications/formatters/unified.ex`) - Single formatter handling all notification types
+10. **Discord Notifiers** (`lib/wanderer_notifier/domains/notifications/notifiers/discord/`) - Sends formatted notifications to Discord channels
+
+### Unified Tracking Architecture (Sprint 2)
+The tracking system has been unified to reduce code duplication and simplify maintenance:
+
+- **Single Client**: `UnifiedClient` handles both characters and systems using Process dictionary for entity context switching
+- **Shared Event Logic**: Common patterns for event processing, entity extraction, and cache operations
+- **Entity-Specific Handlers**: Character and system handlers extend shared logic with domain-specific customization
+- **Flattened Entities**: Character and System structs with direct field access and validation
+- **Consistent APIs**: All tracking operations follow the same `{:ok, result}` | `{:error, reason}` pattern
 
 ### Key Infrastructure Components (Post-Sprint 2 Simplification)
 - **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
@@ -146,7 +173,11 @@ All HTTP requests go through the unified `WandererNotifier.Infrastructure.Http` 
 
 Example usage:
 ```elixir
-# Simple GET with service configuration
+# Single request/5 interface for all HTTP methods
+Http.request(:get, url, [], nil, service: :esi)
+Http.request(:post, url, [], body, service: :wanderer_kills, auth: [type: :bearer, token: token])
+
+# Legacy convenience methods (deprecated, use request/5)
 Http.get(url, [], service: :esi)
 
 # POST with authentication

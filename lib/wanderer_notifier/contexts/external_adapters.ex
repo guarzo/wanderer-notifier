@@ -129,7 +129,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   defdelegate validate_license(api_token, license_key),
-    to: WandererNotifier.Domains.License.Client,
+    to: WandererNotifier.Domains.License.Service,
     as: :validate_bot
 
   @doc """
