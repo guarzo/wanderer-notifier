@@ -775,11 +775,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         |> Enum.map(&extract_system_id/1)
         |> Enum.filter(&valid_system_id?/1)
         |> Enum.uniq()
-      
+
       {:error, reason} ->
         WandererNotifier.Shared.Logger.Logger.error(
           "Failed to get tracked systems: #{inspect(reason)}"
         )
+
         []
     end
   rescue
@@ -814,11 +815,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       {:ok, characters} ->
         log_raw_characters(characters)
         process_character_list(characters)
-      
+
       {:error, reason} ->
         WandererNotifier.Shared.Logger.Logger.error(
           "Failed to get tracked characters: #{inspect(reason)}"
         )
+
         []
     end
   rescue

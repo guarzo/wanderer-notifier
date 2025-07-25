@@ -136,7 +136,10 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   defp handle_system_event("deleted_system", event, map_slug) do
-    WandererNotifier.Domains.Tracking.Handlers.SystemHandler.handle_entity_removed(event, map_slug)
+    WandererNotifier.Domains.Tracking.Handlers.SystemHandler.handle_entity_removed(
+      event,
+      map_slug
+    )
   end
 
   defp handle_system_event("system_metadata_changed", event, map_slug) do

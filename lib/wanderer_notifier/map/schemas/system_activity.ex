@@ -194,7 +194,8 @@ defmodule WandererNotifier.Map.Schemas.SystemActivity do
   @doc """
   Creates a changeset from existing MapSystem struct.
   """
-  @spec from_map_system(WandererNotifier.Domains.Tracking.Entities.System.t()) :: Ecto.Changeset.t()
+  @spec from_map_system(WandererNotifier.Domains.Tracking.Entities.System.t()) ::
+          Ecto.Changeset.t()
   def from_map_system(map_system) do
     attrs = %{
       solar_system_id: parse_system_id(map_system.solar_system_id),

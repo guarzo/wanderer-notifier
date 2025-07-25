@@ -223,16 +223,56 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     # Stub Discord behavior callbacks with correct signatures
     stub(WandererNotifier.Test.Mocks.Discord, :notify, fn _notification -> :ok end)
     stub(WandererNotifier.Test.Mocks.Discord, :send_message, fn _message, _channel -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_embed, fn _title, _description, _color, _fields, _channel -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_file, fn _filename, _file_data, _title, _description, _channel -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_image_embed, fn _title, _description, _image_url, _color, _channel -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_enriched_kill_embed, fn _killmail, _kill_id -> :ok end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_embed, fn _title,
+                                                              _description,
+                                                              _color,
+                                                              _fields,
+                                                              _channel ->
+      :ok
+    end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_file, fn _filename,
+                                                             _file_data,
+                                                             _title,
+                                                             _description,
+                                                             _channel ->
+      :ok
+    end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_image_embed, fn _title,
+                                                                    _description,
+                                                                    _image_url,
+                                                                    _color,
+                                                                    _channel ->
+      :ok
+    end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_enriched_kill_embed, fn _killmail, _kill_id ->
+      :ok
+    end)
+
     stub(WandererNotifier.Test.Mocks.Discord, :send_new_system_notification, fn _system -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_new_tracked_character_notification, fn _character -> :ok end)
+
+    stub(
+      WandererNotifier.Test.Mocks.Discord,
+      :send_new_tracked_character_notification,
+      fn _character -> :ok end
+    )
+
     stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _kill_data -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail, _type, _opts -> :ok end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
+                                                                          _type,
+                                                                          _opts ->
+      :ok
+    end)
+
     stub(WandererNotifier.Test.Mocks.Discord, :send_discord_embed, fn _embed -> {:ok, %{}} end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_notification, fn _type, _data -> {:ok, %{}} end)
+
+    stub(WandererNotifier.Test.Mocks.Discord, :send_notification, fn _type, _data ->
+      {:ok, %{}}
+    end)
   end
 
   @doc """

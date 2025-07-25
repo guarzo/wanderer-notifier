@@ -232,7 +232,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
         final_entities,
         cache_ttl()
       )
-      
+
       # Return the entities list wrapped in {:ok, ...}
       {:ok, final_entities}
     else

@@ -102,7 +102,9 @@ defmodule WandererNotifier.Map.Initializer do
 
   defp fetch_characters do
     execute_timed_fetch(
-      fn -> WandererNotifier.Domains.Tracking.Clients.UnifiedClient.fetch_and_cache_characters() end,
+      fn ->
+        WandererNotifier.Domains.Tracking.Clients.UnifiedClient.fetch_and_cache_characters()
+      end,
       "characters"
     )
   end
