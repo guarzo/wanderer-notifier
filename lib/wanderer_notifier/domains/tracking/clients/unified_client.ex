@@ -13,6 +13,14 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Application.Services.NotificationService
 
+  # Entity context struct to replace process dictionary usage
+  defstruct [:entity_type, :config]
+
+  @type t :: %__MODULE__{
+          entity_type: atom(),
+          config: map()
+        }
+
   # Entity type configurations
   @entity_configs %{
     characters: %{
@@ -40,6 +48,19 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
       extract_path: ["data", "systems"]
     }
   }
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Context Management Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Creates a new entity context for the given entity type.
+  """
+  @spec new_context(atom()) :: t()
+  def new_context(entity_type) when entity_type in [:characters, :systems] do
+    config = @entity_configs[entity_type]
+    %__MODULE__{entity_type: entity_type, config: config}
+  end
 
   # ══════════════════════════════════════════════════════════════════════════════
   # BaseMapClient Implementation (Generic)
@@ -341,31 +362,65 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
   # ══════════════════════════════════════════════════════════════════════════════
   # Process Variable Management (for entity context)
   # ══════════════════════════════════════════════════════════════════════════════
+  # 
+  # NOTE: This uses Process dictionary for entity context management.
+  # While not ideal for concurrency, it provides a simple way to thread
+  # entity type through all BaseMapClient callback functions without
+  # changing the callback interface. Future improvement: pass entity_type
+  # as parameter through the call chain or use a context struct.
 
-  defp with_entity_context(entity_type, fun) do
+  # Executes a function with the given entity context set in the process dictionary.
+  # Ensures proper cleanup of the context even if the function raises an exception.
+  @spec with_entity_context(atom(), (-> term())) :: term()
+  defp with_entity_context(entity_type, fun) when entity_type in [:characters, :systems] do
     old_type = Process.get(:current_entity_type)
     Process.put(:current_entity_type, entity_type)
 
     try do
       fun.()
     after
-      case old_type do
-        nil -> Process.delete(:current_entity_type)
-        type -> Process.put(:current_entity_type, type)
-      end
+      # Always restore the previous state to prevent leaking context
+      restore_entity_context(old_type)
     end
   end
 
+  # Gets the current entity type from the process dictionary with a safe default.
+  @spec get_current_entity_type() :: atom()
   defp get_current_entity_type do
-    Process.get(:current_entity_type, :systems)
+    case Process.get(:current_entity_type) do
+      # Safe default
+      nil ->
+        :systems
+
+      type when type in [:characters, :systems] ->
+        type
+
+      invalid ->
+        # Log warning and return safe default if invalid type found
+        require Logger
+        Logger.warning("Invalid entity type in process dictionary: #{inspect(invalid)}")
+        :systems
+    end
   end
 
+  # Safely restores the previous entity context state.
+  @spec restore_entity_context(atom() | nil) :: :ok
+  defp restore_entity_context(nil), do: Process.delete(:current_entity_type)
+  defp restore_entity_context(type), do: Process.put(:current_entity_type, type)
+
+  # Safely retrieves entity configuration with proper validation.
+  @spec get_entity_config(atom(), term()) :: term()
   defp get_entity_config(key, default) do
     entity_type = get_current_entity_type()
 
     case @entity_configs[entity_type] do
-      nil -> default
-      config -> Map.get(config, key, default)
+      nil ->
+        require Logger
+        Logger.warning("No configuration found for entity type: #{inspect(entity_type)}")
+        default
+
+      config ->
+        Map.get(config, key, default)
     end
   end
 

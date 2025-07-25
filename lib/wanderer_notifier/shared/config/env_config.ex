@@ -142,25 +142,25 @@ defmodule WandererNotifier.Shared.Config.EnvConfig do
 
   defp get_env_value({env_name, type, default}) do
     env_value = System.get_env(env_name)
-    parse_env_value(env_value, type, default)
+    parse_env_value(env_value, type, default, env_name)
   end
 
-  defp parse_env_value(nil, _type, :required) do
-    raise ArgumentError, "Required environment variable is not set"
+  defp parse_env_value(nil, _type, :required, env_name) do
+    raise ArgumentError, "Required environment variable #{env_name} is not set"
   end
 
-  defp parse_env_value(nil, _type, default), do: default
+  defp parse_env_value(nil, _type, default, _env_name), do: default
 
-  defp parse_env_value("", _type, :required) do
-    raise ArgumentError, "Required environment variable is empty"
+  defp parse_env_value("", _type, :required, env_name) do
+    raise ArgumentError, "Required environment variable #{env_name} is empty"
   end
 
-  defp parse_env_value("", _type, default), do: default
+  defp parse_env_value("", _type, default, _env_name), do: default
 
-  defp parse_env_value(value, :string, _default), do: value
-  defp parse_env_value(value, :integer, default), do: Utils.parse_int(value, default)
-  defp parse_env_value(value, :boolean, default), do: Utils.parse_bool(value, default)
-  defp parse_env_value(value, :comma_list, _default), do: Utils.parse_comma_list(value)
+  defp parse_env_value(value, :string, _default, _env_name), do: value
+  defp parse_env_value(value, :integer, default, _env_name), do: Utils.parse_int(value, default)
+  defp parse_env_value(value, :boolean, default, _env_name), do: Utils.parse_bool(value, default)
+  defp parse_env_value(value, :comma_list, _default, _env_name), do: Utils.parse_comma_list(value)
 
   defp filter_config(keys) do
     keys

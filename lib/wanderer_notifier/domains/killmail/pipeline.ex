@@ -338,11 +338,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   # — Notification Sending & Skipping —————————————————————————————————————
 
+  # Validation mode log message format
+  @validation_mode_log_format "🧪 VALIDATION MODE: %{mode} - Processing killmail %{killmail_id} as %{mode} notification"
+
   defp send_notification_with_validation(killmail, ctx, %{validation_mode: validation_mode}) do
-    # Log validation mode usage
-    AppLogger.kill_info(
-      "🧪 VALIDATION MODE: #{validation_mode} - Processing killmail #{killmail.killmail_id} as #{validation_mode} notification"
-    )
+    # Log validation mode usage with consistent format
+    AppLogger.kill_info(format_validation_mode_log(validation_mode, killmail.killmail_id))
 
     send_notification(killmail, ctx)
   end
@@ -443,4 +444,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     do: WandererNotifier.Application.Services.Dependencies.killmail_cache_module()
 
   defp validation_module, do: WandererNotifier.Shared.Utils.ValidationManager
+
+  # Helper function for consistent validation mode logging
+  defp format_validation_mode_log(mode, killmail_id) do
+    @validation_mode_log_format
+    |> String.replace("%{mode}", to_string(mode))
+    |> String.replace("%{killmail_id}", to_string(killmail_id))
+  end
 end

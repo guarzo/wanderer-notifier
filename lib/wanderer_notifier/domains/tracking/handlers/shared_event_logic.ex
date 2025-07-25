@@ -41,12 +41,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   def handle_entity_event(event, map_slug, event_type, extract_fn, cache_fn, notify_fn) do
     payload = Map.get(event, "payload", %{})
 
-    # Log the full payload for debugging and monitoring
+    # Log payload information with size limiting to prevent log flooding
     AppLogger.api_info("#{event_type} payload received",
       map_slug: map_slug,
       event_type: event_type,
-      payload: inspect(payload),
-      payload_keys: Map.keys(payload)
+      payload: truncate_payload(payload),
+      payload_keys: Map.keys(payload),
+      payload_size: map_size(payload)
     )
 
     AppLogger.api_info("Processing #{event_type} event",
@@ -203,4 +204,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       end
     end
   end
+
+  # Helper function to truncate large payloads for logging
+  @max_payload_log_length 500
+  defp truncate_payload(payload) when is_map(payload) do
+    inspected = inspect(payload)
+
+    if String.length(inspected) > @max_payload_log_length do
+      String.slice(inspected, 0, @max_payload_log_length) <> "... [truncated]"
+    else
+      inspected
+    end
+  end
+
+  defp truncate_payload(payload), do: inspect(payload)
 end

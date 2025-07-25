@@ -32,6 +32,12 @@ defmodule WandererNotifierWeb.DashboardController do
     end
   end
 
+  # TODO: Refactor this function to use Phoenix templates
+  # Current implementation has inline HTML/CSS/JS which should be moved to:
+  # - HTML structure: lib/wanderer_notifier_web/templates/dashboard/index.html.heex
+  # - CSS styles: priv/static/css/dashboard.css  
+  # - JavaScript: priv/static/js/dashboard.js or Phoenix LiveView/hooks
+  # - Reusable components: lib/wanderer_notifier_web/components/dashboard_components.ex
   defp build_dashboard_html(data) do
     """
     <!DOCTYPE html>

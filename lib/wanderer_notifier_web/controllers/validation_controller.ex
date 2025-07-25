@@ -16,25 +16,12 @@ defmodule WandererNotifierWeb.ValidationController do
   Next killmail will be processed as a system notification.
   """
   def enable_system(conn, _params) do
-    case Manager.enable_system_validation() do
-      {:ok, state} ->
-        Logger.info("System validation enabled via API")
+    result = Manager.enable_system_validation()
 
-        conn
-        |> put_status(:ok)
-        |> json(%{
-          success: true,
-          message:
-            "System validation enabled. Next killmail will be processed as system notification.",
-          mode: state.mode,
-          expires_at: state.expires_at
-        })
+    success_message =
+      "System validation enabled. Next killmail will be processed as system notification."
 
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{success: false, error: inspect(reason)})
-    end
+    handle_manager_response(conn, result, success_message)
   end
 
   @doc """
@@ -42,24 +29,42 @@ defmodule WandererNotifierWeb.ValidationController do
   Next killmail will be processed as a character notification.
   """
   def enable_character(conn, _params) do
-    case Manager.enable_character_validation() do
+    result = Manager.enable_character_validation()
+
+    success_message =
+      "Character validation enabled. Next killmail will be processed as character notification."
+
+    handle_manager_response(conn, result, success_message)
+  end
+
+  # Private helper function to handle Manager responses consistently
+  defp handle_manager_response(conn, result, success_message) do
+    case result do
       {:ok, state} ->
-        Logger.info("Character validation enabled via API")
+        Logger.info("#{success_message} via API")
+
+        response = %{
+          success: true,
+          message: success_message,
+          mode: state.mode
+        }
+
+        # Include expires_at if present
+        response =
+          if Map.has_key?(state, :expires_at) do
+            Map.put(response, :expires_at, state.expires_at)
+          else
+            response
+          end
 
         conn
         |> put_status(:ok)
-        |> json(%{
-          success: true,
-          message:
-            "Character validation enabled. Next killmail will be processed as character notification.",
-          mode: state.mode,
-          expires_at: state.expires_at
-        })
+        |> json(response)
 
-      {:error, reason} ->
+      {:error, _reason} ->
         conn
         |> put_status(:internal_server_error)
-        |> json(%{success: false, error: inspect(reason)})
+        |> json(%{success: false, error: "Internal server error"})
     end
   end
 

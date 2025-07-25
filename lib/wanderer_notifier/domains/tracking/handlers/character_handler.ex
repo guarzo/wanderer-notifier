@@ -78,14 +78,17 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   }
   ```
   """
+  @deprecated "Use handle_entity_added/2 instead"
   def handle_character_added(event, map_slug) do
     handle_entity_added(event, map_slug)
   end
 
+  @deprecated "Use handle_entity_removed/2 instead"
   def handle_character_removed(event, map_slug) do
     handle_entity_removed(event, map_slug)
   end
 
+  @deprecated "Use handle_entity_updated/2 instead"
   def handle_character_updated(event, map_slug) do
     handle_entity_updated(event, map_slug)
   end
