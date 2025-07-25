@@ -7,7 +7,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Tracking.Entities.{Character, System}
   alias WandererNotifier.Domains.Notifications.Formatters.Utilities, as: Utils
-  # alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Public API
@@ -67,10 +66,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
   defp build_kill_thumbnail(%Killmail{} = killmail) do
     cond do
       killmail.victim_character_id ->
-        Utils.build_thumbnail(Utils.character_portrait_url(killmail.victim_character_id))
+        killmail.victim_character_id
+        |> Utils.character_portrait_url()
+        |> Utils.build_thumbnail()
 
       killmail.victim_ship_type_id ->
-        Utils.build_thumbnail(Utils.ship_render_url(killmail.victim_ship_type_id))
+        killmail.victim_ship_type_id
+        |> Utils.ship_render_url()
+        |> Utils.build_thumbnail()
 
       true ->
         nil
@@ -192,7 +195,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
       description: build_character_description(character),
       color: Utils.get_color(:character),
       url: Utils.evewho_url(character.character_id),
-      thumbnail: Utils.build_thumbnail(Utils.character_portrait_url(character.character_id)),
+      thumbnail:
+        character.character_id |> Utils.character_portrait_url() |> Utils.build_thumbnail(),
       fields: build_character_fields(character),
       footer: Utils.build_footer("Character ID: #{character.character_id}")
     }
@@ -260,13 +264,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
       title: "New System Tracked: #{system.name}",
       description: build_system_description(system, is_wormhole),
       color:
-        Utils.get_color(
-          if is_wormhole, do: :wormhole, else: Utils.security_color(system.type_description)
-        ),
+        if(is_wormhole, do: :wormhole, else: Utils.security_color(system.type_description))
+        |> Utils.get_color(),
       thumbnail:
-        Utils.build_thumbnail(
-          Utils.get_system_icon(if is_wormhole, do: :wormhole, else: system.type_description)
-        ),
+        if(is_wormhole, do: :wormhole, else: system.type_description)
+        |> Utils.get_system_icon()
+        |> Utils.build_thumbnail(),
       fields: build_system_fields(system, is_wormhole),
       footer: Utils.build_footer("System ID: #{system.solar_system_id}")
     }
@@ -286,49 +289,54 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
   end
 
   defp build_system_fields(%System{} = system, is_wormhole) do
-    fields = []
+    []
+    |> add_system_field(system)
+    |> add_shattered_field(system, is_wormhole)
+    |> add_statics_field(system, is_wormhole)
+    |> add_region_field(system)
+    |> add_effect_field(system, is_wormhole)
+    |> Enum.reverse()
+  end
 
-    # System name with link
+  defp add_system_field(fields, system) do
     system_link = Utils.create_system_link(system.name, system.solar_system_id)
-    fields = [Utils.build_field("System", system_link, true) | fields]
+    [Utils.build_field("System", system_link, true) | fields]
+  end
 
-    # Shattered (wormholes only)
-    fields =
-      if is_wormhole && system.is_shattered do
-        [Utils.build_field("Shattered", "Yes", true) | fields]
-      else
-        fields
-      end
+  defp add_shattered_field(fields, system, is_wormhole) do
+    if is_wormhole && system.is_shattered do
+      [Utils.build_field("Shattered", "Yes", true) | fields]
+    else
+      fields
+    end
+  end
 
-    # Statics (wormholes only)
-    fields =
-      if is_wormhole && system.statics && length(system.statics) > 0 do
-        statics_text = format_statics(system.statics)
-        [Utils.build_field("Statics", statics_text, true) | fields]
-      else
-        fields
-      end
+  defp add_statics_field(fields, system, is_wormhole) do
+    if is_wormhole && system.statics && length(system.statics) > 0 do
+      statics_text = format_statics(system.statics)
+      [Utils.build_field("Statics", statics_text, true) | fields]
+    else
+      fields
+    end
+  end
 
-    # Region
-    fields =
-      if system.region_name do
-        region_link =
-          Utils.create_link(system.region_name, Utils.dotlan_region_url(system.region_name))
+  defp add_region_field(fields, system) do
+    if system.region_name do
+      region_link =
+        Utils.create_link(system.region_name, Utils.dotlan_region_url(system.region_name))
 
-        [Utils.build_field("Region", region_link, true) | fields]
-      else
-        fields
-      end
+      [Utils.build_field("Region", region_link, true) | fields]
+    else
+      fields
+    end
+  end
 
-    # Effect (wormholes only)
-    fields =
-      if is_wormhole && system.effect_name do
-        [Utils.build_field("Effect", system.effect_name, true) | fields]
-      else
-        fields
-      end
-
-    Enum.reverse(fields)
+  defp add_effect_field(fields, system, is_wormhole) do
+    if is_wormhole && system.effect_name do
+      [Utils.build_field("Effect", system.effect_name, true) | fields]
+    else
+      fields
+    end
   end
 
   defp format_statics(statics) when is_list(statics) do

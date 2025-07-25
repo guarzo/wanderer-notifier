@@ -2,7 +2,6 @@ defmodule WandererNotifier.Domains.Notifications.Utils do
   @moduledoc """
   Utility functions for notification formatting and data extraction.
   """
-  alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Domains.Notifications.Formatters.CharacterUtils
 
   @doc """
@@ -87,20 +86,23 @@ defmodule WandererNotifier.Domains.Notifications.Utils do
   Extracts a character ID from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_character_id(Character.t()) :: String.t() | nil
+  @spec extract_character_id(WandererNotifier.Domains.Tracking.Entities.Character.t()) ::
+          String.t() | nil
   defdelegate extract_character_id(character), to: CharacterUtils
 
   @doc """
   Extracts a character name from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_character_name(Character.t()) :: String.t() | nil
+  @spec extract_character_name(WandererNotifier.Domains.Tracking.Entities.Character.t()) ::
+          String.t() | nil
   defdelegate extract_character_name(character), to: CharacterUtils
 
   @doc """
   Extracts a corporation name from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t() | nil
+  @spec extract_corporation_name(WandererNotifier.Domains.Tracking.Entities.Character.t()) ::
+          String.t() | nil
   defdelegate extract_corporation_name(character), to: CharacterUtils
 end

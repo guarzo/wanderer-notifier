@@ -6,7 +6,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   while using the shared event handling patterns.
   """
 
-  require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Infrastructure.Cache

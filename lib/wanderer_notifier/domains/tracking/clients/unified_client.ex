@@ -57,7 +57,16 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
 
   @impl true
   def cache_ttl do
-    Cache.ttl_for(:map_data)
+    entity_type = get_current_entity_type()
+
+    case entity_type do
+      # 24 hours for character data
+      :characters -> Cache.character_ttl()
+      # 1 hour for system information
+      :systems -> Cache.system_ttl()
+      # fallback
+      _ -> Cache.ttl_for(:map_data)
+    end
   end
 
   @impl true
@@ -76,15 +85,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
         # Handle different response structures
         case {entity_type, data} do
           {:characters, data} when is_list(data) ->
-            # Flatten nested character structure
-            characters =
-              data
-              |> Enum.flat_map(fn
-                %{"characters" => chars} when is_list(chars) -> chars
-                _ -> []
-              end)
-
-            {:ok, characters}
+            {:ok, flatten_character_data(data)}
 
           {:systems, data} when is_list(data) ->
             {:ok, data}
@@ -106,28 +107,14 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
     entity_type = get_current_entity_type()
     config = @entity_configs[entity_type]
 
-    validator_fun = fn item ->
-      case apply(config.validator, [item]) do
-        {:ok, _} -> true
-        {:error, _} -> false
-      end
-    end
+    validator_fun = create_validator_function(config)
 
-    case ValidationUtils.validate_list(items, validator_fun) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:invalid_items, indices}} ->
-        AppLogger.api_error("#{entity_type} data validation failed",
-          count: length(items),
-          invalid_indices: indices,
-          error: "Invalid #{entity_type} at positions: #{Enum.join(indices, ", ")}"
-        )
-
-        {:error, :invalid_data}
-    end
+    items
+    |> ValidationUtils.validate_list(validator_fun)
+    |> handle_validation_result(entity_type, items)
   end
 
+  @impl true
   def validate_data(other) do
     entity_type = get_current_entity_type()
 
@@ -137,6 +124,30 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
     )
 
     {:error, :invalid_data}
+  end
+
+  defp create_validator_function(config) do
+    fn item ->
+      case apply(config.validator, [item]) do
+        {:ok, _} -> true
+        {:error, _} -> false
+      end
+    end
+  end
+
+  defp handle_validation_result({:ok, _}, _entity_type, _items), do: :ok
+
+  defp handle_validation_result({:error, {:invalid_items, indices}}, entity_type, items) do
+    log_validation_error(entity_type, items, indices)
+    {:error, :invalid_data}
+  end
+
+  defp log_validation_error(entity_type, items, indices) do
+    AppLogger.api_error("#{entity_type} data validation failed",
+      count: length(items),
+      invalid_indices: indices,
+      error: "Invalid #{entity_type} at positions: #{Enum.join(indices, ", ")}"
+    )
   end
 
   @impl true
@@ -356,5 +367,14 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
       nil -> default
       config -> Map.get(config, key, default)
     end
+  end
+
+  # Helper function to flatten nested character data structure
+  defp flatten_character_data(data) do
+    data
+    |> Enum.flat_map(fn
+      %{"characters" => chars} when is_list(chars) -> chars
+      _ -> []
+    end)
   end
 end

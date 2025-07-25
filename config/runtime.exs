@@ -46,7 +46,11 @@ case EnvConfig.validate_required() do
   errors ->
     missing_vars = Enum.map(errors, fn {:error, _key, env_name} -> env_name end)
     IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
-    # Don't exit in development, just warn
+
+    # Exit immediately in production, warn in other environments
+    if Mix.env() == :prod do
+      System.halt(1)
+    end
 end
 
 # ══════════════════════════════════════════════════════════════════════════════

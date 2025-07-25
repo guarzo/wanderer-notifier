@@ -388,7 +388,9 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
+      cache_key = "map:systems"
+
+      expect(WandererNotifier.MockCache, :get, fn ^cache_key ->
         {:ok, systems}
       end)
 

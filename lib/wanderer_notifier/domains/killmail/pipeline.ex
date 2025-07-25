@@ -278,8 +278,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp build_validated_websocket_killmail(killmail_id, system_id, data) do
     # Use the new simplified constructor
-    killmail = Killmail.from_websocket_data(to_string(killmail_id), system_id, data)
-    {:ok, killmail}
+    killmail_id
+    |> to_string()
+    |> Killmail.from_websocket_data(system_id, data)
+    |> then(&{:ok, &1})
   end
 
   # Transform functions removed - now handled by Killmail.from_websocket_data/3

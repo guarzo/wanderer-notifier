@@ -176,7 +176,15 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   defp get_system_name(system_id) when is_integer(system_id) do
     WandererNotifier.Domains.Killmail.Enrichment.get_system_name(system_id)
   rescue
-    _ -> "Unknown"
+    error in [FunctionClauseError, ArgumentError, RuntimeError] ->
+      require Logger
+
+      Logger.warning("Failed to get system name for system_id #{system_id}",
+        error: inspect(error),
+        system_id: system_id
+      )
+
+      "Unknown"
   end
 
   defp get_system_name(_), do: "Unknown"

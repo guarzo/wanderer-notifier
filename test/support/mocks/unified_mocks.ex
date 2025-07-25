@@ -122,96 +122,56 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
   Sets up ESI service mocks with default behaviors.
   """
   def setup_service_mocks do
-    # ESI Service Mock
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
-      {:ok, %{}}
-    end)
+    setup_esi_service_mocks()
+    setup_esi_client_mocks()
+  end
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_character, fn _id ->
-      {:ok, %{"name" => "Test Character"}}
-    end)
+  defp setup_esi_service_mocks do
+    service_mock = WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
 
-    stub(
-      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
-      :get_corporation_info,
-      fn _id ->
-        {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
-      end
-    )
+    stub(service_mock, :get_killmail, fn _id, _hash -> {:ok, %{}} end)
+    stub(service_mock, :get_character, fn _id -> {:ok, %{"name" => "Test Character"}} end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_alliance_info, fn _id ->
-      {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_universe_type, fn _id,
-                                                                                          _opts ->
-      {:ok, %{"name" => "Test Type"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
-      {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_type_info, fn _id ->
-      {:ok, %{"name" => "Test Ship"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system_kills, fn _id,
-                                                                                         _limit,
-                                                                                         _opts ->
-      {:ok, []}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :search, fn _query,
-                                                                               _categories,
-                                                                               _opts ->
-      {:ok, %{}}
-    end)
-
-    # ESI Client Mock
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_killmail, fn _id,
-                                                                                    _hash,
-                                                                                    _opts ->
-      {:ok, %{}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_character_info, fn _id,
-                                                                                          _opts ->
-      {:ok, %{"name" => "Test Character"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_corporation_info, fn _id,
-                                                                                            _opts ->
+    stub(service_mock, :get_corporation_info, fn _id ->
       {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_alliance_info, fn _id,
-                                                                                         _opts ->
+    stub(service_mock, :get_alliance_info, fn _id ->
       {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_universe_type, fn _id,
-                                                                                         _opts ->
-      {:ok, %{"name" => "Test Type"}}
+    stub(service_mock, :get_universe_type, fn _id, _opts -> {:ok, %{"name" => "Test Type"}} end)
+
+    stub(service_mock, :get_system, fn id, _opts ->
+      {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_system, fn _id, _opts ->
-      {:ok, %{"name" => "Test System"}}
+    stub(service_mock, :get_type_info, fn _id -> {:ok, %{"name" => "Test Ship"}} end)
+    stub(service_mock, :get_system_kills, fn _id, _limit, _opts -> {:ok, []} end)
+    stub(service_mock, :search, fn _query, _categories, _opts -> {:ok, %{}} end)
+  end
+
+  defp setup_esi_client_mocks do
+    client_mock = WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
+
+    stub(client_mock, :get_killmail, fn _id, _hash, _opts -> {:ok, %{}} end)
+
+    stub(client_mock, :get_character_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Character"}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_system_kills, fn _id,
-                                                                                        _limit,
-                                                                                        _opts ->
-      {:ok, []}
+    stub(client_mock, :get_corporation_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
     end)
 
-    stub(
-      WandererNotifier.Infrastructure.Adapters.ESI.ClientMock,
-      :search_inventory_type,
-      fn _query, _strict ->
-        {:ok, %{}}
-      end
-    )
+    stub(client_mock, :get_alliance_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
+    end)
+
+    stub(client_mock, :get_universe_type, fn _id, _opts -> {:ok, %{"name" => "Test Type"}} end)
+    stub(client_mock, :get_system, fn _id, _opts -> {:ok, %{"name" => "Test System"}} end)
+    stub(client_mock, :get_system_kills, fn _id, _limit, _opts -> {:ok, []} end)
+    stub(client_mock, :search_inventory_type, fn _query, _strict -> {:ok, %{}} end)
   end
 
   # Notification mocks removed - deduplication uses cache directly without behaviors
@@ -260,12 +220,14 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
       fn _character -> :ok end
     )
 
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _kill_data -> :ok end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
-                                                                          _type,
-                                                                          _opts ->
-      :ok
+    # Consolidated send_kill_notification stub handling both arities:
+    # - send_kill_notification/1 for simple kill data  
+    # - send_kill_notification/3 for killmail with type and options
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn
+      # Single argument version (legacy format)
+      _kill_data when is_map(_kill_data) -> :ok
+      # Three argument version (current format) 
+      _killmail, _type, _opts -> :ok
     end)
 
     stub(WandererNotifier.Test.Mocks.Discord, :send_discord_embed, fn _embed -> {:ok, %{}} end)

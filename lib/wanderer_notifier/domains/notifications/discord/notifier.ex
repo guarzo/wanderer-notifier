@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   require Logger
   alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Killmail.Enrichment, as: KillmailCache
+  alias WandererNotifier.Domains.Killmail.Enrichment
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.FeatureFlags
@@ -421,8 +421,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   # Helper function to get system name with caching
   defp get_system_name(system_id) when is_integer(system_id) do
-    # KillmailCache.get_system_name always returns a string, never nil
-    KillmailCache.get_system_name(system_id)
+    # Enrichment.get_system_name always returns a string, never nil
+    Enrichment.get_system_name(system_id)
   end
 
   # Send killmail notification

@@ -80,11 +80,9 @@ defmodule WandererNotifier.Test.Support.Mocks.TestDataFactory do
       "kill_time" => "2024-01-01T12:00:00Z"
     }
 
-    Killmail.from_websocket_data(
-      to_string(killmail_id),
-      system_id,
-      websocket_data
-    )
+    killmail_id
+    |> to_string()
+    |> Killmail.from_websocket_data(system_id, websocket_data)
   end
 
   @doc """

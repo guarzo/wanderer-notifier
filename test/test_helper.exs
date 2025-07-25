@@ -83,9 +83,8 @@ Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
 # Configure cache implementation
 Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
-# Load shared test mocks - skip consolidated mocks for now
-# Code.require_file("support/test_mocks.ex", __DIR__)
-# Code.require_file("support/global_mock_config.ex", __DIR__)
+# Note: Shared test mocks are currently disabled in favor of per-test mocking
+# These were commented out during test refactoring to avoid conflicts with Mox setup
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")

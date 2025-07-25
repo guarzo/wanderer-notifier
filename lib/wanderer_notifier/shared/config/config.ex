@@ -56,7 +56,8 @@ defmodule WandererNotifier.Shared.Config do
     static_info_ttl: 3600,
     dev_mode: false,
     service_up: true,
-    deduplication_ttl: 3600,
+    # 30 minutes for notification deduplication
+    deduplication_ttl: 1800,
     character_update_scheduler_interval: 30_000,
     system_update_scheduler_interval: 30_000,
     license_refresh_interval: 1_200_000,
@@ -271,17 +272,32 @@ defmodule WandererNotifier.Shared.Config do
 
   # Discord channel helpers
   def discord_channel_id_for(channel_type) do
-    case channel_type do
-      :main -> discord_channel_id()
-      :system_kill -> discord_system_kill_channel_id() || discord_channel_id()
-      :character_kill -> discord_character_kill_channel_id() || discord_channel_id()
-      :system -> discord_system_channel_id() || discord_channel_id()
-      :character -> discord_character_channel_id() || discord_channel_id()
-      :charts -> discord_charts_channel_id() || discord_channel_id()
-      :kill -> discord_kill_channel_id() || discord_channel_id()
-      _ -> discord_channel_id()
+    channel_type
+    |> get_specific_channel_id()
+    |> fallback_to_main_channel()
+  end
+
+  defp get_specific_channel_id(channel_type) do
+    channel_mapping = %{
+      main: &discord_channel_id/0,
+      system_kill: &discord_system_kill_channel_id/0,
+      character_kill: &discord_character_kill_channel_id/0,
+      system: &discord_system_channel_id/0,
+      character: &discord_character_channel_id/0,
+      charts: &discord_charts_channel_id/0,
+      kill: &discord_kill_channel_id/0
+    }
+
+    case Map.get(channel_mapping, channel_type) do
+      nil -> nil
+      func when channel_type == :main -> func.()
+      func -> func.()
     end
   end
+
+  defp fallback_to_main_channel(nil), do: discord_channel_id()
+  defp fallback_to_main_channel(channel_id) when not is_nil(channel_id), do: channel_id
+  defp fallback_to_main_channel(_), do: discord_channel_id()
 
   # Environment variable helpers
   defp fetch_env(key, default \\ nil) do

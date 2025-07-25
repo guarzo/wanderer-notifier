@@ -6,7 +6,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   with the existing notification pipeline while using shared event handling patterns.
   """
 
-  require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer

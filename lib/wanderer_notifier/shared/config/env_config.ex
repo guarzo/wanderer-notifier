@@ -176,10 +176,12 @@ defmodule WandererNotifier.Shared.Config.EnvConfig do
   Legacy function for direct environment variable access.
   Use get/1 instead for new code.
   """
+  @deprecated "Use WandererNotifier.Shared.Config.EnvConfig.get/1 instead"
   def fetch_env(key, default \\ nil) do
     System.get_env(key, default)
   end
 
+  @deprecated "Use WandererNotifier.Shared.Config.EnvConfig.get/2 with appropriate parsing instead"
   def fetch_env_int(key, default) do
     case System.get_env(key) do
       nil -> default
@@ -188,6 +190,7 @@ defmodule WandererNotifier.Shared.Config.EnvConfig do
     end
   end
 
+  @deprecated "Use WandererNotifier.Shared.Config.EnvConfig.get/2 with appropriate parsing instead"
   def fetch_env_bool(key, default) do
     case System.get_env(key) do
       nil -> default
