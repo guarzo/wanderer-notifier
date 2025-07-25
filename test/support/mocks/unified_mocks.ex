@@ -39,10 +39,8 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
   )
 
-  # Notification mocks
-  defmock(WandererNotifier.MockDeduplication,
-    for: WandererNotifier.Domains.Notifications.Deduplication.DeduplicationBehaviour
-  )
+  # Notification mocks - using concrete module since no behaviour is defined
+  defmock(WandererNotifier.MockDeduplication, for: [])
 
   defmock(WandererNotifier.Test.Mocks.Discord,
     for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
