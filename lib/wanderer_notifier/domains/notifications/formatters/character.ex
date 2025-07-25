@@ -5,14 +5,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Character do
   """
 
   alias WandererNotifier.Domains.Tracking.Entities.Character
-  alias WandererNotifier.Domains.Notifications.Formatters.Unified
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
 
   @doc """
   Format a character notification using the unified formatter.
   Maintains backward compatibility for existing callers.
   """
   def format_character_notification(%Character{} = character) do
-    Unified.format_notification(character)
+    NotificationFormatter.format_notification(character)
   end
 
   @doc """

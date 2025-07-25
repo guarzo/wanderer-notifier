@@ -4,21 +4,21 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
   Now delegates to the unified formatter for consistency.
   """
 
-  alias WandererNotifier.Domains.Notifications.Formatters.Unified
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Tracking.Entities.System
 
   @doc """
   Format a character notification using the unified formatter.
   """
   def format_character_notification(character) do
-    Unified.format_notification(character)
+    NotificationFormatter.format_notification(character)
   end
 
   @doc """
   Format a system notification using the unified formatter.
   """
   def format_system_notification(%System{} = system) do
-    Unified.format_notification(system)
+    NotificationFormatter.format_notification(system)
   end
 
   @doc """

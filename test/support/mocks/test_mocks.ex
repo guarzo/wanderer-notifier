@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
+defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   @moduledoc """
-  Unified mock infrastructure for WandererNotifier tests.
+  Centralized mock infrastructure for WandererNotifier tests.
 
   This module consolidates all mock definitions and provides a single source
   of truth for test mocking across the entire test suite.

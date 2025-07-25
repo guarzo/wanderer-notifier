@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Domains.Notifications.Formatters.Unified do
+defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter do
   @moduledoc """
-  Unified notification formatter for all notification types.
+  Main notification formatter for all notification types.
   Consolidates killmail, character, and system formatting into a single module.
   """
 

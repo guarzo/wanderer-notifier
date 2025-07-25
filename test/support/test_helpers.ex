@@ -158,10 +158,10 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
 
   @doc """
   Sets up tracking mocks to return specific tracking states.
-  Delegates to UnifiedMocks for consistency.
+  Delegates to TestMocks for consistency.
   """
   def setup_tracking_mocks(opts \\ []) do
-    WandererNotifier.Test.Support.Mocks.UnifiedMocks.setup_selective_tracking(opts)
+    WandererNotifier.Test.Support.Mocks.TestMocks.setup_selective_tracking(opts)
   end
 
   @doc """

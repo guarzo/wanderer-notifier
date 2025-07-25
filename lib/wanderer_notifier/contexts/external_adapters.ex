@@ -71,7 +71,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
   def get_tracked_systems do
-    WandererNotifier.Domains.Tracking.Clients.UnifiedClient.fetch_and_cache_systems()
+    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_systems()
   end
 
   @doc """
@@ -79,7 +79,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
   def get_tracked_characters do
-    WandererNotifier.Domains.Tracking.Clients.UnifiedClient.fetch_and_cache_characters()
+    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_characters()
   end
 
   @doc """

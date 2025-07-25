@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
+defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   @moduledoc """
-  Unified tracking client that handles both character and system tracking with shared infrastructure.
+  Map-based tracking client that handles both character and system tracking with shared infrastructure.
 
   This module consolidates the common patterns between character and system tracking while
   preserving domain-specific functionality through entity-specific configurations.

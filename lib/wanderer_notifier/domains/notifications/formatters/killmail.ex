@@ -5,14 +5,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
   """
 
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Notifications.Formatters.Unified
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
 
   @doc """
   Format a kill notification using the unified formatter.
   Maintains backward compatibility for existing callers.
   """
   def format_kill_notification(%Killmail{} = killmail) do
-    Unified.format_notification(killmail)
+    NotificationFormatter.format_notification(killmail)
   end
 
   @doc """

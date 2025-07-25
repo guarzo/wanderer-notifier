@@ -112,7 +112,7 @@ lib/wanderer_notifier/
 ### Unified Tracking Architecture (Sprint 2)
 The tracking system has been unified to reduce code duplication and simplify maintenance:
 
-- **Single Client**: `UnifiedClient` handles both characters and systems using Process dictionary for entity context switching
+- **Single Client**: `MapTrackingClient` handles both characters and systems using Process dictionary for entity context switching
 - **Shared Event Logic**: Common patterns for event processing, entity extraction, and cache operations
 - **Entity-Specific Handlers**: Character and system handlers extend shared logic with domain-specific customization
 - **Flattened Entities**: Character and System structs with direct field access and validation
