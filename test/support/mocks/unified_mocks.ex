@@ -220,14 +220,12 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
       fn _character -> :ok end
     )
 
-    # Consolidated send_kill_notification stub handling both arities:
-    # - send_kill_notification/1 for simple kill data  
-    # - send_kill_notification/3 for killmail with type and options
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn
-      # Single argument version (legacy format)
-      _kill_data when is_map(_kill_data) -> :ok
-      # Three argument version (current format) 
-      _killmail, _type, _opts -> :ok
+    # Using 3-arity version as it's more commonly used in tests
+    # Individual tests can override with expect/allow for single-arity if needed
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
+                                                                          _type,
+                                                                          _opts ->
+      :ok
     end)
 
     stub(WandererNotifier.Test.Mocks.Discord, :send_discord_embed, fn _embed -> {:ok, %{}} end)
