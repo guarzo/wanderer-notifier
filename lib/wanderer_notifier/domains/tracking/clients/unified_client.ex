@@ -232,6 +232,9 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
         final_entities,
         cache_ttl()
       )
+      
+      # Return the entities list wrapped in {:ok, ...}
+      {:ok, final_entities}
     else
       error ->
         AppLogger.api_error("Failed to fetch and cache #{entity_type_name}",

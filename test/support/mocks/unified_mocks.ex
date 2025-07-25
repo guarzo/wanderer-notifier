@@ -28,7 +28,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
   # Infrastructure mocks
   defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
   # Simple mock without behavior
-  defmock(WandererNotifier.MockCache, for: [])
+  # Note: Cache module no longer uses behaviors - tests use direct Cachex operations
 
   # Service mocks
   defmock(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
@@ -39,8 +39,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
   )
 
-  # Notification mocks - using concrete module since no behaviour is defined
-  defmock(WandererNotifier.MockDeduplication, for: [])
+  # Note: Deduplication module uses cache directly - no mocking needed
 
   defmock(WandererNotifier.Test.Mocks.Discord,
     for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
@@ -58,9 +57,9 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     setup_tracking_mocks()
     setup_config_mocks()
     setup_http_mocks()
-    setup_cache_mocks()
+    # Cache mocks removed - tests use direct Cachex operations
     setup_service_mocks()
-    setup_notification_mocks()
+    # Notification mocks removed - deduplication uses cache directly
     setup_discord_mocks()
   end
 
@@ -117,21 +116,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     end)
   end
 
-  @doc """
-  Sets up cache mocks with default behaviors.
-  """
-  def setup_cache_mocks do
-    stub(WandererNotifier.MockCache, :get, fn _key -> {:ok, nil} end)
-    stub(WandererNotifier.MockCache, :get, fn _key, _opts -> {:ok, nil} end)
-    stub(WandererNotifier.MockCache, :put, fn _key, _value -> {:ok, true} end)
-    stub(WandererNotifier.MockCache, :put, fn _key, _value, _ttl -> {:ok, true} end)
-    stub(WandererNotifier.MockCache, :set, fn _key, _value, _ttl -> {:ok, true} end)
-    stub(WandererNotifier.MockCache, :delete, fn _key -> :ok end)
-    stub(WandererNotifier.MockCache, :clear, fn -> :ok end)
-    stub(WandererNotifier.MockCache, :mget, fn _keys -> {:ok, %{}} end)
-    stub(WandererNotifier.MockCache, :get_and_update, fn _key, _fun -> {:ok, nil} end)
-    stub(WandererNotifier.MockCache, :get_recent_kills, fn -> [] end)
-  end
+  # Cache mocks removed - cache module now uses direct Cachex operations without behaviors
 
   @doc """
   Sets up ESI service mocks with default behaviors.
@@ -229,29 +214,25 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     )
   end
 
-  @doc """
-  Sets up notification-related mocks with default behaviors.
-  """
-  def setup_notification_mocks do
-    stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
-    stub(WandererNotifier.MockDeduplication, :clear_key, fn _type, _id -> :ok end)
-  end
+  # Notification mocks removed - deduplication uses cache directly without behaviors
 
   @doc """
   Sets up Discord-related mocks with default behaviors.
   """
   def setup_discord_mocks do
-    stub(WandererNotifier.Test.Mocks.Discord, :send_message, fn _channel_id, _message ->
-      {:ok, %{id: "123456", content: "Test message"}}
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_embed, fn _channel_id, _embed ->
-      {:ok, %{id: "123456", embeds: [%{}]}}
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_notification, fn _channel_id, _notification ->
-      {:ok, %{id: "123456"}}
-    end)
+    # Stub Discord behavior callbacks with correct signatures
+    stub(WandererNotifier.Test.Mocks.Discord, :notify, fn _notification -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_message, fn _message, _channel -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_embed, fn _title, _description, _color, _fields, _channel -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_file, fn _filename, _file_data, _title, _description, _channel -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_image_embed, fn _title, _description, _image_url, _color, _channel -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_enriched_kill_embed, fn _killmail, _kill_id -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_new_system_notification, fn _system -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_new_tracked_character_notification, fn _character -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _kill_data -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail, _type, _opts -> :ok end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_discord_embed, fn _embed -> {:ok, %{}} end)
+    stub(WandererNotifier.Test.Mocks.Discord, :send_notification, fn _type, _data -> {:ok, %{}} end)
   end
 
   @doc """
@@ -274,25 +255,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
     end)
   end
 
-  @doc """
-  Sets up cache responses for specific keys.
-  Useful for tests that need specific cached data.
-
-  Example:
-      setup_cache_responses(%{
-        "character:123" => {:ok, %{name: "Test Character"}},
-        "system:456" => {:ok, %{name: "Test System"}}
-      })
-  """
-  def setup_cache_responses(key_responses) when is_map(key_responses) do
-    stub(WandererNotifier.MockCache, :get, fn key ->
-      Map.get(key_responses, key, {:ok, nil})
-    end)
-
-    stub(WandererNotifier.MockCache, :get, fn key, _opts ->
-      Map.get(key_responses, key, {:ok, nil})
-    end)
-  end
+  # Cache response helpers removed - use direct Cachex operations in tests
 
   @doc """
   Sets up HTTP responses for specific URLs.

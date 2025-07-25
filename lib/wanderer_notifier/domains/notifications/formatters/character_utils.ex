@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the ID as a string.
   """
-  @spec extract_character_id(Character.t()) :: String.t()
+  @spec extract_character_id(Character.t()) :: String.t() | nil
   def extract_character_id(%Character{} = character) do
     character.character_id
   end
@@ -23,7 +23,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the name as a string.
   """
-  @spec extract_character_name(Character.t()) :: String.t()
+  @spec extract_character_name(Character.t()) :: String.t() | nil
   def extract_character_name(%Character{} = character) do
     character.name
   end

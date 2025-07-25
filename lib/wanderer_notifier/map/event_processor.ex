@@ -132,15 +132,15 @@ defmodule WandererNotifier.Map.EventProcessor do
   # System event handlers
   @spec handle_system_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
   defp handle_system_event("add_system", event, map_slug) do
-    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_added(event, map_slug)
+    WandererNotifier.Domains.Tracking.Handlers.SystemHandler.handle_entity_added(event, map_slug)
   end
 
   defp handle_system_event("deleted_system", event, map_slug) do
-    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_deleted(event, map_slug)
+    WandererNotifier.Domains.Tracking.Handlers.SystemHandler.handle_entity_removed(event, map_slug)
   end
 
   defp handle_system_event("system_metadata_changed", event, map_slug) do
-    WandererNotifier.Domains.SystemTracking.EventHandler.handle_system_metadata_changed(
+    WandererNotifier.Domains.Tracking.Handlers.SystemHandler.handle_entity_updated(
       event,
       map_slug
     )
@@ -163,14 +163,14 @@ defmodule WandererNotifier.Map.EventProcessor do
   # Character event handlers
   @spec handle_character_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
   defp handle_character_event("character_added", event, map_slug) do
-    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_added(
+    WandererNotifier.Domains.Tracking.Handlers.CharacterHandler.handle_entity_added(
       event,
       map_slug
     )
   end
 
   defp handle_character_event("character_removed", event, map_slug) do
-    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_removed(
+    WandererNotifier.Domains.Tracking.Handlers.CharacterHandler.handle_entity_removed(
       event,
       map_slug
     )
@@ -188,7 +188,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       )
     end
 
-    WandererNotifier.Domains.CharacterTracking.EventHandler.handle_character_updated(
+    WandererNotifier.Domains.Tracking.Handlers.CharacterHandler.handle_entity_updated(
       event,
       map_slug
     )

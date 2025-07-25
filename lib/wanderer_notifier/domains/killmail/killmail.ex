@@ -174,10 +174,7 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   # Private helper functions
 
   defp get_system_name(system_id) when is_integer(system_id) do
-    case WandererNotifier.Domains.Killmail.Enrichment.get_system_name(system_id) do
-      name when is_binary(name) -> name
-      _ -> "Unknown"
-    end
+    WandererNotifier.Domains.Killmail.Enrichment.get_system_name(system_id)
   rescue
     _ -> "Unknown"
   end

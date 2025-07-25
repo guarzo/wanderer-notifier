@@ -278,16 +278,13 @@ defmodule WandererNotifier.Killmail.JsonEncoderPropertyTest do
       %Killmail{
         killmail_id: killmail_id,
         zkb: zkb,
-        esi_data: nil,
-        victim_name: nil,
-        victim_corporation: nil,
-        victim_corp_ticker: nil,
-        victim_alliance: nil,
-        ship_name: nil,
+        victim_character_name: nil,
+        victim_corporation_name: nil,
+        victim_alliance_name: nil,
+        victim_ship_name: nil,
         system_name: nil,
         system_id: nil,
-        attackers: nil,
-        value: nil
+        attackers: nil
       }
     end
   end
