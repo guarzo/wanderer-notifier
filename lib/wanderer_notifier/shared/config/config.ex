@@ -13,6 +13,9 @@ defmodule WandererNotifier.Shared.Config do
   # Base configuration getter
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
+  # Legacy alias for compatibility
+  def get_env(key, default \\ nil), do: get(key, default)
+
   # Required by behavior - returns this config module
   @impl true
   def config_module, do: __MODULE__
@@ -66,7 +69,13 @@ defmodule WandererNotifier.Shared.Config do
     cache_cleanup_interval: 600_000,
     systems_cache_ttl: 3600,
     schedulers_enabled: false,
-    telemetry_logging: false
+    telemetry_logging: false,
+    debug_logging_enabled: false,
+    telemetry_logging_enabled: false,
+    character_tracking_enabled: true,
+    system_tracking_enabled: true,
+    wanderer_kills_url: "http://host.docker.internal:4004",
+    websocket_url: "ws://host.docker.internal:4004"
   }
 
   # Feature flags with defaults
@@ -78,7 +87,8 @@ defmodule WandererNotifier.Shared.Config do
     status_messages_enabled: false,
     voice_participant_notifications_enabled: true,
     fallback_to_here_enabled: false,
-    test_mode_enabled: false
+    test_mode_enabled: false,
+    priority_systems_only: false
   }
 
   # Discord channel configurations
@@ -135,7 +145,6 @@ defmodule WandererNotifier.Shared.Config do
   # ══════════════════════════════════════════════════════════════════════════════
 
   # Environment variable accessors
-  def websocket_url, do: fetch_env("WEBSOCKET_URL", "ws://host.docker.internal:4004")
   def notification_dedup_ttl_env, do: fetch_env_int("NOTIFICATION_DEDUP_TTL", 1800)
 
   # Custom transformation accessors
@@ -210,10 +219,25 @@ defmodule WandererNotifier.Shared.Config do
         status_messages_enabled: status_messages_enabled?(),
         voice_participant_notifications_enabled: voice_participant_notifications_enabled?(),
         fallback_to_here_enabled: fallback_to_here_enabled?(),
-        test_mode_enabled: test_mode_enabled?()
+        test_mode_enabled: test_mode_enabled?(),
+        priority_systems_only: priority_systems_only?()
       }
     }
   end
+
+  # Convenience functions
+  @doc """
+  Returns all feature flags as a map.
+  """
+  def features do
+    get_config().features
+  end
+
+  @doc """
+  Returns the application version.
+  Delegates to Version module.
+  """
+  defdelegate version(), to: WandererNotifier.Shared.Config.Version
 
   # Module delegation helpers (for behavior compatibility)
   @impl true
@@ -222,11 +246,11 @@ defmodule WandererNotifier.Shared.Config do
 
   @impl true
   def system_track_module,
-    do: get(:system_track_module, WandererNotifier.Domains.SystemTracking.System)
+    do: get(:system_track_module, WandererNotifier.Domains.Tracking.Entities.System)
 
   @impl true
   def character_track_module,
-    do: get(:character_track_module, WandererNotifier.Domains.CharacterTracking.Character)
+    do: get(:character_track_module, WandererNotifier.Domains.Tracking.Entities.Character)
 
   @impl true
   def notification_determiner_module,
@@ -271,4 +295,30 @@ defmodule WandererNotifier.Shared.Config do
       value -> Utils.parse_int(value, default)
     end
   end
+
+  # Additional missing functions to fix warnings
+  def notifier_api_token, do: api_token()
+  def notification_features, do: features()
+  def notification_feature_enabled?(flag), do: feature_enabled?(flag)
+
+  # Debugging functions
+  def enable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
+
+  def disable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
+
+  def set_debug_logging(state),
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
+
+  # Missing URL function
+  def map_slug, do: map_name()
+
+  # Boolean accessors for missing functions
+  def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
+  def schedulers_enabled?, do: get(:schedulers_enabled, false)
+  def dev_mode?, do: get(:dev_mode, false)
+  def telemetry_logging_enabled?, do: get(:telemetry_logging_enabled, false)
+  def character_tracking_enabled?, do: get(:character_tracking_enabled, true)
+  def system_tracking_enabled?, do: get(:system_tracking_enabled, true)
 end

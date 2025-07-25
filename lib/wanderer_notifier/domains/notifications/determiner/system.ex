@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.System do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
-  alias WandererNotifier.Domains.SystemTracking.System
+  alias WandererNotifier.Domains.Tracking.Entities.System
 
   @doc """
   Determines if a notification should be sent for a system.

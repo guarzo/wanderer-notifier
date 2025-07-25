@@ -94,7 +94,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
 
     url = "#{base_url}/api/v1/kills/system/#{system_id}?limit=#{limit}&since_hours=168"
 
-    case Http.get(url) do
+    case Http.request(:get, url, nil, [], []) do
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
         case Jason.decode(body) do
           {:ok, decoded} -> {:ok, decoded}

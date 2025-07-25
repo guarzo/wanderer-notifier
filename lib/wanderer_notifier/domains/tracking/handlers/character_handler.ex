@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
   require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.CharacterTracking.Character
+  alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic

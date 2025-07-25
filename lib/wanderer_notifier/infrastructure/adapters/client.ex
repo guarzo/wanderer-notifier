@@ -28,7 +28,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   def get_killmail(kill_id, hash, opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
 
-    HTTP.get(url, default_headers(), service_opts(opts))
+    HTTP.request(:get, url, nil, default_headers(), service_opts(opts))
     |> handle_response("killmail", %{kill_id: kill_id})
   end
 
@@ -39,7 +39,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   def get_character_info(character_id, _opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
 
-    HTTP.get(url, default_headers(), service_opts())
+    HTTP.request(:get, url, nil, default_headers(), service_opts())
     |> handle_response("character", %{character_id: character_id})
   end
 
@@ -50,7 +50,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
 
-    HTTP.get(url, default_headers(), service_opts())
+    HTTP.request(:get, url, nil, default_headers(), service_opts())
     |> handle_response("corporation", %{corporation_id: corporation_id})
   end
 
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   def get_alliance_info(alliance_id, _opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
 
-    HTTP.get(url, default_headers(), service_opts())
+    HTTP.request(:get, url, nil, default_headers(), service_opts())
     |> handle_response("alliance", %{alliance_id: alliance_id})
   end
 
@@ -72,7 +72,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   def get_universe_type(type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{type_id}/"
 
-    HTTP.get(url, default_headers(), service_opts())
+    HTTP.request(:get, url, nil, default_headers(), service_opts())
     |> handle_response("type", %{type_id: type_id})
   end
 
@@ -96,7 +96,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
       method: "search_inventory_type"
     })
 
-    HTTP.get(url, headers, service_opts())
+    HTTP.request(:get, url, nil, headers, service_opts())
     |> handle_response("search", %{query: query})
   end
 
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
     url = "#{@base_url}/universe/systems/#{system_id}/?datasource=tranquility"
     headers = default_headers()
 
-    case HTTP.get(url, headers, service_opts()) do
+    case HTTP.request(:get, url, nil, headers, service_opts()) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         # HTTP client already decodes JSON responses
         {:ok, body}
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
-    HTTP.get(url, headers, service_opts())
+    HTTP.request(:get, url, nil, headers, service_opts())
     |> handle_response("system_kills", %{system_id: system_id})
   end
 

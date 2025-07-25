@@ -107,7 +107,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
     config = @entity_configs[entity_type]
 
     validator_fun = fn item ->
-      case ValidationUtils.apply(config.validator, [item]) do
+      case apply(config.validator, [item]) do
         {:ok, _} -> true
         {:error, _} -> false
       end
@@ -251,12 +251,11 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
   """
   def enrich_character(character) do
     # Import the Character module for struct creation
-    alias WandererNotifier.Domains.CharacterTracking.Character
 
     # Normalize the character data - ensure we have eve_id field
     normalized = normalize_character_data(character)
 
-    case Character.new_safe(normalized) do
+    case WandererNotifier.Domains.Tracking.Entities.Character.new_safe(normalized) do
       {:ok, struct} ->
         struct
 
@@ -274,7 +273,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.UnifiedClient do
   Enriches system data with static wormhole information.
   """
   def enrich_system(system) do
-    case WandererNotifier.Domains.SystemTracking.StaticInfo.enrich_system(system) do
+    case WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system) do
       {:ok, enriched} -> enriched
     end
   end

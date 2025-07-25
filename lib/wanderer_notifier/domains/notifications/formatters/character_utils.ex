@@ -34,7 +34,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the corporation ticker as a string.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t()
+  @spec extract_corporation_name(Character.t()) :: String.t() | nil
   def extract_corporation_name(%Character{} = character) do
     character.corporation_ticker
   end

@@ -27,8 +27,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
 
     # Use unified HTTP client with :map service configuration
     # Internal service - extended timeout, no rate limiting
-    url
-    |> WandererNotifier.Infrastructure.Http.request(:get, nil, headers, service: :map)
+    WandererNotifier.Infrastructure.Http.request(:get, url, nil, headers, service: :map)
     |> handle_http_response(url)
   end
 
@@ -149,10 +148,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   # TTL conversion and cache operations are now handled by the Cache facade
 
   def build_url(endpoint) do
-    base_url = Config.base_map_url()
+    base_url = Config.map_url()
     base_url = String.trim_trailing(base_url, "/")
-    map_slug = Config.map_slug()
-    "#{base_url}/api/maps/#{map_slug}/#{endpoint}"
+    map_name = Config.map_name()
+    "#{base_url}/api/maps/#{map_name}/#{endpoint}"
   end
 
   def auth_headers do
@@ -166,8 +165,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
     # Use unified HTTP client with :map service configuration and authentication
     token = Config.map_token()
 
-    url
-    |> WandererNotifier.Infrastructure.Http.request(:get, nil, [],
+    WandererNotifier.Infrastructure.Http.request(:get, url, nil, [],
       service: :map,
       auth: [type: :bearer, token: token]
     )

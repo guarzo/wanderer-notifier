@@ -34,7 +34,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     )
 
     full_url
-    |> Http.get(default_headers(), service: :wanderer_kills)
+    |> then(&Http.request(:get, &1, nil, default_headers(), service: :wanderer_kills))
     |> handle_killmails_response()
   end
 
@@ -54,7 +54,9 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       limit_per_system: limit_per_system
     )
 
-    case Http.post(url, Jason.encode!(body), default_headers(), service: :wanderer_kills) do
+    case Http.request(:post, url, Jason.encode!(body), default_headers(),
+           service: :wanderer_kills
+         ) do
       {:ok, %{status_code: 200, body: data}} when is_map(data) ->
         {:ok, convert_system_ids_to_integers(data)}
 
@@ -71,7 +73,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     AppLogger.api_debug("Fetching killmail", killmail_id: killmail_id)
 
-    case Http.get(url, default_headers(), service: :wanderer_kills) do
+    case Http.request(:get, url, nil, default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 200, body: killmail}} when is_map(killmail) ->
         transformed = transform_kill(killmail)
         {:ok, Map.put(transformed, "enriched", true)}
@@ -101,7 +103,9 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       system_count: length(system_ids)
     )
 
-    case Http.post(url, Jason.encode!(body), default_headers(), service: :wanderer_kills) do
+    case Http.request(:post, url, Jason.encode!(body), default_headers(),
+           service: :wanderer_kills
+         ) do
       {:ok, %{status_code: 201, body: %{"subscription_id" => subscription_id}}} ->
         {:ok, subscription_id}
 
@@ -131,7 +135,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     )
 
     full_url
-    |> Http.get(default_headers(), service: :wanderer_kills)
+    |> then(&Http.request(:get, &1, nil, default_headers(), service: :wanderer_kills))
     |> handle_killmails_response()
   end
 
@@ -140,7 +144,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     AppLogger.api_debug("Checking API health")
 
-    case Http.get(url, default_headers(), service: :wanderer_kills) do
+    case Http.request(:get, url, nil, default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 200, body: health_data}} when is_map(health_data) ->
         {:ok, health_data}
 

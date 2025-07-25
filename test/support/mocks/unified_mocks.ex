@@ -108,7 +108,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
   Sets up HTTP client mocks with default behaviors.
   """
   def setup_http_mocks do
-    stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _headers, _body, _opts ->
+    stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _body, _headers, _opts ->
       {:ok, %{status_code: 200, body: "{}"}}
     end)
 
@@ -305,7 +305,7 @@ defmodule WandererNotifier.Test.Support.Mocks.UnifiedMocks do
       })
   """
   def setup_http_responses(url_responses) when is_map(url_responses) do
-    stub(WandererNotifier.HTTPMock, :request, fn _method, url, _headers, _body, _opts ->
+    stub(WandererNotifier.HTTPMock, :request, fn _method, url, _body, _headers, _opts ->
       Map.get(url_responses, url, {:ok, %{status_code: 404, body: "Not Found"}})
     end)
   end

@@ -148,7 +148,7 @@ defmodule WandererNotifier.Domains.License.Service do
   The token should be a non-empty string.
   """
   def validate_token do
-    token = Config.notifier_api_token()
+    token = Config.api_token()
 
     # Add detailed debug logging
     AppLogger.config_info(
@@ -699,7 +699,7 @@ defmodule WandererNotifier.Domains.License.Service do
     AppLogger.api_debug("Sending HTTP request for bot validation", %{endpoint: "validate_bot"})
 
     # Use unified HTTP client with license service configuration
-    case Http.post(url, body, [],
+    case Http.request(:post, url, body, [],
            service: :license,
            auth: [type: :bearer, token: notifier_api_token]
          ) do
@@ -752,7 +752,7 @@ defmodule WandererNotifier.Domains.License.Service do
 
   defp make_validation_request(url, body, notifier_api_token) do
     # Use unified HTTP client with license service configuration
-    case Http.post(url, body, [],
+    case Http.request(:post, url, body, [],
            service: :license,
            auth: [type: :bearer, token: notifier_api_token]
          ) do

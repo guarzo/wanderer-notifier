@@ -101,6 +101,6 @@ defmodule WandererNotifier.Domains.Notifications.Utils do
   Extracts a corporation name from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t()
+  @spec extract_corporation_name(Character.t()) :: String.t() | nil
   defdelegate extract_corporation_name(character), to: CharacterUtils
 end

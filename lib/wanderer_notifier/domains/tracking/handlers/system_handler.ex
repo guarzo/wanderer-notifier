@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   require Logger
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.SystemTracking.System
+  alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
@@ -124,7 +124,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp enrich_system(system) do
     try do
       # StaticInfo.enrich_system returns {:ok, enriched_system}
-      WandererNotifier.Domains.SystemTracking.StaticInfo.enrich_system(system)
+      WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
     rescue
       error ->
         AppLogger.api_error("Failed to enrich system",

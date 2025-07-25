@@ -234,7 +234,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   # Send a simple text-based kill notification
   defp send_simple_kill_notification(kill_data, channel_id) do
-    message = PlainTextFormatter.plain_killmail_notification(kill_data)
+    message = PlainTextFormatter.format_plain_text(kill_data)
     NeoClient.send_message(message, channel_id)
   end
 
@@ -246,7 +246,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         send_to_discord(generic_notification, :character_tracking)
         LicenseLimiter.increment(:character)
       else
-        message = PlainTextFormatter.plain_character_notification(character)
+        message = PlainTextFormatter.format_plain_text(character)
         NeoClient.send_message(message)
       end
 
@@ -274,7 +274,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         send_to_discord(generic_notification, :system_tracking)
         LicenseLimiter.increment(:system)
       else
-        message = PlainTextFormatter.plain_system_notification(system)
+        message = PlainTextFormatter.format_plain_text(system)
         NeoClient.send_message(message)
       end
 

@@ -10,6 +10,6 @@ defmodule WandererNotifier.Infrastructure.Http.HttpBehaviour do
   @type method :: :get | :post | :put | :delete | :head | :options
   @type response :: {:ok, %{status_code: integer(), body: term()}} | {:error, term()}
 
-  @callback request(method(), url(), headers(), body() | nil, opts()) :: response()
+  @callback request(method(), url(), body() | nil, headers(), opts()) :: response()
   @callback get_killmail(integer(), String.t()) :: response()
 end

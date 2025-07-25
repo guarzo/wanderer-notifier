@@ -105,7 +105,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
       system_id: solar_system_id
     )
 
-    base_url = Config.base_map_url()
+    base_url = Config.map_url()
     url = "#{base_url}/api/common/system-static-info?id=#{solar_system_id}"
     headers = get_auth_headers()
 
