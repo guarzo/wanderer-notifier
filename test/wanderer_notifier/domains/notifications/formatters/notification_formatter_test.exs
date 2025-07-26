@@ -98,6 +98,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         solar_system_id: 31_000_001,
         name: "J123456",
         class_title: "Class 1",
+        system_type: :wormhole,
         is_shattered: false,
         statics: ["H121", "O883"]
       }

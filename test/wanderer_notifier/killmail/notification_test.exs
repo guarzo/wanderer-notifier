@@ -14,10 +14,9 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     # Set up test killmail for reuse in tests
     test_killmail = %Killmail{
       killmail_id: "12345",
-      victim_name: "Test Victim",
-      victim_corporation: "Test Victim Corp",
-      victim_corp_ticker: "TVC",
-      ship_name: "Test Ship",
+      victim_character_name: "Test Victim",
+      victim_corporation_name: "Test Victim Corp",
+      victim_ship_name: "Test Ship",
       system_name: "Test System",
       attackers: [
         [

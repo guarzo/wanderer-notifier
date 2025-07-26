@@ -32,12 +32,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp format_kill_notification(%Killmail{} = killmail) do
-    victim_name = killmail.victim_character_name || killmail.victim_ship_name || "Unknown"
     system_link = Utils.create_system_link(killmail.system_name, killmail.system_id)
 
     %{
       type: :kill_notification,
-      title: build_kill_title(victim_name, killmail.victim_ship_name),
+      title: build_kill_title(killmail.victim_character_name, killmail.victim_ship_name),
       description: build_kill_description(killmail),
       color: Utils.get_color(:kill),
       url: Utils.zkillboard_url(killmail.killmail_id),
@@ -49,10 +48,18 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp build_kill_title(victim_name, ship_name) do
-    if ship_name do
-      "#{victim_name}'s #{ship_name} destroyed"
-    else
-      "#{victim_name} destroyed"
+    cond do
+      victim_name && ship_name ->
+        "#{victim_name}'s #{ship_name} destroyed"
+
+      victim_name ->
+        "#{victim_name} destroyed"
+
+      ship_name ->
+        "#{ship_name} destroyed"
+
+      true ->
+        "Unknown destroyed"
     end
   end
 
