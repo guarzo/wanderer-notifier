@@ -31,7 +31,8 @@ defmodule WandererNotifier.Shared.Config.EnvConfig do
     map_name: {"MAP_NAME", :string, if(Mix.env() == :test, do: "test_map", else: :required)},
 
     # License Configuration
-    license_key: {"LICENSE_KEY", :string, :required},
+    license_key:
+      {"LICENSE_KEY", :string, if(Mix.env() == :test, do: "test_license_key", else: :required)},
     license_manager_url: {"LICENSE_MANAGER_URL", :string, "https://lm.wanderer.ltd"},
 
     # Server Configuration
