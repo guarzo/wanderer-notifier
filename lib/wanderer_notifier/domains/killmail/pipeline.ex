@@ -343,7 +343,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp send_notification_with_validation(killmail, ctx, %{validation_mode: validation_mode}) do
     # Log validation mode usage with consistent format
-    AppLogger.kill_info(format_validation_mode_log(validation_mode, killmail.killmail_id))
+    validation_mode
+    |> format_validation_mode_log(killmail.killmail_id)
+    |> AppLogger.kill_info()
 
     send_notification(killmail, ctx)
   end

@@ -288,12 +288,13 @@ defmodule WandererNotifier.Shared.Config do
       kill: &discord_kill_channel_id/0
     }
 
-    case Map.get(channel_mapping, channel_type) do
-      nil -> nil
-      func when channel_type == :main -> func.()
-      func -> func.()
-    end
+    channel_mapping
+    |> Map.get(channel_type)
+    |> execute_channel_function()
   end
+
+  defp execute_channel_function(nil), do: nil
+  defp execute_channel_function(func) when is_function(func), do: func.()
 
   defp fallback_to_main_channel(nil), do: discord_channel_id()
   defp fallback_to_main_channel(channel_id) when not is_nil(channel_id), do: channel_id

@@ -45,7 +45,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       assert {:ok, characters} = result
       assert is_list(characters)
-      assert length(characters) > 0
+      refute Enum.empty?(characters)
     end
 
     test "handles HTTP errors gracefully" do
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       assert {:ok, systems} = result
       assert is_list(systems)
-      assert length(systems) > 0
+      refute Enum.empty?(systems)
     end
 
     test "handles empty systems response" do
@@ -132,7 +132,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       assert {:ok, systems} = result
       assert is_list(systems)
-      assert length(systems) == 0
+      assert Enum.empty?(systems)
     end
   end
 

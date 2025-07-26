@@ -96,30 +96,30 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   @impl true
   def extract_data(response) do
     entity_type = get_current_entity_type()
-    config = @entity_configs[entity_type]
-    extract_path = config.extract_path
+    extract_path = get_entity_config(:extract_path, [])
 
-    case extract_nested_data(response, extract_path) do
-      {:ok, data} ->
-        # Handle different response structures
-        case {entity_type, data} do
-          {:characters, data} when is_list(data) ->
-            {:ok, flatten_character_data(data)}
+    response
+    |> extract_nested_data(extract_path)
+    |> process_extracted_data(entity_type)
+  end
 
-          {:systems, data} when is_list(data) ->
-            {:ok, data}
+  defp process_extracted_data({:ok, data}, entity_type) do
+    case {entity_type, data} do
+      {:characters, data} when is_list(data) ->
+        {:ok, flatten_character_data(data)}
 
-          {_, data} when is_list(data) ->
-            {:ok, data}
+      {:systems, data} when is_list(data) ->
+        {:ok, data}
 
-          _ ->
-            {:error, :invalid_data_format}
-        end
+      {_, data} when is_list(data) ->
+        {:ok, data}
 
-      error ->
-        error
+      _ ->
+        {:error, :invalid_data_format}
     end
   end
+
+  defp process_extracted_data(error, _entity_type), do: error
 
   @impl true
   def validate_data(items) when is_list(items) do
