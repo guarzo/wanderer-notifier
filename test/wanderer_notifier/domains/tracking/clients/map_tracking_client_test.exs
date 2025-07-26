@@ -146,11 +146,39 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       result = MapTrackingClient.enrich_character(character_data)
 
-      # Should return enriched character data (struct or map)
-      assert is_map(result) or is_struct(result)
+      # Should return a Character struct with normalized fields
+      assert %WandererNotifier.Domains.Tracking.Entities.Character{} = result
+      assert result.name == "Test Character"
+      assert result.eve_id == 123
+      assert result.character_id == "123"
+      assert result.corporation_id == 456
+      assert result.tracked == false
     end
 
     test "enriches system data correctly" do
+      # Mock the StaticInfo.enrich_system call
+      expect(WandererNotifier.Domains.Tracking.StaticInfoMock, :enrich_system, fn system ->
+        # Return enriched system with static wormhole information
+        enriched =
+          Map.merge(system, %{
+            :statics => ["C247", "P060"],
+            :class_title => "C4",
+            :system_class => 4,
+            :security_status => -1.0,
+            :effect_name => nil,
+            :is_shattered => false,
+            :static_details => [
+              %{
+                "name" => "C247",
+                "destination" => %{"name" => "Class 3", "short_name" => "C3"},
+                "properties" => %{"lifetime" => "16", "max_jump_mass" => 300_000_000}
+              }
+            ]
+          })
+
+        {:ok, enriched}
+      end)
+
       system_data = %{
         "name" => "J123456",
         "solar_system_id" => 31_000_001,
@@ -159,8 +187,14 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       result = MapTrackingClient.enrich_system(system_data)
 
-      # Should return enriched system data
-      assert is_map(result) or is_struct(result)
+      # Should return enriched system data with static wormhole information
+      assert is_map(result)
+      assert result[:statics] == ["C247", "P060"]
+      assert result[:class_title] == "C4"
+      assert result[:system_class] == 4
+      assert result[:security_status] == -1.0
+      assert result[:static_details] != nil
+      assert length(result[:static_details]) > 0
     end
   end
 
@@ -190,9 +224,17 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       assert {:ok, _characters} = result
 
-      # Verify data was cached
+      # Verify exact data structure was cached
       cached_data = Cache.get("map:character_list")
-      assert cached_data != nil
+      assert is_list(cached_data)
+      assert length(cached_data) == 1
+
+      # Verify the cached character has been enriched to a Character struct
+      cached_character = List.first(cached_data)
+      assert %WandererNotifier.Domains.Tracking.Entities.Character{} = cached_character
+      assert cached_character.name == "Test Character"
+      assert cached_character.eve_id == 123
+      assert cached_character.character_id == "123"
     end
   end
 end

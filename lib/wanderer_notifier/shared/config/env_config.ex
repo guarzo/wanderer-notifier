@@ -24,9 +24,11 @@ defmodule WandererNotifier.Shared.Config.EnvConfig do
     discord_character_channel_id: {"DISCORD_CHARACTER_CHANNEL_ID", :string, nil},
 
     # Map Configuration
-    map_api_key: {"MAP_API_KEY", :string, :required},
-    map_url: {"MAP_URL", :string, :required},
-    map_name: {"MAP_NAME", :string, :required},
+    map_api_key:
+      {"MAP_API_KEY", :string, if(Mix.env() == :test, do: "test_map_api_key", else: :required)},
+    map_url:
+      {"MAP_URL", :string, if(Mix.env() == :test, do: "http://test.map.url", else: :required)},
+    map_name: {"MAP_NAME", :string, if(Mix.env() == :test, do: "test_map", else: :required)},
 
     # License Configuration
     license_key: {"LICENSE_KEY", :string, :required},
