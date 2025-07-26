@@ -8,12 +8,12 @@ ExUnit.start()
 # Configure Mox
 Application.ensure_all_started(:mox)
 
-# Load unified mock infrastructure
-Code.require_file("support/mocks/unified_mocks.ex", __DIR__)
+# Load test mock infrastructure
+Code.require_file("support/mocks/test_mocks.ex", __DIR__)
 Code.require_file("support/mocks/test_data_factory.ex", __DIR__)
 
-# Import unified mocks module
-alias WandererNotifier.Test.Support.Mocks.UnifiedMocks
+# Import test mocks module
+alias WandererNotifier.Test.Support.Mocks.TestMocks
 
 # Configure application to use mocks
 # Cache module removed - using simplified Cache directly
@@ -37,8 +37,8 @@ Application.put_env(
 
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
-# Set up all mocks with default behaviors using unified infrastructure
-UnifiedMocks.setup_all_mocks()
+# Set up all mocks with default behaviors using test infrastructure
+TestMocks.setup_all_mocks()
 
 # Configure logger level for tests
 Logger.configure(level: :debug)

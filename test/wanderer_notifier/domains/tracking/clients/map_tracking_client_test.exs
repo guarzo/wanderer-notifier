@@ -14,7 +14,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
     Cache.delete("map:systems")
 
     # Setup basic mocks
-    WandererNotifier.Test.Support.Mocks.UnifiedMocks.setup_all_mocks()
+    WandererNotifier.Test.Support.Mocks.TestMocks.setup_all_mocks()
 
     :ok
   end
