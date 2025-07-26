@@ -769,13 +769,20 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    # get_all() always returns {:ok, list()}, never an error
-    {:ok, systems} = ExternalAdapters.get_tracked_systems()
+    case ExternalAdapters.get_tracked_systems() do
+      {:ok, systems} ->
+        systems
+        |> Enum.map(&extract_system_id/1)
+        |> Enum.filter(&valid_system_id?/1)
+        |> Enum.uniq()
 
-    systems
-    |> Enum.map(&extract_system_id/1)
-    |> Enum.filter(&valid_system_id?/1)
-    |> Enum.uniq()
+      {:error, reason} ->
+        WandererNotifier.Shared.Logger.Logger.error(
+          "Failed to get tracked systems: #{inspect(reason)}"
+        )
+
+        []
+    end
   rescue
     error ->
       WandererNotifier.Shared.Logger.Logger.error(
@@ -804,11 +811,18 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    # get_all() always returns {:ok, list()}, never an error
-    {:ok, characters} = ExternalAdapters.get_tracked_characters()
+    case ExternalAdapters.get_tracked_characters() do
+      {:ok, characters} ->
+        log_raw_characters(characters)
+        process_character_list(characters)
 
-    log_raw_characters(characters)
-    process_character_list(characters)
+      {:error, reason} ->
+        WandererNotifier.Shared.Logger.Logger.error(
+          "Failed to get tracked characters: #{inspect(reason)}"
+        )
+
+        []
+    end
   rescue
     error ->
       WandererNotifier.Shared.Logger.Logger.error(

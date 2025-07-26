@@ -1,14 +1,11 @@
 defmodule WandererNotifier.Shared.Config do
   @moduledoc """
-  Streamlined configuration module using the new Config.Helpers macros.
+  Simplified configuration module using direct map access instead of macros.
 
-  This module replaces the 527-line Config module with a much more concise
-  implementation using macro-generated accessors. This eliminates ~400-500
-  lines of duplicate configuration code.
+  This replaces the macro-heavy approach with a simple map-based configuration
+  system that's easier to understand and maintain.
   """
 
-  require WandererNotifier.Shared.Config.Helpers
-  import WandererNotifier.Shared.Config.Helpers, except: [get: 1, get: 2, feature_enabled?: 1]
   alias WandererNotifier.Shared.Config.Utils
 
   @behaviour WandererNotifier.Shared.Config.ConfigBehaviour
@@ -16,333 +13,256 @@ defmodule WandererNotifier.Shared.Config do
   # Base configuration getter
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
+  # Legacy alias for compatibility
+  def get_env(key, default \\ nil), do: get(key, default)
+
   # Required by behavior - returns this config module
   @impl true
   def config_module, do: __MODULE__
 
-  # Generate simple configuration accessors
-  defconfig(:simple, [
-    :discord_bot_token,
-    :discord_application_id,
-    :discord_guild_id,
-    :discord_webhook_url,
-    :discord_channel_id,
-    :map_token,
-    :map_csrf_token,
-    :map_api_key,
-    :license_key,
-    :license_manager_api_key,
-    :api_token,
-    :api_key,
-    :public_url,
-    :notification_service_base_url
-  ])
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Configuration Maps (replaces macro generation)
+  # ══════════════════════════════════════════════════════════════════════════════
 
-  # Generate configuration accessors with defaults
-  defconfig(:with_defaults, [
-    {:port, 4000},
-    {:host, "localhost"},
-    {:scheme, "http"},
-    {:api_base_url, "http://localhost:4000/api"},
-    {:license_manager_api_url, "https://lm.wanderer.ltd"},
-    {:cache_dir, "/app/data/cache"},
-    {:cache_name, :wanderer_notifier_cache},
-    {:min_kill_value, 0},
-    {:max_notifications_per_minute, 10},
-    {:static_info_ttl, 3600},
-    {:dev_mode, false},
-    {:service_up, true},
-    {:deduplication_ttl, 3600},
-    {:character_update_scheduler_interval, 30_000},
-    {:system_update_scheduler_interval, 30_000},
-    {:license_refresh_interval, 1_200_000},
-    {:characters_cache_ttl, 300},
-    {:kill_dedup_ttl, 600},
-    {:service_status_interval, 3_600_000},
-    {:killmail_retention_interval, 600_000},
-    {:cache_check_interval, 120_000},
-    {:cache_sync_interval, 180_000},
-    {:cache_cleanup_interval, 600_000},
-    {:systems_cache_ttl, 3600},
-    {:schedulers_enabled, false},
-    {:telemetry_logging, false}
-  ])
+  # Simple configuration keys (no defaults)
+  @simple_config %{
+    discord_bot_token: nil,
+    discord_application_id: nil,
+    discord_guild_id: nil,
+    discord_webhook_url: nil,
+    discord_channel_id: nil,
+    map_token: nil,
+    map_csrf_token: nil,
+    map_api_key: nil,
+    license_key: nil,
+    license_manager_api_key: nil,
+    api_token: nil,
+    api_key: nil,
+    public_url: nil,
+    notification_service_base_url: nil
+  }
 
-  # Generate Discord channel accessors
-  defconfig(:channels, [
-    :discord_system_kill,
-    :discord_character_kill,
-    :discord_system,
-    :discord_character,
-    :discord_charts,
-    :discord_kill,
-    :discord_channel
-  ])
+  # Configuration with defaults
+  @default_config %{
+    port: 4000,
+    host: "localhost",
+    scheme: "http",
+    api_base_url: "http://localhost:4000/api",
+    license_manager_api_url: "https://lm.wanderer.ltd",
+    cache_dir: "/app/data/cache",
+    cache_name: :wanderer_notifier_cache,
+    min_kill_value: 0,
+    max_notifications_per_minute: 10,
+    static_info_ttl: 3600,
+    dev_mode: false,
+    service_up: true,
+    # 30 minutes for notification deduplication
+    deduplication_ttl: 1800,
+    character_update_scheduler_interval: 30_000,
+    system_update_scheduler_interval: 30_000,
+    license_refresh_interval: 1_200_000,
+    characters_cache_ttl: 300,
+    kill_dedup_ttl: 600,
+    service_status_interval: 3_600_000,
+    killmail_retention_interval: 600_000,
+    cache_check_interval: 120_000,
+    cache_sync_interval: 180_000,
+    cache_cleanup_interval: 600_000,
+    systems_cache_ttl: 3600,
+    schedulers_enabled: false,
+    telemetry_logging: false,
+    debug_logging_enabled: false,
+    telemetry_logging_enabled: false,
+    character_tracking_enabled: true,
+    system_tracking_enabled: true,
+    wanderer_kills_url: "http://host.docker.internal:4004",
+    websocket_url: "ws://host.docker.internal:4004"
+  }
 
-  # Generate feature flag accessors
-  defconfig(:features, [
-    :notifications_enabled,
-    :kill_notifications_enabled,
-    :system_notifications_enabled,
-    :character_notifications_enabled,
-    :status_messages_enabled,
-    :voice_participant_notifications_enabled,
-    :fallback_to_here_enabled,
-    :test_mode_enabled
-  ])
-
-  # Environment variable accessors (simplified for now)
-  def websocket_url, do: fetch("WEBSOCKET_URL", "ws://host.docker.internal:4004")
-  def notification_dedup_ttl_env, do: fetch_int("NOTIFICATION_DEDUP_TTL", 1800)
-
-  # Custom transformation accessors (simplified for now)
-  def character_exclude_list do
-    get(:character_exclude_list, "") |> Utils.parse_comma_list()
-  end
-
-  # Advanced feature schema (simplified for now, features implemented manually below)
-
-  # Configuration validation (simplified for now)
-
-  # --- Complex Configuration Logic ---
-
-  @impl true
-  @spec get_config() :: map()
-  def get_config do
-    %{
-      notifications_enabled: notifications_enabled?(),
-      kill_notifications_enabled: kill_notifications_enabled?(),
-      system_notifications_enabled: system_notifications_enabled?(),
-      character_notifications_enabled: character_notifications_enabled?()
-    }
-  end
-
-  @impl true
-  @spec get_notification_setting(atom(), atom()) :: {:ok, boolean()} | {:error, term()}
-  def get_notification_setting(type, key) do
-    case Application.get_env(:wanderer_notifier, :config) do
-      nil -> {:ok, true}
-      mod -> mod.get_notification_setting(type, key)
-    end
-  end
-
-  # Map configuration with complex fallback logic
-  def map_url do
-    # First try the explicit MAP_URL, then fall back to parsing from URL
-    explicit_url = get(:map_url)
-
-    case explicit_url do
-      url when is_binary(url) and url != "" ->
-        url
-
-      _ ->
-        # Fall back to base_map_url for backward compatibility
-        base_map_url()
-    end
-  end
-
-  def map_name do
-    # First try the explicit MAP_NAME, then fall back to parsing from URL
-    explicit_name = get(:map_name)
-
-    if explicit_name && explicit_name != "" do
-      explicit_name
-    else
-      # Parse `name` query param from map_url
-      get(:map_url)
-      |> Utils.parse_map_name_from_url()
-    end
-  end
-
-  def map_slug do
-    # Slug = map_name (parsed or explicit)
-    map_name()
-  end
-
-  def base_map_url do
-    map_url()
-  end
-
-  # Debug configuration with runtime state management
-  def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
-
-  def enable_debug_logging,
-    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
-
-  def disable_debug_logging,
-    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
-
-  def set_debug_logging(state) when is_boolean(state),
-    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
-
-  @doc """
-  Returns whether the application is running in development mode.
-  Used to enable more verbose logging and other development features.
-
-  The value is determined at runtime based on the MIX_ENV.
-  """
-  def dev_mode?, do: get(:dev_mode, false)
-
-  # TTL Configuration with environment override
-  @doc """
-  Returns the TTL for notification deduplication in seconds.
-  Defaults to 1800 seconds (30 minutes) if not configured.
-  Can be configured via the :dedup_ttl environment variable.
-  """
-  def notification_dedup_ttl do
-    # Get from environment variable first, then fall back to application config
-    case env_provider().get_env("NOTIFICATION_DEDUP_TTL") do
-      nil ->
-        Application.get_env(:wanderer_notifier, :dedup_ttl, 1800)
-
-      ttl ->
-        Utils.parse_int(ttl, 1800)
-    end
-  end
-
-  # Version access delegation
-  def version do
-    WandererNotifier.Shared.Config.Version.version()
-  end
-
-  def version_info do
-    WandererNotifier.Shared.Config.Version.version_info()
-  end
-
-  # Feature management with caching
-  @default_features [
+  # Feature flags with defaults
+  @feature_flags %{
     notifications_enabled: true,
     kill_notifications_enabled: true,
     system_notifications_enabled: true,
     character_notifications_enabled: true,
     status_messages_enabled: false,
-    character_tracking_enabled: true,
-    system_tracking_enabled: true,
+    voice_participant_notifications_enabled: true,
+    fallback_to_here_enabled: false,
     test_mode_enabled: false,
-    voice_participant_notifications_enabled: false,
-    fallback_to_here_enabled: true
-  ]
+    priority_systems_only: false
+  }
 
-  def features do
-    # Get features from config and normalize to keyword list
-    features_from_config = get(:features, %{})
-    normalized = Utils.normalize_features(features_from_config)
+  # Discord channel configurations
+  @channel_config %{
+    discord_system_kill: nil,
+    discord_character_kill: nil,
+    discord_system: nil,
+    discord_character: nil,
+    discord_charts: nil,
+    discord_kill: nil,
+    discord_channel: nil
+  }
 
-    # Merge with defaults, config values take precedence
-    Keyword.merge(@default_features, normalized)
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Accessor Functions (replaces macro-generated functions)
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  # Simple config accessors
+  for {key, _default} <- @simple_config do
+    def unquote(key)(), do: get(unquote(key))
   end
 
-  @doc """
-  Checks if a feature flag is enabled.
-
-  This is the primary interface for checking feature flags.
-  All feature checks should go through this function.
-
-  ## Examples
-      iex> feature_enabled?(:notifications_enabled)
-      true
-
-      iex> feature_enabled?(:unknown_feature)
-      false
-  """
-  def feature_enabled?(flag) do
-    Keyword.get(features(), flag, false)
+  # Config with defaults accessors  
+  for {key, default} <- @default_config do
+    def unquote(key)(), do: get(unquote(key), unquote(default))
   end
 
-  # Advanced feature flag with caching
-  @doc """
-  Returns true if only priority systems should generate notifications.
-  When enabled, regular (non-priority) systems will not generate notifications
-  regardless of the system_notifications_enabled setting.
+  # Feature flag accessors (with ? suffix)
+  for {key, _default} <- @feature_flags do
+    func_name = String.to_atom("#{key}?")
 
-  This value is cached using persistent_term for performance.
-  """
-  @spec priority_systems_only?() :: boolean()
-  def priority_systems_only? do
-    case :persistent_term.get({__MODULE__, :priority_systems_only}, :not_cached) do
-      :not_cached ->
-        value = get(:priority_systems_only, false)
-        :persistent_term.put({__MODULE__, :priority_systems_only}, value)
-        value
+    # Add @impl true for behavior callbacks
+    if func_name in [
+         :notifications_enabled?,
+         :kill_notifications_enabled?,
+         :system_notifications_enabled?,
+         :character_notifications_enabled?
+       ] do
+      @impl true
+    end
 
-      cached_value ->
-        cached_value
+    def unquote(func_name)(), do: feature_enabled?(unquote(key))
+  end
+
+  # Channel accessors
+  for {key, _default} <- @channel_config do
+    func_name = String.to_atom("#{key}_channel_id")
+    config_key = String.to_atom("#{key}_channel_id")
+    def unquote(func_name)(), do: get(unquote(config_key))
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Specialized Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  # Environment variable accessors
+  def notification_dedup_ttl_env, do: fetch_env_int("NOTIFICATION_DEDUP_TTL", 1800)
+
+  # Custom transformation accessors
+  def character_exclude_list do
+    get(:character_exclude_list, [])
+    |> case do
+      list when is_list(list) -> list
+      _ -> []
     end
   end
 
-  @doc """
-  Refreshes the cached value for priority_systems_only.
-
-  Call this function whenever the configuration changes to ensure
-  the cached value stays in sync.
-  """
-  @spec refresh_priority_systems_only!() :: :ok
-  def refresh_priority_systems_only! do
-    value = get(:priority_systems_only, false)
-    :persistent_term.put({__MODULE__, :priority_systems_only}, value)
-    :ok
-  end
-
-  # Delegated feature flags
-  # Always enabled
-  def character_tracking_enabled?, do: true
-  # Always enabled
-  def system_tracking_enabled?, do: true
-
-  # Additional feature flags
-  def schedulers_enabled?, do: schedulers_enabled()
-  def telemetry_logging_enabled?, do: telemetry_logging()
-
-  # Complex notification logic delegation
-  def chain_kills_mode? do
-    case Application.get_env(:wanderer_notifier, :config) do
-      nil -> false
-      mod -> mod.chain_kills_mode?()
+  def system_exclude_list do
+    get(:system_exclude_list, [])
+    |> case do
+      list when is_list(list) -> list
+      _ -> []
     end
   end
 
-  def rich_notifications_enabled? do
-    case Application.get_env(:wanderer_notifier, :config) do
-      nil -> false
-      mod -> mod.rich_notifications_enabled?()
+  # Feature flag helper
+  def feature_enabled?(feature_key) do
+    default = Map.get(@feature_flags, feature_key, false)
+    env_key = feature_key |> Atom.to_string() |> String.upcase()
+
+    case fetch_env(env_key) do
+      nil -> get(feature_key, default)
+      env_value -> Utils.parse_bool(env_value, default)
     end
   end
 
-  def feature_flags_enabled? do
-    case Application.get_env(:wanderer_notifier, :config) do
-      nil -> false
-      mod -> mod.feature_flags_enabled?()
+  # Map configuration helpers
+  def map_url, do: get(:map_url)
+  def map_name, do: get(:map_name)
+
+  # Note: license_manager_api_url is already defined in @default_config
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Behavior Implementation
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @impl true
+  def get_notification_setting(type, key) do
+    case {type, key} do
+      {:kill, :enabled} -> {:ok, kill_notifications_enabled?()}
+      {:system, :enabled} -> {:ok, system_notifications_enabled?()}
+      {:character, :enabled} -> {:ok, character_notifications_enabled?()}
+      _ -> {:error, :unknown_setting}
     end
   end
 
-  def notification_features, do: get(:features, %{})
-  def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
-
-  # Utility functions
-  def get_env(key, default \\ nil), do: get(key, default)
-
-  def get_all_limits do
+  @impl true
+  def get_config do
     %{
-      tracked_systems: get(:max_tracked_systems, 1000),
-      tracked_characters: get(:max_tracked_characters, 1000),
-      notification_history: get(:max_notification_history, 1000)
+      notifications: %{
+        enabled: notifications_enabled?(),
+        kill: %{
+          enabled: kill_notifications_enabled?(),
+          min_value: min_kill_value()
+        },
+        system: %{
+          enabled: system_notifications_enabled?()
+        },
+        character: %{
+          enabled: character_notifications_enabled?()
+        }
+      },
+      features: %{
+        notifications_enabled: notifications_enabled?(),
+        kill_notifications_enabled: kill_notifications_enabled?(),
+        system_notifications_enabled: system_notifications_enabled?(),
+        character_notifications_enabled: character_notifications_enabled?(),
+        status_messages_enabled: status_messages_enabled?(),
+        voice_participant_notifications_enabled: voice_participant_notifications_enabled?(),
+        fallback_to_here_enabled: fallback_to_here_enabled?(),
+        test_mode_enabled: test_mode_enabled?(),
+        priority_systems_only: priority_systems_only?()
+      }
     }
   end
 
-  def notifier_api_token, do: api_token()
+  # Convenience functions
+  @doc """
+  Returns all feature flags as a map.
+  """
+  def features do
+    get_config().features
+  end
 
-  # Module dependency injection
-  def http_client, do: get(:http_client, WandererNotifier.Http)
-  def esi_service, do: get(:esi_service, WandererNotifier.Infrastructure.Adapters.ESI.Service)
+  @doc """
+  Returns the application version.
+  Delegates to Version module.
+  """
+  defdelegate version(), to: WandererNotifier.Shared.Config.Version
 
-  def notification_service,
-    do: get(:notification_service, WandererNotifier.Domains.Notifications.NotificationService)
-
-  def discord_notifier,
-    do: get(:discord_notifier, WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier)
+  # Module delegation helpers (for behavior compatibility)
+  @impl true
+  def deduplication_module,
+    do: get(:deduplication_module, WandererNotifier.Domains.Notifications.CacheImpl)
 
   @impl true
-  @spec killmail_notification_module() :: module()
+  def system_track_module,
+    do: get(:system_track_module, WandererNotifier.Domains.Tracking.Entities.System)
+
+  @impl true
+  def character_track_module,
+    do: get(:character_track_module, WandererNotifier.Domains.Tracking.Entities.Character)
+
+  @impl true
+  def notification_determiner_module,
+    do:
+      get(:notification_determiner_module, WandererNotifier.Domains.Notifications.Determiner.Kill)
+
+  @impl true
+  def killmail_enrichment_module,
+    do: get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
+
+  @impl true
   def killmail_notification_module,
     do:
       get(
@@ -350,102 +270,72 @@ defmodule WandererNotifier.Shared.Config do
         WandererNotifier.Domains.Notifications.KillmailNotification
       )
 
-  @impl true
-  @spec character_track_module() :: module()
-  def character_track_module,
-    do: get(:character_track_module, WandererNotifier.Domains.CharacterTracking.Character)
+  # Discord channel helpers
+  def discord_channel_id_for(channel_type) do
+    channel_type
+    |> get_specific_channel_id()
+    |> fallback_to_main_channel()
+  end
 
-  @impl true
-  @spec system_track_module() :: module()
-  def system_track_module,
-    do: get(:system_track_module, WandererNotifier.Domains.SystemTracking.System)
-
-  @impl true
-  @spec deduplication_module() :: module()
-  def deduplication_module,
-    do: get(:deduplication_module, WandererNotifier.Domains.Notifications.Deduplication.CacheImpl)
-
-  @impl true
-  @spec notification_determiner_module() :: module()
-  def notification_determiner_module,
-    do:
-      get(:notification_determiner_module, WandererNotifier.Domains.Notifications.Determiner.Kill)
-
-  @impl true
-  @spec killmail_enrichment_module() :: module()
-  def killmail_enrichment_module,
-    do: get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
-
-  # Discord configuration aggregation
-  def discord_config do
-    %{
-      bot_token: discord_bot_token(),
-      application_id: discord_application_id(),
-      guild_id: discord_guild_id(),
-      webhook_url: discord_webhook_url(),
-      default_channel_id: discord_channel_id(),
-      channels: channel_config(),
-      notifier_module: discord_notifier()
+  defp get_specific_channel_id(channel_type) do
+    channel_mapping = %{
+      main: &discord_channel_id/0,
+      system_kill: &discord_system_kill_channel_id/0,
+      character_kill: &discord_character_kill_channel_id/0,
+      system: &discord_system_channel_id/0,
+      character: &discord_character_channel_id/0,
+      charts: &discord_charts_channel_id/0,
+      kill: &discord_kill_channel_id/0
     }
+
+    channel_mapping
+    |> Map.get(channel_type)
+    |> execute_channel_function()
   end
 
-  # Discord channel configuration aggregation
-  def channel_config do
-    %{
-      system_kill: discord_system_kill_channel_id(),
-      character_kill: discord_character_kill_channel_id(),
-      system: discord_system_channel_id(),
-      character: discord_character_channel_id(),
-      charts: discord_charts_channel_id(),
-      kill: discord_kill_channel_id(),
-      channel: discord_channel_channel_id()
-    }
+  defp execute_channel_function(nil), do: nil
+  defp execute_channel_function(func) when is_function(func), do: func.()
+
+  defp fallback_to_main_channel(nil), do: discord_channel_id()
+  defp fallback_to_main_channel(channel_id) when not is_nil(channel_id), do: channel_id
+  defp fallback_to_main_channel(_), do: discord_channel_id()
+
+  # Environment variable helpers
+  defp fetch_env(key, default \\ nil) do
+    System.get_env(key, default)
   end
 
-  # Map debug configuration aggregation
-  def map_debug_settings do
-    %{
-      debug_logging_enabled: debug_logging_enabled?(),
-      map_url: map_url(),
-      map_name: map_name(),
-      map_token: map_token()
-    }
+  defp fetch_env_int(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "" -> default
+      value -> Utils.parse_int(value, default)
+    end
   end
 
-  def map_config_diagnostics do
-    token = map_token()
-    base_url = map_url()
-    name = map_name()
+  # Additional missing functions to fix warnings
+  def notifier_api_token, do: api_token()
+  def notification_features, do: features()
+  def notification_feature_enabled?(flag), do: feature_enabled?(flag)
 
-    %{
-      map_url: base_url,
-      map_url_present: is_binary(base_url) and base_url != "",
-      map_url_explicit: is_binary(get(:map_url)) and get(:map_url) != "",
-      map_token: token,
-      map_token_present: is_binary(token) and token != "",
-      map_token_explicit: is_binary(get(:map_token)) and get(:map_token) != "",
-      map_name: name,
-      map_name_present: is_binary(name) and name != "",
-      map_name_explicit: is_binary(get(:map_name)) and get(:map_name) != ""
-    }
-  end
+  # Debugging functions
+  def enable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
 
-  def get_api_base_url do
-    value = api_base_url()
-    value
-  end
+  def disable_debug_logging,
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
 
-  # Private helper functions
-  defp env_provider do
-    Application.get_env(
-      :wanderer_notifier,
-      :env_provider,
-      WandererNotifier.Shared.Config.SystemEnvProvider
-    )
-  end
+  def set_debug_logging(state),
+    do: Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
 
-  # General ENV helpers
-  def fetch!(key), do: env_provider().fetch_env!(key)
-  def fetch(key, default \\ nil), do: env_provider().get_env(key, default)
-  def fetch_int(key, default), do: fetch(key) |> Utils.parse_int(default)
+  # Missing URL function
+  def map_slug, do: map_name()
+
+  # Boolean accessors for missing functions
+  def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
+  def schedulers_enabled?, do: get(:schedulers_enabled, false)
+  def dev_mode?, do: get(:dev_mode, false)
+  def telemetry_logging_enabled?, do: get(:telemetry_logging_enabled, false)
+  def character_tracking_enabled?, do: get(:character_tracking_enabled, true)
+  def system_tracking_enabled?, do: get(:system_tracking_enabled, true)
 end
