@@ -33,11 +33,13 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
            status_code: 200,
            body:
              Jason.encode!(%{
-               "data" => %{
-                 "characters" => [
-                   %{"name" => "Test Character", "eve_id" => 123}
-                 ]
-               }
+               "data" => [
+                 %{
+                   "id" => "test-id",
+                   "character" => %{"name" => "Test Character", "eve_id" => 123},
+                   "tracked" => true
+                 }
+               ]
              })
          }}
       end)
@@ -206,11 +208,13 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
            status_code: 200,
            body:
              Jason.encode!(%{
-               "data" => %{
-                 "characters" => [
-                   %{"name" => "Test Character", "eve_id" => 123}
-                 ]
-               }
+               "data" => [
+                 %{
+                   "id" => "test-id",
+                   "character" => %{"name" => "Test Character", "eve_id" => 123},
+                   "tracked" => true
+                 }
+               ]
              })
          }}
       end)

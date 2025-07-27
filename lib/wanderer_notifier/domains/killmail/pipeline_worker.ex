@@ -52,30 +52,10 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def handle_info({:websocket_killmail, killmail}, state) do
-    AppLogger.processor_debug("Received WebSocket killmail",
-      killmail_id: killmail[:killmail_id],
-      system_id: killmail[:system_id]
-    )
-
-    # Increment the killmails received counter immediately
+    log_killmail_received(killmail)
     WandererNotifier.Application.Services.Stats.track_killmail_received()
 
-    # Process asynchronously using async_nolink to enable monitoring without linking
-    task =
-      Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
-        case Processor.process_websocket_killmail(killmail, state) do
-          {:ok, result} ->
-            AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
-            result
-
-          {:error, reason} ->
-            AppLogger.processor_error("Failed to process killmail", error: inspect(reason))
-            {:error, reason}
-        end
-      end)
-
-    # Store task reference for monitoring (optional - we could track processing tasks)
-    _task_ref = task.ref
+    _task = spawn_killmail_processing_task(killmail, state)
 
     {:noreply, state}
   end
@@ -172,5 +152,39 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp log_killmail_received(killmail) do
+    AppLogger.processor_debug("Received WebSocket killmail",
+      killmail_id: killmail[:killmail_id],
+      system_id: killmail[:system_id]
+    )
+  end
+
+  defp spawn_killmail_processing_task(killmail, state) do
+    Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
+      process_killmail_task(killmail, state)
+    end)
+  end
+
+  defp process_killmail_task(killmail, state) do
+    case Processor.process_websocket_killmail(killmail, state) do
+      {:ok, result} ->
+        AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
+        result
+
+      {:error, reason} ->
+        log_killmail_processing_error(killmail, reason)
+        {:error, reason}
+    end
+  end
+
+  defp log_killmail_processing_error(killmail, reason) do
+    AppLogger.processor_error("Failed to process killmail",
+      error: inspect(reason),
+      killmail_id: Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id),
+      system_id: Map.get(killmail, "system_id") || Map.get(killmail, :system_id),
+      data_keys: Map.keys(killmail)
+    )
   end
 end

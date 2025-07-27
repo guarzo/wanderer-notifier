@@ -80,14 +80,37 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp get_kill_id(data) do
     # Data is now normalized to string keys
-    Map.get(data, "killmail_id") || Map.get(data, Schema.killmail_id())
+    kill_id = Map.get(data, "killmail_id") || Map.get(data, Schema.killmail_id())
+
+    # Ensure kill_id is a string or integer
+    case kill_id do
+      id when is_integer(id) -> Integer.to_string(id)
+      id when is_binary(id) -> id
+      _ -> nil
+    end
   end
 
   defp get_system_id(data) do
     # Data is now normalized to string keys
-    Map.get(data, "system_id") ||
-      get_in(data, ["killmail", Schema.solar_system_id()]) ||
-      get_in(data, [Schema.solar_system_id()])
+    system_id =
+      Map.get(data, "system_id") ||
+        get_in(data, ["killmail", Schema.solar_system_id()]) ||
+        get_in(data, [Schema.solar_system_id()])
+
+    # Ensure system_id is an integer
+    case system_id do
+      id when is_integer(id) ->
+        id
+
+      id when is_binary(id) ->
+        case Integer.parse(id) do
+          {int_id, ""} -> int_id
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
   end
 
   defp ensure_context(%Context{} = ctx), do: ctx
@@ -266,12 +289,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp build_websocket_killmail(data) do
     # Data is now normalized to string keys
     killmail_id = Map.get(data, "killmail_id")
-    system_id = Map.get(data, "system_id")
+    # Use the enhanced get_system_id function
+    system_id = get_system_id(data)
 
     # Validate required fields
     cond do
       is_nil(killmail_id) -> {:error, :missing_killmail_id}
       is_nil(system_id) -> {:error, :missing_system_id}
+      not is_integer(system_id) -> {:error, {:invalid_system_id, system_id}}
       true -> build_validated_websocket_killmail(killmail_id, system_id, data)
     end
   end

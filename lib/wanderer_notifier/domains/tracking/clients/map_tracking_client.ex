@@ -24,7 +24,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   # Entity type configurations
   @entity_configs %{
     characters: %{
-      endpoint: "user-characters",
+      endpoint: "tracked-characters",
       cache_key: "map:character_list",
       batch_size: 25,
       batch_delay: 100,
@@ -33,7 +33,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
       validator: &ValidationUtils.validate_character_data/1,
       enricher: &__MODULE__.enrich_character/1,
       notifier: &NotificationService.notify_character/1,
-      extract_path: ["data", "characters"]
+      extract_path: ["data"]
     },
     systems: %{
       endpoint: "systems",
@@ -106,8 +106,9 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   defp process_extracted_data({:ok, data}, entity_type) do
     case {entity_type, data} do
       {:characters, data} when is_list(data) ->
-        # Characters data is already a flat list after extraction
-        {:ok, data}
+        # Extract the nested character object from each tracked character item
+        characters = Enum.map(data, &extract_character_from_item/1)
+        {:ok, characters}
 
       {:systems, data} when is_list(data) ->
         {:ok, data}
@@ -121,6 +122,9 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   end
 
   defp process_extracted_data(error, _entity_type), do: error
+
+  defp extract_character_from_item(%{"character" => character}), do: character
+  defp extract_character_from_item(item), do: item
 
   @impl true
   def validate_data(items) when is_list(items) do
