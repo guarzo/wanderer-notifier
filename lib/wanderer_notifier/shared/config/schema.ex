@@ -58,7 +58,7 @@ defmodule WandererNotifier.Shared.Config.Schema do
       discord_application_id:
         field_config(
           :string,
-          true,
+          false,
           nil,
           &valid_snowflake?/1,
           "DISCORD_APPLICATION_ID",

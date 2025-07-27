@@ -3,14 +3,12 @@ import Config
 # Production logger configuration - optimized for performance and structured logging
 config :logger,
   level: :info,
-  format: {WandererNotifier.Logger.StructuredLogger, :format},
-  metadata: [:request_id, :category, :component, :operation],
   backends: [:console]
 
 # Console logger configuration with structured format for production
 config :logger, :console,
-  format: {WandererNotifier.Logger.StructuredLogger, :format},
-  metadata: [:request_id, :category, :component, :operation],
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id, :category],
   # Disable colors in production
   colors: [enabled: false]
 

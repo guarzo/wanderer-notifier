@@ -142,16 +142,19 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 # Logger Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Only configure the file backend and basic settings here
+# Let prod.exs handle the console logger configuration
 config :logger,
-  level: :info,
-  backends: [:console, {LoggerFileBackend, :file_log}]
+  level: :info
 
-config :logger, :file_log,
-  path: Path.join([env_config.cache_dir, "logs", "wanderer_notifier.log"]),
-  level: :info,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :category, :module, :function, :line]
+# Configure file logger if LoggerFileBackend is available
+if Code.ensure_loaded?(LoggerFileBackend) do
+  config :logger,
+    backends: [:console, {LoggerFileBackend, :file_log}]
 
-config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :category]
+  config :logger, :file_log,
+    path: Path.join([env_config.cache_dir, "logs", "wanderer_notifier.log"]),
+    level: :info,
+    format: "$time $metadata[$level] $message\n",
+    metadata: [:request_id, :category]
+end
