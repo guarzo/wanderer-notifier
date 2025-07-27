@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.Character do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
-  alias WandererNotifier.Domains.CharacterTracking.Character
+  alias WandererNotifier.Domains.Tracking.Entities.Character
 
   @doc """
   Determines if a notification should be sent for a character.

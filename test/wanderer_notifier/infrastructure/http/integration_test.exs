@@ -8,6 +8,12 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
   alias WandererNotifier.Infrastructure.Http
 
+  setup do
+    # Ensure HTTP client is configured to use mock for these tests
+    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
+    :ok
+  end
+
   setup :verify_on_exit!
 
   describe "full middleware pipeline" do
@@ -37,7 +43,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       WandererNotifier.HTTPMock
       |> expect(:post, 1, fn _url, _body, _headers, _opts ->
-        count = :counters.add(call_count, 1, 1)
+        _count = :counters.add(call_count, 1, 1)
         # Since we're in test mode, just simulate the final success
         {:ok, %{status_code: 200, body: %{"success" => true}}}
       end)
@@ -157,7 +163,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       test_pid = self()
 
       WandererNotifier.HTTPMock
-      |> expect(:get, fn url, headers, opts ->
+      |> expect(:get, fn _url, _headers, opts ->
         send(test_pid, {:opts_received, opts})
         {:ok, %{status_code: 200, body: %{"systems" => []}}}
       end)

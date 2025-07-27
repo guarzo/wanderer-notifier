@@ -114,12 +114,19 @@ defmodule WandererNotifier.Infrastructure.Cache do
   def put(key, value, ttl \\ nil) when is_binary(key) do
     cache_name = cache_name()
 
-    case ttl do
-      nil ->
-        Cachex.put(cache_name, key, value)
+    result =
+      case ttl do
+        nil ->
+          Cachex.put(cache_name, key, value)
 
-      ttl_value when is_integer(ttl_value) or ttl_value == :infinity ->
-        Cachex.put(cache_name, key, value, ttl: ttl_value)
+        ttl_value when is_integer(ttl_value) or ttl_value == :infinity ->
+          Cachex.put(cache_name, key, value, ttl: ttl_value)
+      end
+
+    case result do
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :not_stored}
+      error -> error
     end
   end
 

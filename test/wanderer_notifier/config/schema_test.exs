@@ -124,7 +124,6 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       # Required fields
       required_fields = [
         :discord_bot_token,
-        :discord_application_id,
         :map_url,
         :map_name,
         :map_api_key,
@@ -137,6 +136,7 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
 
       # Optional fields (check a few examples)
       optional_fields = [
+        :discord_application_id,
         :discord_channel_id,
         :notifications_enabled,
         :port,
@@ -182,7 +182,6 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
       # Required fields should have nil defaults
       required_with_nil_defaults = [
         :discord_bot_token,
-        :discord_application_id,
         :map_url,
         :map_name,
         :map_api_key,
@@ -226,7 +225,6 @@ defmodule WandererNotifier.Shared.Config.SchemaTest do
 
       expected_required = [
         :discord_bot_token,
-        :discord_application_id,
         :map_url,
         :map_name,
         :map_api_key,

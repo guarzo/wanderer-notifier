@@ -369,6 +369,11 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     }
   end
 
+  defp handle_cachex_error(%{reason: :stats_disabled}) do
+    # Stats are disabled, return empty stats without warning
+    empty_cache_stats()
+  end
+
   defp handle_cachex_error(reason) do
     WandererNotifier.Shared.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
     empty_cache_stats()

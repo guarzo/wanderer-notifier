@@ -74,9 +74,8 @@ RUN --mount=type=cache,target=/app/_build,sharing=locked \
     --mount=type=cache,target=/root/.hex \
     --mount=type=cache,target=/root/.mix \
     mix compile --warnings-as-errors --force && \
-    mix release --overwrite --strip-debug && \
-    cp -r /app/_build/prod/rel/wanderer_notifier /app/release && \
-    /app/release/bin/wanderer_notifier eval "Application.ensure_all_started(:wanderer_notifier)"
+    mix release --overwrite && \
+    cp -r /app/_build/prod/rel/wanderer_notifier /app/release
 
 ###############################################################################
 # 3. Runtime Stage - optimized for production
@@ -102,22 +101,16 @@ RUN apt-get update \
       locales \
       # Security updates
  && apt-get upgrade -y \
- && # Configure locale for UTF-8 support
-    echo "C.UTF-8 UTF-8" > /etc/locale.gen \
+ && echo "C.UTF-8 UTF-8" > /etc/locale.gen \
  && locale-gen \
- && # Create application user with proper permissions
-    groupadd -r app --gid=1000 \
+ && groupadd -r app --gid=1000 \
  && useradd -r -g app --uid=1000 --home-dir=/app --shell=/bin/bash app \
- && # Create necessary directories
-    mkdir -p /app/data/cache /app/logs /app/tmp \
+ && mkdir -p /app/data/cache /app/logs /app/tmp \
  && chown -R app:app /app \
- && # Security hardening
-    chmod 755 /app \
- && # Clean up package manager cache
-    apt-get clean \
+ && chmod 755 /app \
+ && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
- && # Remove unnecessary files to reduce image size
-    rm -rf /usr/share/doc /usr/share/man /usr/share/info
+ && rm -rf /usr/share/doc /usr/share/man /usr/share/info
 
 # Copy release from build stage with proper ownership
 COPY --from=build --chown=app:app /app/release ./
@@ -177,6 +170,10 @@ RUN chmod +x /app/bin/wanderer_notifier \
 # Create volume for persistent data
 VOLUME ["/app/data", "/app/logs"]
 
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:4000/api/health || exit 1
+
 # Switch to non-root user for security
 USER app
 
@@ -184,10 +181,6 @@ USER app
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["bin/wanderer_notifier", "start"]
 
-# Enhanced health check with better diagnostics
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f --max-time 5 --retry 2 --retry-delay 2 \
-      "http://localhost:${PORT:-4000}/health" || exit 1
 
 # Expose default port
 EXPOSE 4000

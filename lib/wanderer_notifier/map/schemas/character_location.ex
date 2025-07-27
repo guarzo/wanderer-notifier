@@ -148,7 +148,7 @@ defmodule WandererNotifier.Map.Schemas.CharacterLocation do
   @doc """
   Creates a changeset from existing MapCharacter struct.
   """
-  @spec from_map_character(WandererNotifier.Domains.CharacterTracking.Character.t()) ::
+  @spec from_map_character(WandererNotifier.Domains.Tracking.Entities.Character.t()) ::
           Ecto.Changeset.t()
   def from_map_character(map_character) do
     attrs = %{

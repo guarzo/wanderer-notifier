@@ -16,13 +16,17 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   Makes an HTTP GET request with retry logic and error handling.
   """
   @spec http_get(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  defdelegate http_get(url, headers \\ []), to: HTTP, as: :get
+  def http_get(url, headers \\ []) do
+    HTTP.request(:get, url, nil, headers, [])
+  end
 
   @doc """
   Makes an HTTP POST request with retry logic and error handling.
   """
   @spec http_post(String.t(), any(), keyword()) :: {:ok, map()} | {:error, term()}
-  defdelegate http_post(url, body, headers \\ []), to: HTTP, as: :post
+  def http_post(url, body, headers \\ []) do
+    HTTP.request(:post, url, body, headers, [])
+  end
 
   # ──────────────────────────────────────────────────────────────────────────────
   # EVE ESI API
@@ -67,7 +71,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
   def get_tracked_systems do
-    WandererNotifier.Domains.SystemTracking.Client.get_all()
+    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_systems()
   end
 
   @doc """
@@ -75,7 +79,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
   def get_tracked_characters do
-    WandererNotifier.Domains.CharacterTracking.Client.get_all()
+    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_characters()
   end
 
   @doc """
@@ -83,7 +87,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_system_info(integer() | String.t()) :: {:ok, map()} | {:error, term()}
   def get_system_info(system_id) do
-    WandererNotifier.Domains.SystemTracking.StaticInfo.get_system_info(system_id)
+    WandererNotifier.Domains.Tracking.StaticInfo.get_system_info(system_id)
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -129,7 +133,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   defdelegate validate_license(api_token, license_key),
-    to: WandererNotifier.Domains.License.Client,
+    to: WandererNotifier.Domains.License.Service,
     as: :validate_bot
 
   @doc """

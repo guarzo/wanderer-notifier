@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   require Logger
   alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Killmail.Cache, as: KillmailCache
+  alias WandererNotifier.Domains.Killmail.Enrichment
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.FeatureFlags
@@ -234,19 +234,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   # Send a simple text-based kill notification
   defp send_simple_kill_notification(kill_data, channel_id) do
-    message = PlainTextFormatter.plain_killmail_notification(kill_data)
+    message = PlainTextFormatter.format_plain_text(kill_data)
     NeoClient.send_message(message, channel_id)
   end
 
   def send_new_tracked_character_notification(character)
-      when is_struct(character, WandererNotifier.Domains.CharacterTracking.Character) do
+      when is_struct(character, WandererNotifier.Domains.Tracking.Entities.Character) do
     try do
       if LicenseLimiter.should_send_rich?(:character) do
         generic_notification = CharacterFormatter.format_character_notification(character)
         send_to_discord(generic_notification, :character_tracking)
         LicenseLimiter.increment(:character)
       else
-        message = PlainTextFormatter.plain_character_notification(character)
+        message = PlainTextFormatter.format_plain_text(character)
         NeoClient.send_message(message)
       end
 
@@ -274,7 +274,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         send_to_discord(generic_notification, :system_tracking)
         LicenseLimiter.increment(:system)
       else
-        message = PlainTextFormatter.plain_system_notification(system)
+        message = PlainTextFormatter.format_plain_text(system)
         NeoClient.send_message(message)
       end
 
@@ -421,8 +421,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   # Helper function to get system name with caching
   defp get_system_name(system_id) when is_integer(system_id) do
-    # KillmailCache.get_system_name always returns a string, never nil
-    KillmailCache.get_system_name(system_id)
+    # Enrichment.get_system_name always returns a string, never nil
+    Enrichment.get_system_name(system_id)
   end
 
   # Send killmail notification

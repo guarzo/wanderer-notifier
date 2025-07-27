@@ -8,41 +8,25 @@ ExUnit.start()
 # Configure Mox
 Application.ensure_all_started(:mox)
 
-# Set up Mox mocks
-# Cache behaviour removed in simplification - MockCache no longer needed
-# Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.CacheBehaviour)
-Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
-Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
+# Load test mock infrastructure (with guards to prevent redefinition)
+unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestMocks) do
+  Code.require_file("support/mocks/test_mocks.ex", __DIR__)
+end
 
-Mox.defmock(WandererNotifier.MockDeduplication,
-  for: WandererNotifier.Domains.Notifications.Deduplication.DeduplicationBehaviour
-)
+unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestDataFactory) do
+  Code.require_file("support/mocks/test_data_factory.ex", __DIR__)
+end
 
-Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
-
-Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
-
-Mox.defmock(DiscordNotifierMock,
-  for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
-)
-
-Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
-  for: WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
-)
-
-Mox.defmock(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock,
-  for: WandererNotifier.Infrastructure.Adapters.ESI.ClientBehaviour
-)
-
-Mox.defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
-  for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
-)
+# Import test mocks module
+alias WandererNotifier.Test.Support.Mocks.TestMocks
 
 # Configure application to use mocks
 # Cache module removed - using simplified Cache directly
 # Application.put_env(:wanderer_notifier, :cache_module, WandererNotifier.MockCache)
 Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.MockSystem)
 Application.put_env(:wanderer_notifier, :character_module, WandererNotifier.MockCharacter)
+Application.put_env(:wanderer_notifier, :system_track_module, WandererNotifier.MockSystem)
+Application.put_env(:wanderer_notifier, :character_track_module, WandererNotifier.MockCharacter)
 Application.put_env(:wanderer_notifier, :deduplication_module, WandererNotifier.MockDeduplication)
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
 
@@ -60,123 +44,14 @@ Application.put_env(
 
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
-# Cache mock stubs removed - using real Cachex in tests
-# The simplified cache system uses Cachex directly
-
-# Set up default stubs for deduplication mock
-Mox.stub(WandererNotifier.MockDeduplication, :check, fn _, _ -> {:ok, :new} end)
-Mox.stub(WandererNotifier.MockDeduplication, :clear_key, fn _, _ -> :ok end)
-
-# Set up default stubs for config mock
-Mox.stub(WandererNotifier.MockConfig, :notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :kill_notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :system_notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :character_notifications_enabled?, fn -> true end)
-
-Mox.stub(WandererNotifier.MockConfig, :get_notification_setting, fn _type, _key -> {:ok, true} end)
-
-# Traditional stub for backward compatibility
-Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
-  %{
-    notifications_enabled: true,
-    kill_notifications_enabled: true,
-    system_notifications_enabled: true,
-    character_notifications_enabled: true
-  }
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :deduplication_module, fn ->
-  WandererNotifier.MockDeduplication
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :system_track_module, fn -> WandererNotifier.MockSystem end)
-
-Mox.stub(WandererNotifier.MockConfig, :character_track_module, fn ->
-  WandererNotifier.MockCharacter
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :notification_determiner_module, fn ->
-  WandererNotifier.Domains.Notifications.Determiner.Kill
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn ->
-  WandererNotifier.Domains.Killmail.Enrichment
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn ->
-  WandererNotifier.Domains.Notifications.KillmailNotification
-end)
-
-# Set up default stubs for system mock
-Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
-
-# Set up default stubs for character mock
-Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
-
-# Set up default stubs for HTTP client mock
-Mox.stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-Mox.stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-Mox.stub(WandererNotifier.HTTPMock, :post_json, fn _url, _body, _headers, _opts ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-Mox.stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _headers, _body, _opts ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-Mox.stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-# Set up default stubs for ESI service mock
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
-  {:ok, %{}}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_character, fn _id ->
-  {:ok, %{}}
-end)
-
-Mox.stub(
-  WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
-  :get_corporation_info,
-  fn _id -> {:ok, %{}} end
+Application.put_env(
+  :wanderer_notifier,
+  :static_info_module,
+  WandererNotifier.Domains.Tracking.StaticInfoMock
 )
 
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_alliance_info, fn _id ->
-  {:ok, %{}}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_universe_type, fn _id,
-                                                                                          _opts ->
-  {:ok, %{}}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
-  {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_type_info, fn _id ->
-  {:ok, %{}}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system_kills, fn _id,
-                                                                                         _limit,
-                                                                                         _opts ->
-  {:ok, []}
-end)
-
-Mox.stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :search, fn _query,
-                                                                               _categories,
-                                                                               _opts ->
-  {:ok, %{}}
-end)
+# Set up all mocks with default behaviors using test infrastructure
+TestMocks.setup_all_mocks()
 
 # Configure logger level for tests
 Logger.configure(level: :debug)
@@ -219,11 +94,17 @@ Application.put_env(:wanderer_notifier, :pipeline_worker_enabled, false)
 Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
 
 # Configure cache implementation
-Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
+Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache_test)
 
-# Load shared test mocks
-Code.require_file("support/test_mocks.ex", __DIR__)
-Code.require_file("support/global_mock_config.ex", __DIR__)
+# Initialize RateLimiter ETS table for tests
+unless :ets.whereis(WandererNotifier.RateLimiter) == :undefined do
+  :ets.delete(WandererNotifier.RateLimiter)
+end
+
+:ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
+
+# Note: Shared test mocks are currently disabled in favor of per-test mocking
+# These were commented out during test refactoring to avoid conflicts with Mox setup
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")

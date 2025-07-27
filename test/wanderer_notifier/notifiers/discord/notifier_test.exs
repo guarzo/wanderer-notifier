@@ -7,7 +7,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
 
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier
-  alias WandererNotifier.Domains.CharacterTracking.Character, as: MapCharacter
+  alias WandererNotifier.Domains.Tracking.Entities.Character, as: MapCharacter
   alias WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
 
   # Define mock modules for testing
@@ -215,10 +215,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
     # Set up test data with corrected fields
     test_killmail = %Killmail{
       killmail_id: "12345",
-      victim_name: "Test Victim",
-      victim_corporation: "Test Victim Corp",
-      victim_corp_ticker: "TVC",
-      ship_name: "Test Ship",
+      victim_character_name: "Test Victim",
+      victim_corporation_name: "Test Victim Corp",
+      victim_ship_name: "Test Ship",
       system_name: "Test System",
       attackers: [
         %{
@@ -473,7 +472,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
       end)
 
       # Create a killmail that will cause an exception
-      error_killmail = %{killmail | victim_name: nil, system_name: nil}
+      error_killmail = %{killmail | victim_character_name: nil, system_name: nil}
 
       # Define a mock formatter that raises an exception
       defmodule ExceptionFormatter do
@@ -515,8 +514,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
         character_id: "123456",
         name: "Test Character",
         corporation_id: 789_012,
-        corporation_ticker: "TEST",
         alliance_id: 345_678,
+        eve_id: nil,
+        corporation_ticker: "TEST",
         alliance_ticker: "ALLI",
         tracked: true
       }

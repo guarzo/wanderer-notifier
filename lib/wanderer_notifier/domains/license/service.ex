@@ -7,7 +7,8 @@ defmodule WandererNotifier.Domains.License.Service do
   require Logger
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Config.Utils
-  alias WandererNotifier.Domains.License.Client, as: LicenseClient
+  alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Shared.Utils.ErrorHandler
   alias WandererNotifier.Domains.License.Validation
   alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
@@ -147,7 +148,7 @@ defmodule WandererNotifier.Domains.License.Service do
   The token should be a non-empty string.
   """
   def validate_token do
-    token = Config.notifier_api_token()
+    token = Config.api_token()
 
     # Add detailed debug logging
     AppLogger.config_info(
@@ -360,7 +361,7 @@ defmodule WandererNotifier.Domains.License.Service do
     # Use supervised task for license validation
     task =
       Task.Supervisor.async(WandererNotifier.TaskSupervisor, fn ->
-        LicenseClient.validate_bot(notifier_api_token, license_key)
+        __MODULE__.validate_bot(notifier_api_token, license_key)
       end)
 
     validation_result =
@@ -525,7 +526,7 @@ defmodule WandererNotifier.Domains.License.Service do
     AppLogger.config_debug("Performing license validation with API")
 
     # Validate the license with the license manager
-    api_result = LicenseClient.validate_bot(notifier_api_token, license_key)
+    api_result = __MODULE__.validate_bot(notifier_api_token, license_key)
     AppLogger.config_debug("License API result", result: inspect(api_result))
 
     process_api_result(api_result, state)
@@ -674,4 +675,124 @@ defmodule WandererNotifier.Domains.License.Service do
       Map.put(base_state, :notification_counts, defaults.notification_counts)
     end
   end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # HTTP Client Functions (merged from License.Client)
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Validates a bot by calling the license manager API.
+  Merged from WandererNotifier.Domains.License.Client.
+
+  ## Parameters
+  - `notifier_api_token`: The API token for the notifier.
+  - `license_key`: The license key to validate.
+
+  ## Returns
+  - `{:ok, data}` if the bot was validated successfully.
+  - `{:error, reason}` if the validation failed.
+  """
+  def validate_bot(notifier_api_token, license_key) do
+    url = build_url("validate_bot")
+    body = %{"license_key" => license_key}
+
+    AppLogger.api_debug("Sending HTTP request for bot validation", %{endpoint: "validate_bot"})
+
+    # Use unified HTTP client with license service configuration
+    case Http.request(:post, url, body, [],
+           service: :license,
+           auth: [type: :bearer, token: notifier_api_token]
+         ) do
+      {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
+        process_successful_validation(response_body)
+
+      {:ok, %{status_code: status, body: body}} ->
+        error = ErrorHandler.http_error_to_tuple(status)
+        ErrorHandler.enrich_error(error, %{body: body})
+
+      {:error, reason} ->
+        normalized = ErrorHandler.normalize_error({:error, reason})
+        ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
+        normalized
+    end
+  end
+
+  @doc """
+  Validates a license key by calling the license manager API.
+  Merged from WandererNotifier.Domains.License.Client.
+
+  ## Parameters
+  - `license_key`: The license key to validate.
+  - `notifier_api_token`: The API token for the notifier.
+
+  ## Returns
+  - `{:ok, data}` if the license was validated successfully.
+  - `{:error, reason}` if the validation failed.
+  """
+  def validate_license(license_key, notifier_api_token) do
+    url = build_url("validate_license")
+    body = %{"license_key" => license_key}
+
+    AppLogger.api_info("Making license validation request to License Manager API", %{})
+
+    AppLogger.api_debug("Sending HTTP request for license validation", %{
+      endpoint: "validate_license"
+    })
+
+    case make_validation_request(url, body, notifier_api_token) do
+      {:ok, response} ->
+        process_successful_validation(response)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Private helper functions (merged from License.Client)
+
+  defp make_validation_request(url, body, notifier_api_token) do
+    # Use unified HTTP client with license service configuration
+    case Http.request(:post, url, body, [],
+           service: :license,
+           auth: [type: :bearer, token: notifier_api_token]
+         ) do
+      {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
+        {:ok, response_body}
+
+      {:ok, %{status_code: status, body: body}} ->
+        error = ErrorHandler.http_error_to_tuple(status)
+        ErrorHandler.enrich_error(error, %{body: body})
+
+      {:error, reason} ->
+        normalized = ErrorHandler.normalize_error({:error, reason})
+        ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
+        normalized
+    end
+  end
+
+  defp build_url(endpoint) do
+    base_url = Config.license_manager_api_url()
+    "#{base_url}/#{endpoint}"
+  end
+
+  defp process_successful_validation(decoded) when is_map(decoded) do
+    {:ok, decoded}
+  end
+
+  defp process_successful_validation(decoded) do
+    AppLogger.api_error("Unexpected license validation response format", %{
+      decoded: decoded,
+      type: typeof(decoded)
+    })
+
+    {:error, :invalid_response}
+  end
+
+  defp typeof(data) when is_binary(data), do: "string"
+  defp typeof(data) when is_map(data), do: "map"
+  defp typeof(data) when is_list(data), do: "list"
+  defp typeof(data) when is_atom(data), do: "atom"
+  defp typeof(data) when is_integer(data), do: "integer"
+  defp typeof(data) when is_float(data), do: "float"
+  defp typeof(_), do: "unknown"
 end

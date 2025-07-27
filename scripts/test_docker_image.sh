@@ -41,13 +41,20 @@ trap 'rm -f "$ENV_FILE"' EXIT
 
 # Base test env
 cat > "$ENV_FILE" <<EOF
+MIX_ENV=test
 ENV=test
-DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token}
-LICENSE_KEY=test_license
+DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token_123456789012345678901234567890123456789012345678901234567890}
+LICENSE_KEY=test_license_key_123456789012345678901234567890
 MAP_URL=http://test.example.com
 MAP_NAME=test-map
-MAP_API_KEY=test_api_key
+MAP_API_KEY=test_api_key_123456789012345678901234567890
 DISCORD_CHANNEL_ID=123456789
+DISCORD_APPLICATION_ID=123456789012345678
+SECRET_KEY_BASE=wanderer_notifier_secret_key_base_default_for_development_only_test_123456789012345678901234567890
+LIVE_VIEW_SIGNING_SALT=wanderer_liveview_salt_test
+PORT=4000
+HOST=0.0.0.0
+SCHEME=http
 EOF
 
 # Append any extras
@@ -73,8 +80,26 @@ fi
 echo "Container is running as $CONTAINER_ID."
 
 echo "Waiting for health endpoint…"
-until docker exec "$CONTAINER_ID" wget -q -O- http://localhost:4000/health; do
-  echo "  still waiting..."
+HEALTH_CHECK_ATTEMPTS=0
+MAX_HEALTH_CHECK_ATTEMPTS=30
+until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/api/health 2>/dev/null; do
+  # Check if container is still running
+  if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_ID" 2>/dev/null)" != "true" ]; then
+    echo "Container stopped running during health check. Logs:"
+    docker logs "$CONTAINER_ID" 2>&1 || true
+    docker rm "$CONTAINER_ID" > /dev/null || true
+    exit 1
+  fi
+  
+  HEALTH_CHECK_ATTEMPTS=$((HEALTH_CHECK_ATTEMPTS + 1))
+  if [ $HEALTH_CHECK_ATTEMPTS -ge $MAX_HEALTH_CHECK_ATTEMPTS ]; then
+    echo "Health check timed out after $MAX_HEALTH_CHECK_ATTEMPTS attempts. Container logs:"
+    docker logs "$CONTAINER_ID" 2>&1 || true
+    docker rm -f "$CONTAINER_ID" > /dev/null || true
+    exit 1
+  fi
+  
+  echo "  still waiting... (attempt $HEALTH_CHECK_ATTEMPTS/$MAX_HEALTH_CHECK_ATTEMPTS)"
   sleep 2
 done
 echo "Health check passed."
@@ -90,11 +115,11 @@ RUNTIME_COMMANDS=(
 BASIC_COMMANDS=(
   "whoami"
   "uname -a"
-  "which wget"
+  "which curl"
 )
 
 if [ "$BASIC_ONLY" = false ]; then
-  RUNTIME_COMMANDS+=("wget --spider http://localhost:4000/health")
+  RUNTIME_COMMANDS+=("curl -f -s http://localhost:4000/api/health")
 fi
 
 echo "→ Running basic system checks..."

@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Map.MapCharacterTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.Domains.CharacterTracking.Character, as: MapCharacter
+  alias WandererNotifier.Domains.Tracking.Entities.Character, as: MapCharacter
 
   describe "new/1" do
     test "creates a character from valid map data" do

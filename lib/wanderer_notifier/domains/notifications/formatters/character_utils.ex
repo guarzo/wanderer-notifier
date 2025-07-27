@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
   Provides helper functions for extracting and formatting character information.
   """
 
-  alias WandererNotifier.Domains.CharacterTracking.Character
+  alias WandererNotifier.Domains.Tracking.Entities.Character
 
   @doc """
   Extracts a character ID from a Character struct.
@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the ID as a string.
   """
-  @spec extract_character_id(Character.t()) :: String.t()
+  @spec extract_character_id(Character.t()) :: String.t() | nil
   def extract_character_id(%Character{} = character) do
     character.character_id
   end
@@ -23,7 +23,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the name as a string.
   """
-  @spec extract_character_name(Character.t()) :: String.t()
+  @spec extract_character_name(Character.t()) :: String.t() | nil
   def extract_character_name(%Character{} = character) do
     character.name
   end
@@ -34,7 +34,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterUtils do
 
   Returns the corporation ticker as a string.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t()
+  @spec extract_corporation_name(Character.t()) :: String.t() | nil
   def extract_corporation_name(%Character{} = character) do
     character.corporation_ticker
   end

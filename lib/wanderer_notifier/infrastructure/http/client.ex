@@ -25,6 +25,7 @@ defmodule WandererNotifier.Infrastructure.Http.Client do
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
   alias WandererNotifier.Infrastructure.Http.Middleware.Telemetry
   alias WandererNotifier.Infrastructure.Http.Middleware.Retry
+  alias WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
 
   # HTTP client configuration - use runtime config for test compatibility
   defp http_client do
@@ -72,7 +73,7 @@ defmodule WandererNotifier.Infrastructure.Http.Client do
     case http_client() do
       WandererNotifier.HTTPMock ->
         # Use the existing HTTP module which handles mocks properly
-        WandererNotifier.Infrastructure.Http.request(method, url, headers, body, opts)
+        WandererNotifier.Infrastructure.Http.request(method, url, body, headers, opts)
 
       _ ->
         # Production mode - use middleware chain
