@@ -75,8 +75,7 @@ RUN --mount=type=cache,target=/app/_build,sharing=locked \
     --mount=type=cache,target=/root/.mix \
     mix compile --warnings-as-errors --force && \
     mix release --overwrite && \
-    cp -r /app/_build/prod/rel/wanderer_notifier /app/release && \
-    /app/release/bin/wanderer_notifier eval "Application.ensure_all_started(:wanderer_notifier)"
+    cp -r /app/_build/prod/rel/wanderer_notifier /app/release
 
 ###############################################################################
 # 3. Runtime Stage - optimized for production
