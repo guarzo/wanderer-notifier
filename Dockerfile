@@ -102,22 +102,16 @@ RUN apt-get update \
       locales \
       # Security updates
  && apt-get upgrade -y \
- && # Configure locale for UTF-8 support
-    echo "C.UTF-8 UTF-8" > /etc/locale.gen \
+ && echo "C.UTF-8 UTF-8" > /etc/locale.gen \
  && locale-gen \
- && # Create application user with proper permissions
-    groupadd -r app --gid=1000 \
+ && groupadd -r app --gid=1000 \
  && useradd -r -g app --uid=1000 --home-dir=/app --shell=/bin/bash app \
- && # Create necessary directories
-    mkdir -p /app/data/cache /app/logs /app/tmp \
+ && mkdir -p /app/data/cache /app/logs /app/tmp \
  && chown -R app:app /app \
- && # Security hardening
-    chmod 755 /app \
- && # Clean up package manager cache
-    apt-get clean \
+ && chmod 755 /app \
+ && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
- && # Remove unnecessary files to reduce image size
-    rm -rf /usr/share/doc /usr/share/man /usr/share/info
+ && rm -rf /usr/share/doc /usr/share/man /usr/share/info
 
 # Copy release from build stage with proper ownership
 COPY --from=build --chown=app:app /app/release ./
