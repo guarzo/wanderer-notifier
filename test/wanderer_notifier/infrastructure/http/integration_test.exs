@@ -8,6 +8,12 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
   alias WandererNotifier.Infrastructure.Http
 
+  setup do
+    # Ensure HTTP client is configured to use mock for these tests
+    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
+    :ok
+  end
+
   setup :verify_on_exit!
 
   describe "full middleware pipeline" do
