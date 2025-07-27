@@ -41,6 +41,7 @@ trap 'rm -f "$ENV_FILE"' EXIT
 
 # Base test env
 cat > "$ENV_FILE" <<EOF
+MIX_ENV=test
 ENV=test
 DISCORD_BOT_TOKEN=${TEST_TOKEN:-test_token}
 LICENSE_KEY=test_license
@@ -73,7 +74,7 @@ fi
 echo "Container is running as $CONTAINER_ID."
 
 echo "Waiting for health endpoint…"
-until docker exec "$CONTAINER_ID" wget -q -O- http://localhost:4000/health; do
+until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/health; do
   echo "  still waiting..."
   sleep 2
 done
@@ -90,11 +91,11 @@ RUNTIME_COMMANDS=(
 BASIC_COMMANDS=(
   "whoami"
   "uname -a"
-  "which wget"
+  "which curl"
 )
 
 if [ "$BASIC_ONLY" = false ]; then
-  RUNTIME_COMMANDS+=("wget --spider http://localhost:4000/health")
+  RUNTIME_COMMANDS+=("curl -f -s http://localhost:4000/health")
 fi
 
 echo "→ Running basic system checks..."
