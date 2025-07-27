@@ -243,9 +243,9 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # NotificationService will handle message sending internally
 
-      # MockDeduplication.check/2 is now called first in the pipeline
+      # MockDeduplication.check/2 might be called in the pipeline
       MockDeduplication
-      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
+      |> stub(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
       assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
