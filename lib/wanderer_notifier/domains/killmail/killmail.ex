@@ -1,338 +1,241 @@
 defmodule WandererNotifier.Domains.Killmail.Killmail do
   @moduledoc """
-  Data structure for EVE Online killmails.
-  Contains information about ship kills, combining data from zKillboard and ESI.
+  Simplified data structure for EVE Online killmails.
+  Contains flattened information about ship kills from WebSocket data.
+
+  This structure has been optimized for WebSocket-sourced killmails which come
+  pre-enriched, eliminating the need for complex transformation logic.
   """
-  @enforce_keys [:killmail_id, :zkb]
+
+  @enforce_keys [:killmail_id]
   defstruct [
+    # Core identifiers
     :killmail_id,
-    :zkb,
-    :esi_data,
-    :victim_name,
-    :victim_corporation,
-    :victim_corp_ticker,
-    :victim_alliance,
-    :ship_name,
-    :system_name,
     :system_id,
+    :system_name,
+    :kill_time,
+
+    # Victim fields (flattened from nested structure)
+    :victim_character_id,
+    :victim_character_name,
+    :victim_corporation_id,
+    :victim_corporation_name,
+    :victim_alliance_id,
+    :victim_alliance_name,
+    :victim_ship_type_id,
+    :victim_ship_name,
+    :damage_taken,
+
+    # Attackers (kept as list for simplicity)
     :attackers,
-    :victim,
+
+    # Metadata
+    :zkb,
     :value,
+    :points,
+    :esi_data,
     enriched?: false
   ]
 
-  @type killmail_id :: String.t() | integer()
-  @type zkb_data :: map()
-  @type esi_data :: map() | nil
-
   @type t :: %__MODULE__{
-          killmail_id: killmail_id(),
-          zkb: zkb_data(),
-          esi_data: esi_data(),
-          victim_name: String.t() | nil,
-          victim_corporation: String.t() | nil,
-          victim_corp_ticker: String.t() | nil,
-          victim_alliance: String.t() | nil,
-          ship_name: String.t() | nil,
-          system_name: String.t() | nil,
+          killmail_id: String.t(),
           system_id: integer() | nil,
+          system_name: String.t() | nil,
+          kill_time: String.t() | nil,
+          victim_character_id: integer() | nil,
+          victim_character_name: String.t() | nil,
+          victim_corporation_id: integer() | nil,
+          victim_corporation_name: String.t() | nil,
+          victim_alliance_id: integer() | nil,
+          victim_alliance_name: String.t() | nil,
+          victim_ship_type_id: integer() | nil,
+          victim_ship_name: String.t() | nil,
+          damage_taken: integer() | nil,
           attackers: list(map()) | nil,
-          victim: map() | nil,
+          zkb: map() | nil,
           value: number() | nil,
+          points: integer() | nil,
+          esi_data: map() | nil,
           enriched?: boolean()
         }
 
   @doc """
-  Implements the Access behaviour to allow accessing the struct like a map.
-  This enables syntax like killmail["victim"] to work.
+  Creates a new killmail struct from WebSocket data.
+
+  This is the primary constructor for pre-enriched WebSocket killmails.
   """
-  @behaviour Access
-
-  @impl Access
-  @spec fetch(t(), String.t()) :: {:ok, any()} | :error
-  def fetch(killmail, key) when key in ["killmail_id", "zkb", "esi_data"] do
-    fetch_direct_property(killmail, key)
-  end
-
-  def fetch(%__MODULE__{esi_data: esi_data}, _key) when is_nil(esi_data) do
-    :error
-  end
-
-  def fetch(killmail, key) do
-    fetch_from_esi_data(killmail, key)
-  end
-
-  # Fetch direct property from the killmail
-  defp fetch_direct_property(killmail, key) do
-    value =
-      case key do
-        "killmail_id" -> killmail.killmail_id
-        "zkb" -> killmail.zkb
-        "esi_data" -> killmail.esi_data
-      end
-
-    {:ok, value}
-  end
-
-  # Fetch a key from the esi data
-  defp fetch_from_esi_data(killmail, key) do
-    # Handle special cases for victim and attackers explicitly
-    case key do
-      "victim" -> Map.fetch(killmail.esi_data, "victim")
-      "attackers" -> Map.fetch(killmail.esi_data, "attackers")
-      _ -> Map.fetch(killmail.esi_data, key)
-    end
-  end
-
-  @doc """
-  Helper function to get a value from the killmail.
-  Not part of the Access behaviour but useful for convenience.
-  """
-  @spec get(t(), String.t(), any()) :: any()
-  def get(killmail, key, default \\ nil) do
-    case fetch(killmail, key) do
-      {:ok, value} -> value
-      :error -> default
-    end
-  end
-
-  @impl Access
-  @spec get_and_update(t(), String.t(), (any() -> {any(), any()})) :: {any(), t()}
-  def get_and_update(killmail, key, fun) do
-    current_value = get(killmail, key)
-    {get_value, new_value} = fun.(current_value)
-
-    new_killmail =
-      case key do
-        "killmail_id" ->
-          %{killmail | killmail_id: new_value}
-
-        "zkb" ->
-          %{killmail | zkb: new_value}
-
-        "esi_data" ->
-          %{killmail | esi_data: new_value}
-
-        _ ->
-          if killmail.esi_data do
-            new_esi_data = Map.put(killmail.esi_data, key, new_value)
-            %{killmail | esi_data: new_esi_data}
-          else
-            killmail
-          end
-      end
-
-    {get_value, new_killmail}
-  end
-
-  @impl Access
-  @spec pop(t(), String.t()) :: {any(), t()}
-  def pop(killmail, key) do
-    value = get(killmail, key)
-
-    new_killmail =
-      case key do
-        "killmail_id" ->
-          %{killmail | killmail_id: nil}
-
-        "zkb" ->
-          %{killmail | zkb: nil}
-
-        "esi_data" ->
-          %{killmail | esi_data: nil}
-
-        _ ->
-          if killmail.esi_data do
-            new_esi_data = Map.delete(killmail.esi_data, key)
-            %{killmail | esi_data: new_esi_data}
-          else
-            killmail
-          end
-      end
-
-    {value, new_killmail}
-  end
-
-  @doc """
-  Creates a new killmail struct with just ID and ZKB data.
-  This is used for scenarios where esi data isn't available.
-  """
-  @spec new(killmail_id(), zkb_data()) :: t()
-  def new(killmail_id, zkb) do
-    value = get_in(zkb, ["totalValue"]) || 0
+  @spec from_websocket_data(String.t(), integer(), map()) :: t()
+  def from_websocket_data(killmail_id, system_id, data) do
+    victim = Map.get(data, "victim", %{})
+    zkb_data = Map.get(data, "zkb", %{})
 
     %__MODULE__{
       killmail_id: killmail_id,
-      zkb: zkb,
-      esi_data: nil,
-      value: value,
-      system_name: "Unknown",
-      system_id: nil
+      system_id: system_id,
+      system_name: get_system_name(system_id),
+      kill_time: Map.get(data, "kill_time"),
+
+      # Flattened victim fields
+      victim_character_id: Map.get(victim, "character_id"),
+      victim_character_name: Map.get(victim, "character_name"),
+      victim_corporation_id: Map.get(victim, "corporation_id"),
+      victim_corporation_name: Map.get(victim, "corporation_name"),
+      victim_alliance_id: Map.get(victim, "alliance_id"),
+      victim_alliance_name: Map.get(victim, "alliance_name"),
+      victim_ship_type_id: Map.get(victim, "ship_type_id"),
+      victim_ship_name: Map.get(victim, "ship_name"),
+      damage_taken: Map.get(victim, "damage_taken"),
+
+      # Keep attackers as list
+      attackers: Map.get(data, "attackers", []),
+
+      # Metadata
+      zkb: zkb_data,
+      value: Map.get(zkb_data, "totalValue", 0),
+      points: Map.get(zkb_data, "points", 0),
+      esi_data: build_esi_data(killmail_id, system_id, data),
+      enriched?: true
     }
   end
 
   @doc """
-  Creates a new killmail struct with the provided data.
-  Overloaded for compatibility with processing/killmail/core.ex
+  Legacy constructor for backward compatibility.
   """
-  @spec new(killmail_id(), zkb_data(), map()) :: t()
-  def new(kill_id, zkb, enriched_data) do
-    value = get_in(zkb, ["totalValue"]) || 0
-    system_id = get_in(enriched_data, ["solar_system_id"])
-
-    system_name = get_system_name_with_fallback(enriched_data, system_id)
-
+  @spec new(String.t(), map()) :: t()
+  def new(killmail_id, zkb_data) do
     %__MODULE__{
-      killmail_id: kill_id,
-      zkb: zkb,
-      esi_data: enriched_data,
-      value: value,
-      system_name: system_name,
-      system_id: system_id
+      killmail_id: killmail_id,
+      zkb: zkb_data,
+      value: Map.get(zkb_data, "totalValue", 0),
+      points: Map.get(zkb_data, "points", 0),
+      system_name: "Unknown",
+      enriched?: false
+    }
+  end
+
+  @doc """
+  Legacy constructor with ESI data for backward compatibility.
+  """
+  @spec new(String.t(), map(), map()) :: t()
+  def new(killmail_id, zkb_data, esi_data) do
+    %__MODULE__{
+      killmail_id: killmail_id,
+      zkb: zkb_data,
+      esi_data: esi_data,
+      value: Map.get(zkb_data, "totalValue", 0),
+      points: Map.get(zkb_data, "points", 0),
+      system_id: get_in(esi_data, ["solar_system_id"]),
+      system_name: get_in(esi_data, ["solar_system_name"]) || "Unknown",
+      kill_time: get_in(esi_data, ["killmail_time"]),
+      victim_character_id: get_in(esi_data, ["victim", "character_id"]),
+      victim_character_name: get_in(esi_data, ["victim", "character_name"]),
+      victim_corporation_id: get_in(esi_data, ["victim", "corporation_id"]),
+      victim_corporation_name: get_in(esi_data, ["victim", "corporation_name"]),
+      victim_alliance_id: get_in(esi_data, ["victim", "alliance_id"]),
+      victim_alliance_name: get_in(esi_data, ["victim", "alliance_name"]),
+      victim_ship_type_id: get_in(esi_data, ["victim", "ship_type_id"]),
+      victim_ship_name: get_in(esi_data, ["victim", "ship_type_name"]),
+      damage_taken: get_in(esi_data, ["victim", "damage_taken"]),
+      attackers: Map.get(esi_data, "attackers", []),
+      enriched?: false
     }
   end
 
   @doc """
   Creates a killmail struct from a map.
-
-  ## Parameters
-  - map: A map containing killmail data
-
-  ## Returns
-  A new %WandererNotifier.Domains.Killmail.Killmail{} struct
   """
   @spec from_map(map()) :: t()
-  def from_map(map) when is_map(map) do
-    value = get_in(map, ["zkb", "totalValue"]) || 0
-    system_id = get_in(map, ["esi_data", "solar_system_id"])
-
-    system_name = get_system_name_with_fallback(map["esi_data"] || %{}, system_id)
-
-    %__MODULE__{
-      killmail_id: map["killmail_id"],
-      zkb: map["zkb"],
-      esi_data: map["esi_data"],
-      value: value,
-      system_name: system_name,
-      system_id: system_id
-    }
+  def from_map(map) do
+    struct!(__MODULE__, map)
   end
 
   @doc """
-  Gets victim information from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  A map with victim data, or nil if not available
+  Gets victim information as a map for backward compatibility.
   """
-  @spec get_victim(t()) :: map() | nil
-  def get_victim(killmail) do
-    get(killmail, "victim")
+  @spec get_victim(t()) :: map()
+  def get_victim(%__MODULE__{} = killmail) do
+    %{
+      "character_id" => killmail.victim_character_id,
+      "character_name" => killmail.victim_character_name,
+      "corporation_id" => killmail.victim_corporation_id,
+      "corporation_name" => killmail.victim_corporation_name,
+      "alliance_id" => killmail.victim_alliance_id,
+      "alliance_name" => killmail.victim_alliance_name,
+      "ship_type_id" => killmail.victim_ship_type_id,
+      "ship_name" => killmail.victim_ship_name,
+      "damage_taken" => killmail.damage_taken
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
   end
 
   @doc """
-  Gets attacker information from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  A list of attacker data maps, or empty list if not available
+  Gets attacker information.
   """
   @spec get_attacker(t()) :: list(map())
-  def get_attacker(killmail) do
-    # Return the full list of attackers
-    get(killmail, "attackers") || []
-  end
+  def get_attacker(%__MODULE__{attackers: attackers}) when is_list(attackers), do: attackers
+  def get_attacker(%__MODULE__{}), do: []
 
   @doc """
-  Gets the solar system ID from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  The solar system ID as an integer, or nil if not available
+  Gets the solar system ID.
   """
   @spec get_system_id(t()) :: integer() | nil
-  def get_system_id(killmail) do
-    killmail.system_id || get(killmail, "solar_system_id")
+  def get_system_id(%__MODULE__{system_id: nil, esi_data: esi_data}) when is_map(esi_data) do
+    get_in(esi_data, ["solar_system_id"])
   end
 
+  def get_system_id(%__MODULE__{system_id: system_id}), do: system_id
+
   @doc """
-  Gets the victim's ship type ID from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  The ship type ID, or nil if not available
+  Gets the victim's ship type ID.
   """
   @spec get_victim_ship_type_id(t()) :: integer() | nil
-  def get_victim_ship_type_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim["ship_type_id"], else: nil
-  end
+  def get_victim_ship_type_id(%__MODULE__{victim_ship_type_id: ship_type_id}), do: ship_type_id
 
   @doc """
-  Gets the victim's character ID from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  The character ID, or nil if not available
+  Gets the victim's character ID.
   """
   @spec get_victim_character_id(t()) :: integer() | nil
-  def get_victim_character_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim["character_id"], else: nil
-  end
+  def get_victim_character_id(%__MODULE__{victim_character_id: character_id}), do: character_id
 
   @doc """
-  Gets the victim's corporation ID from a killmail.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  The corporation ID, or nil if not available
+  Gets the victim's corporation ID.
   """
   @spec get_victim_corporation_id(t()) :: integer() | nil
-  def get_victim_corporation_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim["corporation_id"], else: nil
-  end
+  def get_victim_corporation_id(%__MODULE__{victim_corporation_id: corp_id}), do: corp_id
 
   @doc """
   Gets the killmail hash from zKillboard data.
-
-  ## Parameters
-  - killmail: The killmail struct
-
-  ## Returns
-  The killmail hash, or nil if not available
   """
   @spec get_hash(t()) :: String.t() | nil
-  def get_hash(killmail) do
-    if killmail.zkb, do: killmail.zkb["hash"], else: nil
-  end
+  def get_hash(%__MODULE__{zkb: zkb}) when is_map(zkb), do: Map.get(zkb, "hash")
+  def get_hash(%__MODULE__{}), do: nil
 
   # Private helper functions
 
-  @spec get_system_name_with_fallback(map(), integer() | nil) :: String.t()
-  defp get_system_name_with_fallback(enriched_data, system_id) do
-    get_in(enriched_data, ["solar_system_name"]) ||
-      fetch_system_name_from_cache(system_id) ||
+  defp get_system_name(system_id) when is_integer(system_id) do
+    WandererNotifier.Domains.Killmail.Enrichment.get_system_name(system_id)
+  rescue
+    error in [FunctionClauseError, ArgumentError, RuntimeError] ->
+      require Logger
+
+      Logger.warning("Failed to get system name for system_id #{system_id}",
+        error: inspect(error),
+        system_id: system_id
+      )
+
       "Unknown"
   end
 
-  @spec fetch_system_name_from_cache(integer() | nil) :: String.t() | nil
-  defp fetch_system_name_from_cache(nil), do: nil
+  defp get_system_name(_), do: "Unknown"
 
-  defp fetch_system_name_from_cache(system_id) do
-    WandererNotifier.Domains.Killmail.Cache.get_system_name(system_id)
+  defp build_esi_data(killmail_id, system_id, data) do
+    %{
+      "killmail_id" => killmail_id,
+      "solar_system_id" => system_id,
+      "killmail_time" => Map.get(data, "kill_time"),
+      "victim" => Map.get(data, "victim", %{}),
+      "attackers" => Map.get(data, "attackers", [])
+    }
   end
 end

@@ -99,6 +99,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
     test "formats killmail for notification" do
       killmail = %Killmail{
         killmail_id: 123_456,
+        victim_character_name: "Test Pilot",
+        victim_ship_name: "Rifter",
+        value: 50_000_000,
         zkb: %{"totalValue" => 50_000_000},
         esi_data: %{
           "killmail_time" => "2024-01-01T12:00:00Z",
@@ -121,9 +124,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
       result = KillmailFormatter.format(killmail)
 
       assert is_map(result)
-      assert result[:title] == "New Killmail"
+      assert result[:title] == "Test Pilot's Rifter destroyed"
       assert is_binary(result[:description])
-      assert result[:color] == 0xFF0000
+      assert result[:color] == 0xD9534F
       assert is_list(result[:fields])
     end
   end

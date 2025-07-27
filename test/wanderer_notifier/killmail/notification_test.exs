@@ -3,9 +3,8 @@ defmodule WandererNotifier.Killmail.NotificationTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Killmail.Notification
+  alias WandererNotifier.Domains.Killmail.Processor
   alias WandererNotifier.Domains.Notifications.KillmailNotificationMock
-  alias WandererNotifier.MockLogger
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -14,10 +13,9 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     # Set up test killmail for reuse in tests
     test_killmail = %Killmail{
       killmail_id: "12345",
-      victim_name: "Test Victim",
-      victim_corporation: "Test Victim Corp",
-      victim_corp_ticker: "TVC",
-      ship_name: "Test Ship",
+      victim_character_name: "Test Victim",
+      victim_corporation_name: "Test Victim Corp",
+      victim_ship_name: "Test Ship",
       system_name: "Test System",
       attackers: [
         [
@@ -40,7 +38,11 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     )
 
     # NotificationService doesn't require module configuration
-    Application.put_env(:wanderer_notifier, :logger_module, MockLogger)
+    Application.put_env(
+      :wanderer_notifier,
+      :logger_module,
+      WandererNotifier.Killmail.NotificationTest.MockLogger
+    )
 
     # Clean up on test exit
     on_exit(fn ->
@@ -62,9 +64,9 @@ defmodule WandererNotifier.Killmail.NotificationTest do
         _ ->
           %{
             type: :kill,
-            victim: killmail.victim_name,
+            victim: killmail.victim_character_name,
             data: %{
-              victim_name: killmail.victim_name,
+              victim_name: killmail.victim_character_name,
               system_name: killmail.system_name
             }
           }
@@ -84,17 +86,26 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     end
   end
 
+  # Mock logger for tests
+  defmodule MockLogger do
+    def notification_error(_msg, _metadata \\ []), do: :ok
+    def processor_error(_msg, _metadata \\ []), do: :ok
+    def info(_msg, _metadata \\ []), do: :ok
+    def error(_msg, _metadata \\ []), do: :ok
+    def warning(_msg, _metadata \\ []), do: :ok
+  end
+
   describe "send_kill_notification/2" do
     test "successfully creates a notification", %{killmail: killmail} do
       # Setup expectations for the notification creation
       KillmailNotificationMock
       |> expect(:create, fn ^killmail ->
-        %{type: :kill, victim: killmail.victim_name}
+        %{type: :kill, victim: killmail.victim_character_name}
       end)
 
       # Execute - This will test the notification creation part
       # The actual sending is handled by NotificationService
-      result = Notification.send_kill_notification(killmail, killmail.killmail_id)
+      result = Processor.send_kill_notification(killmail, killmail.killmail_id)
 
       # Verify that a notification was created and attempted to be sent
       # Since we can't easily mock NotificationService, we test that
@@ -113,7 +124,7 @@ defmodule WandererNotifier.Killmail.NotificationTest do
       end)
 
       # Execute
-      result = Notification.send_kill_notification(error_killmail, error_killmail.killmail_id)
+      result = Processor.send_kill_notification(error_killmail, error_killmail.killmail_id)
 
       # Verify
       assert {:error, :notification_failed} = result

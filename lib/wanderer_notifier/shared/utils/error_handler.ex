@@ -397,4 +397,127 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
     |> String.replace("_", " ")
     |> String.capitalize()
   end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Safe Execution Helpers - Added to consolidate scattered try/rescue patterns
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Safely executes a function and returns normalized error tuples.
+  Consolidates try/rescue patterns scattered throughout the codebase.
+
+  ## Examples
+
+      iex> safe_execute(fn -> {:ok, "success"} end)
+      {:ok, "success"}
+      
+      iex> safe_execute(fn -> raise "error" end)
+      {:error, :execution_error}
+      
+      iex> safe_execute(fn -> raise "error" end, fallback: "safe value")
+      {:ok, "safe value"}
+  """
+  @spec safe_execute((-> any()), keyword()) :: result()
+  def safe_execute(fun, opts \\ []) when is_function(fun, 0) do
+    fallback = Keyword.get(opts, :fallback)
+    error_context = Keyword.get(opts, :context, %{})
+    log_errors = Keyword.get(opts, :log_errors, true)
+
+    try do
+      case fun.() do
+        {:ok, _} = success -> success
+        {:error, _} = error -> error
+        result -> {:ok, result}
+      end
+    rescue
+      exception ->
+        error = {:error, :execution_error}
+        enriched_error = enrich_error(error, Map.put(error_context, :exception, exception))
+
+        if log_errors do
+          log_error("Safe execution failed", elem(enriched_error, 1))
+        end
+
+        case fallback do
+          nil -> enriched_error
+          value -> {:ok, value}
+        end
+    end
+  end
+
+  @doc """
+  Safely executes a function and returns a string result for user display.
+  Consolidates string-returning error patterns in formatters and utilities.
+
+  ## Examples
+
+      iex> safe_execute_string(fn -> "success" end)
+      "success"
+      
+      iex> safe_execute_string(fn -> raise "error" end, fallback: "Error occurred")
+      "Error occurred"
+  """
+  @spec safe_execute_string((-> String.t()), keyword()) :: String.t()
+  def safe_execute_string(fun, opts \\ []) when is_function(fun, 0) do
+    fallback = Keyword.get(opts, :fallback, "Error occurred")
+
+    case safe_execute(fun, opts) do
+      {:ok, result} when is_binary(result) ->
+        result
+
+      {:ok, result} ->
+        to_string(result)
+
+      {:error, reason} ->
+        case Keyword.get(opts, :use_error_message, false) do
+          true -> format_error(reason)
+          false -> fallback
+        end
+    end
+  end
+
+  @doc """
+  Safely executes multiple operations and collects results.
+  Useful for batch operations where some failures are acceptable.
+
+  ## Examples
+
+      iex> operations = [
+      ...>   fn -> {:ok, "one"} end,
+      ...>   fn -> raise "error" end,
+      ...>   fn -> {:ok, "three"} end
+      ...> ]
+      iex> safe_execute_batch(operations)
+      {:ok, ["one", "three"]}
+  """
+  @spec safe_execute_batch([(-> any())], keyword()) :: {:ok, [any()]} | {:error, :all_failed}
+  def safe_execute_batch(functions, opts \\ []) when is_list(functions) do
+    fail_fast = Keyword.get(opts, :fail_fast, false)
+
+    results =
+      functions
+      |> Enum.reduce_while([], fn fun, acc ->
+        case safe_execute(fun, opts) do
+          {:ok, result} ->
+            {:cont, [result | acc]}
+
+          {:error, _reason} when fail_fast ->
+            {:halt, {:error, :batch_failed}}
+
+          {:error, _reason} ->
+            {:cont, acc}
+        end
+      end)
+
+    case results do
+      {:error, _} = error ->
+        error
+
+      results when is_list(results) and length(results) > 0 ->
+        {:ok, Enum.reverse(results)}
+
+      [] ->
+        {:error, :all_failed}
+    end
+  end
 end
