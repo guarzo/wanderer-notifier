@@ -16,15 +16,18 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
     # Setup basic mocks
     WandererNotifier.Test.Support.Mocks.TestMocks.setup_all_mocks()
 
+    # Stub StaticInfoMock to return enriched systems by default
+    stub(WandererNotifier.Domains.Tracking.StaticInfoMock, :enrich_system, fn system ->
+      {:ok, system}
+    end)
+
     :ok
   end
 
   describe "fetch_and_cache_characters/0" do
     test "successfully fetches and caches character data" do
       # Mock successful HTTP response
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:ok,
          %HTTPoison.Response{
            status_code: 200,
@@ -32,9 +35,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
              Jason.encode!(%{
                "data" => %{
                  "characters" => [
-                   %{
-                     %{"name" => "Test Character", "eve_id" => 123}
-                   }
+                   %{"name" => "Test Character", "eve_id" => 123}
                  ]
                }
              })
@@ -50,9 +51,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
     test "handles HTTP errors gracefully" do
       # Mock HTTP error
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:error, %HTTPoison.Error{reason: :timeout}}
       end)
 
@@ -63,9 +62,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
     test "handles malformed JSON response" do
       # Mock response with invalid JSON
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:ok,
          %HTTPoison.Response{
            status_code: 200,
@@ -82,9 +79,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
   describe "fetch_and_cache_systems/0" do
     test "successfully fetches and caches system data" do
       # Mock successful HTTP response
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:ok,
          %HTTPoison.Response{
            status_code: 200,
@@ -94,9 +89,15 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
                  "systems" => [
                    %{
                      "name" => "J123456",
+                     "id" => "sys_123",
                      "solar_system_id" => 31_000_001,
                      "region_id" => 11_000_001,
-                     "region_name" => "Anoikis"
+                     "region_name" => "Anoikis",
+                     "locked" => false,
+                     "visible" => true,
+                     "position_x" => 100,
+                     "position_y" => 200,
+                     "status" => 1
                    }
                  ]
                }
@@ -113,9 +114,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
     test "handles empty systems response" do
       # Mock empty response
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:ok,
          %HTTPoison.Response{
            status_code: 200,
@@ -161,13 +160,13 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
         # Return enriched system with static wormhole information
         enriched =
           Map.merge(system, %{
-            :statics => ["C247", "P060"],
-            :class_title => "C4",
-            :system_class => 4,
-            :security_status => -1.0,
-            :effect_name => nil,
-            :is_shattered => false,
-            :static_details => [
+            "statics" => ["C247", "P060"],
+            "class_title" => "C4",
+            "system_class" => 4,
+            "security_status" => -1.0,
+            "effect_name" => nil,
+            "is_shattered" => false,
+            "static_details" => [
               %{
                 "name" => "C247",
                 "destination" => %{"name" => "Class 3", "short_name" => "C3"},
@@ -189,21 +188,19 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
 
       # Should return enriched system data with static wormhole information
       assert is_map(result)
-      assert result[:statics] == ["C247", "P060"]
-      assert result[:class_title] == "C4"
-      assert result[:system_class] == 4
-      assert result[:security_status] == -1.0
-      assert result[:static_details] != nil
-      assert length(result[:static_details]) > 0
+      assert result["statics"] == ["C247", "P060"]
+      assert result["class_title"] == "C4"
+      assert result["system_class"] == 4
+      assert result["security_status"] == -1.0
+      assert result["static_details"] != nil
+      assert length(result["static_details"]) > 0
     end
   end
 
   describe "integration with external dependencies" do
     test "integrates with cache correctly for characters" do
       # Mock successful HTTP response
-      expect(WandererNotifier.Infrastructure.Http.HttpClientMock, :get, fn _url,
-                                                                           _headers,
-                                                                           _opts ->
+      expect(WandererNotifier.HTTPMock, :request, fn :get, _url, nil, _headers, _opts ->
         {:ok,
          %HTTPoison.Response{
            status_code: 200,
@@ -211,9 +208,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
              Jason.encode!(%{
                "data" => %{
                  "characters" => [
-                   %{
-                     %{"name" => "Test Character", "eve_id" => 123}
-                   }
+                   %{"name" => "Test Character", "eve_id" => 123}
                  ]
                }
              })
@@ -225,8 +220,11 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClientTest do
       assert {:ok, _characters} = result
 
       # Verify exact data structure was cached
-      cached_data = Cache.get("map:character_list")
-      assert is_list(cached_data)
+      {:ok, cached_data} = Cache.get("map:character_list")
+
+      assert is_list(cached_data),
+             "Expected cached data to be a list, got: #{inspect(cached_data)}"
+
       assert length(cached_data) == 1
 
       # Verify the cached character has been enriched to a Character struct

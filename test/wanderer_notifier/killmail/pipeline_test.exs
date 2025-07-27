@@ -2,7 +2,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Domains.Killmail.{Pipeline, Context}
+  alias WandererNotifier.Domains.Killmail.Pipeline
+  alias WandererNotifier.Domains.Killmail.Processor.Context
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -130,7 +131,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     ESIMockHelper.setup_esi_mocks()
 
     # Always stub the DiscordNotifier with a default response
-    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail, _type, input_opts ->
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
+                                                                          _type,
+                                                                          input_opts ->
       _formatted_opts = if is_map(input_opts), do: Map.to_list(input_opts), else: input_opts
       :ok
     end)
@@ -162,10 +165,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
             zkb: %{"hash" => "test_hash"},
             system_name: "Test System",
             system_id: 30_000_142,
-            victim_name: "Victim",
-            victim_corporation: "Victim Corp",
-            victim_corp_ticker: "VC",
-            ship_name: "Victim Ship",
+            victim_character_name: "Victim",
+            victim_corporation_name: "Victim Corp",
+            victim_ship_name: "Victim Ship",
             esi_data: %{
               "victim" => %{
                 "character_id" => 100,

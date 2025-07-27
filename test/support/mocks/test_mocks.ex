@@ -27,8 +27,12 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
 
   # Infrastructure mocks
   defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
-  # Simple mock without behavior
-  # Note: Cache module no longer uses behaviors - tests use direct Cachex operations
+  # Cache mock with proper behavior
+  defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.Behaviour)
+
+  defmock(WandererNotifier.MockDeduplication,
+    for: WandererNotifier.Test.MockDeduplicationBehaviour
+  )
 
   # Service mocks
   defmock(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock,
@@ -45,6 +49,24 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
   )
 
+  defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
+    for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
+  )
+
+  defmock(WandererNotifier.Domains.Tracking.StaticInfoMock,
+    for: WandererNotifier.Domains.Tracking.StaticInfoBehaviour
+  )
+
+  # External Adapters mock
+  defmock(WandererNotifier.ExternalAdaptersMock,
+    for: WandererNotifier.Contexts.ExternalAdaptersBehaviour
+  )
+
+  # Discord Notifier mock
+  defmock(DiscordNotifierMock,
+    for: WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierBehaviour
+  )
+
   # ══════════════════════════════════════════════════════════════════════════════
   # Default Mock Setup Functions
   # ══════════════════════════════════════════════════════════════════════════════
@@ -57,10 +79,12 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     setup_tracking_mocks()
     setup_config_mocks()
     setup_http_mocks()
-    # Cache mocks removed - tests use direct Cachex operations
+    setup_cache_mocks()
+    setup_deduplication_mocks()
     setup_service_mocks()
-    # Notification mocks removed - deduplication uses cache directly
     setup_discord_mocks()
+    setup_external_adapters_mocks()
+    setup_discord_notifier_mocks()
   end
 
   @doc """
@@ -107,8 +131,34 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   Sets up HTTP client mocks with default behaviors.
   """
   def setup_http_mocks do
-    stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _body, _headers, _opts ->
+    stub(WandererNotifier.HTTPMock, :request, fn method, url, _body, _headers, opts ->
+      handle_http_request(method, url, opts)
+    end)
+
+    # Legacy 3-arg get/post for backward compatibility
+    stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
       {:ok, %{status_code: 200, body: "{}"}}
+    end)
+
+    stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
+      {:ok, %{status_code: 200, body: "{}"}}
+    end)
+
+    # Additional convenience methods
+    stub(WandererNotifier.HTTPMock, :put, fn _url, _body, _headers, _opts ->
+      {:ok, %{status_code: 200, body: "{}"}}
+    end)
+
+    stub(WandererNotifier.HTTPMock, :delete, fn _url, _headers, _opts ->
+      {:ok, %{status_code: 200, body: "{}"}}
+    end)
+
+    stub(WandererNotifier.HTTPMock, :get_json, fn _url, _headers, _opts ->
+      {:ok, %{status_code: 200, body: %{}}}
+    end)
+
+    stub(WandererNotifier.HTTPMock, :post_json, fn _url, _body, _headers, _opts ->
+      {:ok, %{status_code: 200, body: %{}}}
     end)
 
     stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
@@ -116,7 +166,45 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     end)
   end
 
-  # Cache mocks removed - cache module now uses direct Cachex operations without behaviors
+  defp handle_http_request(method, url, opts) do
+    case {method, url, opts} do
+      # License validation endpoint
+      {:post, "https://lm.wanderer.ltd/validate_bot", opts} when is_list(opts) ->
+        handle_license_validation(opts)
+
+      # Default response for other requests
+      _ ->
+        {:ok, %{status_code: 200, body: %{}}}
+    end
+  end
+
+  defp handle_license_validation(opts) do
+    case Keyword.get(opts, :service) do
+      :license ->
+        {:ok, %{status_code: 200, body: %{"valid" => true, "bot_assigned" => true}}}
+
+      _ ->
+        {:ok, %{status_code: 200, body: %{}}}
+    end
+  end
+
+  @doc """
+  Sets up cache mocks with default behaviors.
+  """
+  def setup_cache_mocks do
+    stub(WandererNotifier.MockCache, :get, fn _key -> nil end)
+    stub(WandererNotifier.MockCache, :put, fn _key, _value -> :ok end)
+    stub(WandererNotifier.MockCache, :put, fn _key, _value, _ttl -> :ok end)
+    stub(WandererNotifier.MockCache, :delete, fn _key -> :ok end)
+  end
+
+  @doc """
+  Sets up deduplication mocks with default behaviors.
+  """
+  def setup_deduplication_mocks do
+    stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
+    stub(WandererNotifier.MockDeduplication, :check_and_record, fn _type, _id -> {:ok, :new} end)
+  end
 
   @doc """
   Sets up ESI service mocks with default behaviors.
@@ -270,6 +358,32 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   def setup_http_responses(url_responses) when is_map(url_responses) do
     stub(WandererNotifier.HTTPMock, :request, fn _method, url, _body, _headers, _opts ->
       Map.get(url_responses, url, {:ok, %{status_code: 404, body: "Not Found"}})
+    end)
+  end
+
+  @doc """
+  Sets up external adapters mocks with default behaviors.
+  """
+  def setup_external_adapters_mocks do
+    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_systems, fn ->
+      {:ok, []}
+    end)
+
+    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_characters, fn ->
+      {:ok, []}
+    end)
+  end
+
+  @doc """
+  Sets up Discord notifier mocks with default behaviors.
+  """
+  def setup_discord_notifier_mocks do
+    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail, _type, _opts ->
+      :ok
+    end)
+
+    stub(DiscordNotifierMock, :send_discord_embed, fn _embed ->
+      :ok
     end)
   end
 end

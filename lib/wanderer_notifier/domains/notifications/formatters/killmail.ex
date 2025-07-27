@@ -24,6 +24,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Killmail do
   end
 
   @doc """
+  Alias for backward compatibility - test expects 'format'.
+  """
+  def format(killmail) do
+    format_kill_notification(killmail)
+  end
+
+  @doc """
   Get final blow attacker information.
   Exposed for backward compatibility.
   """

@@ -26,6 +26,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
 
   @behaviour WandererNotifier.Map.TrackingBehaviour
+  @behaviour Access
 
   alias WandererNotifier.Infrastructure.Cache
 
@@ -450,4 +451,63 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   def kspace?(%__MODULE__{system_class: cls}), do: cls in ["K", "HS", "LS", "NS"]
   def kspace?(map), do: Map.get(map, :system_class) in ["K", "HS", "LS", "NS"]
+
+  # ============================================================================
+  # Access Behaviour Implementation
+  # ============================================================================
+
+  @doc """
+  Fetch a field via the Access behaviour (allows `struct["key"]` syntax).
+  Supports special key mappings for compatibility with different API formats.
+  """
+  @impl Access
+  @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
+  def fetch(struct, key) when is_atom(key) do
+    struct
+    |> Map.from_struct()
+    |> Map.fetch(key)
+  end
+
+  def fetch(struct, "solarSystemID"), do: fetch(struct, :solar_system_id)
+  def fetch(struct, "systemID"), do: fetch(struct, :solar_system_id)
+  def fetch(struct, "systemName"), do: fetch(struct, :name)
+  def fetch(struct, "regionName"), do: fetch(struct, :region_name)
+  def fetch(struct, "effectName"), do: fetch(struct, :effect_name)
+  def fetch(struct, "classTitle"), do: fetch(struct, :class_title)
+
+  def fetch(struct, key) when is_binary(key) do
+    try do
+      atom_key = String.to_existing_atom(key)
+      fetch(struct, atom_key)
+    rescue
+      ArgumentError -> :error
+    end
+  end
+
+  @doc """
+  Get a field with a default value.
+  """
+  @spec get(t(), atom() | String.t(), any()) :: any()
+  def get(struct, key, default \\ nil) do
+    case fetch(struct, key) do
+      {:ok, value} -> value
+      :error -> default
+    end
+  end
+
+  @doc """
+  Get and update is not supported for this struct.
+  """
+  @impl Access
+  def get_and_update(_struct, _key, _fun) do
+    raise ArgumentError, "get_and_update/3 is not supported for System struct"
+  end
+
+  @doc """
+  Pop is not supported for this struct.
+  """
+  @impl Access
+  def pop(_struct, _key) do
+    raise ArgumentError, "pop/2 is not supported for System struct"
+  end
 end

@@ -4,9 +4,11 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Infrastructure.Cache
 
-  import Mox
-
-  setup :verify_on_exit!
+  setup do
+    # Clear the cache before each test
+    Cache.delete(Cache.Keys.map_systems())
+    :ok
+  end
 
   describe "new/1" do
     test "creates system with required fields" do
@@ -388,11 +390,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      cache_key = "map:systems"
-
-      expect(WandererNotifier.MockCache, :get, fn ^cache_key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       assert {:ok, true} = System.is_tracked?("30000142")
     end
@@ -402,18 +400,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       assert {:ok, false} = System.is_tracked?("30000142")
     end
 
     test "returns false when cache is empty" do
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:error, :not_found}
-      end)
-
+      # Cache is already cleared in setup
       assert {:ok, false} = System.is_tracked?("30000142")
     end
 
@@ -422,9 +415,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30000142", "name" => "Jita"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       assert {:ok, true} = System.is_tracked?(30_000_142)
     end
@@ -440,11 +431,10 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       assert {:ok, true} = System.is_tracked?("30000142")
+      assert {:ok, true} = System.is_tracked?("30002659")
     end
   end
 
@@ -455,9 +445,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       system = System.get_system("30000142")
       assert system["name"] == "Jita"
@@ -468,18 +456,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       assert System.get_system("30000142") == nil
     end
 
     test "returns nil when cache is empty" do
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:error, :not_found}
-      end)
-
+      # Cache already cleared in setup
       assert System.get_system("30000142") == nil
     end
   end
@@ -491,9 +474,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
       system = System.get_system_by_name("Jita")
       assert system["id"] == "30000142"
@@ -504,10 +485,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"id" => "30002659", "name" => "Rancer"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, systems}
-      end)
+      Cache.put(Cache.Keys.map_systems(), systems)
 
+      assert System.get_system_by_name("Jita") == nil
+    end
+
+    test "returns nil when cache is empty" do
+      # Cache already cleared in setup  
       assert System.get_system_by_name("Jita") == nil
     end
   end

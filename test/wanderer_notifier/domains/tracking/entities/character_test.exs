@@ -4,9 +4,11 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Infrastructure.Cache
 
-  import Mox
-
-  setup :verify_on_exit!
+  setup do
+    # Clear the cache before each test
+    Cache.delete(Cache.Keys.map_characters())
+    :ok
+  end
 
   describe "new/1" do
     test "creates character from eve_id" do
@@ -152,7 +154,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
     test "get/3 with default values", %{character: character} do
       assert "Test Character" = Character.get(character, :name)
       assert "default" = Character.get(character, :nonexistent, "default")
-      assert nil = Character.get(character, :nonexistent)
+      assert nil == Character.get(character, :nonexistent)
     end
 
     test "get_and_update/3 raises not implemented", %{character: character} do
@@ -216,9 +218,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"character_id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?("123456")
     end
@@ -228,18 +228,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"character_id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, false} = Character.is_tracked?("123456")
     end
 
     test "returns false when cache is empty" do
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:error, :not_found}
-      end)
-
+      # Cache is already cleared in setup
       assert {:ok, false} = Character.is_tracked?("123456")
     end
 
@@ -248,9 +243,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"character_id" => "123456", "name" => "Test Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?(123_456)
     end
@@ -266,11 +259,10 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"character_id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?("123456")
+      assert {:ok, true} = Character.is_tracked?("789012")
     end
   end
 
@@ -281,9 +273,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       character = Character.get_character("123456")
       assert character["name"] == "Test Character"
@@ -294,18 +284,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert Character.get_character("123456") == nil
     end
 
     test "returns nil when cache is empty" do
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:error, :not_found}
-      end)
-
+      # Cache is already cleared in setup
       assert Character.get_character("123456") == nil
     end
   end
@@ -317,9 +302,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       character = Character.get_character_by_name("Test Character")
       assert character["id"] == "123456"
@@ -330,10 +313,13 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"id" => "789012", "name" => "Another Character"}
       ]
 
-      expect(WandererNotifier.MockCache, :get, fn _key ->
-        {:ok, characters}
-      end)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
+      assert Character.get_character_by_name("Test Character") == nil
+    end
+
+    test "returns nil when cache is empty" do
+      # Cache is already cleared in setup
       assert Character.get_character_by_name("Test Character") == nil
     end
   end

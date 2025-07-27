@@ -239,7 +239,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   def send_new_tracked_character_notification(character)
-      when is_struct(character, WandererNotifier.Domains.CharacterTracking.Character) do
+      when is_struct(character, WandererNotifier.Domains.Tracking.Entities.Character) do
     try do
       if LicenseLimiter.should_send_rich?(:character) do
         generic_notification = CharacterFormatter.format_character_notification(character)

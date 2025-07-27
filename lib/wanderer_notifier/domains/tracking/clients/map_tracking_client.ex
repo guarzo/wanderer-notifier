@@ -30,7 +30,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
       batch_delay: 100,
       requires_slug: true,
       determiner: Determiner.Character,
-      validator: :validate_character_data,
+      validator: &ValidationUtils.validate_character_data/1,
       enricher: &__MODULE__.enrich_character/1,
       notifier: &NotificationService.notify_character/1,
       extract_path: ["data", "characters"]
@@ -42,7 +42,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
       batch_delay: 50,
       requires_slug: false,
       determiner: Determiner.System,
-      validator: :validate_system_data,
+      validator: &ValidationUtils.validate_system_data/1,
       enricher: &__MODULE__.enrich_system/1,
       notifier: &__MODULE__.notify_system_by_name/1,
       extract_path: ["data", "systems"]
@@ -106,7 +106,8 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   defp process_extracted_data({:ok, data}, entity_type) do
     case {entity_type, data} do
       {:characters, data} when is_list(data) ->
-        {:ok, flatten_character_data(data)}
+        # Characters data is already a flat list after extraction
+        {:ok, data}
 
       {:systems, data} when is_list(data) ->
         {:ok, data}
@@ -147,7 +148,7 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
 
   defp create_validator_function(config) do
     fn item ->
-      case apply(config.validator, [item]) do
+      case config.validator.(item) do
         {:ok, _} -> true
         {:error, _} -> false
       end
@@ -306,7 +307,14 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
   Enriches system data with static wormhole information.
   """
   def enrich_system(system) do
-    case WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system) do
+    static_info_module =
+      Application.get_env(
+        :wanderer_notifier,
+        :static_info_module,
+        WandererNotifier.Domains.Tracking.StaticInfo
+      )
+
+    case static_info_module.enrich_system(system) do
       {:ok, enriched} -> enriched
     end
   end
@@ -420,14 +428,5 @@ defmodule WandererNotifier.Domains.Tracking.Clients.MapTrackingClient do
       config ->
         Map.get(config, key, default)
     end
-  end
-
-  # Helper function to flatten nested character data structure
-  defp flatten_character_data(data) do
-    data
-    |> Enum.flat_map(fn
-      %{"characters" => chars} when is_list(chars) -> chars
-      _ -> []
-    end)
   end
 end

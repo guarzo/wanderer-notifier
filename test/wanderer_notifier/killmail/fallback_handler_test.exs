@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.FallbackHandler
-  alias WandererNotifier.HTTPMock, as: HttpClientMock
+  alias WandererNotifier.HTTPMock
   alias WandererNotifier.ExternalAdaptersMock
 
   setup :set_mox_from_context
@@ -11,7 +11,7 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
 
   setup do
     # Set up mocks
-    Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
+    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
     Application.put_env(:wanderer_notifier, :external_adapters_impl, ExternalAdaptersMock)
 
     # Set up default stubs for external adapters (can be overridden in tests)
@@ -20,9 +20,9 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
     |> stub(:get_tracked_characters, fn -> {:ok, []} end)
 
     # Set up default stub for HTTP client
-    HttpClientMock
-    |> stub(:get, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: Jason.encode!(%{"systems" => %{}})}}
+    HTTPMock
+    |> stub(:request, fn _method, _url, _body, _headers, _opts ->
+      {:ok, %{status_code: 200, body: %{}}}
     end)
 
     # Start the FallbackHandler, or get the existing one if already started
@@ -55,9 +55,9 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
       end)
 
       # Mock HTTP response for systems
-      HttpClientMock
-      |> stub(:get, fn _url, _headers, _opts ->
-        {:ok, %{status_code: 200, body: Jason.encode!(%{"systems" => %{}})}}
+      HTTPMock
+      |> stub(:request, fn _method, _url, _body, _headers, _opts ->
+        {:ok, %{status_code: 200, body: %{}}}
       end)
 
       # Stop and restart the handler to ensure clean state
@@ -111,8 +111,8 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
       end)
 
       # Mock HTTP response for POST request (bulk fetch)
-      HttpClientMock
-      |> expect(:post, fn _url, _body, _headers, _opts ->
+      HTTPMock
+      |> expect(:request, fn :post, _url, _body, _headers, _opts ->
         response = %{
           "30000142" => [%{"killmail_id" => 1}],
           "30000143" => [%{"killmail_id" => 2}]
@@ -142,8 +142,8 @@ defmodule WandererNotifier.Killmail.FallbackHandlerTest do
       end)
 
       # Mock bulk load response for POST request
-      HttpClientMock
-      |> expect(:post, fn _url, _body, _headers, _opts ->
+      HTTPMock
+      |> expect(:request, fn :post, _url, _body, _headers, _opts ->
         response = %{
           "30000142" => [
             %{"killmail_id" => 1},

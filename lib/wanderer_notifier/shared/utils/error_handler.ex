@@ -39,7 +39,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   @network_errors [:timeout, :connect_timeout, :closed, :network_error]
   @http_errors 400..599
   @data_errors [:invalid_json, :invalid_data, :missing_fields, :validation_error]
-  @service_errors [:service_unavailable, :rate_limited]
+  @service_errors [:service_unavailable, :rate_limited, :circuit_breaker_open]
   @auth_errors [:unauthorized, :forbidden, :invalid_token]
 
   @doc """

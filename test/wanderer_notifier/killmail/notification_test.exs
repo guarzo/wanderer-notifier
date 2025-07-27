@@ -5,7 +5,6 @@ defmodule WandererNotifier.Killmail.NotificationTest do
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.Processor
   alias WandererNotifier.Domains.Notifications.KillmailNotificationMock
-  alias WandererNotifier.MockLogger
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -39,7 +38,11 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     )
 
     # NotificationService doesn't require module configuration
-    Application.put_env(:wanderer_notifier, :logger_module, MockLogger)
+    Application.put_env(
+      :wanderer_notifier,
+      :logger_module,
+      WandererNotifier.Killmail.NotificationTest.MockLogger
+    )
 
     # Clean up on test exit
     on_exit(fn ->
@@ -61,9 +64,9 @@ defmodule WandererNotifier.Killmail.NotificationTest do
         _ ->
           %{
             type: :kill,
-            victim: killmail.victim_name,
+            victim: killmail.victim_character_name,
             data: %{
-              victim_name: killmail.victim_name,
+              victim_name: killmail.victim_character_name,
               system_name: killmail.system_name
             }
           }
@@ -83,12 +86,21 @@ defmodule WandererNotifier.Killmail.NotificationTest do
     end
   end
 
+  # Mock logger for tests
+  defmodule MockLogger do
+    def notification_error(_msg, _metadata \\ []), do: :ok
+    def processor_error(_msg, _metadata \\ []), do: :ok
+    def info(_msg, _metadata \\ []), do: :ok
+    def error(_msg, _metadata \\ []), do: :ok
+    def warning(_msg, _metadata \\ []), do: :ok
+  end
+
   describe "send_kill_notification/2" do
     test "successfully creates a notification", %{killmail: killmail} do
       # Setup expectations for the notification creation
       KillmailNotificationMock
       |> expect(:create, fn ^killmail ->
-        %{type: :kill, victim: killmail.victim_name}
+        %{type: :kill, victim: killmail.victim_character_name}
       end)
 
       # Execute - This will test the notification creation part

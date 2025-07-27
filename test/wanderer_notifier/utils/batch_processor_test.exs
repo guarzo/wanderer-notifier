@@ -26,7 +26,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessorTest do
         BatchProcessor.process_sync(
           items,
           fn item ->
-            batch_info =
+            _batch_info =
               Agent.get_and_update(batch_tracker, fn state ->
                 # If this is the first item in a new batch, increment batch number
                 new_state =

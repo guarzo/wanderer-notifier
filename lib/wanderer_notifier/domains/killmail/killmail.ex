@@ -114,6 +114,42 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   end
 
   @doc """
+  Legacy constructor with ESI data for backward compatibility.
+  """
+  @spec new(String.t(), map(), map()) :: t()
+  def new(killmail_id, zkb_data, esi_data) do
+    %__MODULE__{
+      killmail_id: killmail_id,
+      zkb: zkb_data,
+      esi_data: esi_data,
+      value: Map.get(zkb_data, "totalValue", 0),
+      points: Map.get(zkb_data, "points", 0),
+      system_id: get_in(esi_data, ["solar_system_id"]),
+      system_name: get_in(esi_data, ["solar_system_name"]) || "Unknown",
+      kill_time: get_in(esi_data, ["killmail_time"]),
+      victim_character_id: get_in(esi_data, ["victim", "character_id"]),
+      victim_character_name: get_in(esi_data, ["victim", "character_name"]),
+      victim_corporation_id: get_in(esi_data, ["victim", "corporation_id"]),
+      victim_corporation_name: get_in(esi_data, ["victim", "corporation_name"]),
+      victim_alliance_id: get_in(esi_data, ["victim", "alliance_id"]),
+      victim_alliance_name: get_in(esi_data, ["victim", "alliance_name"]),
+      victim_ship_type_id: get_in(esi_data, ["victim", "ship_type_id"]),
+      victim_ship_name: get_in(esi_data, ["victim", "ship_type_name"]),
+      damage_taken: get_in(esi_data, ["victim", "damage_taken"]),
+      attackers: Map.get(esi_data, "attackers", []),
+      enriched?: false
+    }
+  end
+
+  @doc """
+  Creates a killmail struct from a map.
+  """
+  @spec from_map(map()) :: t()
+  def from_map(map) do
+    struct!(__MODULE__, map)
+  end
+
+  @doc """
   Gets victim information as a map for backward compatibility.
   """
   @spec get_victim(t()) :: map()
@@ -144,6 +180,10 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   Gets the solar system ID.
   """
   @spec get_system_id(t()) :: integer() | nil
+  def get_system_id(%__MODULE__{system_id: nil, esi_data: esi_data}) when is_map(esi_data) do
+    get_in(esi_data, ["solar_system_id"])
+  end
+
   def get_system_id(%__MODULE__{system_id: system_id}), do: system_id
 
   @doc """
