@@ -150,7 +150,7 @@ defmodule WandererNotifier.Shared.Config.Schema do
         field_config(
           :url,
           false,
-          "https://license.wanderer.nz",
+          "https://lm.wanderer.ltd",
           &valid_url?/1,
           "LICENSE_MANAGER_URL",
           "License manager service URL"
