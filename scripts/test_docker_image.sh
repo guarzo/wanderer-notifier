@@ -82,7 +82,7 @@ echo "Container is running as $CONTAINER_ID."
 echo "Waiting for health endpoint…"
 HEALTH_CHECK_ATTEMPTS=0
 MAX_HEALTH_CHECK_ATTEMPTS=30
-until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/health 2>/dev/null; do
+until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/api/health 2>/dev/null; do
   # Check if container is still running
   if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_ID" 2>/dev/null)" != "true" ]; then
     echo "Container stopped running during health check. Logs:"
@@ -119,7 +119,7 @@ BASIC_COMMANDS=(
 )
 
 if [ "$BASIC_ONLY" = false ]; then
-  RUNTIME_COMMANDS+=("curl -f -s http://localhost:4000/health")
+  RUNTIME_COMMANDS+=("curl -f -s http://localhost:4000/api/health")
 fi
 
 echo "→ Running basic system checks..."

@@ -170,6 +170,10 @@ RUN chmod +x /app/bin/wanderer_notifier \
 # Create volume for persistent data
 VOLUME ["/app/data", "/app/logs"]
 
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:4000/api/health || exit 1
+
 # Switch to non-root user for security
 USER app
 
@@ -177,10 +181,6 @@ USER app
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["bin/wanderer_notifier", "start"]
 
-# Enhanced health check with better diagnostics
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f --max-time 5 --retry 2 --retry-delay 2 \
-      "http://localhost:${PORT:-4000}/health" || exit 1
 
 # Expose default port
 EXPOSE 4000
