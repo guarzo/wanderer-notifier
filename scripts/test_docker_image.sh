@@ -80,8 +80,26 @@ fi
 echo "Container is running as $CONTAINER_ID."
 
 echo "Waiting for health endpoint…"
-until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/health; do
-  echo "  still waiting..."
+HEALTH_CHECK_ATTEMPTS=0
+MAX_HEALTH_CHECK_ATTEMPTS=30
+until docker exec "$CONTAINER_ID" curl -f -s http://localhost:4000/health 2>/dev/null; do
+  # Check if container is still running
+  if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_ID" 2>/dev/null)" != "true" ]; then
+    echo "Container stopped running during health check. Logs:"
+    docker logs "$CONTAINER_ID" 2>&1 || true
+    docker rm "$CONTAINER_ID" > /dev/null || true
+    exit 1
+  fi
+  
+  HEALTH_CHECK_ATTEMPTS=$((HEALTH_CHECK_ATTEMPTS + 1))
+  if [ $HEALTH_CHECK_ATTEMPTS -ge $MAX_HEALTH_CHECK_ATTEMPTS ]; then
+    echo "Health check timed out after $MAX_HEALTH_CHECK_ATTEMPTS attempts. Container logs:"
+    docker logs "$CONTAINER_ID" 2>&1 || true
+    docker rm -f "$CONTAINER_ID" > /dev/null || true
+    exit 1
+  fi
+  
+  echo "  still waiting... (attempt $HEALTH_CHECK_ATTEMPTS/$MAX_HEALTH_CHECK_ATTEMPTS)"
   sleep 2
 done
 echo "Health check passed."
