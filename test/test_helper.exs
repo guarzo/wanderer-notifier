@@ -96,6 +96,13 @@ Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
 # Configure cache implementation
 Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache_test)
 
+# Initialize RateLimiter ETS table for tests
+unless :ets.whereis(WandererNotifier.RateLimiter) == :undefined do
+  :ets.delete(WandererNotifier.RateLimiter)
+end
+
+:ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
+
 # Note: Shared test mocks are currently disabled in favor of per-test mocking
 # These were commented out during test refactoring to avoid conflicts with Mox setup
 

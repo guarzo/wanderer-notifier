@@ -25,6 +25,7 @@ defmodule WandererNotifier.Infrastructure.Http.Client do
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
   alias WandererNotifier.Infrastructure.Http.Middleware.Telemetry
   alias WandererNotifier.Infrastructure.Http.Middleware.Retry
+  alias WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
 
   # HTTP client configuration - use runtime config for test compatibility
   defp http_client do
