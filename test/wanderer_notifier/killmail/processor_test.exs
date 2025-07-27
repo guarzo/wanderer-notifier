@@ -132,7 +132,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # Set deduplication expectation (using stub since it might be called from other contexts)
       MockDeduplication
-      |> stub(:check, fn :kill, 12_345 -> {:ok, :new} end)
+      |> stub(:check, fn :kill, "12345" -> {:ok, :new} end)
 
       # NotificationService will handle message sending internally
 
@@ -177,7 +177,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       # NotificationService will handle message sending internally
 
       MockDeduplication
-      |> stub(:check, fn :kill, 12_345 -> {:ok, :new} end)
+      |> stub(:check, fn :kill, "12345" -> {:ok, :new} end)
 
       # Since the configuration system is problematic in tests, let's verify the 
       # notification logic separately first
@@ -245,7 +245,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # MockDeduplication.check/2 might be called in the pipeline
       MockDeduplication
-      |> stub(:check, fn :kill, 12_345 -> {:ok, :new} end)
+      |> stub(:check, fn :kill, "12345" -> {:ok, :new} end)
 
       assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
