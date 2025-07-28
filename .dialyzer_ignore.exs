@@ -16,5 +16,9 @@
   {"lib/wanderer_notifier/domains/killmail/websocket_client.ex", :unused_fun, 828},
   {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 90},
   {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 97},
-  {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 104}
+  {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 104},
+  
+  # Pattern coverage warnings from simplified pipeline - false positives as strings can be passed
+  {"lib/wanderer_notifier/domains/killmail/simplified_pipeline.ex", :pattern_match_cov, 182},
+  {"lib/wanderer_notifier/domains/killmail/simplified_pipeline.ex", :pattern_match_cov, 201}
 ]

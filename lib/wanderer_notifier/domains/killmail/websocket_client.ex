@@ -7,6 +7,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   """
 
   use WebSockex
+  require Logger
 
   alias WandererNotifier.Contexts.ExternalAdapters
 
@@ -21,14 +22,14 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
     name = Keyword.get(opts, :name, __MODULE__)
 
-    WandererNotifier.Shared.Logger.Logger.startup_info("Starting WebSocket client",
+    Logger.info("Starting WebSocket client",
       url: websocket_url
     )
 
     # Build the WebSocket URL with Phoenix socket path
     socket_url = build_socket_url(websocket_url)
 
-    WandererNotifier.Shared.Logger.Logger.startup_info("Attempting WebSocket connection",
+    Logger.info("Attempting WebSocket connection",
       socket_url: socket_url
     )
 
@@ -58,7 +59,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   def handle_connect(_conn, state) do
     connected_at = DateTime.utc_now()
 
-    WandererNotifier.Shared.Logger.Logger.startup_info(
+    Logger.info(
       "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
     )
 
@@ -144,7 +145,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     # Calculate exponential backoff with jitter
     delay = calculate_backoff(state.reconnect_attempts)
 
-    WandererNotifier.Shared.Logger.Logger.info(
+    Logger.info(
       "WebSocket scheduling reconnect in #{delay}ms (attempt #{state.reconnect_attempts + 1})"
     )
 
@@ -163,31 +164,31 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_disconnect_reason({:error, {404, _headers, _body}}, state) do
-    WandererNotifier.Shared.Logger.Logger.error(
+    Logger.error(
       "WebSocket endpoint not found (404) at #{state.url}. Please check if the WandererKills service is running and has the correct endpoint. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:error, {:closed, :econnrefused}}, state) do
-    WandererNotifier.Shared.Logger.Logger.error(
+    Logger.error(
       "WebSocket connection refused at #{state.url}. Please check if the WandererKills service is running. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:remote, :closed}, state) do
-    WandererNotifier.Shared.Logger.Logger.error(
+    Logger.error(
       "WebSocket closed by remote server at #{state.url}. This may indicate an issue with the channel join message or server-side validation. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
 
   defp log_disconnect_reason({:remote, code, message}, state) when is_integer(code) do
-    WandererNotifier.Shared.Logger.Logger.error(
+    Logger.error(
       "WebSocket closed by remote server with code #{code}. Message: #{inspect(message)}. Connected systems: #{MapSet.size(state.subscribed_systems)}, characters: #{MapSet.size(state.subscribed_characters)}. URL: #{state.url}"
     )
   end
 
   defp log_disconnect_reason(reason, state) do
-    WandererNotifier.Shared.Logger.Logger.error(
+    Logger.error(
       "WebSocket disconnected from #{state.url} with reason: #{inspect(reason)}. Subscribed to #{MapSet.size(state.subscribed_systems)} systems and #{MapSet.size(state.subscribed_characters)} characters."
     )
   end
@@ -224,7 +225,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp log_frame_received(message_size) do
     # Only log detailed info for debug level, reduce memory impact
-    WandererNotifier.Shared.Logger.Logger.processor_debug("WebSocket text frame received",
+    Logger.debug("WebSocket text frame received",
       message_size: message_size
     )
   end
@@ -235,7 +236,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_decoded_message(data) do
-    WandererNotifier.Shared.Logger.Logger.processor_debug("Decoded WebSocket message",
+    Logger.debug("Decoded WebSocket message",
       event: data["event"],
       topic: data["topic"],
       payload_keys: extract_payload_keys(data["payload"])
@@ -248,7 +249,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp handle_decode_error(message, message_size, reason, state) do
     message_preview = truncate_message(message, message_size)
 
-    WandererNotifier.Shared.Logger.Logger.error("Failed to decode WebSocket message",
+    Logger.error("Failed to decode WebSocket message",
       error: inspect(reason),
       message_size: message_size,
       message_preview: message_preview
@@ -276,7 +277,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   def handle_info(:subscription_update, state) do
-    WandererNotifier.Shared.Logger.Logger.info("Starting subscription update check")
+    Logger.info("Starting subscription update check")
 
     try do
       check_and_update_subscriptions(state)
@@ -287,17 +288,17 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   def handle_info(:join_channel, state) do
-    WandererNotifier.Shared.Logger.Logger.info("WebSocket handling join_channel message")
+    Logger.info("WebSocket handling join_channel message")
 
     try do
       {limited_systems, limited_characters} = prepare_subscription_data()
       join_params = build_join_params(limited_systems, limited_characters)
       result = send_join_message(join_params, limited_systems, limited_characters, state)
-      WandererNotifier.Shared.Logger.Logger.info("Join channel result: #{inspect(result)}")
+      Logger.info("Join channel result: #{inspect(result)}")
       result
     rescue
       error ->
-        WandererNotifier.Shared.Logger.Logger.error("Error during channel join",
+        Logger.error("Error during channel join",
           error: Exception.message(error),
           stacktrace: __STACKTRACE__
         )
@@ -306,9 +307,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         retry_count = Map.get(state, :join_retry_count, 0)
         delay = calculate_backoff(retry_count)
 
-        WandererNotifier.Shared.Logger.Logger.info(
-          "Scheduling channel join retry in #{delay}ms (attempt #{retry_count + 1})"
-        )
+        Logger.info("Scheduling channel join retry in #{delay}ms (attempt #{retry_count + 1})")
 
         Process.send_after(self(), :join_channel, delay)
         {:ok, %{state | join_retry_count: retry_count + 1}}
@@ -318,7 +317,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp log_heartbeat_uptime(state) do
     uptime = calculate_connection_uptime(state)
 
-    WandererNotifier.Shared.Logger.Logger.info(
+    Logger.info(
       "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
     )
   end
@@ -372,7 +371,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp handle_missing_channel_ref(state) do
-    WandererNotifier.Shared.Logger.Logger.warn("Heartbeat attempted but no channel_ref set")
+    Logger.warning("Heartbeat attempted but no channel_ref set")
     {:ok, schedule_next_heartbeat(state)}
   end
 
@@ -424,7 +423,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          current_characters,
          state
        ) do
-    WandererNotifier.Shared.Logger.Logger.info("Subscription update check completed",
+    Logger.info("Subscription update check completed",
       systems_changed: systems_changed,
       characters_changed: characters_changed,
       current_systems_count: MapSet.size(current_systems),
@@ -437,7 +436,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp trigger_rejoin(systems_changed, characters_changed) do
-    WandererNotifier.Shared.Logger.Logger.warn(
+    Logger.warning(
       "Subscription update needed - triggering channel rejoin",
       systems_changed: systems_changed,
       characters_changed: characters_changed
@@ -454,7 +453,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp handle_subscription_error(error, state) do
-    WandererNotifier.Shared.Logger.Logger.error("Subscription update check failed",
+    Logger.error("Subscription update check failed",
       error: Exception.message(error)
     )
 
@@ -484,7 +483,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_subscription_data(all_systems, all_characters, limited_systems, limited_characters) do
-    WandererNotifier.Shared.Logger.Logger.info("WebSocket channel join data preparation",
+    Logger.info("WebSocket channel join data preparation",
       total_systems_count: length(all_systems),
       total_characters_count: length(all_characters),
       limited_systems_count: length(limited_systems),
@@ -496,9 +495,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp build_join_params(systems, characters) do
     if systems == [] and characters == [] do
-      WandererNotifier.Shared.Logger.Logger.startup_info(
-        "No valid systems or characters found, joining with empty subscription"
-      )
+      Logger.info("No valid systems or characters found, joining with empty subscription")
 
       %{
         systems: [],
@@ -506,9 +503,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         preload: %{enabled: false}
       }
     else
-      WandererNotifier.Shared.Logger.Logger.startup_info(
-        "Subscribing to all tracked systems and characters"
-      )
+      Logger.info("Subscribing to all tracked systems and characters")
 
       %{
         systems: systems,
@@ -533,21 +528,15 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     }
 
     # Log the full subscription data being sent
-    WandererNotifier.Shared.Logger.Logger.info(
+    Logger.info(
       "WebSocket subscription data: #{length(systems)} systems, #{length(characters)} characters"
     )
 
-    WandererNotifier.Shared.Logger.Logger.info(
-      "Systems sample: #{inspect(Enum.take(systems, 10))}"
-    )
+    Logger.info("Systems sample: #{inspect(Enum.take(systems, 10))}")
 
-    WandererNotifier.Shared.Logger.Logger.info(
-      "Characters sample: #{inspect(Enum.take(characters, 10))}"
-    )
+    Logger.info("Characters sample: #{inspect(Enum.take(characters, 10))}")
 
-    WandererNotifier.Shared.Logger.Logger.info(
-      "Full join params: #{inspect(join_params, limit: :infinity)}"
-    )
+    Logger.info("Full join params: #{inspect(join_params, limit: :infinity)}")
 
     case Jason.encode(join_message) do
       {:ok, json} ->
@@ -563,7 +552,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         {:reply, {:text, json}, new_state}
 
       {:error, reason} ->
-        WandererNotifier.Shared.Logger.Logger.error("Failed to encode join message",
+        Logger.error("Failed to encode join message",
           error: inspect(reason)
         )
 
@@ -575,7 +564,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_join_success(systems, characters) do
-    WandererNotifier.Shared.Logger.Logger.startup_info("Joining killmails channel",
+    Logger.info("Joining killmails channel",
       systems_count: length(systems),
       characters_count: length(characters)
     )
@@ -587,7 +576,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          state
        )
        when ref == state.channel_ref do
-    WandererNotifier.Shared.Logger.Logger.startup_info("Successfully joined killmails channel")
+    Logger.info("Successfully joined killmails channel")
     # Reset join retry count on successful join
     {:ok, %{state | join_retry_count: 0}}
   end
@@ -596,7 +585,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          %{"event" => "phx_reply", "payload" => %{"status" => "error", "response" => response}},
          state
        ) do
-    WandererNotifier.Shared.Logger.Logger.error("Failed to join channel",
+    Logger.error("Failed to join channel",
       error: inspect(response)
     )
 
@@ -611,7 +600,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     system_id = payload["system_id"]
     is_preload = payload["preload"] || false
 
-    WandererNotifier.Shared.Logger.Logger.processor_debug("Received killmail update",
+    Logger.debug("Received killmail update",
       system_id: system_id,
       killmails_count: length(killmails),
       preload: is_preload
@@ -630,7 +619,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     system_id = payload["system_id"]
     count = payload["count"]
 
-    WandererNotifier.Shared.Logger.Logger.processor_debug("Kill count update",
+    Logger.debug("Kill count update",
       system_id: system_id,
       count: count
     )
@@ -642,7 +631,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     total_kills = payload["total_kills"]
     systems_processed = payload["systems_processed"]
 
-    WandererNotifier.Shared.Logger.Logger.startup_info("Preload complete",
+    Logger.info("Preload complete",
       total_kills: total_kills,
       systems_processed: systems_processed
     )
@@ -651,12 +640,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp handle_phoenix_message(%{"event" => event}, state) do
-    WandererNotifier.Shared.Logger.Logger.debug("Unhandled Phoenix event", event: event)
+    Logger.debug("Unhandled Phoenix event", event: event)
     {:ok, state}
   end
 
   defp handle_phoenix_message(msg, state) do
-    WandererNotifier.Shared.Logger.Logger.debug("Unhandled Phoenix message",
+    Logger.debug("Unhandled Phoenix message",
       message: inspect(msg)
     )
 
@@ -737,7 +726,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
           send_to_legacy_pipeline(killmail, state)
 
         {:error, reason} ->
-          WandererNotifier.Shared.Logger.Logger.error(
+          Logger.error(
             "Failed to process killmail through integration pipeline",
             error: inspect(reason),
             killmail_id: Map.get(killmail, :killmail_id)
@@ -759,7 +748,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       # If no specific pipeline worker, send to the default one
       case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
         nil ->
-          WandererNotifier.Shared.Logger.Logger.error("PipelineWorker not found")
+          Logger.error("PipelineWorker not found")
 
         pid ->
           send(pid, {:websocket_killmail, killmail})
@@ -777,15 +766,13 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         |> Enum.uniq()
 
       {:error, reason} ->
-        WandererNotifier.Shared.Logger.Logger.error(
-          "Failed to get tracked systems: #{inspect(reason)}"
-        )
+        Logger.error("Failed to get tracked systems: #{inspect(reason)}")
 
         []
     end
   rescue
     error ->
-      WandererNotifier.Shared.Logger.Logger.error(
+      Logger.error(
         "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
       )
 
@@ -811,21 +798,25 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
+    Logger.info("Fetching tracked characters from ExternalAdapters", [])
+
     case ExternalAdapters.get_tracked_characters() do
       {:ok, characters} ->
+        Logger.info("ExternalAdapters returned characters",
+          count: length(characters),
+          first_char: inspect(Enum.at(characters, 0)) |> String.slice(0, 200)
+        )
+
         log_raw_characters(characters)
         process_character_list(characters)
 
       {:error, reason} ->
-        WandererNotifier.Shared.Logger.Logger.error(
-          "Failed to get tracked characters: #{inspect(reason)}"
-        )
-
+        Logger.error("Failed to get tracked characters: #{inspect(reason)}")
         []
     end
   rescue
     error ->
-      WandererNotifier.Shared.Logger.Logger.error(
+      Logger.error(
         "Exception in get_tracked_characters: #{Exception.message(error)} (#{inspect(error.__struct__)})"
       )
 
@@ -833,36 +824,47 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_raw_characters(characters) do
-    WandererNotifier.Shared.Logger.Logger.debug("Raw character data from ExternalAdapters",
+    Logger.debug("Raw character data from ExternalAdapters",
       count: length(characters),
       sample: Enum.take(characters, 3) |> Enum.map(&inspect/1)
     )
   end
 
   defp process_character_list(characters) do
-    processed =
-      characters
-      |> Enum.map(&extract_character_id/1)
-      |> Enum.filter(&valid_character_id?/1)
-      |> Enum.uniq()
+    Logger.info("Starting to process character list", count: length(characters))
 
-    WandererNotifier.Shared.Logger.Logger.debug("Processed character IDs",
+    extracted_ids = Enum.map(characters, &extract_character_id/1)
+
+    Logger.info("Extracted character IDs",
+      extracted_count: length(extracted_ids),
+      sample_ids: Enum.take(extracted_ids, 5)
+    )
+
+    valid_ids = Enum.filter(extracted_ids, &valid_character_id?/1)
+
+    Logger.info("After validity filter",
+      valid_count: length(valid_ids),
+      sample_valid_ids: Enum.take(valid_ids, 5)
+    )
+
+    processed = Enum.uniq(valid_ids)
+
+    Logger.info("Final processed character IDs",
+      input_count: length(characters),
       final_count: length(processed),
-      final_ids: processed
+      final_ids: Enum.take(processed, 10)
     )
 
     processed
   end
 
   defp extract_character_id(char) do
-    char_id = char["eve_id"] || char[:eve_id]
+    # Extract from nested character structure
+    char_id = char["character"]["eve_id"]
 
-    WandererNotifier.Shared.Logger.Logger.debug("Processing character",
-      char_sample: inspect(char),
-      extracted_id: inspect(char_id)
-    )
+    normalized = normalize_character_id(char_id)
 
-    normalize_character_id(char_id)
+    normalized
   end
 
   defp normalize_character_id(id) when is_integer(id), do: id

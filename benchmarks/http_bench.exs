@@ -22,34 +22,34 @@ defmodule HttpBench do
 
   bench "http client with ESI config" do
     # Mock response for benchmarking
-    Http.get("https://esi.evetech.net/latest/characters/123456/", [], service: :esi)
+    Http.request(:get, "https://esi.evetech.net/latest/characters/123456/", nil, [], service: :esi)
   end
 
   bench "http client with WandererKills config" do
-    Http.get("https://wanderer-kills.example.com/api/kills", [], 
+    Http.request(:get, "https://wanderer-kills.example.com/api/kills", nil, [], 
       service: :wanderer_kills
     )
   end
 
   bench "http client with retry logic" do
-    Http.get("https://api.example.com/test", [], 
+    Http.request(:get, "https://api.example.com/test", nil, [], 
       retry_count: 3, 
       timeout: 5000
     )
   end
 
   bench "http client basic get" do
-    Http.get("https://api.example.com/data", [], [])
+    Http.request(:get, "https://api.example.com/data", nil, [], [])
   end
 
   bench "http client post with body" do
-    Http.post("https://api.example.com/create", %{data: "test"}, [], 
+    Http.request(:post, "https://api.example.com/create", %{data: "test"}, [], 
       service: :license
     )
   end
 
   bench "http client with authentication" do
-    Http.get("https://api.example.com/protected", [], 
+    Http.request(:get, "https://api.example.com/protected", nil, [], 
       auth: [type: :bearer, token: "test_token"]
     )
   end

@@ -491,7 +491,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
     end
 
     test "returns nil when cache is empty" do
-      # Cache already cleared in setup  
+      # Cache already cleared in setup
       assert System.get_system_by_name("Jita") == nil
     end
   end

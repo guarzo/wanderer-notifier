@@ -312,10 +312,10 @@ defmodule WandererNotifier.Shared.Config.Utils do
   ## Examples
       iex> parse_system_id("30000142")
       30000142
-      
+
       iex> parse_system_id(30000142)
       30000142
-      
+
       iex> parse_system_id("invalid")
       nil
   """

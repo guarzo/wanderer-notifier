@@ -6,9 +6,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   with the existing notification pipeline while using shared event handling patterns.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Domains.Tracking.Entities.System
-  alias WandererNotifier.Domains.Notifications.Determiner.System, as: SystemDeterminer
+  alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
@@ -107,12 +107,19 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp try_create_system(payload) do
     try do
-      system = System.new(payload)
+      # Log the incoming payload to see what we're getting
+      Logger.debug("Creating system from SSE payload",
+        payload: inspect(payload),
+        category: :api
+      )
+
+      system = System.from_api_data(payload)
       {:ok, system}
     rescue
       error ->
-        AppLogger.api_error("Failed to create system from payload",
+        Logger.error("Failed to create system from payload",
           payload: inspect(payload),
+          category: :api,
           error: inspect(error)
         )
 
@@ -122,12 +129,32 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp enrich_system(system) do
     try do
+      Logger.debug("Enriching system",
+        system_id: system.solar_system_id,
+        system_name: system.name,
+        before_enrichment: inspect(system),
+        category: :api
+      )
+
       # StaticInfo.enrich_system returns {:ok, enriched_system}
-      WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
+      # enrich_system always returns {:ok, system}
+      {:ok, enriched} = WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
+
+      Logger.debug("System enriched successfully",
+        system_id: enriched.solar_system_id,
+        system_name: enriched.name,
+        class_title: enriched.class_title,
+        statics: inspect(enriched.statics),
+        region: enriched.region_name,
+        category: :api
+      )
+
+      {:ok, enriched}
     rescue
       error ->
-        AppLogger.api_error("Failed to enrich system",
+        Logger.error("Failed to enrich system",
           system: inspect(system),
+          category: :api,
           error: inspect(error)
         )
 
@@ -160,9 +187,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         Cache.put_with_ttl(cache_key, [system], Cache.map_ttl())
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to read system cache",
+        Logger.error("Failed to read system cache",
           cache_key: cache_key,
-          error: inspect(reason)
+          error: inspect(reason),
+          category: :api
         )
 
         {:error, {:cache_read_failed, reason}}
@@ -192,9 +220,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         :ok
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to read system cache for removal",
+        Logger.error("Failed to read system cache for removal",
           cache_key: cache_key,
-          error: inspect(reason)
+          error: inspect(reason),
+          category: :api
         )
 
         {:error, {:cache_read_failed, reason}}
@@ -224,14 +253,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp maybe_send_notification(system) do
     # Use the existing system determiner to check if we should notify
     # Pass the system_id as first parameter, and the system struct as second
-    case SystemDeterminer.should_notify?(system.solar_system_id, system) do
+    case Determiner.should_notify?(:system, system.solar_system_id, system) do
       true ->
         send_system_notification(system)
 
       false ->
-        AppLogger.api_info("System notification skipped",
+        Logger.info("System notification skipped",
           system_name: system.name,
-          reason: "determiner_rejected"
+          reason: "determiner_rejected",
+          category: :api
         )
 
         :ok
@@ -239,34 +269,47 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp maybe_log_system_removal(payload) do
-    AppLogger.api_info("System removed from tracking",
-      system_id: Map.get(payload, "id")
+    Logger.info("System removed from tracking",
+      system_id: Map.get(payload, "id"),
+      category: :api
     )
 
     :ok
   end
 
   defp maybe_log_system_update(system) do
-    AppLogger.api_info("System metadata updated",
-      system_name: system.name
+    Logger.info("System metadata updated",
+      system_name: system.name,
+      category: :api
     )
 
     :ok
   end
 
   defp send_system_notification(system) do
-    case WandererNotifier.Application.Services.NotificationService.notify_system(system.name) do
+    case WandererNotifier.Application.Services.NotificationService.notify_system(system) do
       :ok ->
-        AppLogger.api_info("System notification sent",
-          system_name: system.name
+        Logger.info("System notification sent",
+          system_name: system.name,
+          system_id: system.solar_system_id,
+          category: :api
+        )
+
+        :ok
+
+      :skip ->
+        Logger.info("System notification skipped",
+          system_name: system.name,
+          category: :api
         )
 
         :ok
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to send system notification",
+        Logger.error("Failed to send system notification",
           system_name: system.name,
-          error: inspect(reason)
+          error: inspect(reason),
+          category: :api
         )
 
         {:error, {:notification_failed, reason}}

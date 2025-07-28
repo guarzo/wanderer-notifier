@@ -1,36 +1,30 @@
 defmodule WandererNotifier.Domains.Tracking.Entities.System do
   @moduledoc """
-  Struct for representing a system in the map context.
-  Provides functionality for system type checking and name formatting.
+  Simplified system entity that removes Access behavior complexity.
 
-  ## Fields
-  - solar_system_id: Unique identifier for the system
-  - name: Current name of the system
-  - original_name: Original name before any renaming
-  - system_type: Type of system (e.g., wormhole, k-space)
-  - type_description: Detailed description of the system type
-  - class_title: System class (e.g., C1, C2, etc.)
-  - effect_name: Name of the system's effect if any
-  - is_shattered: Whether the system is shattered
-  - locked: Whether the system is locked
-  - region_name: Name of the region containing the system
-  - static_details: List of static wormhole connections
-  - statics: List of static wormhole connections
-  - sun_type_id: Type ID of the system's sun
-  - id: Alternative identifier for the system
-  - security_status: Security status of the system
-  - region_id: ID of the system's region
-  - triglavian_invasion_status: Invasion status of the system
-  - constellation_id: ID of the system's constellation
-  - constellation_name: Name of the system's constellation
+  Provides essential system tracking functionality without unnecessary
+  abstractions or complex behaviors.
   """
 
   @behaviour WandererNotifier.Map.TrackingBehaviour
-  @behaviour Access
-
   alias WandererNotifier.Infrastructure.Cache
+  require Logger
 
-  @enforce_keys [:solar_system_id, :name]
+  @type t :: %__MODULE__{
+          solar_system_id: String.t(),
+          name: String.t(),
+          original_name: String.t() | nil,
+          system_type: String.t() | nil,
+          type_description: String.t() | nil,
+          class_title: String.t() | nil,
+          region_name: String.t() | nil,
+          security_status: float() | nil,
+          is_shattered: boolean() | nil,
+          statics: list(String.t()) | nil,
+          effect_name: String.t() | nil,
+          tracked: boolean()
+        }
+
   defstruct [
     :solar_system_id,
     :name,
@@ -38,476 +32,223 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
     :system_type,
     :type_description,
     :class_title,
-    :effect_name,
-    :is_shattered,
-    :locked,
     :region_name,
-    :static_details,
-    :statics,
-    :system_class,
-    :temporary_name,
-    :sun_type_id,
-    :id,
     :security_status,
-    :effect_power,
-    :region_id,
-    :triglavian_invasion_status,
-    :constellation_id,
-    :constellation_name
+    :is_shattered,
+    :statics,
+    :effect_name,
+    tracked: false
   ]
 
+  # ══════════════════════════════════════════════════════════════════════════════
+  # TrackingBehaviour Implementation
+  # ══════════════════════════════════════════════════════════════════════════════
+
   @impl true
-  def is_tracked?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    is_tracked?(system_id_str)
-  end
-
-  def is_tracked?(system_id_str) when is_binary(system_id_str) do
-    case Cache.get(Cache.Keys.map_systems()) do
+  def is_tracked?(system_id) when is_binary(system_id) do
+    case Cache.get("map:systems") do
       {:ok, systems} when is_list(systems) ->
-        result =
-          Enum.any?(systems, fn system ->
-            id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-            to_string(id) == system_id_str
-          end)
+        tracked = Enum.any?(systems, &(&1["solar_system_id"] == system_id))
+        {:ok, tracked}
 
-        {:ok, result}
-
-      {:error, :not_found} ->
+      {:ok, _} ->
         {:ok, false}
 
-      _ ->
+      {:error, :not_found} ->
         {:ok, false}
     end
   end
 
+  def is_tracked?(system_id) when is_integer(system_id) do
+    is_tracked?(Integer.to_string(system_id))
+  end
+
+  @impl true
   def is_tracked?(_), do: {:error, :invalid_system_id}
 
-  @type t :: %__MODULE__{
-          solar_system_id: String.t() | integer(),
-          name: String.t(),
-          original_name: String.t() | nil,
-          system_type: String.t() | atom() | nil,
-          type_description: String.t() | nil,
-          class_title: String.t() | nil,
-          effect_name: String.t() | nil,
-          is_shattered: boolean() | nil,
-          locked: boolean() | nil,
-          region_name: String.t() | nil,
-          static_details: list() | nil,
-          statics: list() | nil,
-          system_class: String.t() | integer() | nil,
-          temporary_name: String.t() | nil,
-          sun_type_id: integer() | nil,
-          id: String.t() | integer() | nil,
-          security_status: float() | nil,
-          effect_power: integer() | nil,
-          region_id: integer() | nil,
-          triglavian_invasion_status: String.t() | nil,
-          constellation_id: integer() | nil,
-          constellation_name: String.t() | nil
-        }
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Simple Constructor Functions
+  # ══════════════════════════════════════════════════════════════════════════════
 
   @doc """
-  Creates a new MapSystem struct from a map of attributes.
-
-  ## Parameters
-    - attrs: Map containing system attributes. Must include a string 'id' key.
-
-  ## Returns
-    - %System{} struct
-
-  ## Raises
-    - ArgumentError if 'id' key is missing or not a string (enforces correct API format)
+  Creates a system struct from API data.
   """
-  @spec new(map()) :: t()
-  def new(data) do
-    # Define field mappings for extraction
-    field_mappings = [
-      # Required fields
-      {:solar_system_id, ["solar_system_id", :solar_system_id]},
-      {:name, ["name", :name]},
-      # Optional fields
-      {:id, ["id", :id]},
-      {:region_name, ["region_name", :region_name]},
-      {:statics, ["statics", :statics]},
-      {:static_details, ["static_details", :static_details]},
-      {:system_class, ["system_class", :system_class]},
-      {:class_title, ["class_title", :class_title]},
-      {:type_description, ["type_description", :type_description]},
-      {:is_shattered, ["is_shattered", :is_shattered]},
-      {:effect_name, ["effect_name", :effect_name]},
-      {:sun_type_id, ["sun_type_id", :sun_type_id]},
-      {:temporary_name, ["temporary_name", :temporary_name]},
-      {:original_name, ["original_name", :original_name]},
-      {:security_status, ["security_status", :security_status]},
-      {:effect_power, ["effect_power", :effect_power]},
-      {:region_id, ["region_id", :region_id]},
-      {:triglavian_invasion_status, ["triglavian_invasion_status", :triglavian_invasion_status]},
-      {:constellation_id, ["constellation_id", :constellation_id]},
-      {:constellation_name, ["constellation_name", :constellation_name]},
-      {:system_type, ["system_type", :system_type]}
-    ]
-
-    # Extract fields using the mappings
-    attrs = extract_fields(data, field_mappings)
-
-    # Create the struct
-    struct(__MODULE__, attrs)
+  @spec from_api_data(map()) :: t()
+  def from_api_data(data) when is_map(data) do
+    log_api_data(data)
+    build_system_struct(data)
   end
 
-  # Helper function to extract fields from data using mappings
-  defp extract_fields(data, mappings) do
-    Enum.reduce(mappings, %{}, fn {field, keys}, acc ->
-      case get_first_valid_value(data, keys) do
-        nil -> acc
-        value -> Map.put(acc, field, value)
-      end
-    end)
+  defp build_system_struct(data) do
+    %__MODULE__{
+      solar_system_id: extract_system_id(data),
+      name: extract_name(data),
+      original_name: get_string(data, "original_name"),
+      system_type: extract_system_type(data),
+      type_description: extract_type_description(data),
+      class_title: extract_class_title(data),
+      region_name: extract_region_name(data),
+      security_status: extract_security_status(data),
+      is_shattered: extract_is_shattered(data),
+      statics: extract_statics(data),
+      effect_name: extract_effect_name(data),
+      tracked: true
+    }
   end
 
-  # Helper function to get the first valid value from a list of possible keys
-  defp get_first_valid_value(data, keys) do
-    Enum.find_value(keys, fn key ->
-      Map.get(data, key)
-    end)
+  defp log_api_data(data) do
+    Logger.debug("Creating system from API data",
+      data_keys: Map.keys(data),
+      solar_system_id: Map.get(data, "solar_system_id"),
+      id: Map.get(data, "id"),
+      system_id: Map.get(data, "system_id"),
+      category: :api
+    )
+  end
+
+  defp extract_system_id(data) do
+    extract_field(data, ["solar_system_id", "id", "system_id"], &get_string/2)
+  end
+
+  defp extract_name(data) do
+    extract_field(data, ["name", "system_name"], &get_string/2)
+  end
+
+  defp extract_field(data, keys, extractor) when is_list(keys) do
+    Enum.find_value(keys, fn key -> extractor.(data, key) end)
+  end
+
+  defp extract_system_type(data) do
+    extract_field(data, ["system_type", "type"], &get_string/2)
+  end
+
+  defp extract_type_description(data) do
+    extract_field(data, ["type_description", "class_title"], &get_string/2)
+  end
+
+  defp extract_class_title(data) do
+    extract_field(data, ["class_title", "class"], &get_string/2)
+  end
+
+  defp extract_region_name(data) do
+    extract_field(data, ["region_name", "region"], &get_string/2)
+  end
+
+  defp extract_security_status(data) do
+    extract_field(data, ["security_status", "security"], &get_float/2)
+  end
+
+  defp extract_is_shattered(data) do
+    extract_field(data, ["is_shattered", "shattered"], &get_boolean/2)
+  end
+
+  defp extract_statics(data) do
+    extract_field(data, ["statics", "static_wormholes"], &get_list/2)
+  end
+
+  defp extract_effect_name(data) do
+    extract_field(data, ["effect_name", "effect"], &get_string/2)
+  end
+
+  @doc """
+  Gets system information from cache.
+  """
+  @spec get_system(String.t()) :: {:ok, t()} | {:error, term()}
+  def get_system(system_id) when is_binary(system_id) do
+    case Cache.get("map:systems") do
+      {:ok, systems} when is_list(systems) ->
+        case Enum.find(systems, &(&1["solar_system_id"] == system_id)) do
+          nil -> {:error, :not_found}
+          system_data -> {:ok, from_api_data(system_data)}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def get_system(system_id) when is_integer(system_id) do
+    get_system(Integer.to_string(system_id))
+  end
+
+  @doc """
+  Gets system by name from cache.
+  """
+  @spec get_system_by_name(String.t()) :: {:ok, t()} | {:error, term()}
+  def get_system_by_name(system_name) when is_binary(system_name) do
+    case Cache.get("map:systems") do
+      {:ok, systems} when is_list(systems) ->
+        case Enum.find(systems, &(&1["name"] == system_name)) do
+          nil -> {:error, :not_found}
+          system_data -> {:ok, from_api_data(system_data)}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
   Checks if a system is a wormhole system.
-
-  ## Parameters
-    - system: MapSystem struct to check
-
-  ## Returns
-    - true if the system is a wormhole system
-    - false otherwise
   """
   @spec wormhole?(t()) :: boolean()
   def wormhole?(%__MODULE__{system_type: type}) do
-    type in [:wormhole, "wormhole", "Wormhole"]
+    type == "wormhole"
   end
 
-  @doc """
-  Formats the display name of a system by combining its name, class, and effect.
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Utility Functions
+  # ══════════════════════════════════════════════════════════════════════════════
 
-  ## Parameters
-    - system: MapSystem struct to format
-
-  ## Returns
-    - String containing the formatted display name
-  """
-  @spec format_display_name(t()) :: String.t()
-  def format_display_name(%__MODULE__{name: name, class_title: class, effect_name: effect}) do
-    [name, class, effect]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" ")
-  end
-
-  @doc """
-  Updates a MapSystem struct with static system information.
-  """
-  @spec update_with_static_info(t() | map(), map()) :: t()
-  def update_with_static_info(system, static_info) when is_map(static_info) do
-    valid_fields = get_valid_fields()
-
-    # Convert and normalize inputs
-    atomized_static_info = atomize_and_filter_keys(static_info, valid_fields)
-    system_map = convert_system_to_map(system, valid_fields)
-
-    # Normalize system_class fields
-    system_map = normalize_system_class(system_map)
-    atomized_static_info = normalize_system_class(atomized_static_info)
-
-    # Merge and create final struct
-    system_map
-    |> Map.merge(atomized_static_info)
-    |> then(&struct(__MODULE__, &1))
-    |> tap(&validate_types/1)
-  end
-
-  # Extract valid fields list to separate function
-  defp get_valid_fields do
-    [
-      :id,
-      :solar_system_id,
-      :name,
-      :original_name,
-      :type_description,
-      :class_title,
-      :effect_name,
-      :effect_power,
-      :region_id,
-      :region_name,
-      :security_status,
-      :sun_type_id,
-      :system_class,
-      :system_type,
-      :temporary_name,
-      :triglavian_invasion_status,
-      :static_details,
-      :statics,
-      :is_shattered,
-      :locked,
-      :constellation_id,
-      :constellation_name
-    ]
-  end
-
-  # Convert system to map and filter keys
-  defp convert_system_to_map(system, valid_fields) do
-    system_map =
-      case system do
-        %__MODULE__{} -> Map.from_struct(system)
-        %{} -> system
-      end
-
-    atomize_and_filter_keys(system_map, valid_fields)
-  end
-
-  # Normalize system_class field from integer to string
-  defp normalize_system_class(map) do
-    case Map.get(map, :system_class) do
-      n when is_integer(n) -> Map.put(map, :system_class, Integer.to_string(n))
-      _ -> map
+  @spec get_string(map(), String.t()) :: String.t() | nil
+  defp get_string(data, key) do
+    case Map.get(data, key) do
+      value when is_binary(value) -> value
+      value when is_integer(value) -> Integer.to_string(value)
+      _ -> nil
     end
   end
 
-  # Helper function to atomize and filter keys
-  defp atomize_and_filter_keys(map, valid_fields) do
-    Enum.reduce(map, %{}, fn entry, acc ->
-      process_map_entry(entry, acc, valid_fields)
-    end)
-  end
+  @spec get_float(map(), String.t()) :: float() | nil
+  defp get_float(data, key) do
+    case Map.get(data, key) do
+      value when is_float(value) ->
+        value
 
-  # Process individual map entries
-  defp process_map_entry({k, v}, acc, valid_fields) when is_binary(k) do
-    process_binary_key(k, v, acc, valid_fields)
-  end
+      value when is_integer(value) ->
+        value / 1.0
 
-  defp process_map_entry({k, v}, acc, valid_fields) when is_atom(k) do
-    process_atom_key(k, v, acc, valid_fields)
-  end
-
-  defp process_map_entry(_, acc, _valid_fields), do: acc
-
-  # Process binary keys by converting to atoms
-  defp process_binary_key(key, value, acc, valid_fields) do
-    try do
-      atom = String.to_existing_atom(key)
-      if atom in valid_fields, do: Map.put(acc, atom, value), else: acc
-    rescue
-      ArgumentError -> acc
-    end
-  end
-
-  # Process atom keys directly
-  defp process_atom_key(key, value, acc, valid_fields) do
-    if key in valid_fields, do: Map.put(acc, key, value), else: acc
-  end
-
-  @doc """
-  Validates the types of all fields in a MapSystem struct.
-  Raises ArgumentError if any field is the wrong type.
-  """
-  @spec validate_types(t()) :: :ok
-  def validate_types(%__MODULE__{} = system) do
-    validate_string_fields(system)
-    validate_numeric_fields(system)
-    validate_boolean_fields(system)
-    validate_list_fields(system)
-    validate_optional_fields(system)
-    :ok
-  end
-
-  # Required string fields
-  defp validate_string_fields(system) do
-    validate_field(system, :name, &is_binary/1, "string")
-  end
-
-  # Optional string fields
-  defp validate_optional_fields(system) do
-    optional_string_fields = [
-      :original_name,
-      :type_description,
-      :class_title,
-      :effect_name,
-      :region_name,
-      :system_class,
-      :temporary_name,
-      :triglavian_invasion_status,
-      :constellation_name
-    ]
-
-    Enum.each(optional_string_fields, fn field ->
-      validate_optional_field(system, field, &is_binary/1, "string")
-    end)
-
-    # Special case for system_type which can be string, atom, or nil
-    validate_optional_field(
-      system,
-      :system_type,
-      &(&1 == nil or is_binary(&1) or is_atom(&1)),
-      "string, atom, or nil"
-    )
-  end
-
-  # Numeric fields
-  defp validate_numeric_fields(system) do
-    # Integer fields
-    integer_fields = [:sun_type_id, :effect_power, :region_id, :constellation_id]
-
-    Enum.each(integer_fields, fn field ->
-      validate_optional_field(system, field, &is_integer/1, "integer")
-    end)
-
-    # Float fields
-    validate_optional_field(system, :security_status, &is_float/1, "float")
-
-    # Fields that can be integer or string
-    mixed_id_fields = [:solar_system_id, :id]
-
-    Enum.each(mixed_id_fields, fn field ->
-      validate_optional_field(
-        system,
-        field,
-        &(&1 == nil or is_integer(&1) or is_binary(&1)),
-        "integer or string"
-      )
-    end)
-  end
-
-  # Boolean fields
-  defp validate_boolean_fields(system) do
-    boolean_fields = [:is_shattered, :locked]
-
-    Enum.each(boolean_fields, fn field ->
-      validate_optional_field(system, field, &is_boolean/1, "boolean")
-    end)
-  end
-
-  # List fields
-  defp validate_list_fields(system) do
-    list_fields = [:static_details, :statics]
-
-    Enum.each(list_fields, fn field ->
-      validate_optional_field(system, field, &is_list/1, "list")
-    end)
-  end
-
-  # Helper function for required fields
-  defp validate_field(system, field, validator, expected_type) do
-    value = Map.get(system, field)
-
-    if !validator.(value) do
-      raise ArgumentError, "System.#{field} must be a #{expected_type}, got: #{inspect(value)}"
-    end
-  end
-
-  # Helper function for optional fields
-  defp validate_optional_field(system, field, validator, expected_type) do
-    value = Map.get(system, field)
-
-    if !(value == nil or validator.(value)) do
-      raise ArgumentError,
-            "System.#{field} must be a #{expected_type} or nil, got: #{inspect(value)}"
-    end
-  end
-
-  @doc """
-  Gets a system by ID from the cache.
-  """
-  def get_system(system_id) do
-    case Cache.get(Cache.Keys.map_systems()) do
-      {:ok, systems} when is_list(systems) ->
-        Enum.find(systems, &(&1["id"] == system_id))
-
-      {:error, :not_found} ->
-        nil
+      value when is_binary(value) ->
+        case Float.parse(value) do
+          {float, ""} -> float
+          _ -> nil
+        end
 
       _ ->
         nil
     end
   end
 
-  @doc """
-  Gets a system by name from the cache.
-  """
-  def get_system_by_name(system_name) do
-    case Cache.get(Cache.Keys.map_systems()) do
-      {:ok, systems} when is_list(systems) ->
-        Enum.find(systems, &(&1["name"] == system_name))
+  @spec get_boolean(map(), String.t()) :: boolean() | nil
+  defp get_boolean(data, key) do
+    case Map.get(data, key) do
+      value when is_boolean(value) -> value
+      "true" -> true
+      "false" -> false
+      1 -> true
+      0 -> false
+      _ -> nil
+    end
+  end
 
-      {:error, :not_found} ->
-        nil
+  @spec get_list(map(), String.t()) :: list(String.t()) | nil
+  defp get_list(data, key) do
+    case Map.get(data, key) do
+      value when is_list(value) ->
+        Enum.map(value, &to_string/1)
 
       _ ->
         nil
     end
-  end
-
-  @doc """
-  Checks if a system is in k-space.
-  """
-  def kspace?(%__MODULE__{system_class: cls}), do: cls in ["K", "HS", "LS", "NS"]
-  def kspace?(map), do: Map.get(map, :system_class) in ["K", "HS", "LS", "NS"]
-
-  # ============================================================================
-  # Access Behaviour Implementation
-  # ============================================================================
-
-  @doc """
-  Fetch a field via the Access behaviour (allows `struct["key"]` syntax).
-  Supports special key mappings for compatibility with different API formats.
-  """
-  @impl Access
-  @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
-  def fetch(struct, key) when is_atom(key) do
-    struct
-    |> Map.from_struct()
-    |> Map.fetch(key)
-  end
-
-  def fetch(struct, "solarSystemID"), do: fetch(struct, :solar_system_id)
-  def fetch(struct, "systemID"), do: fetch(struct, :solar_system_id)
-  def fetch(struct, "systemName"), do: fetch(struct, :name)
-  def fetch(struct, "regionName"), do: fetch(struct, :region_name)
-  def fetch(struct, "effectName"), do: fetch(struct, :effect_name)
-  def fetch(struct, "classTitle"), do: fetch(struct, :class_title)
-
-  def fetch(struct, key) when is_binary(key) do
-    try do
-      atom_key = String.to_existing_atom(key)
-      fetch(struct, atom_key)
-    rescue
-      ArgumentError -> :error
-    end
-  end
-
-  @doc """
-  Get a field with a default value.
-  """
-  @spec get(t(), atom() | String.t(), any()) :: any()
-  def get(struct, key, default \\ nil) do
-    case fetch(struct, key) do
-      {:ok, value} -> value
-      :error -> default
-    end
-  end
-
-  @doc """
-  Get and update is not supported for this struct.
-  """
-  @impl Access
-  def get_and_update(_struct, _key, _fun) do
-    raise ArgumentError, "get_and_update/3 is not supported for System struct"
-  end
-
-  @doc """
-  Pop is not supported for this struct.
-  """
-  @impl Access
-  def pop(_struct, _key) do
-    raise ArgumentError, "pop/2 is not supported for System struct"
   end
 end

@@ -19,7 +19,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   ## Common Error Atoms
 
   - `:timeout` - Operation timed out
-  - `:not_found` - Resource not found  
+  - `:not_found` - Resource not found
   - `:unauthorized` - Authentication required
   - `:forbidden` - Access denied
   - `:rate_limited` - Rate limit exceeded
@@ -28,7 +28,6 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   - `:network_error` - Network connectivity issue
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   require Logger
 
   @type error_reason :: atom() | {atom(), any()}
@@ -49,10 +48,10 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> normalize_error({:error, "timeout"})
       {:error, :timeout}
-      
+
       iex> normalize_error(:timeout)
       {:error, :timeout}
-      
+
       iex> normalize_error({:error, {:http_error, 404}})
       {:error, {:http_error, 404}}
   """
@@ -74,7 +73,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> with_error_handling(fn -> {:ok, "success"} end)
       {:ok, "success"}
-      
+
       iex> with_error_handling(fn -> raise "oops" end)
       {:error, {:exception, %RuntimeError{message: "oops"}}}
   """
@@ -98,7 +97,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> with_timeout(fn -> :timer.sleep(10); {:ok, "done"} end, 100)
       {:ok, "done"}
-      
+
       iex> with_timeout(fn -> :timer.sleep(200) end, 100)
       {:error, :timeout}
   """
@@ -119,10 +118,10 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> http_error_to_tuple(404)
       {:error, :not_found}
-      
+
       iex> http_error_to_tuple(429)
       {:error, :rate_limited}
-      
+
       iex> http_error_to_tuple(500)
       {:error, {:http_error, 500}}
   """
@@ -158,10 +157,10 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> categorize_error(:timeout)
       :network
-      
+
       iex> categorize_error(:unauthorized)
       :auth
-      
+
       iex> categorize_error({:validation_error, "invalid"})
       :data
   """
@@ -201,7 +200,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
         timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
       })
 
-    AppLogger.api_error(message, full_metadata)
+    Logger.error(message, full_metadata)
   end
 
   @doc """
@@ -211,7 +210,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> format_error(:not_found)
       "Resource not found"
-      
+
       iex> format_error({:validation_error, "name required"})
       "Validation error: name required"
   """
@@ -271,7 +270,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> with_retry(fn -> {:ok, "success"} end, max_attempts: 3)
       {:ok, "success"}
-      
+
       iex> with_retry(fn -> {:error, :timeout} end, max_attempts: 2, retry_on: [:timeout])
       {:error, :timeout}  # After 2 attempts
   """
@@ -316,7 +315,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> aggregate_results([{:ok, 1}, {:ok, 2}, {:ok, 3}])
       {:ok, [1, 2, 3]}
-      
+
       iex> aggregate_results([{:ok, 1}, {:error, :failed}, {:ok, 3}])
       {:error, :failed}
   """
@@ -340,7 +339,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> error_to_status({:error, :not_found})
       404
-      
+
       iex> error_to_status({:error, :unauthorized})
       401
   """
@@ -383,7 +382,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   end
 
   defp log_retry(reason, attempt, max_attempts, delay) do
-    AppLogger.api_debug("Retrying operation",
+    Logger.debug("Retrying operation",
       reason: inspect(reason),
       attempt: attempt,
       max_attempts: max_attempts,
@@ -410,10 +409,10 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> safe_execute(fn -> {:ok, "success"} end)
       {:ok, "success"}
-      
+
       iex> safe_execute(fn -> raise "error" end)
       {:error, :execution_error}
-      
+
       iex> safe_execute(fn -> raise "error" end, fallback: "safe value")
       {:ok, "safe value"}
   """
@@ -453,7 +452,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
       iex> safe_execute_string(fn -> "success" end)
       "success"
-      
+
       iex> safe_execute_string(fn -> raise "error" end, fallback: "Error occurred")
       "Error occurred"
   """

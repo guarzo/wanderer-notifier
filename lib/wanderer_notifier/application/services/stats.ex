@@ -5,7 +5,7 @@ defmodule WandererNotifier.Application.Services.Stats do
   Also tracks first notification flags for feature gating.
   """
   use GenServer
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
   require Logger
 
@@ -100,7 +100,7 @@ defmodule WandererNotifier.Application.Services.Stats do
   Starts the Stats GenServer.
   """
   def start_link(opts \\ []) do
-    AppLogger.startup_debug("Starting Stats tracking service...")
+    Logger.debug("Starting Stats tracking service...", category: :startup)
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -254,12 +254,14 @@ defmodule WandererNotifier.Application.Services.Stats do
       end
 
     # Log the summary
-    AppLogger.processor_info("📊 Stats Summary:
+    Logger.info("📊 Stats Summary:
     Uptime: #{uptime}
     Notifications: #{total_notifications} total (#{kills_notified} kills, #{systems_notified} systems, #{characters_notified} characters)
     Processing: #{kills_processed} kills processed, #{kills_notified} kills notified
     Killmail Metrics: #{processing_start} started, #{processing_complete} completed, #{processing_skipped} skipped, #{processing_error} errors
-    RedisQ: #{connected}, last message #{last_message}")
+    RedisQ: #{connected}, last message #{last_message}",
+      category: :processor
+    )
   end
 
   @doc """
@@ -283,7 +285,7 @@ defmodule WandererNotifier.Application.Services.Stats do
 
   @impl true
   def init(_opts) do
-    AppLogger.startup_debug("Initializing stats tracking service...")
+    Logger.debug("Initializing stats tracking service...", category: :startup)
     # Initialize with current time as startup time
     state = State.new()
     startup_time = DateTime.utc_now()
@@ -330,9 +332,10 @@ defmodule WandererNotifier.Application.Services.Stats do
     updated_redisq = Map.merge(state.redisq, normalized_status)
 
     # Log the update for debugging
-    AppLogger.processor_debug("Updated RedisQ status",
+    Logger.debug("Updated RedisQ status",
       old_status: state.redisq,
-      new_status: updated_redisq
+      new_status: updated_redisq,
+      category: :processor
     )
 
     {:noreply, %{state | redisq: updated_redisq}}
@@ -342,7 +345,10 @@ defmodule WandererNotifier.Application.Services.Stats do
   def handle_cast({:mark_notification_sent, type}, state) do
     # Update the first_notifications map to mark this type as sent
     first_notifications = Map.put(state.first_notifications, type, false)
-    AppLogger.config_debug("Marked #{type} notification as sent - no longer first notification")
+
+    Logger.debug("Marked #{type} notification as sent - no longer first notification",
+      category: :config
+    )
 
     {:noreply, %{state | first_notifications: first_notifications}}
   end
@@ -402,7 +408,7 @@ defmodule WandererNotifier.Application.Services.Stats do
       case state.redisq.startup_time do
         nil ->
           # Fallback: if startup_time is nil, set it to current time
-          AppLogger.processor_debug("Startup time was nil, setting to current time")
+          Logger.debug("Startup time was nil, setting to current time", category: :processor)
           0
 
         startup_time ->

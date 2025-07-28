@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Infrastructure.Http.Headers
 
@@ -89,10 +89,11 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
         {:ok, static_info}
 
       {:error, reason} ->
-        AppLogger.api_error("[SystemStaticInfo] Failed to get static info", %{
+        Logger.error("[SystemStaticInfo] Failed to get static info",
           system_id: solar_system_id,
-          error: inspect(reason)
-        })
+          error: inspect(reason),
+          category: :api
+        )
 
         {:error, reason}
     end
@@ -101,17 +102,19 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   # Private helper functions
 
   defp fetch_system_static_info(solar_system_id) do
-    AppLogger.api_debug("[SystemStaticInfo] Building URL",
-      system_id: solar_system_id
+    Logger.debug("[SystemStaticInfo] Building URL",
+      system_id: solar_system_id,
+      category: :api
     )
 
     base_url = Config.map_url()
     url = "#{base_url}/api/common/system-static-info?id=#{solar_system_id}"
     headers = get_auth_headers()
 
-    AppLogger.api_debug("[SystemStaticInfo] Making request",
+    Logger.debug("[SystemStaticInfo] Making request",
       url: url,
-      headers: headers
+      headers: headers,
+      category: :api
     )
 
     # Make API request and process
@@ -139,8 +142,8 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
       {:ok, body} ->
         handle_successful_response(body)
 
-      {:error, reason} = error ->
-        AppLogger.api_error("[SystemStaticInfo] Request failed", error: inspect(reason))
+      {:error, _reason} = error ->
+        Logger.error("[SystemStaticInfo] Request failed")
         error
     end
   end
@@ -153,7 +156,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
         {:ok, parsed_response}
 
       {:error, reason} ->
-        AppLogger.api_error("[SystemStaticInfo] Failed to parse JSON", error: inspect(reason))
+        Logger.error("[SystemStaticInfo] Failed to parse JSON")
         {:error, {:json_parse_error, reason}}
     end
   end
@@ -210,7 +213,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
 
   defp update_system_with_static_info(system, data_to_merge) do
     # First update with basic static info
-    enhanced_system = System.update_with_static_info(system, data_to_merge)
+    enhanced_system = Map.merge(system, data_to_merge)
 
     # Then handle special cases
     enhanced_system
@@ -236,6 +239,12 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   defp parse_security_status(_), do: 0.0
 
   defp update_optional_fields(system, data) do
+    # Log what we're getting from the API
+    Logger.info("[StaticInfo] Updating optional fields - Data keys: #{inspect(Map.keys(data))}")
+    Logger.info("[StaticInfo] Statics from API: #{inspect(Map.get(data, "statics"))}")
+    Logger.info("[StaticInfo] Class title: #{inspect(Map.get(data, "class_title"))}")
+    Logger.info("[StaticInfo] Full data sample: #{inspect(data) |> String.slice(0, 500)}")
+
     optional_fields = [
       :statics,
       :effect_name,
@@ -253,31 +262,72 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
       :sun_type_id
     ]
 
-    Enum.reduce(optional_fields, system, fn field, acc ->
-      case Map.get(data, to_string(field)) do
-        nil -> acc
-        value -> Map.put(acc, field, value)
-      end
-    end)
+    result =
+      Enum.reduce(optional_fields, system, fn field, acc ->
+        string_key = to_string(field)
+
+        case Map.get(data, string_key) do
+          nil ->
+            acc
+
+          value ->
+            Logger.debug(
+              "[StaticInfo] Setting #{field} = #{inspect(value) |> String.slice(0, 100)}"
+            )
+
+            Map.put(acc, field, value)
+        end
+      end)
+
+    # CRITICAL: Set system_type based on class_title or security
+    result = determine_system_type(result, data)
+
+    Logger.info(
+      "[StaticInfo] After enrichment - statics: #{inspect(result.statics)}, system_type: #{result.system_type}"
+    )
+
+    result
+  end
+
+  defp determine_system_type(system, data) do
+    cond do
+      # If it has a wormhole class (C1-C6), it's a wormhole
+      data["class_title"] in ["C1", "C2", "C3", "C4", "C5", "C6"] ->
+        Map.put(system, :system_type, "wormhole")
+
+      # If security is -1.0, it's likely a wormhole (J-space)
+      data["security"] == "-1.0" ->
+        Map.put(system, :system_type, "wormhole")
+
+      # If it starts with J and has numbers, it's a wormhole
+      system.name && String.match?(system.name, ~r/^J\d+$/) ->
+        Map.put(system, :system_type, "wormhole")
+
+      # Otherwise keep the existing type or set based on security
+      true ->
+        system
+    end
   end
 
   # Logging helper functions
 
   defp log_invalid_system_id(system) do
-    AppLogger.api_warn(
+    Logger.warning(
       "[SystemStaticInfo] Cannot enrich system with invalid ID",
       system_name: system.name,
       system_id: system.solar_system_id,
-      system: inspect(system, pretty: true, limit: 1000)
+      system: inspect(system, pretty: true, limit: 1000),
+      category: :api
     )
   end
 
   defp log_enrichment_failure(system, reason) do
-    AppLogger.api_warn(
+    Logger.warning(
       "[SystemStaticInfo] Could not enrich system",
       system_name: system.name,
       error: inspect(reason),
-      system: inspect(system, pretty: true, limit: 1000)
+      system: inspect(system, pretty: true, limit: 1000),
+      category: :api
     )
   end
 
@@ -320,7 +370,11 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
       custom_handlers: [
         {404,
          fn _status, _body ->
-           AppLogger.api_debug("[SystemStaticInfo] System not found", system_id: system_id)
+           Logger.debug("[SystemStaticInfo] System not found",
+             system_id: system_id,
+             category: :api
+           )
+
            {:error, :not_found}
          end}
       ],

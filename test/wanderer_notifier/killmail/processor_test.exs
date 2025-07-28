@@ -48,7 +48,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
     Application.put_env(:wanderer_notifier, :notification_service_module, MockNotificationService)
 
-    # Set up all mock defaults including config 
+    # Set up all mock defaults including config
     TestMocks.setup_all_mocks()
 
     # Set up default ESI client mock responses
@@ -179,7 +179,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockDeduplication
       |> stub(:check, fn :kill, "12345" -> {:ok, :new} end)
 
-      # Since the configuration system is problematic in tests, let's verify the 
+      # Since the configuration system is problematic in tests, let's verify the
       # notification logic separately first
       alias WandererNotifier.Domains.Notifications.Determiner.Kill, as: KillDeterminer
 
@@ -204,7 +204,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       # Now test the full processor (this may still skip due to config issues)
       result = Processor.process_killmail(killmail, source: :test)
 
-      # Accept either success or skip since config system is problematic  
+      # Accept either success or skip since config system is problematic
       case result do
         {:ok, 12_345} ->
           assert true

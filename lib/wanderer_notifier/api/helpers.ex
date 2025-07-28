@@ -3,7 +3,7 @@ defmodule WandererNotifier.Api.Helpers do
   Common helpers for API controllers: JSON rendering and error handling.
   """
   import Plug.Conn
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
 
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Api.Helpers do
 
       {:error, reason} ->
         # Log the error
-        AppLogger.api_error("JSON encoding failed", reason: inspect(reason), data: inspect(data))
+        Logger.error("JSON encoding failed", reason: inspect(reason), data: inspect(data))
 
         # Send a 500 error with a safe message
         error_response =
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Api.Helpers do
   rescue
     e ->
       # Log the unexpected error and return a safe error response
-      AppLogger.api_error("Unexpected error in send_json_response", error: inspect(e))
+      Logger.error("Unexpected error in send_json_response", error: inspect(e))
 
       # Do not re-encode with JsonUtils.encode! to avoid potential infinite loop
       conn

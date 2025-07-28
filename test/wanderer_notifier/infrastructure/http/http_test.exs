@@ -21,7 +21,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200, body: %{"success" => true}}} =
-               Http.get(url, headers)
+               Http.request(:get, url, headers)
     end
 
     test "applies service configuration for ESI" do
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get(url, [], service: :esi)
+               Http.request(:get, url, [], service: :esi)
     end
 
     test "applies service configuration for license" do
@@ -54,7 +54,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get(url, [], service: :license)
+               Http.request(:get, url, [], service: :license)
     end
 
     test "handles bearer token authentication" do
@@ -69,7 +69,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get(url, [], auth: [type: :bearer, token: token])
+               Http.request(:get, url, [], auth: [type: :bearer, token: token])
     end
 
     test "handles API key authentication" do
@@ -84,7 +84,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get(url, [], auth: [type: :api_key, key: api_key])
+               Http.request(:get, url, [], auth: [type: :api_key, key: api_key])
     end
 
     test "merges custom options with service config" do
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get(url, [], service: :esi, timeout: custom_timeout)
+               Http.request(:get, url, [], service: :esi, timeout: custom_timeout)
     end
 
     test "handles network errors gracefully" do
@@ -112,7 +112,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
         {:error, :timeout}
       end)
 
-      assert {:error, :timeout} = Http.get(url)
+      assert {:error, :timeout} = Http.request(:get, url)
     end
 
     test "handles non-200 status codes" do
@@ -124,7 +124,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 404, body: %{"error" => "Not found"}}} =
-               Http.get(url)
+               Http.request(:get, url)
     end
   end
 
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 201, body: %{"id" => 1}}} =
-               Http.post(url, body)
+               Http.request(:post, url, body)
     end
 
     test "handles string body without JSON encoding" do
@@ -156,7 +156,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.post(url, body)
+               Http.request(:post, url, body)
     end
 
     test "applies authentication to POST requests" do
@@ -171,7 +171,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 201}} =
-               Http.post(url, body, [], auth: [type: :bearer, token: token])
+               Http.request(:post, url, body, [], auth: [type: :bearer, token: token])
     end
 
     test "handles POST errors" do
@@ -184,7 +184,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 400, body: %{"error" => "Bad request"}}} =
-               Http.post(url, body)
+               Http.request(:post, url, body)
     end
   end
 
@@ -201,7 +201,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.put(url, body)
+               Http.request(:put, url, body)
     end
   end
 
@@ -215,7 +215,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 204}} =
-               Http.delete(url)
+               Http.request(:delete, url)
     end
 
     test "applies service configuration to DELETE" do
@@ -229,7 +229,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.delete(url, [], service: :wanderer_kills)
+               Http.request(:delete, url, [], service: :wanderer_kills)
     end
   end
 
@@ -298,7 +298,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       body = %{invalid: make_ref()}
 
       assert_raise Protocol.UndefinedError, fn ->
-        Http.post(url, body)
+        Http.request(:post, url, body)
       end
     end
 
@@ -314,7 +314,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
 
       # Missing token should not crash
       assert {:ok, %{status_code: 401}} =
-               Http.get(url, [], auth: [type: :bearer])
+               Http.request(:get, url, [], auth: [type: :bearer])
     end
 
     test "handles malformed URLs" do
@@ -325,7 +325,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
         {:error, :invalid_url}
       end)
 
-      assert {:error, :invalid_url} = Http.get(url)
+      assert {:error, :invalid_url} = Http.request(:get, url)
     end
   end
 
@@ -340,7 +340,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       end)
 
       # Log level would need to be configured appropriately
-      assert {:ok, _} = Http.get(url)
+      assert {:ok, _} = Http.request(:get, url)
     end
   end
 
@@ -358,7 +358,7 @@ defmodule WandererNotifier.Infrastructure.HttpTest do
       # Make concurrent requests
       tasks =
         for url <- urls do
-          Task.async(fn -> Http.get(url) end)
+          Task.async(fn -> Http.request(:get, url) end)
         end
 
       results = Task.await_many(tasks)

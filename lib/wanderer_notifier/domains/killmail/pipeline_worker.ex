@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
+  require Logger
+
   @moduledoc """
   Worker process that handles killmail processing pipeline.
 
@@ -10,8 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   use GenServer
 
-  alias WandererNotifier.Domains.Killmail.{Processor, WebSocketClient}
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Domains.Killmail.{Pipeline, WebSocketClient}
 
   defmodule State do
     @moduledoc false
@@ -24,7 +25,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def init(_opts) do
-    AppLogger.processor_info("Starting Pipeline Worker - waiting for map initialization")
+    Logger.info("Starting Pipeline Worker - waiting for map initialization")
     state = %State{}
 
     # Don't start WebSocket immediately - wait for map initialization
@@ -32,11 +33,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
     if Application.get_env(:wanderer_notifier, :env) == :test do
       case start_websocket_client() do
         {:ok, pid} ->
-          AppLogger.processor_info("WebSocket client started (test mode)", pid: inspect(pid))
+          Logger.info("WebSocket client started (test mode)", pid: inspect(pid))
           {:ok, %{state | websocket_pid: pid}}
 
         {:error, reason} ->
-          AppLogger.processor_warn("Failed to start WebSocket client, will retry",
+          Logger.info("Failed to start WebSocket client, will retry",
             reason: inspect(reason)
           )
 
@@ -45,7 +46,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
       end
     else
       # In normal mode, wait for map initialization signal
-      AppLogger.processor_info("Waiting for map initialization before starting WebSocket")
+      Logger.info("Waiting for map initialization before starting WebSocket")
       {:ok, state}
     end
   end
@@ -62,16 +63,16 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{websocket_pid: pid} = state) do
-    AppLogger.processor_warn("WebSocket client died, attempting restart", reason: inspect(reason))
+    Logger.info("WebSocket client died, attempting restart", reason: inspect(reason))
 
     # Attempt to restart the WebSocket client
     case start_websocket_client() do
       {:ok, new_pid} ->
-        AppLogger.processor_info("WebSocket client restarted successfully", pid: inspect(new_pid))
+        Logger.info("WebSocket client restarted successfully", pid: inspect(new_pid))
         {:noreply, %{state | websocket_pid: new_pid}}
 
       {:error, restart_reason} ->
-        AppLogger.processor_error("Failed to restart WebSocket client",
+        Logger.info("Failed to restart WebSocket client",
           error: inspect(restart_reason)
         )
 
@@ -83,19 +84,19 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def handle_info(:map_initialization_complete, state) do
-    AppLogger.processor_info("Map initialization complete signal received")
+    Logger.info("Map initialization complete signal received")
 
     if is_nil(state.websocket_pid) do
       case start_websocket_client() do
         {:ok, pid} ->
-          AppLogger.processor_info("WebSocket client started after map initialization",
+          Logger.info("WebSocket client started after map initialization",
             pid: inspect(pid)
           )
 
           {:noreply, %{state | websocket_pid: pid}}
 
         {:error, reason} ->
-          AppLogger.processor_warn("Failed to start WebSocket client after map init, will retry",
+          Logger.info("Failed to start WebSocket client after map init, will retry",
             reason: inspect(reason)
           )
 
@@ -113,11 +114,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
     if is_nil(state.websocket_pid) do
       case start_websocket_client() do
         {:ok, pid} ->
-          AppLogger.processor_info("WebSocket client started on retry", pid: inspect(pid))
+          Logger.info("WebSocket client started on retry", pid: inspect(pid))
           {:noreply, %{state | websocket_pid: pid}}
 
         {:error, reason} ->
-          AppLogger.processor_error("Retry failed for WebSocket client", error: inspect(reason))
+          Logger.info("Retry failed for WebSocket client", error: inspect(reason))
           # Schedule another retry with longer delay
           Process.send_after(self(), :retry_websocket_start, 60_000)
           {:noreply, state}
@@ -136,7 +137,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def handle_info(msg, state) do
-    AppLogger.processor_debug("Unhandled message in PipelineWorker", message: inspect(msg))
+    Logger.info("Unhandled message in PipelineWorker", message: inspect(msg))
     {:noreply, state}
   end
 
@@ -155,7 +156,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   end
 
   defp log_killmail_received(killmail) do
-    AppLogger.processor_debug("Received WebSocket killmail",
+    Logger.info("Received WebSocket killmail",
       killmail_id: killmail[:killmail_id],
       system_id: killmail[:system_id]
     )
@@ -167,11 +168,15 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
     end)
   end
 
-  defp process_killmail_task(killmail, state) do
-    case Processor.process_websocket_killmail(killmail, state) do
-      {:ok, result} ->
-        AppLogger.processor_debug("Successfully processed killmail", result: inspect(result))
-        result
+  defp process_killmail_task(killmail, _state) do
+    case Pipeline.process_killmail(killmail) do
+      {:ok, :skipped} = success ->
+        Logger.info("Killmail processing skipped")
+        success
+
+      {:ok, _killmail_id} = success ->
+        Logger.info("Successfully processed killmail")
+        success
 
       {:error, reason} ->
         log_killmail_processing_error(killmail, reason)
@@ -180,7 +185,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   end
 
   defp log_killmail_processing_error(killmail, reason) do
-    AppLogger.processor_error("Failed to process killmail",
+    Logger.info("Failed to process killmail",
       error: inspect(reason),
       killmail_id: Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id),
       system_id: Map.get(killmail, "system_id") || Map.get(killmail, :system_id),

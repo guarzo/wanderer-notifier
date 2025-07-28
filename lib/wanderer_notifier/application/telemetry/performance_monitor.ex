@@ -31,12 +31,14 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
   @anomaly_detection %{
     # 2x normal usage
     memory_spike_threshold: 2.0,
-    # 5x normal processing time
-    processing_time_spike: 5.0,
+    # 10x normal processing time (increased from 5x to reduce false positives)
+    processing_time_spike: 10.0,
     # 3x normal error rate
     error_rate_spike: 3.0,
     # 50% connection drop
-    connection_drop_threshold: 0.5
+    connection_drop_threshold: 0.5,
+    # Minimum processing time threshold (10ms) to prevent false positives on fast operations
+    min_processing_time_threshold: 10.0
   }
 
   defmodule State do
@@ -405,7 +407,8 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
 
     anomalies =
       if baseline_time > 0 and
-           current_time > baseline_time * @anomaly_detection.processing_time_spike do
+           current_time > baseline_time * @anomaly_detection.processing_time_spike and
+           current_time > @anomaly_detection.min_processing_time_threshold do
         [
           %{
             type: :processing_time_spike,

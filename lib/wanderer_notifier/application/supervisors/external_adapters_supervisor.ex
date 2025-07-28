@@ -5,7 +5,7 @@ defmodule WandererNotifier.Application.Supervisors.ExternalAdaptersSupervisor do
   """
   use Supervisor
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -13,7 +13,7 @@ defmodule WandererNotifier.Application.Supervisors.ExternalAdaptersSupervisor do
 
   @impl true
   def init(_init_arg) do
-    AppLogger.startup_info("Starting External Adapters Supervisor")
+    Logger.info("Starting External Adapters Supervisor", category: :startup)
 
     children = [
       # HTTP client pool supervisor

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
   import Mox
 
   # Set up Mox for this test
-  alias WandererNotifier.Domains.Notifications.Determiner.Kill
+  alias WandererNotifier.Domains.Notifications.Determiner
   setup(:set_mox_from_context)
 
   setup :verify_on_exit!
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       WandererNotifier.MockCharacter
       |> expect(:is_tracked?, fn 93_345_033 -> {:ok, false} end)
 
-      assert {:ok, %{should_notify: true}} = Kill.should_notify?(killmail)
+      assert {:ok, %{should_notify: true}} = Determiner.should_notify_killmail?(killmail)
     end
 
     test "returns false with reason when notifications are disabled" do
@@ -80,7 +80,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       # No mocks needed - notifications are disabled so tracking checks won't be called
 
       assert {:error, :notifications_disabled} =
-               Kill.should_notify?(%{
+               Determiner.should_notify_killmail?(%{
                  killmail: killmail,
                  config: %{
                    notifications_enabled: false,
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       # No mocks needed - kill notifications are disabled so tracking checks won't be called
 
       assert {:error, :kill_notifications_disabled} =
-               Kill.should_notify?(%{
+               Determiner.should_notify_killmail?(%{
                  killmail: killmail,
                  config: %{
                    notifications_enabled: true,
@@ -142,7 +142,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       end)
 
       assert {:ok, %{should_notify: false, reason: "System notifications disabled"}} =
-               Kill.should_notify?(killmail)
+               Determiner.should_notify_killmail?(killmail)
     end
 
     test "returns false with reason when character notifications are disabled" do
@@ -173,7 +173,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       end)
 
       assert {:ok, %{should_notify: false, reason: "Character notifications disabled"}} =
-               Kill.should_notify?(killmail)
+               Determiner.should_notify_killmail?(killmail)
     end
 
     test "returns false with reason when no tracked entities" do
@@ -204,7 +204,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner.KillTest do
       end)
 
       assert {:ok, %{should_notify: false, reason: :no_tracked_entities}} =
-               Kill.should_notify?(killmail)
+               Determiner.should_notify_killmail?(killmail)
     end
   end
 end

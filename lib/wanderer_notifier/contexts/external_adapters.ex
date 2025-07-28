@@ -4,6 +4,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   Provides a clean API boundary for all external integrations like HTTP clients,
   Discord notifications, and third-party APIs.
   """
+  require Logger
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Client
   alias WandererNotifier.Infrastructure.Http, as: HTTP
@@ -71,7 +72,18 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
   def get_tracked_systems do
-    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_systems()
+    # Get from cache instead of fetching from API
+    case WandererNotifier.Infrastructure.Cache.get("map:systems") do
+      {:ok, systems} when is_list(systems) ->
+        {:ok, systems}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      {:error, :not_found} ->
+        # Only fetch from API if not in cache
+        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems()
+    end
   end
 
   @doc """
@@ -79,7 +91,29 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
   def get_tracked_characters do
-    WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_characters()
+    Logger.info("ExternalAdapters.get_tracked_characters called", [])
+
+    # Get from cache instead of fetching from API
+    case WandererNotifier.Infrastructure.Cache.get("map:character_list") do
+      {:ok, characters} when is_list(characters) ->
+        first_char = Enum.at(characters, 0)
+
+        Logger.info("Retrieved characters from cache",
+          character_count: length(characters),
+          first_char_keys: (first_char && Map.keys(first_char)) |> inspect(),
+          first_char_sample: inspect(first_char) |> String.slice(0, 500)
+        )
+
+        {:ok, characters}
+
+      {:ok, _} ->
+        Logger.warning("Cache returned non-list data for characters")
+        {:ok, []}
+
+      {:error, :not_found} ->
+        Logger.warning("No characters found in cache, fetching from API")
+        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters()
+    end
   end
 
   @doc """
@@ -102,7 +136,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
     case WandererNotifier.Application.Services.NotificationService.notify_kill(notification) do
       :ok -> {:ok, :sent}
       {:error, :notifications_disabled} -> {:ok, :sent}
-      error -> error
+      {:error, _reason} = error -> error
     end
   end
 

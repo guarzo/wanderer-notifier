@@ -42,7 +42,7 @@ defmodule WandererNotifier.CommandLog do
   use Agent
   require Logger
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   @type entry :: %{
           type: String.t(),
@@ -98,7 +98,7 @@ defmodule WandererNotifier.CommandLog do
       trimmed_state
     end)
 
-    AppLogger.processor_info("Command logged",
+    Logger.info("Command logged",
       type: entry[:type],
       param: entry[:param],
       user_id: entry[:user_id]
@@ -201,7 +201,7 @@ defmodule WandererNotifier.CommandLog do
     Agent.update(__MODULE__, fn _state ->
       if File.exists?(@persist_file) do
         File.rm!(@persist_file)
-        AppLogger.config_info("Cleared command log file")
+        Logger.info("Cleared command log file")
       end
 
       []
@@ -297,16 +297,16 @@ defmodule WandererNotifier.CommandLog do
     dropped_count = length(state) - length(valid_state)
 
     if dropped_count > 0 do
-      AppLogger.startup_warn("Dropped #{dropped_count} invalid entries from command log")
+      Logger.warning("Dropped #{dropped_count} invalid entries from command log")
     end
 
-    AppLogger.startup_info("Loaded command log from disk: #{length(valid_state)} entries")
+    Logger.info("Loaded command log from disk: #{length(valid_state)} entries")
     valid_state
   end
 
   # Handles missing persistence file
   defp handle_missing_file do
-    AppLogger.startup_info("No command log file found, starting empty")
+    Logger.info("No command log file found, starting empty")
     []
   end
 
@@ -349,10 +349,10 @@ defmodule WandererNotifier.CommandLog do
       File.write!(temp_file, binary)
       File.rename!(temp_file, @persist_file)
 
-      AppLogger.config_info("Persisted command log to disk: #{length(state)} entries")
+      Logger.info("Persisted command log to disk: #{length(state)} entries")
     rescue
       error ->
-        AppLogger.config_error("Failed to persist command log",
+        Logger.error("Failed to persist command log",
           error: Exception.message(error),
           file: @persist_file
         )
@@ -364,7 +364,7 @@ defmodule WandererNotifier.CommandLog do
 
   # Helper to warn about issues and return empty state
   defp warn_and_return_empty(message) do
-    AppLogger.startup_warn("[CommandLog] #{message}, starting empty")
+    Logger.warning("[CommandLog] #{message}, starting empty")
     []
   end
 end

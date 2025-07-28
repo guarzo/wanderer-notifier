@@ -5,7 +5,7 @@ defmodule WandererNotifier.Application.Supervisors.KillmailSupervisor do
   """
   use Supervisor
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -13,7 +13,7 @@ defmodule WandererNotifier.Application.Supervisors.KillmailSupervisor do
 
   @impl true
   def init(_init_arg) do
-    AppLogger.startup_info("Starting Killmail Supervisor")
+    Logger.info("Starting Killmail Supervisor", category: :startup)
 
     children = [
       # Killmail-specific task supervisor for processing tasks

@@ -199,7 +199,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
 
     # Try to send the notification - if it fails, log but don't crash
     try do
-      WandererNotifier.Domains.Notifications.NotificationService.send_message(embed)
+      notification = %WandererNotifier.Domains.Notifications.Notification{
+        type: :status_notification,
+        data: embed
+      }
+
+      WandererNotifier.Domains.Notifications.NotificationService.send(notification)
     rescue
       e ->
         # Log but don't crash the process

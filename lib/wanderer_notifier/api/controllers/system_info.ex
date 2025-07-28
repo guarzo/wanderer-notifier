@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Api.Controllers.SystemInfo do
+  require Logger
+
   @moduledoc """
   Shared module for collecting system information used by health and dashboard endpoints.
   """
@@ -324,9 +326,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       get_cache_stats_for_process(cache_name)
     rescue
       error ->
-        WandererNotifier.Shared.Logger.Logger.error(
-          "Exception getting cache stats: #{inspect(error)}"
-        )
+        Logger.error("Exception getting cache stats: #{inspect(error)}")
 
         empty_cache_stats()
     end
@@ -343,7 +343,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp handle_missing_cache_process(cache_name) do
-    WandererNotifier.Shared.Logger.Logger.warn("Cache process not found: #{cache_name}")
+    Logger.warning("Cache process not found: #{cache_name}")
     empty_cache_stats()
   end
 
@@ -375,7 +375,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp handle_cachex_error(reason) do
-    WandererNotifier.Shared.Logger.Logger.warn("Failed to get cache stats: #{inspect(reason)}")
+    Logger.warning("Failed to get cache stats: #{inspect(reason)}")
     empty_cache_stats()
   end
 
@@ -471,8 +471,9 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       end
     rescue
       error ->
-        WandererNotifier.Shared.Logger.Logger.error("Failed to check server status",
+        Logger.error("Failed to check server status",
           error: inspect(error),
+          category: :kill,
           module: __MODULE__
         )
 

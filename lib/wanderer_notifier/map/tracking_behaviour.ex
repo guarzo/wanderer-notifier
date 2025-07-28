@@ -15,7 +15,7 @@ defmodule WandererNotifier.Map.TrackingBehaviour do
 
   ## Returns
   - `{:ok, true}` if the entity is tracked
-  - `{:ok, false}` if the entity is not tracked  
+  - `{:ok, false}` if the entity is not tracked
   - `{:error, reason}` if there was an error checking tracking status
   """
   @callback is_tracked?(id :: tracking_id()) :: tracking_result()

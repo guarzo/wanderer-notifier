@@ -16,22 +16,20 @@ defmodule WandererNotifier.Application.Services.NotificationService do
 
       # Send a system notification
       WandererNotifier.Application.Services.NotificationService.notify_system("Jita")
-      
+
       # Manage priority systems
       WandererNotifier.Application.Services.NotificationService.register_priority_system("Jita")
       WandererNotifier.Application.Services.NotificationService.unregister_priority_system("Jita")
-      
+
       # Get priority systems list
       priority_systems = WandererNotifier.Application.Services.NotificationService.list_priority_systems()
   """
 
   require Logger
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Domains.Notifications.NotificationService, as: DomainNotificationService
-  alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
   alias WandererNotifier.PersistentValues
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Domains.Tracking.Entities.System
 
   @priority_systems_key :priority_systems
 
@@ -49,46 +47,43 @@ defmodule WandererNotifier.Application.Services.NotificationService do
   If PRIORITY_SYSTEMS_ONLY is enabled, only priority systems will
   generate notifications regardless of other settings.
   """
-  @spec notify_system(String.t()) :: :ok | :skip | {:error, term()}
+  @spec notify_system(map() | String.t()) :: :ok | :skip | {:error, term()}
+  # Handle System struct
+  def notify_system(%System{} = system) do
+    system_name = system.name || "Unknown System"
+    handle_system_notification(system, system_name)
+  end
+
+  def notify_system(system) when is_map(system) do
+    system_name = system["name"] || "Unknown System"
+    handle_system_notification(system, system_name)
+  end
+
+  # Legacy support for string input
   def notify_system(system_name) when is_binary(system_name) do
-    notifications_enabled = Config.system_notifications_enabled?()
-    is_priority = is_priority_system?(system_name)
-    priority_only_mode = Config.priority_systems_only?()
+    # Convert string to basic system map
+    system = %{"name" => system_name}
+    notify_system(system)
+  end
 
-    case {notifications_enabled, is_priority, priority_only_mode} do
-      {_, true, _} ->
-        # Priority systems always send notifications with @here mention
-        AppLogger.processor_info("Sending priority system notification",
-          system: system_name,
-          priority_only_mode: priority_only_mode
-        )
+  @spec send_domain_system_notification(map() | System.t(), boolean()) :: :ok | {:error, term()}
+  defp send_domain_system_notification(system, is_priority) do
+    # Create a system notification struct and send through the domain service
+    # Preserve the original system data (struct or map)
+    system_with_priority =
+      case system do
+        %System{} = s -> Map.put(s, :priority, is_priority)
+        map -> Map.put(map, :priority, is_priority)
+      end
 
-        send_system_notification(system_name, true)
+    system_notification = %WandererNotifier.Domains.Notifications.Notification{
+      type: :system_notification,
+      data: system_with_priority
+    }
 
-      {true, false, false} ->
-        # Regular notification path - send without @here (normal mode)
-        AppLogger.processor_info("Sending system notification",
-          system: system_name,
-          priority: false
-        )
-
-        send_system_notification(system_name, false)
-
-      {_, false, true} ->
-        # Priority-only mode: skip non-priority systems
-        AppLogger.processor_info("Skipping non-priority system notification (priority-only mode)",
-          system: system_name
-        )
-
-        :skip
-
-      {false, false, false} ->
-        # Skip notification - disabled and not priority (normal mode)
-        AppLogger.processor_info("Skipping system notification (disabled and not priority)",
-          system: system_name
-        )
-
-        :skip
+    case DomainNotificationService.send(system_notification) do
+      {:ok, _notification} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -106,9 +101,10 @@ defmodule WandererNotifier.Application.Services.NotificationService do
     if system_hash not in current do
       PersistentValues.add(@priority_systems_key, system_hash)
 
-      AppLogger.config_info("Added priority system",
+      Logger.info("Added priority system",
         system: system_name,
-        hash: system_hash
+        hash: system_hash,
+        category: :config
       )
     end
 
@@ -126,9 +122,10 @@ defmodule WandererNotifier.Application.Services.NotificationService do
     if system_hash in current do
       PersistentValues.remove(@priority_systems_key, system_hash)
 
-      AppLogger.config_info("Removed priority system",
+      Logger.info("Removed priority system",
         system: system_name,
-        hash: system_hash
+        hash: system_hash,
+        category: :config
       )
     end
 
@@ -178,7 +175,7 @@ defmodule WandererNotifier.Application.Services.NotificationService do
   @spec clear_priority_systems() :: :ok
   def clear_priority_systems do
     PersistentValues.put(@priority_systems_key, [])
-    AppLogger.config_info("Cleared all priority systems")
+    Logger.info("Cleared all priority systems", category: :config)
     :ok
   end
 
@@ -190,24 +187,24 @@ defmodule WandererNotifier.Application.Services.NotificationService do
   @spec notify_character(map()) :: :ok | {:error, term()}
   def notify_character(character) do
     if Config.character_notifications_enabled?() do
-      AppLogger.processor_info("Sending character notification",
+      Logger.info("Sending character notification",
         character_id: Map.get(character, :character_id),
-        character_name: Map.get(character, :name)
+        character_name: Map.get(character, :name),
+        category: :processor
       )
 
       # Create a character notification struct and send through the domain service
-      character_notification = %{
+      character_notification = %WandererNotifier.Domains.Notifications.Notification{
         type: :character_notification,
         data: character
       }
 
-      case DomainNotificationService.send_message(character_notification) do
-        {:ok, :sent} -> :ok
+      case DomainNotificationService.send(character_notification) do
+        {:ok, _notification} -> :ok
         {:error, reason} -> {:error, reason}
-        other -> other
       end
     else
-      AppLogger.processor_info("Skipping character notification (disabled)")
+      Logger.info("Skipping character notification (disabled, category: :processor)")
       {:error, :notifications_disabled}
     end
   end
@@ -220,28 +217,76 @@ defmodule WandererNotifier.Application.Services.NotificationService do
   @spec notify_kill(map()) :: :ok | {:error, term()}
   def notify_kill(kill_data) do
     if Config.kill_notifications_enabled?() do
-      AppLogger.processor_info("Sending kill notification",
-        killmail_id: Map.get(kill_data, :killmail_id)
+      Logger.info("Sending kill notification",
+        killmail_id: Map.get(kill_data, :killmail_id),
+        category: :processor
       )
 
       # Create a kill notification struct and send through the domain service
-      kill_notification = %{
+      kill_notification = %WandererNotifier.Domains.Notifications.Notification{
         type: :kill_notification,
         data: %{killmail: kill_data}
       }
 
-      case DomainNotificationService.send_message(kill_notification) do
-        {:ok, :sent} -> :ok
+      case DomainNotificationService.send(kill_notification) do
+        {:ok, _notification} -> :ok
         {:error, reason} -> {:error, reason}
-        other -> other
       end
     else
-      AppLogger.processor_info("Skipping kill notification (disabled)")
+      Logger.info("Skipping kill notification (disabled, category: :processor)")
       {:error, :notifications_disabled}
     end
   end
 
   # Private Functions
+
+  @spec handle_system_notification(map() | System.t(), String.t()) ::
+          :ok | :skip | {:error, term()}
+  defp handle_system_notification(system, system_name) do
+    notifications_enabled = Config.system_notifications_enabled?()
+    is_priority = is_priority_system?(system_name)
+    priority_only_mode = Config.priority_systems_only?()
+
+    case {notifications_enabled, is_priority, priority_only_mode} do
+      {_, true, _} ->
+        # Priority systems always send notifications with @here mention
+        Logger.info("Sending priority system notification",
+          system: system_name,
+          priority_only_mode: priority_only_mode,
+          category: :processor
+        )
+
+        send_domain_system_notification(system, true)
+
+      {true, false, false} ->
+        # Regular notification path - send without @here (normal mode)
+        Logger.info("Sending system notification",
+          system: system_name,
+          priority: false,
+          category: :processor
+        )
+
+        send_domain_system_notification(system, false)
+
+      {_, false, true} ->
+        # Priority-only mode: skip non-priority systems
+        Logger.info("Skipping non-priority system notification (priority-only mode)",
+          system: system_name,
+          category: :processor
+        )
+
+        :skip
+
+      {false, false, false} ->
+        # Skip notification - disabled and not priority (normal mode)
+        Logger.info("Skipping system notification (disabled and not priority)",
+          system: system_name,
+          category: :processor
+        )
+
+        :skip
+    end
+  end
 
   # Generates a consistent hash for system names
   defp hash_system_name(system_name) do
@@ -252,103 +297,5 @@ defmodule WandererNotifier.Application.Services.NotificationService do
     |> :erlang.phash2()
   end
 
-  # Sends a system notification to Discord
-  defp send_system_notification(system_name, is_priority) do
-    try do
-      content = format_system_notification(system_name, is_priority)
-      channel_id = get_system_channel_id()
-
-      case send_to_discord(content, channel_id) do
-        :ok ->
-          AppLogger.processor_info("System notification sent successfully",
-            system: system_name,
-            priority: is_priority,
-            channel: channel_id
-          )
-
-          :ok
-
-        {:error, reason} ->
-          AppLogger.processor_error("Failed to send system notification",
-            system: system_name,
-            error: inspect(reason),
-            channel: channel_id
-          )
-
-          {:error, reason}
-      end
-    rescue
-      error ->
-        AppLogger.processor_error("Exception in send_system_notification",
-          system: system_name,
-          error: Exception.message(error),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        {:error, error}
-    end
-  end
-
-  # Formats a system notification message
-  defp format_system_notification(system_name, is_priority) do
-    base_message = "🗺️ System event detected: **#{system_name}**"
-
-    if is_priority do
-      priority_message = "#{base_message} (Priority System)"
-      build_notification_with_mentions(priority_message)
-    else
-      base_message
-    end
-  end
-
-  # Builds notification message with appropriate mentions (voice participants or @here)
-  defp build_notification_with_mentions(message) do
-    if Config.voice_participant_notifications_enabled?() do
-      voice_mentions = VoiceParticipants.get_active_voice_mentions()
-
-      case {voice_mentions, Config.fallback_to_here_enabled?()} do
-        {[], true} ->
-          # No voice participants, fallback to @here if enabled
-          AppLogger.processor_info("No voice participants found, falling back to @here")
-          "@here #{message}"
-
-        {[], false} ->
-          # No voice participants, no fallback
-          AppLogger.processor_info("No voice participants found, no fallback enabled")
-          message
-
-        {mentions, _} when is_list(mentions) and length(mentions) > 0 ->
-          # Found voice participants
-          AppLogger.processor_info("Found voice participants", count: length(mentions))
-          VoiceParticipants.build_voice_notification_message(message, mentions)
-      end
-    else
-      # Voice participant notifications disabled, use @here
-      "@here #{message}"
-    end
-  end
-
-  # Gets the appropriate Discord channel for system notifications
-  defp get_system_channel_id do
-    Config.discord_system_channel_id() || Config.discord_channel_id()
-  end
-
-  # Sends content to Discord channel
-  defp send_to_discord(content, channel_id) do
-    if Application.get_env(:wanderer_notifier, :env) == :test do
-      AppLogger.processor_info("TEST MODE: System notification",
-        content: content,
-        channel_id: channel_id
-      )
-
-      :ok
-    else
-      # Use the domain notification service
-      case DomainNotificationService.send_message(content) do
-        {:ok, :sent} -> :ok
-        {:error, reason} -> {:error, reason}
-        other -> other
-      end
-    end
-  end
+  # Legacy text-based notification functions removed - using domain service with rich embeds
 end

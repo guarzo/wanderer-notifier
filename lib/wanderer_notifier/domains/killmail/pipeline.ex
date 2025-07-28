@@ -1,481 +1,320 @@
 defmodule WandererNotifier.Domains.Killmail.Pipeline do
   @moduledoc """
-  Standardized pipeline for processing killmails.
+  Simplified unified pipeline for processing killmails.
+
+  Merges the functionality of Pipeline and Processor modules to eliminate duplication.
+  Handles pre-enriched WebSocket data directly without unnecessary transformations.
   """
 
   require Logger
-
   alias WandererNotifier.Application.Telemetry
-  alias WandererNotifier.Domains.Killmail.{Killmail, Schema}
-  alias WandererNotifier.Domains.Killmail.Processor
-  alias WandererNotifier.Domains.Killmail.Processor.Context
-  alias WandererNotifier.Shared.Logger.ErrorLogger
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Domains.Notifications.Deduplication
+  alias WandererNotifier.Infrastructure.Cache
 
-  @type zkb_data :: map()
+  @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
 
-  @spec process_killmail(zkb_data, Context.t()) :: result
-  def process_killmail(zkb_data, context) do
-    # Normalize keys to string format for consistency
-    normalized_data = normalize_killmail_keys(zkb_data)
-    {ctx, kill_id, system_id} = setup_context(normalized_data, context)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Public API
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Main entry point for processing killmails from any source.
+  """
+  @spec process_killmail(killmail_data()) :: result()
+  def process_killmail(killmail_data) when is_map(killmail_data) do
+    # Extract kill ID early for logging and telemetry
+    kill_id = extract_kill_id(killmail_data)
+
+    if is_nil(kill_id) do
+      Logger.error("Killmail missing ID", data: inspect(killmail_data), category: :killmail)
+      {:error, :missing_killmail_id}
+    else
+      process_with_kill_id(killmail_data, kill_id)
+    end
+  end
+
+  @spec process_with_kill_id(killmail_data(), String.t()) :: result()
+  defp process_with_kill_id(killmail_data, kill_id) do
     Telemetry.processing_started(kill_id)
 
-    run_pipeline(normalized_data, ctx, kill_id, system_id)
-  rescue
-    exception ->
-      ErrorLogger.log_kill_error("Pipeline crash",
-        kill_id: get_kill_id(zkb_data),
-        error: inspect(exception)
-      )
+    try do
+      with {:ok, :new} <- check_deduplication(kill_id),
+           {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
+           {:ok, true} <- should_notify?(killmail) do
+        send_notification(killmail)
+      else
+        {:ok, :duplicate} ->
+          handle_skipped(kill_id, :duplicate)
 
-      {:error, {:unexpected_error, exception}}
-  end
+        {:ok, false} ->
+          handle_skipped(kill_id, :not_tracked)
 
-  # — Data Normalization —————————————————————————————————————————————
+        {:error, reason} ->
+          handle_error(kill_id, reason)
+      end
+    rescue
+      exception ->
+        Logger.error("Pipeline crash",
+          kill_id: kill_id,
+          error: inspect(exception),
+          category: :killmail
+        )
 
-  defp normalize_killmail_keys(data) when is_map(data) do
-    data
-    |> ensure_string_key(:killmail_id, "killmail_id")
-    |> ensure_string_key(:system_id, "system_id")
-    |> ensure_string_key(:victim, "victim")
-    |> ensure_string_key(:attackers, "attackers")
-    |> ensure_string_key(:zkb, "zkb")
-    |> ensure_string_key(:kill_time, "kill_time")
-    # Normalize ZKB format
-    |> ensure_string_key(:solar_system_id, "system_id")
-    |> normalize_nested_keys()
-  end
-
-  defp ensure_string_key(data, atom_key, string_key) do
-    case Map.get(data, atom_key) do
-      nil -> data
-      value -> data |> Map.put(string_key, value) |> Map.delete(atom_key)
+        handle_error(kill_id, {:unexpected_error, exception})
     end
   end
 
-  defp normalize_nested_keys(data) do
-    # Handle nested killmail structure from different sources
-    case get_in(data, ["killmail", Schema.solar_system_id()]) do
-      nil ->
-        case get_in(data, [Schema.solar_system_id()]) do
-          nil -> data
-          system_id -> Map.put(data, "system_id", system_id)
-        end
+  @doc """
+  Send a test notification using recent kill data.
+  """
+  @spec send_test_notification() :: result()
+  def send_test_notification do
+    case get_recent_kills() do
+      {:ok, [kill_data | _]} ->
+        Logger.info("Sending test notification", category: :killmail)
+        process_killmail(kill_data)
 
-      system_id ->
-        Map.put(data, "system_id", system_id)
+      {:ok, []} ->
+        {:error, :no_recent_kills}
     end
   end
 
-  # — Context & Extraction Helpers —————————————————————————————————————
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Core Processing Steps
+  # ═══════════════════════════════════════════════════════════════════════════════
 
-  defp setup_context(data, ctx) do
-    ctx = ensure_context(ctx)
-    kill_id = get_kill_id(data)
-    system_id = get_system_id(data)
-    {Map.put(ctx, :system_id, system_id), kill_id, system_id}
-  end
+  @spec extract_kill_id(killmail_data()) :: String.t() | nil
+  defp extract_kill_id(data) do
+    # Handle both string and atom keys
+    kill_id = data["killmail_id"] || data[:killmail_id]
 
-  defp get_kill_id(data) do
-    # Data is now normalized to string keys
-    kill_id = Map.get(data, "killmail_id") || Map.get(data, Schema.killmail_id())
-
-    # Ensure kill_id is a string or integer
     case kill_id do
       id when is_integer(id) -> Integer.to_string(id)
-      id when is_binary(id) -> id
+      id when is_binary(id) and id != "" -> id
       _ -> nil
     end
   end
 
-  defp get_system_id(data) do
-    # Data is now normalized to string keys
-    system_id =
-      Map.get(data, "system_id") ||
-        get_in(data, ["killmail", Schema.solar_system_id()]) ||
-        get_in(data, [Schema.solar_system_id()])
-
-    # Ensure system_id is an integer
-    case system_id do
-      id when is_integer(id) ->
-        id
-
-      id when is_binary(id) ->
-        case Integer.parse(id) do
-          {int_id, ""} -> int_id
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp ensure_context(%Context{} = ctx), do: ctx
-  defp ensure_context(_), do: Context.new()
-
-  # — Main Pipeline ————————————————————————————————————————————————————
-
-  defp run_pipeline(zkb_data, ctx, kill_id, system_id) do
-    with {:ok, :new} <- dedupe(kill_id),
-         {:ok, tracking_result} <- should_notify_tracking?(zkb_data, kill_id, system_id),
-         {:ok, _km_id} <- extract_killmail_id(zkb_data),
-         {:ok, %Killmail{} = killmail} <- build_and_enrich(zkb_data),
-         {:ok, %{should_notify: true}} <-
-           check_requirements_with_validation(killmail, ctx, tracking_result) do
-      send_notification_with_validation(killmail, ctx, tracking_result)
-    else
-      {:ok, :duplicate} ->
-        handle_notification_skipped(kill_id, system_id, :duplicate)
-
-      {:ok, %{should_notify: false, reason: r}} ->
-        handle_notification_skipped(kill_id, system_id, r)
-
-      {:error, reason} ->
-        handle_error(zkb_data, ctx, reason)
-    end
-  end
-
-  defp dedupe(nil), do: {:error, {:missing_kill_id, "Killmail ID cannot be nil"}}
-
-  defp dedupe(kill_id) do
-    case deduplication_module().check(:kill, kill_id) do
+  @spec check_deduplication(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
+  defp check_deduplication(kill_id) do
+    case Deduplication.check(:kill, kill_id) do
       {:ok, :new} -> {:ok, :new}
       {:ok, :duplicate} -> {:ok, :duplicate}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:invalid_dedup_response, other}}
     end
   end
 
-  # — Tracking-based Notification Filter ——————————————————————————————————
+  @spec build_killmail(killmail_data()) :: {:ok, Killmail.t()} | {:error, term()}
+  defp build_killmail(data) do
+    # Data from WebSocket is pre-enriched, so we can build directly
+    kill_id = extract_kill_id(data)
+    system_id = extract_system_id(data)
 
-  defp should_notify_tracking?(zkb_data, kill_id, system_id) do
-    # Check validation mode first - this overrides normal tracking logic
-    case validation_module().check_and_consume() do
-      {:ok, :system} ->
-        # Force system notification for validation
-        {:ok, %{should_notify: true, validation_mode: :system}}
+    Logger.info(
+      "[Pipeline] Building killmail - ID: #{inspect(kill_id)}, System: #{inspect(system_id)}"
+    )
 
-      {:ok, :character} ->
-        # Force character notification for validation
-        {:ok, %{should_notify: true, validation_mode: :character}}
+    Logger.debug("[Pipeline] Raw data keys: #{inspect(Map.keys(data))}")
 
-      {:ok, :disabled} ->
-        # Normal tracking logic
-        case {check_system_tracking(system_id), check_character_tracking(zkb_data)} do
-          {{:ok, true}, _} ->
-            {:ok, %{should_notify: true}}
+    cond do
+      is_nil(kill_id) ->
+        {:error, :missing_killmail_id}
 
-          {_, {:ok, true}} ->
-            {:ok, %{should_notify: true}}
+      is_nil(system_id) ->
+        {:error, :missing_system_id}
 
-          {{:ok, _}, {:ok, _}} ->
-            {:ok, %{should_notify: false, reason: :no_tracked_entities}}
+      not is_integer(system_id) ->
+        {:error, {:invalid_system_id, system_id}}
 
-          {{:error, r}, _} ->
-            log_flag_error("system tracking", r, kill_id, system_id)
-            {:error, r}
-        end
+      true ->
+        killmail = Killmail.from_websocket_data(kill_id, system_id, data)
+
+        Logger.info(
+          "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{length(killmail.attackers || [])}"
+        )
+
+        {:ok, killmail}
     end
   end
 
-  defp check_system_tracking(nil), do: {:ok, false}
+  @spec extract_system_id(killmail_data()) :: integer() | nil
+  defp extract_system_id(data) do
+    possible_keys = ["system_id", :system_id, "solar_system_id", :solar_system_id]
 
-  defp check_system_tracking(id) do
-    system_module().is_tracked?(id)
+    system_id =
+      find_system_id_value(data, possible_keys) || get_in(data, ["killmail", "solar_system_id"])
+
+    parse_system_id(system_id)
   end
 
-  defp check_character_tracking(data) do
-    victim = extract_victim(data)
-    attackers = extract_attackers(data)
+  defp find_system_id_value(data, keys) do
+    Enum.find_value(keys, fn key -> data[key] end)
+  end
 
-    victim_tracked = victim_tracked?(victim)
-    attacker_tracked = any_attacker_tracked?(attackers)
+  defp parse_system_id(id) when is_integer(id), do: id
+
+  defp parse_system_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ -> nil
+    end
+  end
+
+  defp parse_system_id(_), do: nil
+
+  @spec should_notify?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
+  defp should_notify?(%Killmail{} = killmail) do
+    # Check global notification settings first
+    enabled = notifications_enabled?()
+    Logger.info("[Pipeline] Notifications enabled: #{enabled}")
+
+    if enabled do
+      check_entity_tracking(killmail)
+    else
+      {:ok, false}
+    end
+  end
+
+  @spec check_entity_tracking(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
+  defp check_entity_tracking(%Killmail{} = killmail) do
+    # Check if this killmail involves tracked entities
+    with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
+         {:ok, character_tracked} <- character_tracked?(killmail) do
+      Logger.info(
+        "[Pipeline] Tracking check - System #{killmail.system_id}: #{system_tracked}, Characters: #{character_tracked}"
+      )
+
+      {:ok, system_tracked or character_tracked}
+    end
+  end
+
+  @spec notifications_enabled?() :: boolean()
+  defp notifications_enabled? do
+    notifications_enabled = WandererNotifier.Shared.Config.notifications_enabled?()
+    kill_notifications_enabled = WandererNotifier.Shared.Config.kill_notifications_enabled?()
+
+    Logger.debug(
+      "[Pipeline] Config - notifications_enabled: #{notifications_enabled}, kill_notifications_enabled: #{kill_notifications_enabled}"
+    )
+
+    notifications_enabled and kill_notifications_enabled
+  end
+
+  @spec system_tracked?(integer() | nil) :: {:ok, boolean()} | {:error, term()}
+  defp system_tracked?(nil), do: {:ok, false}
+
+  defp system_tracked?(system_id) when is_integer(system_id) do
+    system_id
+    |> Integer.to_string()
+    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?()
+  end
+
+  @spec character_tracked?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
+  defp character_tracked?(%Killmail{} = killmail) do
+    victim_tracked = victim_tracked?(killmail.victim_character_id)
+    attacker_tracked = any_attacker_tracked?(killmail.attackers)
+
+    Logger.info(
+      "[Pipeline] Character tracking - Victim #{killmail.victim_character_id}: #{victim_tracked}, Any attacker: #{attacker_tracked}"
+    )
 
     {:ok, victim_tracked or attacker_tracked}
   end
 
-  defp extract_victim(data) do
-    # Data is now normalized to string keys
-    Map.get(data, "victim") ||
-      get_in(data, ["killmail", Schema.victim()]) ||
-      get_in(data, [Schema.victim()])
-  end
+  defp victim_tracked?(nil), do: false
 
-  defp extract_attackers(data) do
-    # Data is now normalized to string keys
-    Map.get(data, "attackers") ||
-      get_in(data, ["killmail", "attackers"]) || []
-  end
-
-  defp victim_tracked?(%{"character_id" => id}) when is_integer(id) do
-    character_tracked?(id)
-  end
-
-  defp victim_tracked?(%{character_id: id}) when is_integer(id) do
-    character_tracked?(id)
-  end
-
-  defp victim_tracked?(_), do: false
-
-  defp any_attacker_tracked?(attackers) when is_list(attackers) do
-    Enum.any?(attackers, &attacker_tracked?/1)
-  end
-
-  defp any_attacker_tracked?(_), do: false
-
-  defp attacker_tracked?(attacker) do
-    # Data is now normalized to string keys
-    character_id = Map.get(attacker, "character_id")
-    character_tracked?(character_id)
-  end
-
-  defp character_tracked?(nil), do: false
-
-  defp character_tracked?(character_id) do
-    case character_module().is_tracked?(character_id) do
+  defp victim_tracked?(character_id) when is_integer(character_id) do
+    character_id
+    |> Integer.to_string()
+    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?()
+    |> case do
       {:ok, true} -> true
       _ -> false
     end
   end
 
-  defp log_flag_error(stage, reason, kill_id, system_id) do
-    AppLogger.kill_error("Error checking #{stage}",
-      kill_id: kill_id,
-      system: get_system_name(system_id),
-      error: inspect(reason)
-    )
+  defp any_attacker_tracked?(nil), do: false
+
+  defp any_attacker_tracked?(attackers) do
+    Enum.any?(attackers, &attacker_tracked?/1)
   end
 
-  # — Killmail ID Extraction ————————————————————————————————————————————
-
-  defp extract_killmail_id(%Killmail{killmail_id: id}) do
-    validate_killmail_id(id)
-  end
-
-  defp extract_killmail_id(%{} = data) do
-    id = get_kill_id(data)
-    validate_killmail_id(id)
-  end
-
-  defp validate_killmail_id(id) when is_integer(id) do
-    {:ok, to_string(id)}
-  end
-
-  defp validate_killmail_id(id) when is_binary(id) and id != "" do
-    {:ok, id}
-  end
-
-  defp validate_killmail_id(invalid_id) do
-    ErrorLogger.log_kill_error("Invalid killmail ID",
-      data: inspect(invalid_id),
-      module: __MODULE__
-    )
-
-    {:error, :invalid_killmail_id}
-  end
-
-  # — Build & Enrich ——————————————————————————————————————————————————
-
-  defp build_and_enrich(data) do
-    # All data should now be pre-enriched from WebSocket
-    build_websocket_killmail(data)
-  end
-
-  # — WebSocket Killmail Building ——————————————————————————————————————
-
-  defp build_websocket_killmail(data) do
-    # Data is now normalized to string keys
-    killmail_id = Map.get(data, "killmail_id")
-    # Use the enhanced get_system_id function
-    system_id = get_system_id(data)
-
-    # Validate required fields
-    cond do
-      is_nil(killmail_id) -> {:error, :missing_killmail_id}
-      is_nil(system_id) -> {:error, :missing_system_id}
-      not is_integer(system_id) -> {:error, {:invalid_system_id, system_id}}
-      true -> build_validated_websocket_killmail(killmail_id, system_id, data)
+  defp attacker_tracked?(%{"character_id" => character_id}) when is_integer(character_id) do
+    character_id
+    |> Integer.to_string()
+    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?()
+    |> case do
+      {:ok, true} -> true
+      _ -> false
     end
   end
 
-  defp build_validated_websocket_killmail(killmail_id, system_id, data) do
-    # Use the new simplified constructor
-    killmail_id
-    |> to_string()
-    |> Killmail.from_websocket_data(system_id, data)
-    |> then(&{:ok, &1})
-  end
-
-  # Transform functions removed - now handled by Killmail.from_websocket_data/3
-
-  # — Notification-enabled Filter ——————————————————————————————————————
-
-  defp check_requirements(%Killmail{} = km, _ctx) do
-    cfg = WandererNotifier.Shared.Config.get_config()
-
-    # 1) Global notifications on?
-    if Map.get(cfg, :notifications_enabled, false) do
-      # 2) System vs Kill-level
-      key = notification_key(km)
-      reason = notification_reason(km)
-
-      if Map.get(cfg, key, false) do
-        {:ok, %{should_notify: true}}
-      else
-        {:ok, %{should_notify: false, reason: reason}}
-      end
-    else
-      {:ok, %{should_notify: false, reason: :notifications_disabled}}
+  defp attacker_tracked?(%{"character_id" => character_id}) when is_binary(character_id) do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id) do
+      {:ok, true} -> true
+      _ -> false
     end
   end
 
-  defp notification_key(%{system_id: id}) when is_integer(id),
-    do: :system_notifications_enabled
+  defp attacker_tracked?(_), do: false
 
-  defp notification_key(_),
-    do: :kill_notifications_enabled
+  @spec send_notification(Killmail.t()) :: result()
+  defp send_notification(%Killmail{} = killmail) do
+    case WandererNotifier.Application.Services.NotificationService.notify_kill(killmail) do
+      :ok ->
+        Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
+        Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
+        Logger.info("Killmail #{killmail.killmail_id} notified", category: :killmail)
+        {:ok, killmail.killmail_id}
 
-  defp notification_reason(%{system_id: id}) when is_integer(id),
-    do: :system_notifications_disabled
-
-  defp notification_reason(_),
-    do: :kill_notifications_disabled
-
-  # — Validation-aware Notification Checking ——————————————————————————————
-
-  defp check_requirements_with_validation(_killmail, _ctx, %{should_notify: false} = result) do
-    # If tracking says no notification, respect that even in validation mode
-    {:ok, result}
-  end
-
-  defp check_requirements_with_validation(_killmail, _ctx, %{validation_mode: validation_mode}) do
-    # In validation mode, override normal requirements
-    {:ok, %{should_notify: true, validation_mode: validation_mode}}
-  end
-
-  defp check_requirements_with_validation(killmail, ctx, _tracking_result) do
-    # Normal requirements check
-    check_requirements(killmail, ctx)
-  end
-
-  # — Notification Sending & Skipping —————————————————————————————————————
-
-  # Validation mode log message format
-  @validation_mode_log_format "🧪 VALIDATION MODE: %{mode} - Processing killmail %{killmail_id} as %{mode} notification"
-
-  defp send_notification_with_validation(killmail, ctx, %{validation_mode: validation_mode}) do
-    # Log validation mode usage with consistent format
-    validation_mode
-    |> format_validation_mode_log(killmail.killmail_id)
-    |> AppLogger.kill_info()
-
-    send_notification(killmail, ctx)
-  end
-
-  defp send_notification_with_validation(killmail, ctx, _tracking_result) do
-    # Normal notification sending
-    send_notification(killmail, ctx)
-  end
-
-  @spec send_notification(Killmail.t(), Context.t()) :: result
-  defp send_notification(%Killmail{} = km, _ctx) do
-    case Processor.send_kill_notification(km, km.killmail_id) do
-      {:ok, _} ->
-        Telemetry.processing_completed(km.killmail_id, {:ok, :notified})
-        Telemetry.killmail_notified(km.killmail_id, get_system_name_from_killmail(km))
-        AppLogger.kill_info("💀 ✅ Killmail #{km.killmail_id} notified")
-        {:ok, km.killmail_id}
+      {:error, :notifications_disabled} ->
+        handle_skipped(killmail.killmail_id, :notifications_disabled)
 
       {:error, reason} ->
-        handle_error(km, nil, reason)
+        handle_error(killmail.killmail_id, reason)
     end
   end
 
-  defp handle_notification_skipped(kill_id, system_id, reason) do
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Result Handlers
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @spec handle_skipped(String.t(), atom()) :: result()
+  defp handle_skipped(kill_id, reason) do
     Telemetry.processing_completed(kill_id, {:ok, :skipped})
     Telemetry.processing_skipped(kill_id, reason)
 
-    AppLogger.kill_info(
-      "💀 #{get_reason_emoji(reason)} ##{kill_id} | #{get_system_name(system_id)} | #{get_reason_text(reason)}"
-    )
+    reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
+    Logger.info("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
 
     {:ok, :skipped}
   end
 
-  # — Error Handling ——————————————————————————————————————————————————
-
-  defp handle_error(data, ctx, reason) do
-    kill_id = safe_extract_killmail_id(data)
-
+  @spec handle_error(String.t(), term()) :: result()
+  defp handle_error(kill_id, reason) do
     Telemetry.processing_completed(kill_id, {:error, reason})
     Telemetry.processing_error(kill_id, reason)
-    log_error(kill_id, ctx, reason)
+
+    Logger.error("Killmail #{kill_id} processing failed",
+      error: inspect(reason),
+      category: :killmail
+    )
+
     {:error, reason}
   end
 
-  defp log_error(kill_id, ctx, reason) do
-    ErrorLogger.log_kill_error("Pipeline error",
-      kill_id: kill_id,
-      context: ctx,
-      error: inspect(reason)
-    )
-  end
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Utilities
+  # ═══════════════════════════════════════════════════════════════════════════════
 
-  defp safe_extract_killmail_id(data) do
-    case extract_killmail_id(data) do
-      {:ok, id} -> id
-      _ -> "unknown"
+  @spec get_recent_kills() :: {:ok, list(killmail_data())} | {:error, term()}
+  defp get_recent_kills do
+    case Cache.get("zkill:recent_kills") do
+      {:ok, kills} when is_list(kills) -> {:ok, kills}
+      {:error, :not_found} -> {:ok, []}
+      _ -> {:ok, []}
     end
-  end
-
-  # — Utilities —————————————————————————————————————————————————————————
-
-  @reason_emojis %{
-    duplicate: "♻️",
-    no_tracked_entities: "🚫",
-    notifications_disabled: "⏸️",
-    system_notifications_disabled: "🗺️❌",
-    kill_notifications_disabled: "💀❌"
-  }
-
-  defp get_reason_emoji(reason), do: Map.get(@reason_emojis, reason, "❓")
-
-  defp get_reason_text(reason),
-    do: reason |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
-
-  defp get_system_name(nil), do: "unknown"
-
-  defp get_system_name(system_id),
-    do: killmail_cache_module().get_system_name(system_id)
-
-  defp get_system_name_from_killmail(%Killmail{system_name: name})
-       when is_binary(name) and name != "" do
-    name
-  end
-
-  defp get_system_name_from_killmail(%Killmail{system_id: sid}),
-    do: killmail_cache_module().get_system_name(sid)
-
-  # — Dependencies ——————————————————————————————————————————————————————
-
-  defp system_module, do: WandererNotifier.Application.Services.Dependencies.system_module()
-  defp character_module, do: WandererNotifier.Application.Services.Dependencies.character_module()
-
-  defp deduplication_module,
-    do: WandererNotifier.Application.Services.Dependencies.deduplication_module()
-
-  defp killmail_cache_module,
-    do: WandererNotifier.Application.Services.Dependencies.killmail_cache_module()
-
-  defp validation_module, do: WandererNotifier.Shared.Utils.ValidationManager
-
-  # Helper function for consistent validation mode logging
-  defp format_validation_mode_log(mode, killmail_id) do
-    @validation_mode_log_format
-    |> String.replace("%{mode}", to_string(mode))
-    |> String.replace("%{killmail_id}", to_string(killmail_id))
   end
 end

@@ -10,7 +10,6 @@ defmodule WandererNotifier.Map.SSESupervisor do
   require Logger
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.SSEClient
 
   @doc """
@@ -53,15 +52,15 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     case Supervisor.start_child(__MODULE__, child_spec) do
       {:ok, pid} ->
-        AppLogger.api_info("SSE client started", map_slug: map_slug)
+        Logger.info("SSE client started", map_slug: map_slug)
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        AppLogger.api_info("SSE client already running", map_slug: map_slug)
+        Logger.info("SSE client already running", map_slug: map_slug)
         {:ok, pid}
 
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to start SSE client",
+        Logger.error("Failed to start SSE client",
           map_slug: map_slug,
           error: inspect(reason)
         )
@@ -81,11 +80,11 @@ defmodule WandererNotifier.Map.SSESupervisor do
       :ok ->
         case Supervisor.delete_child(__MODULE__, child_id) do
           :ok ->
-            AppLogger.api_info("SSE client stopped", map_slug: map_slug)
+            Logger.info("SSE client stopped", map_slug: map_slug)
             :ok
 
           {:error, reason} = error ->
-            AppLogger.api_error("Failed to delete SSE client",
+            Logger.error("Failed to delete SSE client",
               map_slug: map_slug,
               error: inspect(reason)
             )
@@ -94,7 +93,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
         end
 
       {:error, :not_found} ->
-        AppLogger.api_info("SSE client not found", map_slug: map_slug)
+        Logger.info("SSE client not found", map_slug: map_slug)
         :ok
     end
   end
@@ -108,11 +107,11 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     case Supervisor.restart_child(__MODULE__, child_id) do
       {:ok, _pid} ->
-        AppLogger.api_info("SSE client restarted", map_slug: map_slug)
+        Logger.info("SSE client restarted", map_slug: map_slug)
         :ok
 
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to restart SSE client",
+        Logger.error("Failed to restart SSE client",
           map_slug: map_slug,
           error: inspect(reason)
         )
@@ -150,12 +149,12 @@ defmodule WandererNotifier.Map.SSESupervisor do
     # This MUST complete before starting SSE to avoid notification spam
     case initialize_map_data_safely() do
       :ok ->
-        AppLogger.api_info("Map data initialized successfully")
+        Logger.info("Map data initialized successfully")
         # Only start SSE if we successfully loaded initial data
         start_sse_after_initialization()
 
       :error ->
-        AppLogger.api_error("Map data initialization failed - SSE will not start",
+        Logger.error("Map data initialization failed - SSE will not start",
           reason: "Cannot start SSE without initial data to prevent notification spam"
         )
 
@@ -171,20 +170,20 @@ defmodule WandererNotifier.Map.SSESupervisor do
     # Signal the WebSocket client that it can start now
     case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
       nil ->
-        AppLogger.api_warn("PipelineWorker not found - cannot signal map initialization complete")
+        Logger.warning("PipelineWorker not found - cannot signal map initialization complete")
 
       pid ->
-        AppLogger.api_info("Signaling PipelineWorker that map initialization is complete")
+        Logger.info("Signaling PipelineWorker that map initialization is complete")
         send(pid, :map_initialization_complete)
     end
 
     case get_map_configuration() do
       {:ok, map_config} ->
-        AppLogger.api_info("Starting SSE client after successful data initialization")
+        Logger.info("Starting SSE client after successful data initialization")
         start_sse_client_from_config(map_config)
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to initialize SSE clients",
+        Logger.error("Failed to initialize SSE clients",
           error: inspect(reason)
         )
 
@@ -198,7 +197,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
       :ok
     rescue
       error ->
-        AppLogger.api_error("Exception during map data initialization",
+        Logger.error("Exception during map data initialization",
           error: Exception.message(error),
           stacktrace: __STACKTRACE__
         )
@@ -250,14 +249,14 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     case start_sse_client(opts) do
       {:ok, _pid} ->
-        AppLogger.api_info("SSE client initialized successfully",
+        Logger.info("SSE client initialized successfully",
           map_slug: map_config.map_slug
         )
 
         :ok
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to start SSE client",
+        Logger.error("Failed to start SSE client",
           map_slug: map_config.map_slug,
           error: inspect(reason)
         )

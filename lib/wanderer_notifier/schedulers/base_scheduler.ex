@@ -8,7 +8,6 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   require Logger
 
   alias WandererNotifier.Application.Services.Stats
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Types.Constants
 
   @callback feature_flag() :: atom()
@@ -30,8 +29,6 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       @behaviour WandererNotifier.Schedulers.BaseScheduler
       use GenServer
       require Logger
-
-      alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
       def start_link(opts) do
         GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -55,7 +52,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           cached_data: cached_data
         }
 
-        AppLogger.scheduler_info("Scheduler initialized",
+        Logger.info("Scheduler initialized",
           module: __MODULE__,
           interval: state.interval,
           primed: state.primed,
@@ -88,7 +85,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             []
 
           {:ok, data} ->
-            AppLogger.scheduler_error("Invalid cached data format",
+            Logger.error("Invalid cached data format",
               key: cache_key(),
               data: inspect(data)
             )
@@ -96,7 +93,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             []
 
           {:error, reason} ->
-            AppLogger.scheduler_error("Failed to get cached data",
+            Logger.error("Failed to get cached data",
               key: cache_key(),
               error: inspect(reason)
             )
@@ -111,14 +108,14 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         feature_flag_value = feature_flag()
         feature_enabled = WandererNotifier.Shared.Config.feature_enabled?(feature_flag_value)
 
-        AppLogger.scheduler_info("Scheduler feature check",
+        Logger.info("Scheduler feature check",
           module: __MODULE__,
           feature_flag: feature_flag_value,
           feature_enabled: feature_enabled
         )
 
         if feature_enabled do
-          AppLogger.scheduler_info("Scheduling update",
+          Logger.info("Scheduling update",
             module: __MODULE__,
             feature: feature_flag(),
             enabled: true
@@ -147,7 +144,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             end
 
           if should_log do
-            AppLogger.scheduler_info("Feature disabled",
+            Logger.info("Feature disabled",
               module: __MODULE__,
               feature: feature_flag(),
               enabled: false
@@ -197,7 +194,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       defp handle_update_error(reason, state) do
         error_type = get_error_type(reason)
 
-        AppLogger.scheduler_error("Update failed",
+        Logger.error("Update failed",
           module: __MODULE__,
           error: inspect(reason),
           error_type: error_type
@@ -246,18 +243,18 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             data
 
           {:ok, nil} ->
-            AppLogger.scheduler_info("No cached data found")
+            Logger.info("No cached data found")
             []
 
           {:ok, data} ->
-            AppLogger.scheduler_error("Invalid cached data format",
+            Logger.error("Invalid cached data format",
               data: inspect(data)
             )
 
             []
 
           {:error, reason} ->
-            AppLogger.scheduler_error("Failed to get cached data",
+            Logger.error("Failed to get cached data",
               error: inspect(reason)
             )
 
@@ -273,7 +270,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       # Handle failed manual run
       defp handle_failed_run(reason) do
-        AppLogger.scheduler_error("Manual update failed",
+        Logger.error("Manual update failed",
           error: inspect(reason)
         )
 
@@ -295,7 +292,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         emoji = module.log_emoji()
         label = module.log_label()
 
-        AppLogger.api_info(
+        Logger.info(
           "#{emoji} #{label} updated | #{old_count} → #{new_count} | #{change_indicator}"
         )
       end

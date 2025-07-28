@@ -3,7 +3,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   Scheduler responsible for generating periodic service status reports.
   """
   use GenServer
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Shared.Types.Constants
   alias WandererNotifier.Shared.Utils.TimeUtils
 
@@ -52,7 +52,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
   @impl GenServer
   def init(opts) do
-    AppLogger.scheduler_info("ServiceStatusScheduler starting", opts: opts)
+    Logger.info("ServiceStatusScheduler starting", opts: opts)
     state = State.new()
     timer_ref = schedule_next_run()
     {:ok, %{state | timer_ref: timer_ref}}
@@ -64,7 +64,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
       run()
     rescue
       e ->
-        AppLogger.scheduler_error("Error in scheduled status report",
+        Logger.error("Error in scheduled status report",
           error: Exception.message(e)
         )
     end
@@ -107,7 +107,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
       case Deduplication.check(:system, dedup_key) do
         {:ok, :new} ->
-          AppLogger.maintenance_info("📊 Status report sent | #{formatted_uptime} uptime")
+          Logger.info("📊 Status report sent | #{formatted_uptime} uptime")
 
           WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier.send_status_message(
             "WandererNotifier Service Status",
@@ -115,14 +115,14 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
           )
 
         {:ok, :duplicate} ->
-          AppLogger.maintenance_info("📊 Status report skipped - duplicate")
+          Logger.info("📊 Status report skipped - duplicate")
       end
     else
-      AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
+      Logger.info("📊 Status report skipped - disabled by config")
     end
   rescue
     e ->
-      AppLogger.maintenance_error("📊 Status report failed",
+      Logger.error("📊 Status report failed",
         error: Exception.message(e)
       )
   end

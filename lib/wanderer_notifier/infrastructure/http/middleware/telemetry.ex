@@ -4,7 +4,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
 
   This lightweight version focuses on the most important metrics:
   - Request duration
-  - HTTP status codes  
+  - HTTP status codes
   - Service identification
   - Basic error tracking
 

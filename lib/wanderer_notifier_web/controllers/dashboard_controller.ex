@@ -66,25 +66,25 @@ defmodule WandererNotifierWeb.DashboardController do
                 --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
                 --gradient-tertiary: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             }
-            
+
             * { box-sizing: border-box; }
-            
-            body { 
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                margin: 0; 
+
+            body {
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                margin: 0;
                 padding: 0;
                 background: var(--bg-primary);
                 color: var(--text-primary);
                 line-height: 1.6;
                 min-height: 100vh;
             }
-            
-            .container { 
-                max-width: 1400px; 
-                margin: 0 auto; 
+
+            .container {
+                max-width: 1400px;
+                margin: 0 auto;
                 padding: 20px;
             }
-            
+
             .header {
                 text-align: center;
                 margin-bottom: 40px;
@@ -95,7 +95,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 position: relative;
                 overflow: hidden;
             }
-            
+
             .header::before {
                 content: '';
                 position: absolute;
@@ -106,7 +106,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
                 opacity: 0.3;
             }
-            
+
             .header h1 {
                 color: white;
                 font-size: 2.5rem;
@@ -116,7 +116,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 position: relative;
                 z-index: 1;
             }
-            
+
             .header-stats {
                 display: flex;
                 justify-content: center;
@@ -125,38 +125,38 @@ defmodule WandererNotifierWeb.DashboardController do
                 position: relative;
                 z-index: 1;
             }
-            
+
             .header-stat {
                 text-align: center;
                 color: white;
             }
-            
+
             .header-stat .label {
                 display: block;
                 font-size: 0.875rem;
                 opacity: 0.9;
                 font-weight: 500;
             }
-            
+
             .header-stat .value {
                 display: block;
                 font-size: 1.25rem;
                 font-weight: 700;
                 margin-top: 4px;
             }
-            
-            .card { 
+
+            .card {
                 background: var(--bg-card);
-                border-radius: 12px; 
-                padding: 24px; 
-                margin: 20px 0; 
+                border-radius: 12px;
+                padding: 24px;
+                margin: 20px 0;
                 box-shadow: var(--shadow-md);
                 border: 1px solid var(--border-primary);
                 transition: all 0.3s ease;
                 position: relative;
                 overflow: hidden;
             }
-            
+
             .card::before {
                 content: '';
                 position: absolute;
@@ -166,13 +166,13 @@ defmodule WandererNotifierWeb.DashboardController do
                 height: 3px;
                 background: var(--gradient-tertiary);
             }
-            
+
             .card:hover {
                 transform: translateY(-2px);
                 box-shadow: var(--shadow-lg);
                 border-color: var(--border-secondary);
             }
-            
+
             .card h2 {
                 color: var(--text-primary);
                 font-size: 1.25rem;
@@ -182,7 +182,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 align-items: center;
                 gap: 12px;
             }
-            
+
             .card h2::before {
                 content: '';
                 width: 6px;
@@ -190,55 +190,55 @@ defmodule WandererNotifierWeb.DashboardController do
                 background: var(--accent-blue);
                 border-radius: 3px;
             }
-            
-            .status { 
-                color: var(--accent-green); 
+
+            .status {
+                color: var(--accent-green);
                 font-weight: 600;
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
             }
-            
+
             .status::before {
                 content: '●';
                 font-size: 0.75rem;
             }
-            
-            .grid { 
-                display: grid; 
-                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-                gap: 24px; 
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 24px;
             }
-            
-            .metric { 
-                display: flex; 
-                justify-content: space-between; 
+
+            .metric {
+                display: flex;
+                justify-content: space-between;
                 align-items: center;
-                padding: 12px 0; 
+                padding: 12px 0;
                 border-bottom: 1px solid var(--border-primary);
                 transition: all 0.2s ease;
             }
-            
+
             .metric:last-child { border-bottom: none; }
-            
+
             .metric:hover {
                 background: rgba(255,255,255,0.02);
                 margin: 0 -12px;
                 padding: 12px;
                 border-radius: 6px;
             }
-            
+
             .metric .label {
                 color: var(--text-secondary);
                 font-weight: 500;
             }
-            
+
             .metric .value {
                 color: var(--text-primary);
                 font-weight: 600;
                 font-family: 'JetBrains Mono', Monaco, 'Consolas', monospace;
             }
-            
+
             .connection-status {
                 display: inline-flex;
                 align-items: center;
@@ -248,26 +248,26 @@ defmodule WandererNotifierWeb.DashboardController do
                 font-size: 0.875rem;
                 font-weight: 500;
             }
-            
+
             .connection-status.connected {
                 background: rgba(72, 187, 120, 0.2);
                 color: var(--accent-green);
                 border: 1px solid rgba(72, 187, 120, 0.3);
             }
-            
+
             .connection-status.disconnected {
                 background: rgba(245, 101, 101, 0.2);
                 color: var(--accent-red);
                 border: 1px solid rgba(245, 101, 101, 0.3);
             }
-            
+
             .validation-controls {
                 display: flex;
                 gap: 12px;
                 flex-wrap: wrap;
                 margin: 20px 0;
             }
-            
+
             .btn {
                 background: var(--gradient-primary);
                 color: white;
@@ -283,26 +283,26 @@ defmodule WandererNotifierWeb.DashboardController do
                 gap: 8px;
                 box-shadow: var(--shadow-sm);
             }
-            
+
             .btn:hover {
                 transform: translateY(-1px);
                 box-shadow: var(--shadow-md);
             }
-            
+
             .btn:active {
                 transform: translateY(0);
             }
-            
+
             .btn.btn-warning { background: linear-gradient(135deg, #ed8936 0%, #f6ad55 100%); }
             .btn.btn-info { background: linear-gradient(135deg, #4299e1 0%, #63b3ed 100%); }
             .btn.btn-secondary { background: linear-gradient(135deg, #718096 0%, #a0aec0 100%); }
-            
+
             .btn:disabled {
                 opacity: 0.6;
                 cursor: not-allowed;
                 transform: none;
             }
-            
+
             .validation-feedback {
                 margin-top: 16px;
                 padding: 12px 16px;
@@ -310,7 +310,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 font-weight: 500;
                 display: none;
             }
-            
+
             .footer {
                 text-align: center;
                 margin-top: 40px;
@@ -319,7 +319,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 font-size: 0.875rem;
                 border-top: 1px solid var(--border-primary);
             }
-            
+
             /* Icons using CSS */
             .icon-system::before { content: '🗺️'; }
             .icon-character::before { content: '👤'; }
@@ -329,7 +329,7 @@ defmodule WandererNotifierWeb.DashboardController do
             .icon-cache::before { content: '⚡'; }
             .icon-processes::before { content: '⚙️'; }
             .icon-validation::before { content: '🧪'; }
-            
+
             /* Responsive design */
             @media (max-width: 768px) {
                 .container { padding: 12px; }
@@ -341,14 +341,14 @@ defmodule WandererNotifierWeb.DashboardController do
         </style>
         <script>
             setTimeout(() => window.location.reload(), 30000);
-            
+
             function enableValidation(mode) {
                 const feedback = document.getElementById('validation-feedback');
                 const button = document.getElementById('validate-' + mode);
-                
+
                 button.disabled = true;
                 button.textContent = 'Enabling...';
-                
+
                 fetch('/api/validation/enable/' + mode, { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
@@ -367,7 +367,7 @@ defmodule WandererNotifierWeb.DashboardController do
                         button.textContent = 'Test Next Kill as ' + (mode === 'system' ? 'System' : 'Character') + ' Notification';
                     });
             }
-            
+
             function checkValidationStatus() {
                 fetch('/api/validation/status')
                     .then(response => response.json())
@@ -388,12 +388,12 @@ defmodule WandererNotifierWeb.DashboardController do
                         showFeedback('Network error: ' + error.message, 'error');
                     });
             }
-            
+
             function showFeedback(message, type) {
                 const feedback = document.getElementById('validation-feedback');
                 feedback.style.display = 'block';
                 feedback.textContent = message;
-                
+
                 switch(type) {
                     case 'success':
                         feedback.style.background = '#d4edda';
@@ -411,7 +411,7 @@ defmodule WandererNotifierWeb.DashboardController do
                         feedback.style.border = '1px solid #bee5eb';
                         break;
                 }
-                
+
                 setTimeout(() => {
                     feedback.style.display = 'none';
                 }, 10000);
@@ -437,7 +437,7 @@ defmodule WandererNotifierWeb.DashboardController do
                     </div>
                 </div>
             </div>
-            
+
             <div class="grid">
                 <div class="card">
                     <h2 class="icon-websocket">WebSocket Status</h2>
@@ -452,7 +452,7 @@ defmodule WandererNotifierWeb.DashboardController do
                         <span class="value">#{data.websocket.connection_uptime_formatted}</span>
                     </div>
                 </div>
-                
+
                 <div class="card">
                     <h2 class="icon-memory">Memory Usage</h2>
                     <div class="metric">
@@ -464,7 +464,7 @@ defmodule WandererNotifierWeb.DashboardController do
                         <span class="value">#{data.system.memory.processes_kb} KB (#{data.system.memory.processes_percent}%)</span>
                     </div>
                 </div>
-                
+
                 <div class="card">
                     <h2 class="icon-cache">Cache Stats</h2>
                     <div class="metric">
@@ -476,7 +476,7 @@ defmodule WandererNotifierWeb.DashboardController do
                         <span class="value">#{data.cache_stats.hit_rate}%</span>
                     </div>
                 </div>
-                
+
                 <div class="card">
                     <h2 class="icon-status">Processing Stats</h2>
                     <div class="metric">
@@ -489,12 +489,12 @@ defmodule WandererNotifierWeb.DashboardController do
                     </div>
                 </div>
             </div>
-            
+
             <div class="card">
                 <h2 class="icon-processes">Key Processes</h2>
                 #{build_processes_html(data.processes.key_processes)}
             </div>
-            
+
             <div class="card">
                 <h2 class="icon-validation">Notification Validation</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 20px;">Test notification functionality with the next incoming killmail:</p>
@@ -511,7 +511,7 @@ defmodule WandererNotifierWeb.DashboardController do
                 </div>
                 <div id="validation-feedback" class="validation-feedback"></div>
             </div>
-            
+
             <div class="footer">
                 <div>Auto-refresh in 30 seconds | Last updated: #{data.timestamp}</div>
                 <div style="margin-top: 8px; opacity: 0.7;">WandererNotifier v#{data.server_version} | EVE Online Killmail Monitoring</div>

@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   reducing code duplication while allowing for entity-specific customization.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   @doc """
   Generic event handler that processes entity events with customizable steps.
@@ -42,38 +42,42 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
     payload = Map.get(event, "payload", %{})
 
     # Log payload information with size limiting to prevent log flooding
-    AppLogger.api_info("#{event_type} payload received",
+    Logger.info("#{event_type} payload received",
       map_slug: map_slug,
       event_type: event_type,
       payload: truncate_payload(payload),
       payload_keys: Map.keys(payload),
-      payload_size: map_size(payload)
+      payload_size: map_size(payload),
+      category: :api
     )
 
-    AppLogger.api_info("Processing #{event_type} event",
+    Logger.info("Processing #{event_type} event",
       map_slug: map_slug,
       event_type: event_type,
       entity_name: extract_entity_name(payload),
-      entity_id: extract_entity_id(payload)
+      entity_id: extract_entity_id(payload),
+      category: :api
     )
 
     with {:ok, entity} <- extract_fn.(payload),
          :ok <- cache_fn.(entity),
          :ok <- notify_fn.(entity) do
-      AppLogger.api_info("#{event_type} processed successfully",
+      Logger.info("#{event_type} processed successfully",
         map_slug: map_slug,
         event_type: event_type,
         entity_name: extract_entity_name_from_result(entity),
-        entity_id: extract_entity_id_from_result(entity)
+        entity_id: extract_entity_id_from_result(entity),
+        category: :api
       )
 
       :ok
     else
       {:error, reason} = error ->
-        AppLogger.api_error("Failed to process #{event_type} event",
+        Logger.error("Failed to process #{event_type} event",
           map_slug: map_slug,
           event_type: event_type,
-          error: inspect(reason)
+          error: inspect(reason),
+          category: :api
         )
 
         error
@@ -158,9 +162,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       entity_name = extract_entity_name_from_result(entity)
       entity_id = extract_entity_id_from_result(entity)
 
-      AppLogger.api_info(action_description,
+      Logger.info(action_description,
         entity_name: entity_name,
-        entity_id: entity_id
+        entity_id: entity_id,
+        category: :api
       )
 
       :ok

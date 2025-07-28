@@ -19,7 +19,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   }
 
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
 
@@ -175,7 +174,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
         {:ok, %{"name" => name}}
 
       {:ok, _} ->
-        AppLogger.api_error("ESI Service: Missing name in type info")
+        Logger.error("ESI Service: Missing name in type info")
         {:error, :esi_data_missing}
 
       error ->
@@ -329,12 +328,12 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   defp handle_killmail_error(reason, kill_id) do
     case reason do
       :timeout ->
-        AppLogger.api_error(
+        Logger.error(
           "ESI Service: Request timed out for kill_id=#{kill_id} after #{@default_timeout}ms"
         )
 
       _ ->
-        AppLogger.api_error(
+        Logger.error(
           "ESI Service: Failed to fetch killmail data for kill_id=#{kill_id}: #{inspect(reason)}"
         )
     end

@@ -1,12 +1,12 @@
 defmodule WandererNotifier.Map.SSEParser do
+  require Logger
+
   @moduledoc """
   Handles parsing of Server-Sent Events (SSE) data.
 
   This module is responsible for parsing raw SSE chunks into structured events
   according to the SSE specification.
   """
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @doc """
   Parses an SSE chunk into a list of events.
@@ -94,7 +94,7 @@ defmodule WandererNotifier.Map.SSEParser do
   end
 
   defp log_parsed_event(event) do
-    AppLogger.api_debug("Parsed SSE event",
+    Logger.debug("Parsed SSE event",
       event_type: Map.get(event, "type"),
       event_id: Map.get(event, "id"),
       event_map_id: Map.get(event, "map_id")

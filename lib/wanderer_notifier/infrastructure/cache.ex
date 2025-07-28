@@ -11,11 +11,11 @@ defmodule WandererNotifier.Infrastructure.Cache do
       Cache.get("my:key")
       Cache.put("my:key", value, ttl: :timer.hours(1))
       Cache.delete("my:key")
-      
-      # Domain helpers  
+
+      # Domain helpers
       Cache.get_character(character_id)
       Cache.put_character(character_id, character_data)
-      
+
       # Custom TTL
       Cache.put_with_ttl("custom:key", value, :timer.minutes(30))
   """
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   ## Examples
       iex> Cache.get("user:123")
       {:ok, %{name: "John"}}
-      
+
       iex> Cache.get("nonexistent")
       {:error, :not_found}
   """
@@ -106,7 +106,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   ## Examples
       iex> Cache.put("user:123", %{name: "John"})
       :ok
-      
+
       iex> Cache.put("session:abc", token, :timer.hours(1))
       :ok
   """

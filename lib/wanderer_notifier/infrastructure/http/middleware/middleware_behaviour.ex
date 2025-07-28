@@ -3,7 +3,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour do
   Behaviour definition for HTTP middleware components.
 
   Middleware components can intercept and modify HTTP requests and responses,
-  implementing cross-cutting concerns like retry logic, rate limiting, 
+  implementing cross-cutting concerns like retry logic, rate limiting,
   circuit breaking, and telemetry.
   """
 

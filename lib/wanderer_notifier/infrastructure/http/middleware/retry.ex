@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
+  require Logger
+
   @moduledoc """
   HTTP middleware that implements retry logic with exponential backoff and jitter.
 
@@ -15,11 +17,11 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
   ## Usage
 
       # Simple retry with defaults
-      Client.request(:get, "https://api.example.com/data", 
+      Client.request(:get, "https://api.example.com/data",
         middlewares: [Retry])
-      
+
       # Custom retry configuration
-      Client.request(:get, "https://api.example.com/data", 
+      Client.request(:get, "https://api.example.com/data",
         middlewares: [Retry],
         retry_options: [
           max_attempts: 5,
@@ -31,7 +33,6 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
   @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
 
   alias WandererNotifier.Infrastructure.Http.Utils.Retry, as: RetryUtils
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type retry_options :: [
           max_attempts: pos_integer(),
@@ -170,12 +171,13 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
   end
 
   defp log_retry_attempt(attempt, error, delay_ms) do
-    AppLogger.api_info("HTTP request retry", %{
+    Logger.info("HTTP request retry",
       attempt: attempt,
       error: format_error_for_log(error),
       delay_ms: delay_ms,
-      middleware: "Retry"
-    })
+      middleware: "Retry",
+      category: :api
+    )
   end
 
   defp format_error_for_log({:http_error, status_code, _body}) do

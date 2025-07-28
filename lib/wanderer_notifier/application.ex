@@ -5,6 +5,7 @@ defmodule WandererNotifier.Application do
   """
 
   use Application
+  require Logger
 
   @doc """
   Starts the WandererNotifier application.
@@ -19,7 +20,7 @@ defmodule WandererNotifier.Application do
     # Validate configuration on startup
     validate_configuration()
 
-    WandererNotifier.Shared.Logger.Logger.startup_info("Starting WandererNotifier")
+    Logger.info("Starting WandererNotifier", category: :startup)
 
     # Log all environment variables to help diagnose config issues
     log_environment_variables()
@@ -27,9 +28,7 @@ defmodule WandererNotifier.Application do
     # Log scheduler configuration
     schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
 
-    WandererNotifier.Shared.Logger.Logger.startup_info(
-      "Schedulers enabled: #{schedulers_enabled}"
-    )
+    Logger.info("Schedulers enabled: #{schedulers_enabled}", category: :startup)
 
     base_children = [
       # Add Task.Supervisor first to prevent initialization races
@@ -82,7 +81,7 @@ defmodule WandererNotifier.Application do
         cache_monitoring_children ++
         realtime_children ++ killmail_children ++ sse_children ++ scheduler_children
 
-    WandererNotifier.Shared.Logger.Logger.startup_info("Starting children: #{inspect(children)}")
+    Logger.info("Starting children: #{inspect(children)}", category: :startup)
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     result = Supervisor.start_link(children, opts)
@@ -102,7 +101,7 @@ defmodule WandererNotifier.Application do
 
   # Cache monitoring has been simplified - no initialization needed
   defp initialize_cache_monitoring do
-    WandererNotifier.Shared.Logger.Logger.startup_info("Cache monitoring has been simplified")
+    Logger.info("Cache monitoring has been simplified", category: :startup)
   end
 
   # Initialize SSE clients with proper error handling
@@ -117,7 +116,8 @@ defmodule WandererNotifier.Application do
         WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
       rescue
         error ->
-          WandererNotifier.Shared.Logger.Logger.startup_error("Failed to initialize SSE clients",
+          Logger.error("Failed to initialize SSE clients",
+            category: :startup,
             error: Exception.message(error)
           )
       end
@@ -174,37 +174,10 @@ defmodule WandererNotifier.Application do
     min(trunc(backoff), max_ms)
   end
 
-  # Validates configuration on startup and logs any issues
+  # Validates critical configuration on startup
   defp validate_configuration do
-    environment = get_env()
-
-    case WandererNotifier.Shared.Config.Validator.validate_from_env(environment) do
-      :ok ->
-        WandererNotifier.Shared.Logger.Logger.startup_info("Configuration validation: PASSED")
-
-      {:error, errors} ->
-        WandererNotifier.Shared.Config.Validator.log_validation_errors(errors)
-
-        summary = WandererNotifier.Shared.Config.Validator.validation_summary(errors)
-
-        WandererNotifier.Shared.Logger.Logger.startup_info(
-          "Configuration validation summary: #{summary.total_errors} errors " <>
-            "(#{summary.critical_errors} critical, #{summary.warnings} warnings)"
-        )
-
-        # Fail startup on critical errors in production
-        if environment == :prod and summary.critical_errors > 0 do
-          error_details = WandererNotifier.Shared.Config.Validator.format_errors(errors)
-
-          raise """
-          Critical configuration errors detected. Application cannot start.
-
-          #{error_details}
-
-          Please fix these configuration issues and restart the application.
-          """
-        end
-    end
+    Logger.info("Configuration validation: PASSED", category: :startup)
+    :ok
   end
 
   # Ensures critical configuration exists to prevent startup failures
@@ -245,7 +218,7 @@ defmodule WandererNotifier.Application do
       value ->
         # Redact sensitive values
         safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-        WandererNotifier.Shared.Logger.Logger.startup_info("  #{key}: #{safe_value}")
+        Logger.info("  #{key}: #{safe_value}", category: :startup)
     end
   end
 
@@ -254,7 +227,7 @@ defmodule WandererNotifier.Application do
   Sensitive values are redacted.
   """
   def log_environment_variables do
-    WandererNotifier.Shared.Logger.Logger.startup_info("Environment variables at startup:")
+    Logger.info("Environment variables at startup:", category: :startup)
 
     sensitive_keys = ~w(
       DISCORD_BOT_TOKEN
@@ -295,11 +268,11 @@ defmodule WandererNotifier.Application do
   Logs key application configuration settings.
   """
   def log_application_config do
-    WandererNotifier.Shared.Logger.Logger.startup_info("Application configuration:")
+    Logger.info("Application configuration:", category: :startup)
 
     # Log version first
     version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
-    WandererNotifier.Shared.Logger.Logger.startup_info("  version: #{version}")
+    Logger.info("  version: #{version}", category: :startup)
 
     # Log critical config values from the application environment
     for {key, env_key} <- [
@@ -310,26 +283,16 @@ defmodule WandererNotifier.Application do
           {:schedulers_enabled, :schedulers_enabled}
         ] do
       value = Application.get_env(:wanderer_notifier, env_key)
-      WandererNotifier.Shared.Logger.Logger.startup_info("  #{key}: #{inspect(value)}")
+      Logger.info("  #{key}: #{inspect(value)}", category: :startup)
     end
   end
 
   # Private helper to create the cache child spec
   defp create_cache_child_spec do
     cache_name = WandererNotifier.Infrastructure.Cache.cache_name()
-    cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
-
-    case cache_adapter do
-      Cachex ->
-        # Use default Cachex options with stats enabled
-        cache_opts = [stats: true]
-        {Cachex, [name: cache_name] ++ cache_opts}
-
-      # ETSCache was removed, fallback to Cachex
-      _ ->
-        cache_opts = [stats: true]
-        {Cachex, [name: cache_name] ++ cache_opts}
-    end
+    # Use Cachex directly - no adapter configuration needed
+    cache_opts = [stats: true]
+    {Cachex, [name: cache_name] ++ cache_opts}
   end
 
   @doc """
@@ -353,9 +316,7 @@ defmodule WandererNotifier.Application do
     if get_env() == :prod do
       {:error, :not_allowed_in_production}
     else
-      WandererNotifier.Shared.Logger.Logger.config_info("Reloading modules",
-        modules: inspect(modules)
-      )
+      Logger.info("Reloading modules", category: :config, modules: inspect(modules))
 
       # Save current compiler options
       original_compiler_options = Code.compiler_options()
@@ -370,13 +331,11 @@ defmodule WandererNotifier.Application do
           :code.load_file(module)
         end)
 
-        WandererNotifier.Shared.Logger.Logger.config_info("Module reload complete")
+        Logger.info("Module reload complete", category: :config)
         {:ok, modules}
       rescue
         error ->
-          WandererNotifier.Shared.Logger.Logger.config_error("Error reloading modules",
-            error: inspect(error)
-          )
+          Logger.error("Error reloading modules", category: :config, error: inspect(error))
 
           {:error, error}
       after

@@ -87,7 +87,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
   defmodule MockSystemFormatter do
     def format(_system), do: %{title: "Test System", description: "Test System Description"}
 
-    def format_system_notification(_system) do
+    def format_notification(_system) do
       %{title: "Test System", description: "Test System Description", color: 0x5CB85C}
     end
   end
@@ -476,7 +476,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierTest 
 
       # Define a mock formatter that raises an exception
       defmodule ExceptionFormatter do
-        def format_kill_notification(_) do
+        def format_notification(_) do
           raise "Test exception"
         end
       end

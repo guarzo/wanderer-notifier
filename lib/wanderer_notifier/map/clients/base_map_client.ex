@@ -5,7 +5,6 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   """
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Infrastructure.Cache
   require Logger
   alias MapSet
@@ -32,7 +31,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp log_request_start(url, headers) do
-    AppLogger.api_info("Making HTTP request",
+    Logger.info("Making HTTP request",
       url: url,
       headers: Enum.map(headers, fn {k, _v} -> {k, "[REDACTED]"} end)
     )
@@ -59,7 +58,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         _ -> "unknown"
       end
 
-    AppLogger.api_info("HTTP request successful",
+    Logger.info("HTTP request successful",
       url: url,
       status: 200,
       body_size: body_size
@@ -69,7 +68,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp handle_error_status(status, body, url) do
-    AppLogger.api_error("HTTP request failed with non-200 status",
+    Logger.info("HTTP request failed with non-200 status",
       url: url,
       status: status,
       body: String.slice(body, 0, 500)
@@ -79,7 +78,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp handle_http_error(reason, url) do
-    AppLogger.api_error("HTTP request failed with error",
+    Logger.info("HTTP request failed with error",
       url: url,
       error: inspect(reason)
     )
@@ -107,7 +106,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         handle_cache_data(data, cache_key)
 
       {:error, :not_found} ->
-        AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
+        Logger.info("Cache miss, fetching from API", key: cache_key)
         {:error, :cache_miss}
     end
   end
@@ -123,19 +122,19 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   end
 
   defp handle_cache_data(_, cache_key) do
-    AppLogger.api_info("Cache miss, fetching from API", key: cache_key)
+    Logger.info("Cache miss, fetching from API", key: cache_key)
     {:error, :cache_miss}
   end
 
   defp log_cache_hit(data, cache_key) do
-    AppLogger.api_debug("Retrieved data from cache",
+    Logger.info("Retrieved data from cache",
       count: length(data),
       key: cache_key
     )
   end
 
   def cache_put(cache_key, data, ttl) do
-    AppLogger.api_debug("Caching fetched data",
+    Logger.info("Caching fetched data",
       count: length(data),
       key: cache_key,
       ttl: ttl
@@ -247,15 +246,15 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           validate_and_process(items, cached, opts, url)
         else
           {:error, :json_decode_error} = error ->
-            AppLogger.api_error("Failed to decode response", url: url)
+            Logger.info("Failed to decode response", url: url)
             error
 
           {:error, :invalid_data} = error ->
-            AppLogger.api_error("Invalid data format", url: url)
+            Logger.info("Invalid data format", url: url)
             error
 
           {:error, reason} = error ->
-            AppLogger.api_error("Request failed", url: url, error: inspect(reason))
+            Logger.info("Request failed", url: url, error: inspect(reason))
             error
         end
       end
@@ -266,7 +265,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
             process_with_notifications(items, cached, opts)
 
           {:error, :invalid_data} ->
-            AppLogger.api_error("Data validation failed",
+            Logger.info("Data validation failed",
               url: url,
               item_count: length(items)
             )
@@ -311,7 +310,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
         end
       rescue
         e ->
-          AppLogger.api_error("Notification failed",
+          Logger.info("Notification failed",
             error: Exception.message(e),
             item: inspect(item)
           )
@@ -325,7 +324,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
             WandererNotifier.Map.Clients.BaseMapClient.cache_put(cache_key(), items, cache_ttl())
 
           error ->
-            AppLogger.api_error("Failed to fetch and cache data",
+            Logger.info("Failed to fetch and cache data",
               error: inspect(error)
             )
 
@@ -343,7 +342,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           {:ok, items}
         else
           {:error, {:api_error, status}} ->
-            AppLogger.error("API request failed", %{
+            Logger.info("API request failed", %{
               status: status,
               url: url
             })
@@ -351,7 +350,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
             {:error, :api_request_failed}
 
           {:error, reason} ->
-            AppLogger.error("API request error", %{
+            Logger.info("API request error", %{
               reason: reason,
               url: url
             })
@@ -373,7 +372,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fallback([_ | _] = cached, reason) do
-        AppLogger.api_info("Using cached data as fallback",
+        Logger.info("Using cached data as fallback",
           count: length(cached),
           reason: inspect(reason)
         )
@@ -382,7 +381,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fallback([], reason) do
-        AppLogger.api_error("Fallback with empty cache",
+        Logger.info("Fallback with empty cache",
           reason: inspect(reason)
         )
 
@@ -390,7 +389,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fallback(nil, reason) when reason != nil do
-        AppLogger.api_error("Fallback with nil cache",
+        Logger.info("Fallback with nil cache",
           reason: inspect(reason)
         )
 
@@ -398,7 +397,7 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fallback(other, reason) do
-        AppLogger.api_error("Fallback with invalid cache type",
+        Logger.info("Fallback with invalid cache type",
           cache_type: inspect(other),
           reason: inspect(reason)
         )

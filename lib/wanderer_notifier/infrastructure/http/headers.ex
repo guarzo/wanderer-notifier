@@ -109,7 +109,7 @@ defmodule WandererNotifier.Infrastructure.Http.Headers do
         {"Accept", "application/json"},
         {"User-Agent", "WandererNotifier/1.0"}
       ]
-      
+
       iex> WandererNotifier.Infrastructure.Http.Headers.external_api_headers(include_content_type: true)
       [
         {"Content-Type", "application/json"},

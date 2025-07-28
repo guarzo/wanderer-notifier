@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Map.SSEConnection do
+  require Logger
+
   @moduledoc """
   Handles SSE connection management and HTTP operations.
 
@@ -7,7 +9,6 @@ defmodule WandererNotifier.Map.SSEConnection do
   """
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @doc """
   Establishes an SSE connection with the given configuration.
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Map.SSEConnection do
     headers = build_headers(api_token)
 
     # Log the URL with intelligent truncation
-    AppLogger.api_info("Connecting to SSE",
+    Logger.info("Connecting to SSE",
       map_slug: map_slug,
       url: truncate_url_intelligently(url, 500),
       full_url_length: String.length(url),
@@ -87,7 +88,7 @@ defmodule WandererNotifier.Map.SSEConnection do
     query_params = []
 
     # Add events filter if available (nil means no filtering)
-    AppLogger.api_info("Building SSE URL with events filter",
+    Logger.info("Building SSE URL with events filter",
       map_slug: map_slug,
       events_filter: inspect(events_filter)
     )
@@ -97,7 +98,7 @@ defmodule WandererNotifier.Map.SSEConnection do
         [_ | _] ->
           events_string = Enum.join(events_filter, ",")
 
-          AppLogger.api_debug("Building events query parameter",
+          Logger.debug("Building events query parameter",
             events_filter: inspect(events_filter),
             events_string: events_string,
             events_string_length: String.length(events_string)
@@ -129,7 +130,7 @@ defmodule WandererNotifier.Map.SSEConnection do
           "#{base_url}/api/maps/#{map_slug}/events/stream?#{query_string}"
       end
 
-    AppLogger.api_info("Final SSE URL",
+    Logger.info("Final SSE URL",
       map_slug: map_slug,
       url: final_url,
       url_length: String.length(final_url),
@@ -160,15 +161,15 @@ defmodule WandererNotifier.Map.SSEConnection do
       follow_redirect: true
     ]
 
-    AppLogger.api_info("Starting SSE connection", url: url)
+    Logger.info("Starting SSE connection", url: url)
 
     case HTTPoison.get(url, headers, options) do
       {:ok, %HTTPoison.AsyncResponse{id: async_id}} ->
-        AppLogger.api_info("SSE connection established", async_id: async_id)
+        Logger.info("SSE connection established", async_id: async_id)
         {:ok, async_id}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
-        AppLogger.api_error("SSE connection failed", reason: reason)
+        Logger.error("SSE connection failed", reason: reason)
         {:error, {:connection_failed, reason}}
     end
   end

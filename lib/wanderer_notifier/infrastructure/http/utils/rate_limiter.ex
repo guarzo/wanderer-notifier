@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
+  require Logger
+
   @moduledoc """
   Unified rate limiting utility for WandererNotifier.
 
@@ -11,8 +13,6 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
   """
 
   alias WandererNotifier.Shared.Types.Constants
-  alias WandererNotifier.Shared.Logger.ErrorLogger
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Config.Utils, as: ConfigUtils
 
   @type rate_limit_opts :: [
@@ -85,7 +85,8 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
     retry_after = get_retry_after(headers)
     context = Keyword.get(opts, :context, "HTTP request")
 
-    ErrorLogger.log_api_error("Rate limit hit",
+    Logger.error("Rate limit hit",
+      category: :api,
       context: context,
       retry_after: retry_after
     )
@@ -116,7 +117,11 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
       {:ok, result}
     rescue
       e ->
-        ErrorLogger.log_exception("Fixed interval operation failed", e, context: context)
+        Logger.error("Fixed interval operation failed: #{Exception.message(e)}",
+          category: :api,
+          context: context
+        )
+
         {:error, e}
     end
   end
@@ -146,7 +151,11 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
       {:ok, result}
     rescue
       e ->
-        ErrorLogger.log_exception("Burst operation failed", e, context: context)
+        Logger.error("Burst operation failed: #{Exception.message(e)}",
+          category: :api,
+          context: context
+        )
+
         {:error, e}
     end
   end
@@ -251,7 +260,8 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.RateLimiter do
   end
 
   defp default_retry_callback(attempt, error, delay) do
-    AppLogger.api_info("Rate limit retry",
+    Logger.info("Rate limit retry",
+      category: :api,
       attempt: attempt,
       error: inspect(error),
       delay_ms: delay

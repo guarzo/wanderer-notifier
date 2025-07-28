@@ -41,14 +41,14 @@ defmodule WandererNotifier.Infrastructure.Http.ResponseHandler do
 
       # Basic usage
       handle_response({:ok, %{status_code: 200, body: data}})
-      
+
       # With custom 404 handling
-      handle_response({:ok, %{status_code: 404, body: ""}}, 
+      handle_response({:ok, %{status_code: 404, body: ""}},
         custom_handlers: [{404, fn _, _ -> {:error, :not_found} end}]
       )
-      
+
       # With success range
-      handle_response({:ok, %{status_code: 201, body: data}}, 
+      handle_response({:ok, %{status_code: 201, body: data}},
         success_codes: 200..299
       )
   """

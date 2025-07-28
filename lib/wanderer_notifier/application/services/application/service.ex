@@ -9,7 +9,7 @@ defmodule WandererNotifier.Application.Services.Application.Service do
 
   use GenServer
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   # --- GenServer Callbacks ---
 
@@ -19,7 +19,7 @@ defmodule WandererNotifier.Application.Services.Application.Service do
 
   @impl true
   def init(_opts) do
-    AppLogger.processor_info("Starting application service")
+    Logger.info("Starting application service")
 
     # Stats is already supervised by the main application supervisor
     # No need to start it here
@@ -37,13 +37,13 @@ defmodule WandererNotifier.Application.Services.Application.Service do
   def handle_info({:zkill_message, _message}, state) do
     # This GenServer should not be receiving zkill messages
     # Log and ignore them
-    AppLogger.processor_warn("Application.Service received unexpected zkill message - ignoring")
+    Logger.info("Application.Service received unexpected zkill message - ignoring")
     {:noreply, state}
   end
 
   @impl true
   def handle_info(msg, state) do
-    AppLogger.processor_warn("Application.Service received unexpected message",
+    Logger.info("Application.Service received unexpected message",
       message: inspect(msg)
     )
 

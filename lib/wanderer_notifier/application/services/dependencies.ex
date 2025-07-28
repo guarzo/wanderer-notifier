@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Application.Services.Dependencies do
+  require Logger
+
   @moduledoc """
   Centralized dependency injection for WandererNotifier.
 
@@ -13,7 +15,7 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
       # Instead of:
       Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.Infrastructure.Adapters.ESI.Service)
-      
+
       # Use:
       Dependencies.esi_service()
 

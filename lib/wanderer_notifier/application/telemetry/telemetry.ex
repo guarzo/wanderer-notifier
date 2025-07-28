@@ -5,7 +5,7 @@ defmodule WandererNotifier.Application.Telemetry do
   """
 
   alias WandererNotifier.Application.Services.Stats
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Shared.Config
 
   @doc """
@@ -134,7 +134,7 @@ defmodule WandererNotifier.Application.Telemetry do
 
     # Log for debugging if enabled
     if Config.telemetry_logging_enabled?() do
-      AppLogger.processor_debug("Telemetry event",
+      Logger.debug("Telemetry event",
         event: event,
         measurements: measurements,
         metadata: metadata
@@ -143,6 +143,6 @@ defmodule WandererNotifier.Application.Telemetry do
   rescue
     error ->
       # Don't let telemetry errors crash the application
-      AppLogger.processor_debug("Telemetry error: #{inspect(error)}")
+      Logger.debug("Telemetry error: #{inspect(error)}")
   end
 end

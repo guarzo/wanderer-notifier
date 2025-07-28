@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
+  require Logger
+
   @moduledoc """
   Manages voice participant queries and mentions for Discord notifications.
 
@@ -7,8 +9,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   - Filter out AFK channel participants
   - Generate individual user mentions for notifications
   """
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   alias Nostrum.Cache.GuildCache
   alias WandererNotifier.Shared.Config
@@ -33,9 +33,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   def get_active_voice_mentions do
     case Config.discord_guild_id() do
       nil ->
-        AppLogger.discord_warn(
-          "Discord guild ID not configured for voice participant notifications"
-        )
+        Logger.info("Discord guild ID not configured for voice participant notifications")
 
         []
 
@@ -45,7 +43,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
             get_active_voice_mentions(parsed_id)
 
           _ ->
-            AppLogger.discord_warn("Invalid Discord guild ID format", guild_id: guild_id)
+            Logger.info("Invalid Discord guild ID format", guild_id: guild_id)
             []
         end
 
@@ -53,7 +51,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
         get_active_voice_mentions(guild_id)
 
       _ ->
-        AppLogger.discord_warn("Invalid Discord guild ID type",
+        Logger.info("Invalid Discord guild ID type",
           guild_id: inspect(Config.discord_guild_id())
         )
 
@@ -78,7 +76,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
       |> extract_voice_participants()
     rescue
       error ->
-        AppLogger.discord_error("Failed to get voice participants for guild",
+        Logger.info("Failed to get voice participants for guild",
           guild_id: guild_id,
           error: inspect(error)
         )
@@ -89,13 +87,13 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
 
   # Handle zero or negative integers
   def get_active_voice_mentions(guild_id) when is_integer(guild_id) and guild_id <= 0 do
-    AppLogger.discord_warn("Invalid guild ID (must be positive)", guild_id: guild_id)
+    Logger.info("Invalid guild ID (must be positive)", guild_id: guild_id)
     []
   end
 
   # Handle non-integer guild_id inputs
   def get_active_voice_mentions(invalid_guild_id) do
-    AppLogger.discord_warn(
+    Logger.info(
       "Invalid guild ID type provided to get_active_voice_mentions. Expected positive integer",
       guild_id: inspect(invalid_guild_id)
     )
@@ -114,7 +112,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   defp extract_voice_participants(guild) do
     case guild.voice_states do
       nil ->
-        AppLogger.discord_debug("No voice states available for guild", guild_id: guild.id)
+        Logger.info("No voice states available for guild", guild_id: guild.id)
         []
 
       voice_states when is_list(voice_states) ->

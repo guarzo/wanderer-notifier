@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http.Utils.Retry do
+  require Logger
+
   @moduledoc """
   Unified retry utility for WandererNotifier.
 
@@ -7,7 +9,6 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.Retry do
   """
 
   alias WandererNotifier.Shared.Types.Constants
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type retry_options :: [
           max_attempts: pos_integer(),
@@ -192,7 +193,7 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.Retry do
   end
 
   defp default_retry_callback(attempt, error, delay) do
-    AppLogger.api_info("Retrying operation",
+    Logger.info("Retrying operation",
       attempt: attempt,
       error: inspect(error),
       delay_ms: delay

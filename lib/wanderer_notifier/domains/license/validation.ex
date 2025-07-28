@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.License.Validation do
 
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Config.Utils
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
 
   @doc """
@@ -155,16 +155,18 @@ defmodule WandererNotifier.Domains.License.Validation do
   # Private functions
 
   defp log_validation_result(%{valid: true} = result) do
-    AppLogger.config_info("License validation successful",
+    Logger.info("License validation successful",
       bot_assigned: result.bot_assigned,
-      message: result.message
+      message: result.message,
+      category: :config
     )
   end
 
   defp log_validation_result(%{valid: false} = result) do
-    AppLogger.config_warn("License validation failed",
+    Logger.warning("License validation failed",
       bot_assigned: result.bot_assigned,
-      message: result.message || "No message provided"
+      message: result.message || "No message provided",
+      category: :config
     )
   end
 end

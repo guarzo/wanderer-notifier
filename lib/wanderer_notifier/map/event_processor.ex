@@ -21,7 +21,6 @@ defmodule WandererNotifier.Map.EventProcessor do
   """
 
   require Logger
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @doc """
   Processes a single event from the SSE stream.
@@ -38,7 +37,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
 
-    AppLogger.api_info("Processing SSE event",
+    Logger.info("Processing SSE event",
       map_slug: map_slug,
       event_type: event_type,
       event_id: Map.get(event, "id")
@@ -46,7 +45,7 @@ defmodule WandererNotifier.Map.EventProcessor do
 
     case route_event(event_type, event, map_slug) do
       :ok ->
-        AppLogger.api_info("Event processed successfully",
+        Logger.info("Event processed successfully",
           map_slug: map_slug,
           event_type: event_type
         )
@@ -54,7 +53,7 @@ defmodule WandererNotifier.Map.EventProcessor do
         :ok
 
       {:error, reason} = error ->
-        AppLogger.api_error("Event processing failed",
+        Logger.error("Event processing failed",
           map_slug: map_slug,
           event_type: event_type,
           error: inspect(reason)
@@ -63,7 +62,7 @@ defmodule WandererNotifier.Map.EventProcessor do
         error
 
       :ignored ->
-        AppLogger.api_info("Event ignored",
+        Logger.info("Event ignored",
           map_slug: map_slug,
           event_type: event_type
         )
@@ -73,7 +72,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   def process_event(event, map_slug) do
-    AppLogger.api_error("Invalid event format",
+    Logger.error("Invalid event format",
       map_slug: map_slug,
       event: inspect(event)
     )
@@ -184,7 +183,7 @@ defmodule WandererNotifier.Map.EventProcessor do
     payload = Map.get(event, "payload", %{})
 
     if map_size(payload) == 0 do
-      AppLogger.api_warn("Character updated event has empty payload",
+      Logger.warning("Character updated event has empty payload",
         map_slug: map_slug,
         event_id: Map.get(event, "id"),
         event_keys: Map.keys(event)
@@ -207,7 +206,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   # Special event handlers
   @spec handle_special_event(String.t(), map(), String.t()) :: :ok | :ignored
   defp handle_special_event("connected", event, map_slug) do
-    AppLogger.api_info("SSE connection established",
+    Logger.info("SSE connection established",
       map_slug: map_slug,
       event_id: Map.get(event, "id"),
       server_time: Map.get(event, "server_time")
@@ -224,7 +223,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   # Unknown event handler
   @spec handle_unknown_event(String.t(), map(), String.t()) :: :ignored
   defp handle_unknown_event(unknown_type, _event, map_slug) do
-    AppLogger.api_warn("Unknown event type received",
+    Logger.warning("Unknown event type received",
       map_slug: map_slug,
       event_type: unknown_type
     )

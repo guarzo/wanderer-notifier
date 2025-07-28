@@ -5,20 +5,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
   """
 
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
-  alias WandererNotifier.Domains.Tracking.Entities.System
 
   @doc """
-  Format a character notification using the unified formatter.
+  Format any notification using the unified formatter.
+  Handles both character and system notifications.
   """
-  def format_character_notification(character) do
-    NotificationFormatter.format_notification(character)
-  end
-
-  @doc """
-  Format a system notification using the unified formatter.
-  """
-  def format_system_notification(%System{} = system) do
-    NotificationFormatter.format_notification(system)
+  def format_notification(notification) do
+    NotificationFormatter.format_notification(notification)
   end
 
   @doc """
@@ -80,6 +73,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
   end
 
   defdelegate convert_color(color),
-    to: WandererNotifier.Domains.Notifications.Formatters.Utilities,
+    to: WandererNotifier.Domains.Notifications.Formatters.NotificationUtils,
     as: :get_color
 end

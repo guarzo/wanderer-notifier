@@ -20,14 +20,13 @@ defmodule WandererNotifier.Contexts.Killmail do
 
       iex> Killmail.process_killmail(%{"killmail_id" => 123})
       {:ok, %{processed: true}}
-      
+
       iex> Killmail.process_killmail(%{})
       {:error, :invalid_killmail}
   """
   @spec process_killmail(map()) :: {:ok, String.t() | :skipped} | {:error, term()}
   def process_killmail(killmail) do
-    context = WandererNotifier.Domains.Killmail.Processor.Context.new()
-    Pipeline.process_killmail(killmail, context)
+    Pipeline.process_killmail(killmail)
   end
 
   @doc """

@@ -3,7 +3,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   Client for interacting with the EVE Online ESI API.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Infrastructure.Http.Headers
   alias WandererNotifier.Infrastructure.Http, as: HTTP
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   defp service_opts(additional_opts \\ []) do
     # Use the :esi service configuration which provides:
     # - timeout: 30_000
-    # - retry_count: 3  
+    # - retry_count: 3
     # - rate_limit: [requests_per_second: 20, burst_capacity: 40]
     # - middlewares: [Retry, RateLimiter]
     # - decode_json: true
@@ -90,11 +90,12 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
     url = "#{@base_url}/search/?#{URI.encode_query(query_params)}"
     headers = default_headers()
 
-    AppLogger.api_info("ESI searching inventory type", %{
+    Logger.info("ESI searching inventory type",
       query: query,
       strict: strict,
-      method: "search_inventory_type"
-    })
+      method: "search_inventory_type",
+      category: :api
+    )
 
     HTTP.request(:get, url, nil, headers, service_opts())
     |> handle_response("search", %{query: query})
@@ -117,19 +118,21 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
         {:error, {:system_not_found, system_id}}
 
       {:ok, %{status_code: status, body: body}} ->
-        AppLogger.api_error("ESI solar system error response", %{
+        Logger.error("ESI solar system error response",
           system_id: system_id,
           status: status,
-          body: inspect(body)
-        })
+          body: inspect(body),
+          category: :api
+        )
 
         {:error, {:http_error, status}}
 
       {:error, reason} ->
-        AppLogger.api_error("ESI solar system failed", %{
+        Logger.error("ESI solar system failed",
           system_id: system_id,
-          error: inspect(reason)
-        })
+          error: inspect(reason),
+          category: :api
+        )
 
         {:error, reason}
     end
@@ -166,7 +169,11 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
       custom_handlers: [
         {404,
          fn _status, _body ->
-           AppLogger.api_info("ESI #{resource_type} not found", context)
+           Logger.info(
+             "ESI #{resource_type} not found",
+             Map.to_list(Map.put(context, :category, :api))
+           )
+
            {:error, :not_found}
          end}
       ],

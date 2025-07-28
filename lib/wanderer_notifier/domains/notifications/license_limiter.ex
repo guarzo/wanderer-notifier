@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
   Tracks counts for each notification type using the License.Service GenServer.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   @max_rich 5
 
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
 
       # Default to allowing rich notifications if license service is unavailable
       {:error, reason} ->
-        AppLogger.warn("License service unavailable, allowing rich notification",
+        Logger.warning("License service unavailable, allowing rich notification",
           type: type,
           reason: inspect(reason)
         )
@@ -40,9 +40,10 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
 
       # Log error but don't block notification flow
       {:error, reason} ->
-        AppLogger.error("Failed to increment notification count",
+        Logger.error("Failed to increment notification count",
           type: type,
-          reason: inspect(reason)
+          reason: inspect(reason),
+          category: :cache
         )
 
         :ok
@@ -65,9 +66,10 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
 
       # Default to allowing rich notifications on error
       {:error, reason} ->
-        AppLogger.error("Failed to get notification count",
+        Logger.error("Failed to get notification count",
           type: type,
-          reason: inspect(reason)
+          reason: inspect(reason),
+          category: :cache
         )
 
         true
@@ -87,7 +89,7 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
         license_service().increment_notification_count(type)
       rescue
         error ->
-          AppLogger.error("Failed to increment notification count in background task",
+          Logger.error("Failed to increment notification count in background task",
             type: type,
             error: Exception.message(error),
             stacktrace: __STACKTRACE__

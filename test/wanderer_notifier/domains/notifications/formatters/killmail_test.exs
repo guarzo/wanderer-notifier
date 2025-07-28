@@ -1,8 +1,8 @@
-defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
+defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatterTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Domains.Notifications.Formatters.Killmail, as: KillmailFormatter
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Killmail.Killmail
 
   setup :verify_on_exit!
@@ -18,7 +18,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
     :ok
   end
 
-  describe "format_kill_notification/1" do
+  describe "format_notification/1" do
     test "formats basic killmail notification" do
       # Mock system cache dependencies
       Application.put_env(:wanderer_notifier, :killmail_cache_module, WandererNotifier.TestMocks)
@@ -49,7 +49,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
         }
       }
 
-      result = KillmailFormatter.format_kill_notification(killmail)
+      result = NotificationFormatter.format_notification(killmail)
 
       assert is_map(result)
       assert result[:type] == :kill_notification
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
         }
       }
 
-      result = KillmailFormatter.format_kill_notification(killmail)
+      result = NotificationFormatter.format_notification(killmail)
 
       assert is_map(result)
       assert result[:type] == :kill_notification
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
         esi_data: nil
       }
 
-      result = KillmailFormatter.format_kill_notification(killmail)
+      result = NotificationFormatter.format_notification(killmail)
 
       assert is_map(result)
       assert result[:type] == :kill_notification
@@ -121,7 +121,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
         }
       }
 
-      result = KillmailFormatter.format(killmail)
+      result = NotificationFormatter.format_notification(killmail)
 
       assert is_map(result)
       assert result[:title] == "Test Pilot's Rifter destroyed"

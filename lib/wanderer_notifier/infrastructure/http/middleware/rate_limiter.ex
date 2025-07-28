@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
+  require Logger
+
   @moduledoc """
   HTTP middleware that implements rate limiting using the Hammer library.
 
@@ -32,7 +34,6 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   alias WandererNotifier.Infrastructure.Http.Utils.RateLimiter, as: RateLimiterUtils
   alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type rate_limit_options :: [
           requests_per_second: pos_integer(),
@@ -131,11 +132,12 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
       {:deny, _limit} ->
         # Rate limit exceeded
-        AppLogger.api_error("Rate limit denied", %{
+        Logger.error("Rate limit denied",
           host: host,
           bucket_id: bucket_id,
-          limit: limit
-        })
+          limit: limit,
+          category: :api
+        )
 
         log_rate_limit_hit(host, bucket_id)
         {:error, :rate_limited}
@@ -184,19 +186,21 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   end
 
   defp log_rate_limit_hit(host, bucket_id) do
-    AppLogger.api_warn("Rate limit exceeded", %{
+    Logger.warning("Rate limit exceeded",
       host: host,
       bucket_key: bucket_id,
-      middleware: "RateLimiter"
-    })
+      middleware: "RateLimiter",
+      category: :api
+    )
   end
 
   defp log_server_rate_limit(host, retry_after) do
-    AppLogger.api_warn("Server rate limit hit", %{
+    Logger.warning("Server rate limit hit",
       host: host,
       retry_after_ms: retry_after,
-      middleware: "RateLimiter"
-    })
+      middleware: "RateLimiter",
+      category: :api
+    )
   end
 
   defp build_context(host) do

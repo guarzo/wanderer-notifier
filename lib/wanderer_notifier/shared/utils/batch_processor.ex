@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Shared.Utils.BatchProcessor do
+  require Logger
+
   @moduledoc """
   Utility module for processing collections in configurable batches.
 
@@ -13,13 +15,13 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
 
       # Simple synchronous batch processing
       BatchProcessor.process_sync(items, &process_item/1, batch_size: 50)
-      
+
       # With delay between batches for GC
-      BatchProcessor.process_sync(items, &expensive_operation/1, 
-        batch_size: 25, 
+      BatchProcessor.process_sync(items, &expensive_operation/1,
+        batch_size: 25,
         batch_delay: 100
       )
-      
+
       # Parallel processing with Task.async_stream
       BatchProcessor.process_parallel(items, &fetch_data/1,
         batch_size: 10,
@@ -27,8 +29,6 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
         timeout: 30_000
       )
   """
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type process_fun :: (any() -> any())
   @type batch_opts :: [
@@ -67,7 +67,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
 
       # Process with default settings
       BatchProcessor.process_sync(items, &String.upcase/1)
-      
+
       # Process with custom batch size and delay
       BatchProcessor.process_sync(items, &expensive_operation/1,
         batch_size: 25,
@@ -100,7 +100,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
       []
     else
       if log_progress do
-        AppLogger.api_info(
+        Logger.info(
           "Starting batch processing",
           Map.merge(logger_metadata, %{
             batch_size: batch_size,
@@ -142,7 +142,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
 
       # Process with default settings
       BatchProcessor.process_parallel(urls, &fetch_url/1)
-      
+
       # Process with custom settings
       BatchProcessor.process_parallel(items, &api_call/1,
         batch_size: 10,
@@ -188,7 +188,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
   defp log_parallel_start_if_enabled(_items, _batches, %{log_progress: false}), do: :ok
 
   defp log_parallel_start_if_enabled(items, batches, opts) do
-    AppLogger.api_info(
+    Logger.info(
       "Starting parallel batch processing",
       Map.merge(opts.logger_metadata, %{
         total_items: length(items),
@@ -254,7 +254,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
       BatchProcessor.reduce(numbers, 0, fn num, acc -> acc + num end,
         batch_size: 100
       )
-      
+
       # Build a map in batches
       BatchProcessor.reduce(items, %{}, fn item, acc ->
         Map.put(acc, item.id, item)
@@ -294,7 +294,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
          acc
        ) do
     if log do
-      AppLogger.api_debug(
+      Logger.info(
         "Processing batch",
         Map.merge(metadata, %{
           batch_number: batch_number,
@@ -341,7 +341,7 @@ defmodule WandererNotifier.Shared.Utils.BatchProcessor do
   defp log_completion_if_enabled(false, _metadata, _successes, _failures), do: :ok
 
   defp log_completion_if_enabled(true, metadata, successes, failures) do
-    AppLogger.api_info(
+    Logger.info(
       "Parallel batch processing completed",
       Map.merge(metadata, %{
         successful_items: length(successes),

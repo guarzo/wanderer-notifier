@@ -5,7 +5,7 @@ defmodule WandererNotifier.Domains.Killmail.NotificationChecker do
   """
 
   alias WandererNotifier.Domains.Killmail.Killmail
-  alias WandererNotifier.Domains.Notifications.Determiner.Kill
+  alias WandererNotifier.Domains.Notifications.Determiner
 
   @type killmail_data :: Killmail.t() | map()
   @type notification_result ::
@@ -25,10 +25,10 @@ defmodule WandererNotifier.Domains.Killmail.NotificationChecker do
   """
   @spec should_notify?(killmail_data()) :: notification_result()
   def should_notify?(%Killmail{} = killmail) do
-    Kill.should_notify?(killmail)
+    Determiner.should_notify_killmail?(killmail)
   end
 
   def should_notify?(killmail) when is_map(killmail) do
-    Kill.should_notify?(killmail)
+    Determiner.should_notify_killmail?(killmail)
   end
 end

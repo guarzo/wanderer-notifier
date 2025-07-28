@@ -1,5 +1,4 @@
 import Config
-alias WandererNotifier.Shared.Config.EnvConfig
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Environment Variable Loading (.env file support)
@@ -32,25 +31,54 @@ Enum.each(env_vars, fn {k, v} ->
 end)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Centralized Configuration (using EnvConfig)
+# Helper functions for parsing environment variables
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Get all parsed environment configuration
-env_config = EnvConfig.get_all_config()
+defmodule RuntimeConfig do
+  def get_env(key, default \\ nil) do
+    System.get_env(key) || default
+  end
 
-# Validate required environment variables
-case EnvConfig.validate_required() do
-  [] ->
-    :ok
-
-  errors ->
-    missing_vars = Enum.map(errors, fn {:error, _key, env_name} -> env_name end)
-    IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
-
-    # Exit immediately in production, warn in other environments
-    if Mix.env() == :prod do
-      System.halt(1)
+  def get_integer(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "" -> default
+      value -> String.to_integer(value)
     end
+  end
+
+  def get_boolean(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "" -> default
+      "true" -> true
+      "false" -> false
+      _ -> default
+    end
+  end
+
+  def parse_list(value) when is_binary(value) do
+    value
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+  end
+
+  def parse_list(_), do: []
+end
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Validate required environment variables
+# ══════════════════════════════════════════════════════════════════════════════
+
+required_vars = ["DISCORD_BOT_TOKEN", "MAP_URL", "MAP_NAME", "MAP_API_KEY"]
+missing_vars = Enum.filter(required_vars, &is_nil(System.get_env(&1)))
+
+if length(missing_vars) > 0 do
+  IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
+
+  if Mix.env() == :prod do
+    System.halt(1)
+  end
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -58,7 +86,7 @@ end
 # ══════════════════════════════════════════════════════════════════════════════
 
 config :nostrum,
-  token: env_config.discord_bot_token,
+  token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
   gateway_intents: [:guilds, :guild_messages]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -67,47 +95,55 @@ config :nostrum,
 
 config :wanderer_notifier,
   # Discord settings
-  discord_channel_id: env_config.discord_channel_id,
-  discord_application_id: env_config.discord_application_id,
-  discord_bot_token: env_config.discord_bot_token,
-  discord_system_kill_channel_id: env_config.discord_system_kill_channel_id,
-  discord_character_kill_channel_id: env_config.discord_character_kill_channel_id,
-  discord_system_channel_id: env_config.discord_system_channel_id,
-  discord_character_channel_id: env_config.discord_character_channel_id,
+  discord_channel_id: RuntimeConfig.get_env("DISCORD_CHANNEL_ID"),
+  discord_application_id: RuntimeConfig.get_env("DISCORD_APPLICATION_ID"),
+  discord_bot_token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
+  discord_system_kill_channel_id: RuntimeConfig.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
+  discord_character_kill_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
+  discord_system_channel_id: RuntimeConfig.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
+  discord_character_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
 
   # Map settings
-  map_token: env_config.map_api_key,
-  map_url: env_config.map_url,
-  map_name: env_config.map_name,
+  map_token: RuntimeConfig.get_env("MAP_API_KEY"),
+  map_api_key: RuntimeConfig.get_env("MAP_API_KEY"),
+  map_url: RuntimeConfig.get_env("MAP_URL"),
+  map_name: RuntimeConfig.get_env("MAP_NAME"),
 
   # License settings
-  license_key: env_config.license_key,
-  license_manager_api_url: env_config.license_manager_url,
+  license_key: RuntimeConfig.get_env("LICENSE_KEY"),
+  license_manager_api_url:
+    RuntimeConfig.get_env("LICENSE_MANAGER_URL", "https://lm.wanderer.ltd/api"),
+  api_token: RuntimeConfig.get_env("NOTIFIER_API_TOKEN"),
 
   # Server settings
-  port: env_config.port,
-  host: env_config.host,
-  scheme: env_config.scheme,
-  public_url: env_config.public_url,
+  port: RuntimeConfig.get_integer("PORT", 4000),
+  host: RuntimeConfig.get_env("HOST", "localhost"),
+  scheme: RuntimeConfig.get_env("SCHEME", "http"),
+  public_url: RuntimeConfig.get_env("PUBLIC_URL"),
 
   # WebSocket & API settings
-  websocket_url: env_config.websocket_url,
-  wanderer_kills_base_url: env_config.wanderer_kills_url,
+  websocket_url: RuntimeConfig.get_env("WEBSOCKET_URL", "ws://host.docker.internal:4004"),
+  wanderer_kills_base_url:
+    RuntimeConfig.get_env("WANDERER_KILLS_URL", "http://host.docker.internal:4004"),
+  wanderer_kills_url:
+    RuntimeConfig.get_env("WANDERER_KILLS_URL", "http://host.docker.internal:4004"),
 
   # Cache settings
-  cache_dir: env_config.cache_dir,
+  cache_dir: RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache"),
 
   # Feature flags
-  notifications_enabled: env_config.notifications_enabled,
-  kill_notifications_enabled: env_config.kill_notifications_enabled,
-  system_notifications_enabled: env_config.system_notifications_enabled,
-  character_notifications_enabled: env_config.character_notifications_enabled,
-  status_messages_enabled: env_config.status_messages_enabled,
-  priority_systems_only: env_config.priority_systems_only,
+  notifications_enabled: RuntimeConfig.get_boolean("NOTIFICATIONS_ENABLED", true),
+  kill_notifications_enabled: RuntimeConfig.get_boolean("KILL_NOTIFICATIONS_ENABLED", true),
+  system_notifications_enabled: RuntimeConfig.get_boolean("SYSTEM_NOTIFICATIONS_ENABLED", true),
+  character_notifications_enabled:
+    RuntimeConfig.get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true),
+  status_messages_enabled: RuntimeConfig.get_boolean("STATUS_MESSAGES_ENABLED", false),
+  priority_systems_only: RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY", false),
 
   # Lists
-  character_exclude_list: env_config.character_exclude_list,
-  system_exclude_list: env_config.system_exclude_list,
+  character_exclude_list:
+    RuntimeConfig.parse_list(RuntimeConfig.get_env("CHARACTER_EXCLUDE_LIST", "")),
+  system_exclude_list: RuntimeConfig.parse_list(RuntimeConfig.get_env("SYSTEM_EXCLUDE_LIST", "")),
 
   # Scheduler intervals (from constants)
   system_update_scheduler_interval:
@@ -122,20 +158,30 @@ config :wanderer_notifier,
 # Phoenix Endpoint Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Generate secret key base if not provided
+secret_key_base =
+  RuntimeConfig.get_env("SECRET_KEY_BASE") ||
+    :crypto.strong_rand_bytes(64) |> Base.encode64() |> binary_part(0, 64)
+
+# Generate signing salt if not provided  
+live_view_signing_salt =
+  RuntimeConfig.get_env("LIVE_VIEW_SIGNING_SALT") ||
+    :crypto.strong_rand_bytes(32) |> Base.encode64() |> binary_part(0, 32)
+
 config :wanderer_notifier, WandererNotifierWeb.Endpoint,
   url: [
-    host: env_config.host,
-    port: env_config.port,
-    scheme: env_config.scheme
+    host: RuntimeConfig.get_env("HOST", "localhost"),
+    port: RuntimeConfig.get_integer("PORT", 4000),
+    scheme: RuntimeConfig.get_env("SCHEME", "http")
   ],
   http: [
-    port: env_config.port,
+    port: RuntimeConfig.get_integer("PORT", 4000),
     transport_options: [socket_opts: [:inet6]]
   ],
   server: true,
-  secret_key_base: env_config.secret_key_base,
+  secret_key_base: secret_key_base,
   live_view: [
-    signing_salt: env_config.live_view_signing_salt
+    signing_salt: live_view_signing_salt
   ]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,8 +198,10 @@ if Code.ensure_loaded?(LoggerFileBackend) do
   config :logger,
     backends: [:console, {LoggerFileBackend, :file_log}]
 
+  cache_dir = RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache")
+
   config :logger, :file_log,
-    path: Path.join([env_config.cache_dir, "logs", "wanderer_notifier.log"]),
+    path: Path.join([cache_dir, "logs", "wanderer_notifier.log"]),
     level: :info,
     format: "$time $metadata[$level] $message\n",
     metadata: [:request_id, :category]

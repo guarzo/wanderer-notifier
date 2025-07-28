@@ -8,8 +8,7 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   """
 
   use Supervisor
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   def start_link(init_arg \\ []) do
     opts = [name: __MODULE__]
@@ -18,7 +17,7 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   @impl true
   def init(_init_arg) do
-    AppLogger.processor_info("Starting Killmail Supervisor")
+    Logger.info("Starting Killmail Supervisor", category: :processor)
 
     children = [
       # Start the pipeline worker that will process messages

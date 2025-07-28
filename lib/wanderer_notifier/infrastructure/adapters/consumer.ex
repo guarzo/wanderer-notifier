@@ -16,26 +16,25 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
   alias Nostrum.Api
   alias WandererNotifier.CommandLog
   alias WandererNotifier.Infrastructure.Adapters.Discord.CommandRegistrar
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.PersistentValues
   alias WandererNotifier.Shared.Config
 
   @impl true
   def handle_event({:READY, _data, _ws_state}) do
-    AppLogger.startup_info("Discord consumer ready, registering slash commands")
+    Logger.info("Discord consumer ready, registering slash commands")
 
     case CommandRegistrar.register() do
       :ok ->
-        AppLogger.startup_info("Slash commands registered successfully")
+        Logger.info("Slash commands registered successfully")
 
       {:error, :missing_application_id} ->
-        AppLogger.startup_info(
+        Logger.info(
           "Discord slash commands not registered: DISCORD_APPLICATION_ID not configured. " <>
             "Bot will work for notifications but slash commands won't be available."
         )
 
       {:error, reason} ->
-        AppLogger.startup_error("Failed to register slash commands", error: inspect(reason))
+        Logger.error("Failed to register slash commands", error: inspect(reason))
     end
 
     :noop
@@ -48,7 +47,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
         handle_notifier_command(command, interaction)
 
       {:error, :invalid_interaction} ->
-        AppLogger.processor_warn("Received invalid interaction",
+        Logger.warning("Received invalid interaction",
           interaction_id: interaction.id,
           data: inspect(interaction.data)
         )
@@ -59,7 +58,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
 
   @impl true
   def handle_event({:GUILD_CREATE, guild, _ws_state}) do
-    AppLogger.config_info("Bot added to guild: #{guild.name} (#{guild.id})")
+    Logger.info("Bot added to guild: #{guild.name} (#{guild.id})")
     :noop
   end
 
@@ -84,7 +83,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
         handle_status_command(command, interaction)
 
       unknown ->
-        AppLogger.processor_warn("Unknown notifier subcommand",
+        Logger.warning("Unknown notifier subcommand",
           type: unknown,
           user_id: command.user_id
         )
@@ -205,7 +204,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
 
     CommandLog.log(entry)
 
-    AppLogger.processor_info("Discord command executed",
+    Logger.info("Discord command executed",
       type: command.type,
       param: entry.param,
       user: command.username || command.user_id
@@ -235,13 +234,13 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
 
     case Api.create_interaction_response(interaction, response) do
       {:ok} ->
-        AppLogger.processor_info("Sent interaction response",
+        Logger.info("Sent interaction response",
           interaction_id: interaction.id,
           content_length: String.length(content)
         )
 
       {:error, reason} ->
-        AppLogger.processor_error("Failed to send interaction response",
+        Logger.error("Failed to send interaction response",
           interaction_id: interaction.id,
           error: inspect(reason)
         )

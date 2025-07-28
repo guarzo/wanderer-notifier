@@ -6,8 +6,8 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   including bulk loading capabilities and advanced killmail operations.
   """
 
+  require Logger
   alias WandererNotifier.Infrastructure.Http
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Config
 
   @base_url_key :wanderer_kills_url
@@ -27,10 +27,11 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     query_string = URI.encode_query(params)
     full_url = "#{url}?#{query_string}"
 
-    AppLogger.api_info("Fetching system killmails",
+    Logger.info("Fetching system killmails",
       system_id: system_id,
       hours: hours,
-      limit: limit
+      limit: limit,
+      category: :api
     )
 
     full_url
@@ -48,10 +49,11 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       "limit_per_system" => limit_per_system
     }
 
-    AppLogger.api_info("Fetching bulk system killmails",
+    Logger.info("Fetching bulk system killmails",
       system_count: length(system_ids),
       hours: hours,
-      limit_per_system: limit_per_system
+      limit_per_system: limit_per_system,
+      category: :api
     )
 
     case Http.request(:post, url, Jason.encode!(body), default_headers(),
@@ -69,22 +71,44 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   end
 
   def get_killmail(killmail_id) do
-    url = "#{base_url()}/api/v1/killmails/#{killmail_id}"
+    url = "#{base_url()}/api/v1/killmail/#{killmail_id}"
 
-    AppLogger.api_debug("Fetching killmail", killmail_id: killmail_id)
+    Logger.info("Fetching killmail from URL: #{url}", killmail_id: killmail_id, category: :api)
 
-    case Http.request(:get, url, nil, default_headers(), service: :wanderer_kills) do
-      {:ok, %{status_code: 200, body: killmail}} when is_map(killmail) ->
-        transformed = transform_kill(killmail)
+    result = Http.request(:get, url, nil, default_headers(), service: :wanderer_kills)
+    Logger.info("HTTP request result: #{inspect(result)}", category: :api)
+
+    case result do
+      {:ok, %{status_code: 200, body: response_body}} when is_map(response_body) ->
+        Logger.info("Got 200 response with body keys: #{inspect(Map.keys(response_body))}",
+          category: :api
+        )
+
+        # Check if data is wrapped in a "data" field
+        killmail_data =
+          case response_body do
+            %{"data" => data} when is_map(data) ->
+              Logger.info("Found data wrapped in 'data' field", category: :api)
+              data
+
+            data when is_map(data) ->
+              Logger.info("Using response body directly", category: :api)
+              data
+          end
+
+        transformed = transform_kill(killmail_data)
         {:ok, Map.put(transformed, "enriched", true)}
 
-      {:ok, %{status_code: 404}} ->
+      {:ok, %{status_code: 404} = response} ->
+        Logger.info("Got 404 response: #{inspect(response)}", category: :api)
         {:error, %{type: :not_found, message: "Killmail #{killmail_id} not found"}}
 
-      {:ok, %{status_code: status, body: body}} ->
+      {:ok, %{status_code: status, body: body} = response} ->
+        Logger.info("Got #{status} response: #{inspect(response)}", category: :api)
         {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
 
       {:error, reason} ->
+        Logger.error("HTTP request error: #{inspect(reason)}", category: :api)
         {:error, %{type: :network_error, message: inspect(reason)}}
     end
   end
@@ -98,9 +122,10 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       "callback_url" => callback_url
     }
 
-    AppLogger.api_info("Creating killmail subscription",
+    Logger.info("Creating killmail subscription",
       subscriber_id: subscriber_id,
-      system_count: length(system_ids)
+      system_count: length(system_ids),
+      category: :api
     )
 
     case Http.request(:post, url, Jason.encode!(body), default_headers(),
@@ -128,10 +153,11 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     query_string = URI.encode_query(params)
     full_url = "#{url}?#{query_string}"
 
-    AppLogger.api_info("Fetching character killmails",
+    Logger.info("Fetching character killmails",
       character_id: character_id,
       hours: hours,
-      limit: limit
+      limit: limit,
+      category: :api
     )
 
     full_url
@@ -142,7 +168,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   def health_check do
     url = "#{base_url()}/api/health"
 
-    AppLogger.api_debug("Checking API health")
+    Logger.debug("Checking API health", category: :api)
 
     case Http.request(:get, url, nil, default_headers(), service: :wanderer_kills) do
       {:ok, %{status_code: 200, body: health_data}} when is_map(health_data) ->
@@ -162,7 +188,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   This function is called by the fallback handler when WebSocket connection is down.
   """
   def bulk_load_system_kills(system_ids, hours \\ 1) when is_list(system_ids) do
-    AppLogger.info("Starting bulk load for #{length(system_ids)} systems")
+    Logger.info("Starting bulk load for #{length(system_ids)} systems", category: :api)
 
     # Process in chunks to avoid overwhelming the API
     chunk_size = 10
@@ -172,17 +198,18 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       chunks
       |> Enum.with_index()
       |> Enum.map(fn {chunk, index} ->
-        AppLogger.debug("Processing chunk #{index + 1}/#{length(chunks)}")
+        Logger.debug("Processing chunk #{index + 1}/#{length(chunks)}", category: :api)
         fetch_systems_killmails(chunk, hours, 20)
       end)
 
     # Aggregate results
     {loaded_count, errors} = aggregate_bulk_results(results)
 
-    AppLogger.info("Bulk load completed",
+    Logger.info("Bulk load completed",
       loaded: loaded_count,
       errors: length(errors),
-      total_systems: length(system_ids)
+      total_systems: length(system_ids),
+      category: :api
     )
 
     {:ok, %{loaded: loaded_count, errors: errors}}

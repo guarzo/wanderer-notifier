@@ -7,7 +7,7 @@ defmodule WandererNotifier.CacheCase do
   Usage:
 
       use WandererNotifier.CacheCase
-      
+
   This will:
   - Import cache helpers
   - Set up a clean cache before each test

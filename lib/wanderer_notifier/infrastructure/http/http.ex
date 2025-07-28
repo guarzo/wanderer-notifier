@@ -16,22 +16,23 @@ defmodule WandererNotifier.Infrastructure.Http do
   ## Usage Examples
 
       # Simple GET request
-      Http.get("https://api.example.com/data")
-      
+      Http.request(:get, "https://api.example.com/data")
+
       # Service-specific request with pre-configured settings
-      Http.get(url, [], service: :esi)
-      
+      Http.request(:get, url, nil, [], service: :esi)
+
       # Custom configuration
-      Http.get(url, [], timeout: 45_000, retry_count: 3)
-      
+      Http.request(:get, url, nil, [], timeout: 45_000, retry_count: 3)
+
       # POST with authentication
-      Http.post(url, body, [], service: :license, auth: [type: :bearer, token: token])
+      Http.request(:post, url, body, [], service: :license, auth: [type: :bearer, token: token])
   """
   @behaviour WandererNotifier.Infrastructure.Http.HttpBehaviour
 
-  alias WandererNotifier.Infrastructure.Http.Client
-  alias WandererNotifier.Infrastructure.Http.Middleware.{Retry, RateLimiter}
+  alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
+  alias WandererNotifier.Infrastructure.Http.Middleware.{Telemetry, Retry, RateLimiter}
   alias WandererNotifier.Shared.Utils.ErrorHandler
+  require Logger
 
   @type url :: String.t()
   @type headers :: list({String.t(), String.t()})
@@ -41,6 +42,22 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
   @type service :: :esi | :wanderer_kills | :license | :map | :streaming | nil
+  @type middleware :: module()
+  @type request :: %{
+          method: method(),
+          url: url(),
+          headers: headers(),
+          body: String.t() | nil,
+          opts: opts()
+        }
+
+  # HTTP client configuration - use runtime config for test compatibility
+  defp http_client do
+    Application.get_env(:wanderer_notifier, :http_client, __MODULE__)
+  end
+
+  @default_headers [{"Content-Type", "application/json"}]
+  @default_get_headers []
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Core HTTP Interface
@@ -69,44 +86,175 @@ defmodule WandererNotifier.Infrastructure.Http do
 
       # Simple GET
       request(:get, "https://api.example.com/data", nil, [], [])
-      
+
       # Service-configured request
       request(:get, url, nil, [], service: :esi)
-      
+
       # POST with authentication
       request(:post, url, %{data: "value"}, [], service: :license, auth: [type: :bearer, token: token])
   """
   @spec request(method(), url(), body(), headers(), opts()) :: response()
   @impl true
   def request(method, url, body \\ nil, headers \\ [], opts \\ []) do
-    # Check if we're using a mock client in test mode
-    http_client = Application.get_env(:wanderer_notifier, :http_client, Client)
-
-    case http_client do
+    case http_client() do
       WandererNotifier.HTTPMock ->
-        # In test mode, call the mock directly
-        http_client.request(method, url, body, headers, opts)
+        make_mock_request(method, url, body, headers, opts)
 
       _ ->
-        # Production mode - apply service configuration and use real client
-        final_opts = apply_service_config(opts)
-
-        # Add authentication headers
-        final_headers = apply_auth_headers(headers, final_opts)
-
-        # Encode body if needed
-        encoded_body = encode_body(body, final_headers)
-
-        # Build client options and execute request
-        client_opts = build_client_opts(final_opts, final_headers, encoded_body)
-
-        # Make the request using the client
-        Client.request(method, url, client_opts)
-        |> transform_response()
+        make_real_request(method, url, body, headers, opts)
     end
   end
 
+  defp make_mock_request(method, url, body, headers, opts) do
+    final_opts = apply_service_config(opts)
+
+    # Add Content-Type header for JSON if needed
+    headers_with_json = add_json_content_type_if_needed(body, headers, method)
+
+    # Apply auth headers and encode body
+    final_headers = apply_auth_headers(headers_with_json, final_opts)
+    encoded_body = encode_body(body, final_headers)
+
+    # Call appropriate mock method
+    call_mock_method(method, url, encoded_body, final_headers, final_opts)
+  end
+
+  defp add_json_content_type_if_needed(body, headers, method) do
+    if is_map(body) and not has_content_type?(headers) and method in [:post, :put, :patch] do
+      [{"Content-Type", "application/json"} | headers]
+    else
+      headers
+    end
+  end
+
+  defp call_mock_method(method, url, encoded_body, final_headers, final_opts) do
+    case method do
+      :get -> http_client().get(url, final_headers, final_opts)
+      :post -> http_client().post(url, encoded_body, final_headers, final_opts)
+      :put -> http_client().put(url, encoded_body, final_headers, final_opts)
+      :delete -> http_client().delete(url, final_headers, final_opts)
+      _ -> {:error, {:unsupported_method, method}}
+    end
+  end
+
+  defp make_real_request(method, url, body, headers, opts) do
+    # Production mode - apply service configuration
+    final_opts = apply_service_config(opts)
+
+    # Add authentication headers
+    final_headers = apply_auth_headers(headers, final_opts)
+
+    # Encode body if needed
+    encoded_body = encode_body(body, final_headers)
+
+    # Prepare body and headers for middleware chain
+    prepared_body = prepare_body(encoded_body)
+    merged_headers = merge_headers(final_headers, method)
+
+    # Get middlewares from options or use defaults
+    middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
+
+    # Create request struct for middleware chain
+    request = %{
+      method: method,
+      url: url,
+      headers: merged_headers,
+      body: prepared_body,
+      opts: final_opts
+    }
+
+    # Execute middleware chain
+    execute_middleware_chain(request, middlewares)
+    |> transform_response()
+  end
+
   # Private implementation
+
+  # Middleware chain execution from Client module
+  defp execute_middleware_chain(request, []) do
+    # No middleware - execute the actual HTTP request
+    make_http_request(request)
+  end
+
+  defp execute_middleware_chain(request, [middleware | remaining_middlewares]) do
+    next_fun = fn req ->
+      execute_middleware_chain(req, remaining_middlewares)
+    end
+
+    middleware.call(request, next_fun)
+  end
+
+  defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
+    # Use Req directly to avoid circular dependency
+    req_opts = build_req_opts(opts, headers, body)
+
+    case Req.request([method: method, url: url] ++ req_opts) do
+      {:ok, %Req.Response{status: status, body: response_body, headers: response_headers}} ->
+        {:ok, %{status_code: status, body: response_body, headers: response_headers}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp build_req_opts(opts, headers, body) do
+    req_opts = []
+
+    # Add headers if provided
+    req_opts = if headers != [], do: Keyword.put(req_opts, :headers, headers), else: req_opts
+
+    # Add body if provided
+    req_opts = if body != nil, do: Keyword.put(req_opts, :body, body), else: req_opts
+
+    # Add timeout options - prioritize recv_timeout over timeout if both are present
+    receive_timeout =
+      cond do
+        Keyword.has_key?(opts, :recv_timeout) -> Keyword.get(opts, :recv_timeout)
+        Keyword.has_key?(opts, :timeout) -> Keyword.get(opts, :timeout)
+        true -> nil
+      end
+
+    req_opts =
+      if receive_timeout,
+        do: Keyword.put(req_opts, :receive_timeout, receive_timeout),
+        else: req_opts
+
+    req_opts =
+      if Keyword.has_key?(opts, :connect_timeout),
+        do: Keyword.put(req_opts, :connect_timeout, Keyword.get(opts, :connect_timeout)),
+        else: req_opts
+
+    req_opts
+  end
+
+  defp prepare_body(nil), do: nil
+  defp prepare_body(body) when is_binary(body), do: body
+
+  defp prepare_body(body) when is_map(body) do
+    case JsonUtils.encode(body) do
+      {:ok, encoded} ->
+        encoded
+
+      {:error, reason} ->
+        raise ArgumentError, "Failed to encode body to JSON: #{inspect(reason)}"
+    end
+  end
+
+  defp prepare_body(body), do: to_string(body)
+
+  defp merge_headers(custom_headers, method) do
+    base_headers =
+      if method in [:get, :head, :delete], do: @default_get_headers, else: @default_headers
+
+    base_headers ++ custom_headers
+  end
+
+  defp default_middlewares do
+    # Default middleware chain with retry, rate limiting, and telemetry
+    # Telemetry should be first to capture all metrics
+    # Can be overridden per request
+    [Telemetry, RateLimiter, Retry]
+  end
 
   @doc false
   def apply_service_config(opts) do
@@ -230,18 +378,6 @@ defmodule WandererNotifier.Infrastructure.Http do
     end)
   end
 
-  defp build_client_opts(opts, headers, body) do
-    # Start with the provided options
-    client_opts = opts
-
-    # Add headers if provided
-    client_opts =
-      if headers != [], do: Keyword.put(client_opts, :headers, headers), else: client_opts
-
-    # Add body if provided
-    if body != nil, do: Keyword.put(client_opts, :body, body), else: client_opts
-  end
-
   defp transform_response({:ok, response}) do
     {:ok, response}
   end
@@ -271,133 +407,11 @@ defmodule WandererNotifier.Infrastructure.Http do
   @impl true
   def get_killmail(killmail_id, hash) do
     url = build_url(killmail_id, hash)
-    # Use the standard get function which handles mocking properly
-    get(url, [], [])
+    request(:get, url, nil, [], [])
   end
 
   @spec build_url(integer(), String.t()) :: String.t()
   defp build_url(killmail_id, hash) do
     "https://zkillboard.com/api/killID/#{killmail_id}/#{hash}/"
-  end
-
-  # Convenience functions for backward compatibility and test support
-  @impl true
-  def get(url, headers \\ [], opts \\ []) do
-    # Check if we're using a mock client in test mode
-    http_client = Application.get_env(:wanderer_notifier, :http_client, Client)
-
-    case http_client do
-      WandererNotifier.HTTPMock ->
-        # Apply service configuration and auth headers in test mode for proper testing
-        final_opts = apply_service_config(opts)
-        final_headers = apply_auth_headers(headers, final_opts)
-        http_client.get(url, final_headers, final_opts)
-
-      _ ->
-        request(:get, url, nil, headers, opts)
-    end
-  end
-
-  @impl true
-  def post(url, body, headers \\ [], opts \\ []) do
-    # Check if we're using a mock client in test mode
-    http_client = Application.get_env(:wanderer_notifier, :http_client, Client)
-
-    case http_client do
-      WandererNotifier.HTTPMock ->
-        # Apply service configuration even in test mode for proper testing
-        final_opts = apply_service_config(opts)
-        # Add Content-Type header for JSON if body is a map and no Content-Type exists
-        headers_with_json =
-          if is_map(body) and not has_content_type?(headers) do
-            [{"Content-Type", "application/json"} | headers]
-          else
-            headers
-          end
-
-        # Apply auth headers and encode body
-        final_headers = apply_auth_headers(headers_with_json, final_opts)
-        encoded_body = encode_body(body, final_headers)
-        http_client.post(url, encoded_body, final_headers, final_opts)
-
-      _ ->
-        headers_with_json =
-          if is_map(body) do
-            [{"Content-Type", "application/json"} | headers]
-          else
-            headers
-          end
-
-        request(:post, url, body, headers_with_json, opts)
-    end
-  end
-
-  @impl true
-  def put(url, body, headers \\ [], opts \\ []) do
-    http_client = Application.get_env(:wanderer_notifier, :http_client, Client)
-
-    case http_client do
-      WandererNotifier.HTTPMock ->
-        # Apply service configuration even in test mode for proper testing
-        final_opts = apply_service_config(opts)
-        # Add Content-Type header for JSON if body is a map and no Content-Type exists
-        headers_with_json =
-          if is_map(body) and not has_content_type?(headers) do
-            [{"Content-Type", "application/json"} | headers]
-          else
-            headers
-          end
-
-        # Apply auth headers and encode body
-        final_headers = apply_auth_headers(headers_with_json, final_opts)
-        encoded_body = encode_body(body, final_headers)
-        http_client.put(url, encoded_body, final_headers, final_opts)
-
-      _ ->
-        headers_with_json =
-          if is_map(body) do
-            [{"Content-Type", "application/json"} | headers]
-          else
-            headers
-          end
-
-        request(:put, url, body, headers_with_json, opts)
-    end
-  end
-
-  @impl true
-  def delete(url, headers \\ [], opts \\ []) do
-    http_client = Application.get_env(:wanderer_notifier, :http_client, Client)
-
-    case http_client do
-      WandererNotifier.HTTPMock ->
-        # Apply service configuration even in test mode for proper testing
-        final_opts = apply_service_config(opts)
-        # Apply auth headers
-        final_headers = apply_auth_headers(headers, final_opts)
-        http_client.delete(url, final_headers, final_opts)
-
-      _ ->
-        request(:delete, url, nil, headers, opts)
-    end
-  end
-
-  @impl true
-  def get_json(url, headers \\ [], opts \\ []) do
-    # get_json is just get with decode_json: true
-    get(url, headers, Keyword.put(opts, :decode_json, true))
-  end
-
-  @impl true
-  def post_json(url, body, headers \\ [], opts \\ []) do
-    # post_json is just post with JSON headers and decode_json: true
-    headers_with_json =
-      if has_content_type?(headers) do
-        headers
-      else
-        [{"Content-Type", "application/json"} | headers]
-      end
-
-    post(url, body, headers_with_json, Keyword.put(opts, :decode_json, true))
   end
 end

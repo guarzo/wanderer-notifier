@@ -6,7 +6,7 @@ defmodule WandererNotifier.Map.Initializer do
   the SSE connection starts receiving real-time updates.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
 
   @doc """
   Initializes map data by fetching systems and characters from the API.
@@ -17,7 +17,9 @@ defmodule WandererNotifier.Map.Initializer do
   """
   @spec initialize_map_data() :: :ok
   def initialize_map_data do
-    AppLogger.api_info("Initializing map data (sequential loading for memory efficiency)")
+    Logger.info("Initializing map data (sequential loading for memory efficiency)",
+      category: :api
+    )
 
     # Fetch sequentially to prevent memory spikes from parallel bulk operations
     try do
@@ -36,8 +38,9 @@ defmodule WandererNotifier.Map.Initializer do
     rescue
       e in HTTPoison.Error ->
         # Network/HTTP errors
-        AppLogger.api_error("Map initialization network error",
-          error: Exception.message(e)
+        Logger.error("Map initialization network error",
+          error: Exception.message(e),
+          category: :api
         )
 
         # Continue startup even if map data fails
@@ -45,9 +48,10 @@ defmodule WandererNotifier.Map.Initializer do
 
       e ->
         # Other unexpected errors
-        AppLogger.api_error("Map initialization unexpected error",
+        Logger.error("Map initialization unexpected error",
           error: inspect(e),
-          exception_type: e.__struct__
+          exception_type: e.__struct__,
+          category: :api
         )
 
         # Continue startup even if map data fails
@@ -55,9 +59,7 @@ defmodule WandererNotifier.Map.Initializer do
     catch
       :exit, reason ->
         # Exit handling
-        AppLogger.api_error("Map initialization process exited",
-          reason: inspect(reason)
-        )
+        Logger.error("Map initialization process exited", reason: inspect(reason), category: :api)
 
         # Continue startup even if map data fails
         :ok
@@ -68,9 +70,7 @@ defmodule WandererNotifier.Map.Initializer do
     # Log results and update stats
     Enum.each(results, fn
       {:ok, type, count} ->
-        AppLogger.api_info("Successfully fetched #{type}",
-          count: count
-        )
+        Logger.info("Successfully fetched #{type}", count: count, category: :api)
 
         # Update the stats tracking
         case type do
@@ -85,9 +85,7 @@ defmodule WandererNotifier.Map.Initializer do
         end
 
       {:error, type, reason} ->
-        AppLogger.api_error("Failed to fetch #{type}",
-          error: inspect(reason)
-        )
+        Logger.error("Failed to fetch #{type}", error: inspect(reason), category: :api)
     end)
 
     :ok
@@ -96,7 +94,7 @@ defmodule WandererNotifier.Map.Initializer do
   defp fetch_systems do
     execute_timed_fetch(
       fn ->
-        WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_systems()
+        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems(true)
       end,
       "systems"
     )
@@ -105,7 +103,7 @@ defmodule WandererNotifier.Map.Initializer do
   defp fetch_characters do
     execute_timed_fetch(
       fn ->
-        WandererNotifier.Domains.Tracking.Clients.MapTrackingClient.fetch_and_cache_characters()
+        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters(true)
       end,
       "characters"
     )
@@ -114,16 +112,17 @@ defmodule WandererNotifier.Map.Initializer do
   # Dialyzer warns this pattern is unreachable in test environment
   @dialyzer {:nowarn_function, execute_timed_fetch: 2}
   defp execute_timed_fetch(fetch_function, label) do
-    AppLogger.api_info("Starting #{label} fetch")
+    Logger.info("Starting #{label} fetch", category: :api)
     start_time = System.monotonic_time(:millisecond)
 
     case fetch_function.() do
       {:ok, items} ->
         elapsed = System.monotonic_time(:millisecond) - start_time
 
-        AppLogger.api_info("#{String.capitalize(label)} fetch completed",
+        Logger.info("#{String.capitalize(label)} fetch completed",
           count: length(items),
-          elapsed_ms: elapsed
+          elapsed_ms: elapsed,
+          category: :api
         )
 
         {:ok, label, length(items)}
@@ -131,9 +130,10 @@ defmodule WandererNotifier.Map.Initializer do
       error ->
         elapsed = System.monotonic_time(:millisecond) - start_time
 
-        AppLogger.api_error("#{String.capitalize(label)} fetch failed",
+        Logger.error("#{String.capitalize(label)} fetch failed",
           error: inspect(error),
-          elapsed_ms: elapsed
+          elapsed_ms: elapsed,
+          category: :api
         )
 
         {:error, label, error}

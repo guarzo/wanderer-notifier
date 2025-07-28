@@ -13,7 +13,7 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
 
       iex> HttpUtils.extract_host("https://api.example.com/path")
       "api.example.com"
-      
+
       iex> HttpUtils.extract_host("invalid-url")
       "unknown"
   """

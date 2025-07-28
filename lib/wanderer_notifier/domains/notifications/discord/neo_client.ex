@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
+  require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Config.Utils
 
@@ -25,31 +25,38 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   def channel_id do
     try do
       raw_id = Config.discord_channel_id()
-      AppLogger.api_debug("Fetching Discord channel ID", raw_id: inspect(raw_id))
+      Logger.debug("Fetching Discord channel ID")
 
       # First try to normalize the channel ID
       normalized_id = normalize_channel_id(raw_id)
 
       # If we couldn't normalize it, try some fallbacks
       if is_nil(normalized_id) do
-        AppLogger.api_warn("Could not normalize Discord channel ID, trying fallbacks")
+        Logger.warning("Could not normalize Discord channel ID, trying fallbacks", category: :api)
 
         # Try other channel IDs as fallbacks
         cond do
           fallback = normalize_channel_id(Config.discord_system_channel_id()) ->
-            AppLogger.api_info("Using system channel ID as fallback", fallback: fallback)
+            Logger.info("Using system channel ID as fallback", fallback: fallback, category: :api)
             fallback
 
           fallback = normalize_channel_id(Config.discord_kill_channel_id()) ->
-            AppLogger.api_info("Using kill channel ID as fallback", fallback: fallback)
+            Logger.info("Using kill channel ID as fallback", fallback: fallback, category: :api)
             fallback
 
           fallback = normalize_channel_id(Config.discord_character_channel_id()) ->
-            AppLogger.api_info("Using character channel ID as fallback", fallback: fallback)
+            Logger.info("Using character channel ID as fallback",
+              fallback: fallback,
+              category: :api
+            )
+
             fallback
 
           true ->
-            AppLogger.api_error("No valid Discord channel ID available, notifications may fail")
+            Logger.error("No valid Discord channel ID available, notifications may fail",
+              category: :api
+            )
+
             nil
         end
       else
@@ -57,8 +64,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       end
     rescue
       e ->
-        AppLogger.api_error("Error getting Discord channel ID",
-          error: Exception.message(e)
+        Logger.error("Error getting Discord channel ID",
+          error: Exception.message(e),
+          category: :api
         )
 
         nil
@@ -89,8 +97,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log test mode embed without sending
   defp log_test_embed(embed) do
-    AppLogger.api_info("TEST MODE: Would send embed to Discord via Nostrum",
-      embed: inspect(embed)
+    Logger.info("TEST MODE: Would send embed to Discord via Nostrum",
+      embed: inspect(embed),
+      category: :api
     )
 
     :ok
@@ -110,10 +119,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # Validate channel ID
     case target_channel do
       nil ->
-        AppLogger.api_error("Failed to send embed: nil channel ID",
+        Logger.error("Failed to send embed: nil channel ID",
           embed_type: typeof(embed),
           embed_title:
-            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
+            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown"),
+          category: :api
         )
 
         {:error, :nil_channel_id}
@@ -127,11 +137,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         send_embed_to_valid_channel(embed, to_string(channel_id))
 
       _ ->
-        AppLogger.api_error("Failed to send embed: invalid channel ID",
+        Logger.error("Failed to send embed: invalid channel ID",
           channel_id: target_channel,
           embed_type: typeof(embed),
           embed_title:
-            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
+            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown"),
+          category: :api
         )
 
         {:error, :invalid_channel_id}
@@ -168,15 +179,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   # Handle different types of Discord API errors
   defp handle_discord_error(%{status_code: 429, response: response}, _channel_id) do
     retry_after = get_retry_after(response)
-    AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+    Logger.error("Discord rate limit hit via Nostrum", retry_after: retry_after, category: :api)
     {:error, {:rate_limited, retry_after}}
   end
 
   defp handle_discord_error(%{status_code: status_code, response: response}, channel_id) do
-    AppLogger.api_error("Discord API error",
+    Logger.error("Discord API error",
       status_code: status_code,
       response: inspect(response),
-      channel_id: channel_id
+      channel_id: channel_id,
+      category: :api
     )
 
     {:error, {:api_error, status_code, response}}
@@ -184,9 +196,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Handle exceptions during message sending
   defp handle_exception(e, channel_id) do
-    AppLogger.api_error("Exception in send_embed_to_channel",
+    Logger.error("Exception in send_embed_to_channel",
       error: Exception.message(e),
-      channel_id: channel_id
+      channel_id: channel_id,
+      category: :api
     )
 
     {:error, {:exception, Exception.message(e)}}
@@ -215,9 +228,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log test mode message with components without sending
   defp log_test_message_with_components(embed, components) do
-    AppLogger.api_info("TEST MODE: Would send message with components via Nostrum",
+    Logger.info("TEST MODE: Would send message with components via Nostrum",
       embed: inspect(embed),
-      components: inspect(components)
+      components: inspect(components),
+      category: :api
     )
 
     :ok
@@ -225,7 +239,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Send message with components to the specified channel
   defp send_message_with_components_to_channel(_embed, _components, nil) do
-    AppLogger.api_error("Failed to send message with components: nil channel ID")
+    Logger.error("Failed to send message with components: nil channel ID", category: :api)
     {:error, :nil_channel_id}
   end
 
@@ -234,9 +248,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     discord_embed = convert_to_nostrum_embed(embed)
     discord_components = components
     # Log detailed info about what we're sending
-    AppLogger.api_debug("Sending message with components via Nostrum",
+    Logger.debug("Sending message with components via Nostrum",
       channel_id: target_channel,
-      embed_type: typeof(discord_embed)
+      embed_type: typeof(discord_embed),
+      category: :api
     )
 
     case Message.create(target_channel,
@@ -248,12 +263,18 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
-        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+
+        Logger.error("Discord rate limit hit via Nostrum",
+          retry_after: retry_after,
+          category: :api
+        )
+
         {:error, {:rate_limited, retry_after}}
 
       {:error, error} ->
-        AppLogger.api_error("Failed to send message with components via Nostrum",
-          error: inspect(error)
+        Logger.error("Failed to send message with components via Nostrum",
+          error: inspect(error),
+          category: :api
         )
 
         {:error, error}
@@ -282,20 +303,21 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log test mode message without sending
   defp log_test_message(message) do
-    AppLogger.api_info("TEST MODE: Would send message via Nostrum", message: message)
+    Logger.info("TEST MODE: Would send message via Nostrum", message: message, category: :api)
     :ok
   end
 
   # Send message to the specified channel
   defp send_message_to_channel(_message, nil) do
-    AppLogger.api_error("Failed to send message: nil channel ID")
+    Logger.error("Failed to send message: nil channel ID", category: :api)
     {:error, :nil_channel_id}
   end
 
   defp send_message_to_channel(message, target_channel) do
-    AppLogger.api_debug("Sending text message via Nostrum",
+    Logger.debug("Sending text message via Nostrum",
       channel_id: target_channel,
-      message_length: String.length(message)
+      message_length: String.length(message),
+      category: :api
     )
 
     # Convert channel ID to integer for Nostrum API
@@ -308,11 +330,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
-        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+
+        Logger.error("Discord rate limit hit via Nostrum",
+          retry_after: retry_after,
+          category: :api
+        )
+
         {:error, {:rate_limited, retry_after}}
 
       {:error, error} ->
-        AppLogger.api_error("Failed to send message via Nostrum", error: inspect(error))
+        Logger.error("Failed to send message via Nostrum")
         {:error, error}
     end
   end
@@ -342,7 +369,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         override_channel_id \\ nil,
         custom_embed \\ nil
       ) do
-    AppLogger.api_info("Sending file to Discord via Nostrum", filename: filename)
+    Logger.info("Sending file to Discord via Nostrum", filename: filename, category: :api)
 
     if env() == :test do
       log_test_file(filename, title, description)
@@ -354,10 +381,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log test mode file without sending
   defp log_test_file(filename, title, description) do
-    AppLogger.api_info("TEST MODE: Would send file to Discord via Nostrum",
+    Logger.info("TEST MODE: Would send file to Discord via Nostrum",
       filename: filename,
       title: title,
-      description: description
+      description: description,
+      category: :api
     )
 
     :ok
@@ -365,7 +393,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Send file to the specified channel
   defp send_file_to_channel(_filename, _file_data, _title, _description, nil, _custom_embed) do
-    AppLogger.api_error("Failed to send file: nil channel ID")
+    Logger.error("Failed to send file: nil channel ID", category: :api)
     {:error, :nil_channel_id}
   end
 
@@ -373,10 +401,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # Create the embed (use custom if provided, otherwise create default)
     embed = create_file_embed(filename, title, description, custom_embed)
 
-    AppLogger.api_debug("Sending file with embed via Nostrum",
+    Logger.debug("Sending file with embed via Nostrum",
       channel_id: target_channel,
       filename: filename,
-      embed: inspect(embed)
+      embed: inspect(embed),
+      category: :api
     )
 
     case Message.create(target_channel,
@@ -388,11 +417,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
-        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+
+        Logger.error("Discord rate limit hit via Nostrum",
+          retry_after: retry_after,
+          category: :api
+        )
+
         {:error, {:rate_limited, retry_after}}
 
       {:error, error} ->
-        AppLogger.api_error("Failed to send file via Nostrum", error: inspect(error))
+        Logger.error("Failed to send file via Nostrum")
         {:error, error}
     end
   end
@@ -421,10 +455,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   """
   @impl true
   def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    AppLogger.api_info("Received Discord interaction",
+    Logger.info("Received Discord interaction",
       type: interaction.type,
       guild_id: interaction.guild_id,
-      channel_id: interaction.channel_id
+      channel_id: interaction.channel_id,
+      category: :api
     )
 
     :noop
@@ -439,7 +474,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp normalize_channel_id(channel_id) do
     try do
-      AppLogger.api_debug("Normalizing channel ID", raw_channel_id: "#{inspect(channel_id)}")
+      Logger.debug("Normalizing channel ID",
+        raw_channel_id: "#{inspect(channel_id)}",
+        category: :api
+      )
 
       # First clean up the ID
       clean_id = clean_channel_id(channel_id)
@@ -448,9 +486,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       process_cleaned_channel_id(clean_id)
     rescue
       e ->
-        AppLogger.api_error("Error normalizing channel ID",
-          error: Exception.message(e)
-        )
+        Logger.error("Error normalizing channel ID", error: Exception.message(e), category: :api)
 
         nil
     end
@@ -471,17 +507,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id == "" do
-    AppLogger.api_warn("Empty channel ID string")
+    Logger.warning("Empty channel ID string", category: :api)
     nil
   end
 
   defp process_cleaned_channel_id(channel_id) when is_integer(channel_id) do
-    AppLogger.api_debug("Channel ID is already an integer", channel_id: channel_id)
+    Logger.debug("Channel ID is already an integer", channel_id: channel_id, category: :api)
     channel_id
   end
 
   defp process_cleaned_channel_id(nil) do
-    AppLogger.api_warn("Channel ID is nil")
+    Logger.warning("Channel ID is nil", category: :api)
     nil
   end
 
@@ -490,15 +526,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # Discord IDs are snowflakes (64-bit integers), validate as numeric string
     # without parsing to avoid overflow on large IDs
     if Regex.match?(~r/^\d+$/, channel_id) do
-      AppLogger.api_debug("Valid numeric channel ID",
-        channel_id: channel_id
-      )
+      Logger.debug("Valid numeric channel ID", channel_id: channel_id, category: :api)
 
       # Keep as string to avoid integer overflow
       channel_id
     else
-      AppLogger.api_warn("Invalid channel ID format, not numeric",
-        channel_id: channel_id
+      Logger.warning("Invalid channel ID format, not numeric",
+        channel_id: channel_id,
+        category: :api
       )
 
       nil

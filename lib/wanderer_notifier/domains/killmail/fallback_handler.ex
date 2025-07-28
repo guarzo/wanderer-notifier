@@ -11,7 +11,6 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Contexts.ExternalAdapters
 
   # Check every 30 seconds
@@ -80,7 +79,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   @impl true
   def handle_cast(:websocket_down, state) do
-    AppLogger.warn("WebSocket connection down, activating HTTP fallback")
+    Logger.info("WebSocket connection down, activating HTTP fallback")
 
     # Update tracked entities first
     updated_state = update_tracked_entities(state)
@@ -94,7 +93,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   @impl true
   def handle_cast(:websocket_connected, state) do
-    AppLogger.info("WebSocket connection restored, deactivating HTTP fallback")
+    Logger.info("WebSocket connection restored, deactivating HTTP fallback")
 
     {:noreply, %{state | fallback_active: false}}
   end
@@ -109,7 +108,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   @impl true
   def handle_call({:bulk_load, hours}, _from, state) do
-    AppLogger.info("Starting bulk load for last #{hours} hours")
+    Logger.info("Starting bulk load for last #{hours} hours")
 
     # Update tracked entities
     state = update_tracked_entities(state)
@@ -120,10 +119,10 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
     case result do
       {:ok, %{loaded: count, errors: errors}} ->
-        AppLogger.info("Bulk load completed: #{count} killmails loaded, #{length(errors)} errors")
+        Logger.info("Bulk load completed: #{count} killmails loaded, #{length(errors)} errors")
 
         if length(errors) > 0 do
-          AppLogger.warn("Bulk load errors", errors: inspect(errors))
+          Logger.info("Bulk load errors", errors: inspect(errors))
         end
     end
 
@@ -154,7 +153,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp fetch_all_recent_data(state) do
-    AppLogger.info("Fetching recent data via HTTP API",
+    Logger.info("Fetching recent data via HTTP API",
       systems_count: MapSet.size(state.tracked_systems),
       characters_count: MapSet.size(state.tracked_characters)
     )
@@ -208,7 +207,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
         |> Enum.flat_map(fn {_system_id, kills} -> kills end)
 
       {:error, reason} ->
-        AppLogger.error("Failed to fetch killmails for chunk",
+        Logger.info("Failed to fetch killmails for chunk",
           systems: system_ids,
           error: inspect(reason)
         )
@@ -222,7 +221,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
       # Send to pipeline worker
       case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
         nil ->
-          AppLogger.error("PipelineWorker not found for fallback processing")
+          Logger.info("PipelineWorker not found for fallback processing")
 
         pid ->
           # Mark as HTTP-sourced to avoid duplicate processing
@@ -255,7 +254,8 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp extract_character_id(char) do
-    char_id = char["eve_id"] || char[:eve_id]
+    # Extract from nested character structure
+    char_id = char["character"]["eve_id"]
     normalize_character_id(char_id)
   end
 

@@ -1,279 +1,308 @@
 defmodule WandererNotifier.Domains.Notifications.NotificationService do
   @moduledoc """
-  Service module for handling notification dispatch.
-  Provides a unified interface for sending notifications to Discord.
+  Clean notification service with pattern matching and no backwards compatibility.
   """
 
   require Logger
   alias WandererNotifier.Domains.Notifications.Notification
-  alias WandererNotifier.Shared.Logger.ErrorLogger
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Domains.Notifications.Determiner.Kill, as: KillDeterminer
+  alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
+  alias WandererNotifier.Domains.Tracking.Entities.System
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Public API
+  # ═══════════════════════════════════════════════════════════════════════════════
 
   @doc """
-  Sends a notification.
-
-  ## Parameters
-    - notification: The notification to send
-
-  ## Returns
-    - {:ok, notification} on success
-    - {:error, reason} on failure
+  Sends a notification based on its type.
   """
-  def send(%Notification{} = notification) do
-    AppLogger.info("Sending notification", %{type: notification.type})
+  def send(%Notification{type: :kill_notification} = notification) do
+    if Config.notifications_enabled?() and Config.kill_notifications_enabled?() do
+      send_kill_notification(notification)
+    else
+      {:ok, :notifications_disabled}
+    end
+  end
 
-    # Set a standardized notification type for the kill notification
-    notification = %{notification | type: standardize_notification_type(notification.type)}
+  def send(%Notification{type: :system_notification} = notification) do
+    if Config.notifications_enabled?() and Config.system_notifications_enabled?() do
+      send_system_notification(notification)
+    else
+      {:ok, :notifications_disabled}
+    end
+  end
 
-    # Send the notification
-    case safe_send(notification) do
-      {:ok, :sent} ->
-        AppLogger.kill_info("Successfully sent notification", %{type: notification.type})
-        {:ok, notification}
+  def send(%Notification{type: :character_notification} = notification) do
+    if Config.notifications_enabled?() and Config.character_notifications_enabled?() do
+      send_character_notification(notification)
+    else
+      {:ok, :notifications_disabled}
+    end
+  end
 
-      {:error, reason} = error ->
-        ErrorLogger.log_notification_error(
-          "Failed to send notification",
-          type: notification.type,
-          reason: inspect(reason)
-        )
-
-        error
-
-      {:exception, exception, stacktrace} ->
-        ErrorLogger.log_exception(
-          "Exception in NotificationService.send",
-          exception,
-          type: notification.type,
-          stacktrace: stacktrace
-        )
-
-        {:error, :notification_service_error}
+  def send(%Notification{type: :status_notification} = notification) do
+    if Config.notifications_enabled?() do
+      send_status_notification(notification)
+    else
+      {:ok, :notifications_disabled}
     end
   end
 
   def send(_), do: {:error, :invalid_notification}
 
-  @doc """
-  Sends a message using the appropriate notifier based on the current configuration.
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Kill Notifications
+  # ═══════════════════════════════════════════════════════════════════════════════
 
-  ## Parameters
-  - message: A map containing notification data or a binary message
+  defp send_kill_notification(%Notification{data: %{killmail: killmail}} = notification) do
+    with {:ok, channel_id} <- determine_kill_channel(killmail),
+         {:ok, _} <- validate_kill_data(killmail),
+         :ok <- DiscordNotifier.send_kill_notification_to_channel(killmail, channel_id) do
+      Logger.info("Successfully sent kill notification",
+        type: :kill_notification,
+        category: :notification
+      )
 
-  ## Returns
-  - {:ok, :sent} on success
-  - {:error, reason} on failure
-  """
-  def send_message(notification) when is_map(notification) do
-    # Check for string keys from JSON conversions
-    if Map.has_key?(notification, "title") && Map.has_key?(notification, "description") do
-      send_discord_embed(notification)
+      {:ok, notification}
     else
-      handle_notification_by_type(notification)
+      {:error, reason} = error ->
+        Logger.error("Failed to send kill notification",
+          reason: inspect(reason),
+          category: :notification
+        )
+
+        error
     end
   end
 
-  # Send plain text messages
-  def send_message(message) when is_binary(message) do
-    send_text_message(message)
+  defp send_kill_notification(%Notification{}) do
+    {:error, :invalid_kill_data}
   end
 
-  # Wrapper to safely send and catch exceptions
-  defp safe_send(notification) do
-    if Config.notifications_enabled?() do
-      send_message(notification)
-    else
-      {:error, :notifications_disabled}
+  defp determine_kill_channel(killmail) do
+    case check_testing_override() do
+      {:ok, nil} ->
+        determine_normal_channel(killmail)
+
+      {:ok, override_type} ->
+        handle_testing_override(override_type)
     end
-  rescue
-    exception ->
-      {:exception, exception, __STACKTRACE__}
   end
 
-  # Convert string notification types to atoms for consistent processing
-  defp standardize_notification_type("kill"), do: :kill_notification
-  defp standardize_notification_type("test"), do: :kill_notification
-  defp standardize_notification_type("system"), do: :system_notification
-  defp standardize_notification_type("character"), do: :character_notification
-  defp standardize_notification_type(type) when is_atom(type), do: type
-  defp standardize_notification_type(_), do: :unknown
-
-  # Private function to handle different notification types
-  defp handle_notification_by_type(%{type: :kill_notification} = kill) do
-    handle_kill_notification(kill)
+  defp handle_testing_override(:character) do
+    Logger.info("[TEST] Kill override: routing to character channel")
+    channel_id = Config.discord_character_kill_channel_id() || Config.discord_channel_id()
+    {:ok, channel_id}
   end
 
-  defp handle_notification_by_type(%{type: :system_notification} = system) do
+  defp handle_testing_override(:system) do
+    Logger.info("[TEST] Kill override: routing to system channel")
+    channel_id = Config.discord_system_kill_channel_id() || Config.discord_channel_id()
+    {:ok, channel_id}
+  end
+
+  defp determine_normal_channel(killmail) do
+    system_id = Map.get(killmail, :system_id)
+    has_tracked_system = Determiner.tracked_system_for_killmail?(system_id)
+    has_tracked_character = Determiner.has_tracked_character?(killmail)
+
+    channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
+    {:ok, channel_id || Config.discord_channel_id()}
+  end
+
+  defp select_channel_by_priority(has_tracked_character, has_tracked_system) do
+    cond do
+      has_tracked_character and Config.character_notifications_enabled?() ->
+        Config.discord_character_kill_channel_id()
+
+      has_tracked_system and Config.system_notifications_enabled?() ->
+        Config.discord_system_kill_channel_id()
+
+      true ->
+        Config.discord_channel_id()
+    end
+  end
+
+  defp check_testing_override do
+    try do
+      WandererNotifier.Testing.NotificationTester.check_kill_override()
+    rescue
+      _e ->
+        {:ok, nil}
+    end
+  end
+
+  defp validate_kill_data(killmail) do
+    if Map.get(killmail, :killmail_id) do
+      {:ok, killmail}
+    else
+      {:error, :missing_killmail_id}
+    end
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # System Notifications
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp send_system_notification(%Notification{data: system_data} = notification) do
     # Check if this is the first notification
     if Stats.is_first_notification?(:system) do
-      # Skip notification for first run
       Stats.mark_notification_sent(:system)
       {:ok, :skipped_first_run}
     else
-      # Send system notification
-      send_system_notification(system)
+      with {:ok, formatted} <- format_notification(system_data, notification),
+           :ok <- send_to_system_channel(formatted) do
+        Logger.info("Successfully sent system notification",
+          type: :system_notification,
+          category: :notification
+        )
+
+        {:ok, notification}
+      else
+        {:error, reason} = error ->
+          Logger.error("Failed to send system notification",
+            reason: inspect(reason),
+            category: :notification
+          )
+
+          error
+      end
     end
   end
 
-  defp handle_notification_by_type(%{type: :character_notification} = character) do
+  defp format_notification(system_data, _notification) do
+    try do
+      # Check if it's already a System struct or needs conversion
+      system_struct =
+        case system_data do
+          %System{} = system ->
+            Logger.info(
+              "[NotificationService] Using existing System struct - type: #{system.system_type}, statics: #{inspect(system.statics)}"
+            )
+
+            system
+
+          _ ->
+            Logger.info(
+              "[NotificationService] Converting map to System struct from data: #{inspect(Map.keys(system_data))}"
+            )
+
+            System.from_api_data(system_data)
+        end
+
+      # Format using NotificationFormatter
+      formatted = NotificationFormatter.format_notification(system_struct)
+
+      # Add priority styling if needed
+      is_priority =
+        case system_data do
+          %System{} -> Map.get(system_data, :priority, false)
+          _ -> Map.get(system_data, :priority, false)
+        end
+
+      embed =
+        if is_priority do
+          formatted
+          |> Map.put(:title, "🚨 Priority System: #{system_struct.name}")
+          # Red color
+          |> Map.put(:color, 15_548_997)
+        else
+          formatted
+        end
+
+      {:ok, embed}
+    rescue
+      e ->
+        Logger.error("Failed to format system notification",
+          error: inspect(e),
+          category: :notification
+        )
+
+        {:error, {:format_error, e}}
+    end
+  end
+
+  defp send_to_system_channel(embed) do
+    channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
+    DiscordNotifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+    :ok
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Character Notifications
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp send_character_notification(%Notification{data: character_data} = notification) do
     # Check if this is the first notification
     if Stats.is_first_notification?(:character) do
-      # Skip notification for first run
       Stats.mark_notification_sent(:character)
       {:ok, :skipped_first_run}
     else
-      # Send character activity notification
-      send_character_activity_notification(character)
-    end
-  end
+      with {:ok, formatted} <- format_notification(character_data),
+           :ok <- send_to_character_channel(formatted) do
+        Logger.info("Successfully sent character notification",
+          type: :character_notification,
+          category: :notification
+        )
 
-  defp handle_notification_by_type(%{type: :status_notification} = status) do
-    # Handle status notifications (for startup and periodic status reports)
-    AppLogger.info("Sending status notification", %{
-      title: Map.get(status, :title, "Status")
-    })
+        {:ok, notification}
+      else
+        {:error, reason} = error ->
+          Logger.error("Failed to send character notification",
+            reason: inspect(reason),
+            category: :notification
+          )
 
-    send_discord_embed(status)
-  end
-
-  defp handle_notification_by_type(%{type: message_type} = notification)
-       when is_atom(message_type) do
-    # Convert the notification map to an embed if needed
-    if Map.has_key?(notification, :title) && Map.has_key?(notification, :description) do
-      send_discord_embed(notification)
-    else
-      Logger.warning("Unhandled notification type: #{inspect(message_type)}")
-      {:error, :unknown_notification_type}
-    end
-  end
-
-  defp handle_notification_by_type(other) do
-    # For backwards compatibility, try to handle string messages
-    if is_binary(other) do
-      send_message(other)
-    else
-      Logger.error("Invalid notification format: #{inspect(other)}")
-      {:error, :invalid_notification_format}
-    end
-  end
-
-  # Handle kill notifications
-  defp handle_kill_notification(kill) do
-    notifier = get_notifier()
-
-    if not Map.has_key?(kill, :data) or not Map.has_key?(kill.data, :killmail) do
-      Logger.error("Invalid kill notification format: missing data.killmail field")
-      {:error, :invalid_notification_format}
-    else
-      dispatch_kill_notification(notifier, kill)
-    end
-  end
-
-  # Dispatch kill notifications to different notifiers
-  defp dispatch_kill_notification(DiscordNotifier, kill) do
-    killmail = kill.data.killmail
-    system_id = Map.get(killmail, :system_id)
-    has_tracked_system = KillDeterminer.tracked_system?(system_id)
-    has_tracked_character = KillDeterminer.has_tracked_character?(killmail)
-
-    # Get config module and retrieve settings once
-    config = Config.get_config()
-
-    character_notifications_enabled =
-      case Map.fetch(config, :character_notifications_enabled) do
-        {:ok, value} -> value
-        :error -> Map.get(config, "character_notifications_enabled", false)
+          error
       end
-
-    system_notifications_enabled =
-      case Map.fetch(config, :system_notifications_enabled) do
-        {:ok, value} -> value
-        :error -> Map.get(config, "system_notifications_enabled", false)
-      end
-
-    # Determine which channel to use based on the kill type
-    channel_id =
-      determine_kill_channel_id(
-        has_tracked_character,
-        has_tracked_system,
-        character_notifications_enabled,
-        system_notifications_enabled
-      )
-
-    # Send to the appropriate channel
-    if channel_id do
-      DiscordNotifier.send_kill_notification_to_channel(killmail, channel_id)
-    else
-      DiscordNotifier.send_kill_notification(killmail)
-    end
-
-    {:ok, :sent}
-  end
-
-  # Use pattern matching with guards for channel determination
-  defp determine_kill_channel_id(true, _has_tracked_system, true, _system_notifications_enabled) do
-    Config.discord_character_kill_channel_id()
-  end
-
-  defp determine_kill_channel_id(
-         _has_tracked_character,
-         true,
-         _character_notifications_enabled,
-         true
-       ) do
-    Config.discord_system_kill_channel_id()
-  end
-
-  defp determine_kill_channel_id(
-         _has_tracked_character,
-         _has_tracked_system,
-         _character_notifications_enabled,
-         _system_notifications_enabled
-       ) do
-    Config.discord_channel_id()
-  end
-
-  # Helper functions for sending different types of notifications
-  defp send_text_message(message) do
-    notifier = get_notifier()
-    notifier.send_notification(:send_message, [message])
-  end
-
-  defp send_discord_embed(embed) do
-    notifier = get_notifier()
-    notifier.send_notification(:send_discord_embed, [embed])
-  end
-
-  defp send_system_notification(embed) do
-    notifier = get_notifier()
-    channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
-
-    if channel_id && channel_id != Config.discord_channel_id() do
-      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
-    else
-      notifier.send_notification(:send_discord_embed, [embed])
     end
   end
 
-  defp send_character_activity_notification(embed) do
-    notifier = get_notifier()
+  defp format_notification(character_data) do
+    try do
+      formatted = NotificationFormatter.format_notification(character_data)
+      {:ok, formatted}
+    rescue
+      e ->
+        Logger.error("Failed to format character notification",
+          error: inspect(e),
+          category: :notification
+        )
+
+        {:error, {:format_error, e}}
+    end
+  end
+
+  defp send_to_character_channel(embed) do
     channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
-
-    if channel_id && channel_id != Config.discord_channel_id() do
-      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
-    else
-      notifier.send_notification(:send_discord_embed, [embed])
-    end
+    DiscordNotifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+    :ok
   end
 
-  @doc """
-  Gets the appropriate notifier based on the current configuration.
-  """
-  def get_notifier do
-    DiscordNotifier
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Status Notifications
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp send_status_notification(%Notification{data: status_data} = notification) do
+    Logger.info("Sending status notification",
+      title: Map.get(status_data, :title, "Status"),
+      category: :system
+    )
+
+    case DiscordNotifier.send_notification(:send_discord_embed, [status_data]) do
+      {:ok, :sent} ->
+        {:ok, notification}
+
+      {:error, reason} = error ->
+        Logger.error("Failed to send status notification",
+          reason: inspect(reason),
+          category: :notification
+        )
+
+        error
+    end
   end
 end

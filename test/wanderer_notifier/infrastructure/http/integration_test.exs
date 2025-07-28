@@ -30,7 +30,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       # Make request with ESI service config
       assert {:ok, %{status_code: 200, body: %{"data" => "test"}}} =
-               Http.get("https://esi.evetech.net/test", [], service: :esi)
+               Http.request(:get, "https://esi.evetech.net/test", [], service: :esi)
 
       # Verify HTTP client was called with service configuration
       assert_receive {:http_called, _url, _headers, opts}
@@ -50,7 +50,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       # Should succeed immediately in test mode since middleware is bypassed
       assert {:ok, %{status_code: 200}} =
-               Http.post("https://api.example.com/flaky", %{data: "test"}, [],
+               Http.request(:post, "https://api.example.com/flaky", %{data: "test"}, [],
                  service: :wanderer_kills
                )
 
@@ -84,12 +84,12 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       ]
 
       # First 2 should succeed
-      assert {:ok, _} = Http.get("https://license.api.com/check", [], opts)
-      assert {:ok, _} = Http.get("https://license.api.com/check", [], opts)
+      assert {:ok, _} = Http.request(:get, "https://license.api.com/check", [], opts)
+      assert {:ok, _} = Http.request(:get, "https://license.api.com/check", [], opts)
 
       # Third should be rate limited
       assert {:error, :rate_limited} =
-               Http.get("https://license.api.com/check", [], opts)
+               Http.request(:get, "https://license.api.com/check", [], opts)
     end
 
     test "circuit breaker prevents cascading failures" do
@@ -116,17 +116,17 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       # First 3 failures trip the circuit
       assert {:error, :connection_refused} =
-               Http.get("https://failing.api.com/endpoint", [], opts)
+               Http.request(:get, "https://failing.api.com/endpoint", [], opts)
 
       assert {:error, :connection_refused} =
-               Http.get("https://failing.api.com/endpoint", [], opts)
+               Http.request(:get, "https://failing.api.com/endpoint", [], opts)
 
       assert {:error, :connection_refused} =
-               Http.get("https://failing.api.com/endpoint", [], opts)
+               Http.request(:get, "https://failing.api.com/endpoint", [], opts)
 
       # Circuit is now open
       assert {:error, :circuit_open} =
-               Http.get("https://failing.api.com/endpoint", [], opts)
+               Http.request(:get, "https://failing.api.com/endpoint", [], opts)
     end
 
     test "authentication headers are properly added" do
@@ -137,7 +137,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       assert {:ok, %{status_code: 200}} =
-               Http.get("https://api.example.com/protected", [],
+               Http.request(:get, "https://api.example.com/protected", [],
                  auth: [type: :bearer, token: "test_token_123"]
                )
     end
@@ -154,7 +154,11 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       custom_headers = [{"Content-Type", "application/json"}, {"X-Custom-Header", "custom_value"}]
 
       assert {:ok, %{status_code: 201}} =
-               Http.post("https://api.example.com/create", %{name: "test"}, custom_headers,
+               Http.request(
+                 :post,
+                 "https://api.example.com/create",
+                 %{name: "test"},
+                 custom_headers,
                  auth: [type: :bearer, token: "token123"]
                )
     end
@@ -169,7 +173,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       # Map service has specific configuration
-      assert {:ok, _} = Http.get("https://map.api.com/systems", [], service: :map)
+      assert {:ok, _} = Http.request(:get, "https://map.api.com/systems", [], service: :map)
 
       assert_receive {:opts_received, opts}
       # 1 minute
@@ -191,7 +195,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       assert {:ok, %{body: :stream_ref}} =
-               Http.get("https://api.example.com/stream", [], service: :streaming)
+               Http.request(:get, "https://api.example.com/stream", [], service: :streaming)
     end
 
     test "handles JSON encoding errors gracefully" do
@@ -199,7 +203,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       non_encodable = %{ref: make_ref()}
 
       assert_raise Protocol.UndefinedError, fn ->
-        Http.post("https://api.example.com/data", non_encodable)
+        Http.request(:post, "https://api.example.com/data", non_encodable)
       end
     end
 
@@ -213,7 +217,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       assert {:ok, _} =
-               Http.get("https://api.example.com/test", [],
+               Http.request(:get, "https://api.example.com/test", [],
                  custom_option: :custom_value,
                  another_option: 123,
                  service: :esi
@@ -228,7 +232,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       assert {:ok, %{status_code: 204}} =
-               Http.delete("https://api.example.com/resource/123", [],
+               Http.request(:delete, "https://api.example.com/resource/123", [],
                  auth: [type: :api_key, key: "secret_key"]
                )
     end
@@ -252,7 +256,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       }
 
       assert {:ok, %{status_code: 200}} =
-               Http.put("https://api.example.com/resource/123", complex_body)
+               Http.request(:put, "https://api.example.com/resource/123", complex_body)
     end
 
     test "middleware errors are properly propagated" do
@@ -272,7 +276,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       ]
 
       assert {:error, :rate_limited} =
-               Http.get("https://api.example.com/test", [], opts)
+               Http.request(:get, "https://api.example.com/test", [], opts)
     end
   end
 
@@ -286,7 +290,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       # Should return timeout error since retry middleware is bypassed in test mode
       assert {:error, :timeout} =
-               Http.get("https://api.example.com/slow", [],
+               Http.request(:get, "https://api.example.com/slow", [],
                  retry_count: 3,
                  retry_delay: 10
                )
@@ -299,7 +303,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
       end)
 
       assert {:error, :nxdomain} =
-               Http.get("https://nonexistent.example.com/api", [], retry_count: 0)
+               Http.request(:get, "https://nonexistent.example.com/api", [], retry_count: 0)
     end
 
     test "handles malformed responses" do
@@ -310,7 +314,7 @@ defmodule WandererNotifier.Infrastructure.Http.IntegrationTest do
 
       # When decode_json is false, should return raw body
       assert {:ok, %{status_code: 200, body: "not json"}} =
-               Http.get("https://api.example.com/text", [], decode_json: false)
+               Http.request(:get, "https://api.example.com/text", [], decode_json: false)
     end
   end
 end

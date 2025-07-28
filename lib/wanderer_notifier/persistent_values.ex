@@ -17,14 +17,12 @@ defmodule WandererNotifier.PersistentValues do
       # Add an item to a list (convenience function)
       :ok = WandererNotifier.PersistentValues.add(:priority_systems, 4)
 
-      # Remove an item from a list (convenience function)  
+      # Remove an item from a list (convenience function)
       :ok = WandererNotifier.PersistentValues.remove(:priority_systems, 2)
   """
 
   use Agent
   require Logger
-
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
 
   @type key :: atom()
   @type vals :: [integer()]
@@ -83,7 +81,7 @@ defmodule WandererNotifier.PersistentValues do
 
     if value not in current do
       put(key, [value | current])
-      AppLogger.config_info("Added #{value} to #{key}")
+      Logger.info("Added #{value} to #{key}")
     end
 
     :ok
@@ -100,7 +98,7 @@ defmodule WandererNotifier.PersistentValues do
 
     if value in current do
       put(key, List.delete(current, value))
-      AppLogger.config_info("Removed #{value} from #{key}")
+      Logger.info("Removed #{value} from #{key}")
     end
 
     :ok
@@ -133,7 +131,7 @@ defmodule WandererNotifier.PersistentValues do
       # Remove the persistence file
       if File.exists?(@persist_file) do
         File.rm!(@persist_file)
-        AppLogger.config_info("Cleared persistent values file")
+        Logger.info("Cleared persistent values file")
       end
 
       %{}
@@ -159,7 +157,7 @@ defmodule WandererNotifier.PersistentValues do
       {:ok, binary} ->
         case safe_binary_to_term(binary) do
           {:ok, state} when is_map(state) ->
-            AppLogger.startup_info("Loaded persistent values from disk: #{map_size(state)} keys")
+            Logger.info("Loaded persistent values from disk: #{map_size(state)} keys")
             state
 
           {:error, reason} ->
@@ -170,7 +168,7 @@ defmodule WandererNotifier.PersistentValues do
         end
 
       {:error, :enoent} ->
-        AppLogger.startup_info("No persistent values file found, starting empty")
+        Logger.info("No persistent values file found, starting empty")
         %{}
 
       {:error, reason} ->
@@ -203,10 +201,10 @@ defmodule WandererNotifier.PersistentValues do
       File.write!(temp_file, binary)
       File.rename!(temp_file, @persist_file)
 
-      AppLogger.config_info("Persisted values to disk: #{map_size(state)} keys")
+      Logger.info("Persisted values to disk: #{map_size(state)} keys")
     rescue
       error ->
-        AppLogger.config_error("Failed to persist values",
+        Logger.error("Failed to persist values",
           error: Exception.message(error),
           file: @persist_file
         )
@@ -218,7 +216,7 @@ defmodule WandererNotifier.PersistentValues do
 
   # Helper to warn about issues and return empty state
   defp warn_and_return_empty(message) do
-    AppLogger.startup_warn("[PersistentValues] #{message}, starting empty")
+    Logger.warning("[PersistentValues] #{message}, starting empty")
     %{}
   end
 end

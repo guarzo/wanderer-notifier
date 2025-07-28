@@ -6,10 +6,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   while using the shared event handling patterns.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Domains.Tracking.Entities.Character
+  require Logger
+  alias WandererNotifier.Domains.Tracking.Entities.Character, as: Character
   alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Domains.Notifications.Determiner.Character, as: CharacterDeterminer
+  alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
@@ -61,37 +61,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # Character-Specific Implementation
   # ══════════════════════════════════════════════════════════════════════════════
 
-  @doc """
-  Handles character added events.
-
-  Expected payload structure:
-  ```
-  %{
-    "id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
-    "character_id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
-    "character_eve_id" => "2000000263",
-    "name" => "Character Name",
-    "corporation_id" => 1000000263,
-    "alliance_id" => null,
-    "ship_type_id" => 670,
-    "online" => true
-  }
-  ```
-  """
-  @deprecated "Use handle_entity_added/2 instead"
-  def handle_character_added(event, map_slug) do
-    handle_entity_added(event, map_slug)
-  end
-
-  @deprecated "Use handle_entity_removed/2 instead"
-  def handle_character_removed(event, map_slug) do
-    handle_entity_removed(event, map_slug)
-  end
-
-  @deprecated "Use handle_entity_updated/2 instead"
-  def handle_character_updated(event, map_slug) do
-    handle_entity_updated(event, map_slug)
-  end
+  # Handles character added events.
+  #
+  # Expected payload structure:
+  # ```
+  # %{
+  #   "id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
+  #   "character_id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
+  #   "character_eve_id" => "2000000263",
+  #   "name" => "Character Name",
+  #   "corporation_id" => 1000000263,
+  #   "alliance_id" => null,
+  #   "ship_type_id" => 670,
+  #   "online" => true
+  # }
+  # ```
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Character-Specific Data Extraction and Processing
@@ -123,18 +107,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
       character["name"] && character["id"] ->
         # If we have name and id but no eve_id, try to find it in cache
-        AppLogger.api_info("Character update without eve_id, will try to find in cache",
+        Logger.info("Character update without eve_id, will try to find in cache",
           name: character["name"],
-          id: character["id"]
+          id: character["id"],
+          category: :api
         )
 
         {:ok, character}
 
       true ->
-        AppLogger.api_error("Missing required fields in character event",
+        Logger.error("Missing required fields in character event",
           eve_id: eve_id,
           name: character["name"],
-          payload_keys: Map.keys(payload)
+          payload_keys: Map.keys(payload),
+          category: :api
         )
 
         {:error, :missing_required_fields}
@@ -237,18 +223,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     matched_character = Enum.find(cached_characters, &matches_name_or_id?(&1, name, id))
 
     if matched_character do
-      AppLogger.api_info("Found cached character for update",
+      Logger.info("Found cached character for update",
         character_name: name,
         character_id: id,
         cached_eve_id: matched_character["eve_id"],
-        cached_name: matched_character["name"]
+        cached_name: matched_character["name"],
+        category: :api
       )
     else
-      AppLogger.api_warn("No cached character found for update",
+      Logger.warning("No cached character found for update",
         character_name: name,
         character_id: id,
         total_cached: length(cached_characters),
-        cached_names: Enum.map(cached_characters, & &1["name"]) |> Enum.take(5)
+        cached_names: Enum.map(cached_characters, & &1["name"]) |> Enum.take(5),
+        category: :api
       )
     end
 
@@ -310,7 +298,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     character_id = character["eve_id"]
     # Don't try to notify if we don't have an eve_id
     if character_id do
-      CharacterDeterminer.should_notify?(character_id, character)
+      Determiner.should_notify?(:character, character_id, character)
     else
       false
     end
@@ -320,7 +308,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     character_id = character["eve_id"]
     # Don't try to notify if we don't have an eve_id
     if character_id do
-      CharacterDeterminer.should_notify?(character_id, character)
+      Determiner.should_notify?(:character, character_id, character)
     else
       false
     end
@@ -330,7 +318,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     character_id = character["eve_id"]
     # Don't try to notify if we don't have an eve_id
     if character_id do
-      CharacterDeterminer.should_notify?(character_id, character)
+      Determiner.should_notify?(:character, character_id, character)
     else
       false
     end
@@ -338,31 +326,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
   defp send_character_added_notification(character) do
     # Create a MapCharacter struct for the notification
-    case Character.new_safe(character) do
-      {:ok, map_character} ->
-        case WandererNotifier.Application.Services.NotificationService.notify_character(
-               map_character
-             ) do
-          :ok -> :ok
-          {:error, :notifications_disabled} -> :ok
-          error -> error
-        end
+    map_character = Character.from_api_data(character)
 
-      {:error, reason} ->
-        AppLogger.api_error("Failed to create MapCharacter for notification",
-          character: inspect(character),
-          error: inspect(reason)
-        )
-
-        :ok
+    case WandererNotifier.Application.Services.NotificationService.notify_character(map_character) do
+      :ok -> :ok
+      {:error, :notifications_disabled} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 
   defp send_character_removed_notification(character) do
     # For now, we don't have a specific "character removed" notification
-    AppLogger.api_info("Character removed from tracking",
+    Logger.info("Character removed from tracking",
       character_name: character["name"],
-      eve_id: character["eve_id"]
+      eve_id: character["eve_id"],
+      category: :api
     )
 
     :ok
@@ -370,11 +348,12 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
   defp send_character_updated_notification(character) do
     # For now, we don't have a specific "character updated" notification
-    AppLogger.api_info("Character updated in tracking",
+    Logger.info("Character updated in tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       online: character["online"],
-      ship_type_id: character["ship_type_id"]
+      ship_type_id: character["ship_type_id"],
+      category: :api
     )
 
     :ok

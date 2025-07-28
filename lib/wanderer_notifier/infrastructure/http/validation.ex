@@ -1,11 +1,12 @@
 defmodule WandererNotifier.Infrastructure.Http.Validation do
+  require Logger
+
   @moduledoc """
   Centralized JSON validation logic for WandererNotifier.
   Provides consistent validation patterns for JSON data structures and HTTP responses.
   """
 
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Utils.ValidationUtils
 
@@ -39,11 +40,11 @@ defmodule WandererNotifier.Infrastructure.Http.Validation do
         {:ok, validated_data}
 
       {:error, {:missing_fields, missing}} ->
-        AppLogger.api_debug("Missing required fields", missing: missing)
+        Logger.debug("Missing required fields", missing: missing, category: :api)
         {:error, {:missing_fields, missing}}
 
       {:error, {:empty_fields, empty}} ->
-        AppLogger.api_debug("Empty required fields", empty: empty)
+        Logger.debug("Empty required fields", empty: empty, category: :api)
         {:error, {:missing_fields, empty}}
     end
   end

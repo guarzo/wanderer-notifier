@@ -10,11 +10,11 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
       # Type validation
       iex> ValidationUtils.valid_type?("string", :string)
       true
-      
+
       # Required field validation
       iex> ValidationUtils.validate_required_fields(%{"name" => "test"}, ["name", "id"])
       {:error, {:missing_fields, ["id"]}}
-      
+
       # Map structure validation
       iex> ValidationUtils.valid_map_structure?(%{"id" => 1}, %{id: :integer})
       {:ok, %{"id" => 1}}
@@ -26,7 +26,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Supported Types
   - `:string` - Binary values
   - `:integer` - Integer values
-  - `:float` - Float values  
+  - `:float` - Float values
   - `:number` - Any numeric value (integer or float)
   - `:boolean` - Boolean values
   - `:map` - Map values
@@ -37,13 +37,13 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> valid_type?("hello", :string)
       true
-      
+
       iex> valid_type?(42, :integer)
       true
-      
+
       iex> valid_type?(3.14, :number)
       true
-      
+
       iex> valid_type?("hello", :integer)
       false
   """
@@ -65,10 +65,10 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> validate_required_fields(%{"name" => "test", "id" => 1}, ["name", "id"])
       {:ok, %{"name" => "test", "id" => 1}}
-      
+
       iex> validate_required_fields(%{"name" => "test"}, ["name", "id"])
       {:error, {:missing_fields, ["id"]}}
-      
+
       iex> validate_required_fields(%{"name" => ""}, ["name"])
       {:error, {:empty_fields, ["name"]}}
   """
@@ -110,10 +110,10 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> validate_optional_field(nil, :string)
       {:ok, nil}
-      
+
       iex> validate_optional_field("valid", :string)
       {:ok, "valid"}
-      
+
       iex> validate_optional_field(123, :string)
       {:error, :invalid_type}
   """
@@ -134,10 +134,10 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> valid_non_empty_map?(%{"key" => "value"})
       true
-      
+
       iex> valid_non_empty_map?(%{})
       false
-      
+
       iex> valid_non_empty_map?("not a map")
       false
   """
@@ -154,7 +154,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
       iex> data = %{"name" => "test", "id" => 1, "active" => true}
       iex> validate_map_structure(data, schema)
       {:ok, %{"name" => "test", "id" => 1, "active" => true}}
-      
+
       iex> bad_data = %{"name" => "test", "id" => "not_integer"}
       iex> validate_map_structure(bad_data, schema)
       {:error, {:type_errors, [{"id", :integer, "not_integer"}]}}
@@ -220,7 +220,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> validate_has_any_key(%{"name" => "test"}, ["name", "id"])
       {:ok, %{"name" => "test"}}
-      
+
       iex> validate_has_any_key(%{"other" => "value"}, ["name", "id"])
       {:error, {:missing_any_key, ["name", "id"]}}
   """
@@ -244,7 +244,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> validate_list([1, 2, 3], &is_integer/1)
       {:ok, [1, 2, 3]}
-      
+
       iex> validate_list([1, "2", 3], &is_integer/1)
       {:error, {:invalid_items, [1]}}  # Index 1 ("2") failed validation
   """
@@ -277,13 +277,13 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> valid_optional_string_field?(nil)
       true
-      
+
       iex> valid_optional_string_field?("valid string")
       true
-      
+
       iex> valid_optional_string_field?("")
       false
-      
+
       iex> valid_optional_string_field?(123)
       false
   """
@@ -298,7 +298,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> format_validation_error({:missing_fields, ["name", "id"]})
       "Missing required fields: name, id"
-      
+
       iex> format_validation_error({:type_errors, [{"id", :integer, "string"}]})
       "Type errors: id (expected integer, got string)"
   """
@@ -343,10 +343,10 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
   ## Examples
       iex> type_name("string")
       "string"
-      
+
       iex> type_name(42)
       "integer"
-      
+
       iex> type_name(%{})
       "map"
   """
@@ -433,7 +433,7 @@ defmodule WandererNotifier.Shared.Utils.ValidationUtils do
       iex> character = %{"eve_id" => 123456, "name" => "Character Name"}
       iex> validate_character_data(character)
       {:ok, character}
-      
+
       iex> character_alt = %{"character_eve_id" => 123456, "name" => "Character Name"}
       iex> validate_character_data(character_alt)
       {:ok, character_alt}
