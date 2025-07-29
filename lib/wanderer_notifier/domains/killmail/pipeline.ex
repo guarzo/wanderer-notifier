@@ -70,8 +70,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     case result do
       {:error, {:exception, exception}} ->
         handle_error(kill_id, {:pipeline_crash, exception})
+
       {:error, {:exit, reason}} ->
         handle_error(kill_id, {:pipeline_exit, reason})
+
       result ->
         result
     end

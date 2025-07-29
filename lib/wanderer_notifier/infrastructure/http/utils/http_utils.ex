@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
   @moduledoc """
   Shared HTTP utility functions used across middleware components and HTTP clients.
-  
+
   Provides common utilities for URL manipulation, query parameter handling,
   and other HTTP-related operations.
   """
@@ -104,6 +104,7 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
     case URI.parse(url) do
       %URI{query: query} when is_binary(query) ->
         URI.decode_query(query)
+
       _ ->
         %{}
     end
@@ -125,6 +126,7 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
     case URI.parse(url) do
       %URI{scheme: scheme, host: host} when is_binary(scheme) and is_binary(host) ->
         scheme in ["http", "https"]
+
       _ ->
         false
     end
@@ -144,12 +146,13 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
   @spec build_headers(map(), String.t() | nil) :: [tuple()]
   def build_headers(additional_headers \\ %{}, auth_header \\ nil) do
     base_headers = [{"Content-Type", "application/json"}]
-    
-    headers_with_auth = case auth_header do
-      nil -> base_headers
-      auth -> [{"Authorization", auth} | base_headers]
-    end
-    
+
+    headers_with_auth =
+      case auth_header do
+        nil -> base_headers
+        auth -> [{"Authorization", auth} | base_headers]
+      end
+
     additional_headers
     |> Enum.reduce(headers_with_auth, fn {key, value}, acc ->
       [{key, value} | acc]
