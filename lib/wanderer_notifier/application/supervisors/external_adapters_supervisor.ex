@@ -20,7 +20,7 @@ defmodule WandererNotifier.Application.Supervisors.ExternalAdaptersSupervisor do
       {Task.Supervisor, name: WandererNotifier.HttpTaskSupervisor},
 
       # License service for premium features
-      {WandererNotifier.Domains.License.Service, []}
+      {WandererNotifier.Domains.License.LicenseService, []}
     ]
 
     # Use rest_for_one strategy so if HTTP supervisor crashes,

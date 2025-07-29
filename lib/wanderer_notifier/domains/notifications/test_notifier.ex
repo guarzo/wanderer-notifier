@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Domains.Notifications.Notifiers.Test do
+defmodule WandererNotifier.Domains.Notifications.Notifiers.TestNotifier do
   @moduledoc """
   Test notifier for use in test environment.
   This module is the single source of truth for test notifications.

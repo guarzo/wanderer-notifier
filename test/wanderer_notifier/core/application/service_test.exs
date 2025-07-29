@@ -4,7 +4,7 @@ defmodule WandererNotifier.Application.Services.Application.ServiceTest do
 
   alias WandererNotifier.Application.Services.Application.Service
   alias WandererNotifier.Application.Services.Stats
-  alias WandererNotifier.Domains.License.Service, as: LicenseService
+  alias WandererNotifier.Domains.License.LicenseService
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
   alias WandererNotifier.MockConfig

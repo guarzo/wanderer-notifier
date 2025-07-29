@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Domains.License.Service do
+defmodule WandererNotifier.Domains.License.LicenseService do
   @moduledoc """
   License management for WandererNotifier.
   Handles license validation and feature access control.

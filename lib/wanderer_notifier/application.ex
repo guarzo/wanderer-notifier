@@ -48,7 +48,7 @@ defmodule WandererNotifier.Application do
       # Enhanced Discord consumer that handles slash commands
       {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
       {WandererNotifier.Application.Services.Stats, []},
-      {WandererNotifier.Domains.License.Service, []},
+      {WandererNotifier.Domains.License.LicenseService, []},
       {WandererNotifier.Application.Services.Application.Service, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},

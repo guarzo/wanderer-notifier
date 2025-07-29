@@ -167,7 +167,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   defdelegate validate_license(api_token, license_key),
-    to: WandererNotifier.Domains.License.Service,
+    to: WandererNotifier.Domains.License.LicenseService,
     as: :validate_bot
 
   @doc """
@@ -175,7 +175,7 @@ defmodule WandererNotifier.Contexts.ExternalAdapters do
   """
   @spec premium_features_enabled?() :: boolean()
   def premium_features_enabled? do
-    case WandererNotifier.Domains.License.Service.status() do
+    case WandererNotifier.Domains.License.LicenseService.status() do
       %{status: :active} -> true
       _ -> false
     end

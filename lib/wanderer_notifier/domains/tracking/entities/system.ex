@@ -49,35 +49,64 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec new(map()) :: t()
   def new(attrs) when is_map(attrs) do
-    # Extract system ID
+    system_id = validate_system_id(attrs)
+    name = validate_name(attrs)
+
+    %__MODULE__{
+      solar_system_id: system_id,
+      name: name,
+      original_name: extract_simple_field(attrs, [:original_name]),
+      system_type: extract_simple_field(attrs, [:system_type]),
+      type_description: extract_simple_field(attrs, [:type_description]),
+      class_title: extract_class_title_field(attrs),
+      region_name: extract_simple_field(attrs, [:region_name]),
+      security_status: extract_security_status_field(attrs),
+      is_shattered: extract_simple_field(attrs, [:is_shattered]),
+      statics: extract_simple_field(attrs, [:statics]),
+      effect_name: extract_simple_field(attrs, [:effect_name]),
+      tracked: extract_tracked_field(attrs)
+    }
+  end
+
+  # Validation helpers for new/1
+  defp validate_system_id(attrs) do
     system_id = extract_system_id(attrs)
 
     if is_nil(system_id) do
       raise ArgumentError, "System must have solar_system_id"
     end
 
-    name = attrs["name"] || attrs[:name] || attrs["id"] || attrs[:id]
+    system_id
+  end
+
+  defp validate_name(attrs) do
+    name = extract_simple_field(attrs, [:name, :id])
 
     if is_nil(name) or name == "" do
       raise ArgumentError, "System must have a name"
     end
 
-    %__MODULE__{
-      solar_system_id: system_id,
-      name: name,
-      original_name: attrs["original_name"] || attrs[:original_name],
-      system_type: attrs["system_type"] || attrs[:system_type],
-      type_description: attrs["type_description"] || attrs[:type_description],
-      class_title:
-        attrs["class_title"] || attrs[:class_title] || attrs["system_class"] ||
-          attrs[:system_class],
-      region_name: attrs["region_name"] || attrs[:region_name],
-      security_status: parse_float(attrs["security_status"] || attrs[:security_status]),
-      is_shattered: attrs["is_shattered"] || attrs[:is_shattered],
-      statics: attrs["statics"] || attrs[:statics],
-      effect_name: attrs["effect_name"] || attrs[:effect_name],
-      tracked: attrs["tracked"] || attrs[:tracked] || false
-    }
+    name
+  end
+
+  # Field extraction helpers for new/1
+  defp extract_simple_field(attrs, keys) do
+    Enum.find_value(keys, fn key ->
+      attrs[Atom.to_string(key)] || attrs[key]
+    end)
+  end
+
+  defp extract_class_title_field(attrs) do
+    extract_simple_field(attrs, [:class_title, :system_class])
+  end
+
+  defp extract_security_status_field(attrs) do
+    value = extract_simple_field(attrs, [:security_status])
+    parse_float(value)
+  end
+
+  defp extract_tracked_field(attrs) do
+    extract_simple_field(attrs, [:tracked]) || false
   end
 
   # Helper functions for system creation

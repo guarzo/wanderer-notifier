@@ -164,7 +164,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
   alias WandererNotifier.Domains.Notifications.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Application.Services.Stats
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Domains.License.Service, as: LicenseService
+  alias WandererNotifier.Domains.License.LicenseService
 
   @doc """
   Gathers all relevant state and sends a status message to the main notification channel.

@@ -40,29 +40,56 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
   """
   @spec new(map()) :: t()
   def new(attrs) when is_map(attrs) do
-    # Extract eve_id from either eve_id or character_id field
+    eve_id = validate_eve_id(attrs)
+    name = validate_name(attrs)
+
+    %__MODULE__{
+      character_id: normalize_id(eve_id),
+      name: name,
+      corporation_id: extract_integer_field(attrs, [:corporation_id]),
+      alliance_id: extract_integer_field(attrs, [:alliance_id]),
+      eve_id: normalize_id(eve_id),
+      corporation_ticker: extract_simple_field(attrs, [:corporation_ticker]),
+      alliance_ticker: extract_simple_field(attrs, [:alliance_ticker]),
+      tracked: extract_tracked_field(attrs)
+    }
+  end
+
+  # Validation helpers for new/1
+  defp validate_eve_id(attrs) do
     eve_id = extract_eve_id(attrs)
 
     if is_nil(eve_id) do
       raise ArgumentError, "Character must have eve_id or character_id"
     end
 
-    name = attrs["name"] || attrs[:name]
+    eve_id
+  end
+
+  defp validate_name(attrs) do
+    name = extract_simple_field(attrs, [:name])
 
     if is_nil(name) or name == "" do
       raise ArgumentError, "Character must have a name"
     end
 
-    %__MODULE__{
-      character_id: normalize_id(eve_id),
-      name: name,
-      corporation_id: parse_integer(attrs["corporation_id"] || attrs[:corporation_id]),
-      alliance_id: parse_integer(attrs["alliance_id"] || attrs[:alliance_id]),
-      eve_id: normalize_id(eve_id),
-      corporation_ticker: attrs["corporation_ticker"] || attrs[:corporation_ticker],
-      alliance_ticker: attrs["alliance_ticker"] || attrs[:alliance_ticker],
-      tracked: attrs["tracked"] || attrs[:tracked] || false
-    }
+    name
+  end
+
+  # Field extraction helpers for new/1
+  defp extract_simple_field(attrs, keys) do
+    Enum.find_value(keys, fn key ->
+      attrs[Atom.to_string(key)] || attrs[key]
+    end)
+  end
+
+  defp extract_integer_field(attrs, keys) do
+    value = extract_simple_field(attrs, keys)
+    parse_integer(value)
+  end
+
+  defp extract_tracked_field(attrs) do
+    extract_simple_field(attrs, [:tracked]) || false
   end
 
   # Helper functions for character creation
