@@ -37,14 +37,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     NeoClient.send_embed(embed)
   end
 
-  def send_message(_) do
-    {:error, :invalid_message_type}
+  def send_message(message, channel_id) when is_binary(message) do
+    NeoClient.send_message(message, channel_id)
+  end
+
+  def send_message(embed, channel_id) when is_map(embed) do
+    NeoClient.send_embed(embed, channel_id)
   end
 
   @doc """
   Send an embed to Discord.
   """
-  def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
+  def send_embed(title, description, url \\ nil, color \\ @default_embed_color)
+
+  def send_embed(title, description, url, color) do
     embed = %{
       "title" => title,
       "description" => description,
@@ -75,6 +81,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     }
 
     NeoClient.send_embed(embed)
+  end
+
+  def send_image_embed(title, description, image_url, channel_id, color) do
+    embed = %{
+      "title" => title,
+      "description" => description,
+      "color" => color,
+      "image" => %{"url" => image_url}
+    }
+
+    NeoClient.send_embed(embed, channel_id)
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

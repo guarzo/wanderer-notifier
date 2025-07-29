@@ -41,6 +41,90 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   ]
 
   # ══════════════════════════════════════════════════════════════════════════════
+  # Constructor Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Creates a new System struct from attributes map.
+  """
+  @spec new(map()) :: t()
+  def new(attrs) when is_map(attrs) do
+    # Extract system ID
+    system_id = extract_system_id(attrs)
+
+    if is_nil(system_id) do
+      raise ArgumentError, "System must have solar_system_id"
+    end
+
+    name = attrs["name"] || attrs[:name] || attrs["id"] || attrs[:id]
+
+    if is_nil(name) or name == "" do
+      raise ArgumentError, "System must have a name"
+    end
+
+    %__MODULE__{
+      solar_system_id: system_id,
+      name: name,
+      original_name: attrs["original_name"] || attrs[:original_name],
+      system_type: attrs["system_type"] || attrs[:system_type],
+      type_description: attrs["type_description"] || attrs[:type_description],
+      class_title:
+        attrs["class_title"] || attrs[:class_title] || attrs["system_class"] ||
+          attrs[:system_class],
+      region_name: attrs["region_name"] || attrs[:region_name],
+      security_status: parse_float(attrs["security_status"] || attrs[:security_status]),
+      is_shattered: attrs["is_shattered"] || attrs[:is_shattered],
+      statics: attrs["statics"] || attrs[:statics],
+      effect_name: attrs["effect_name"] || attrs[:effect_name],
+      tracked: attrs["tracked"] || attrs[:tracked] || false
+    }
+  end
+
+  # Helper functions for system creation
+  defp extract_system_id(attrs) do
+    system_id = attrs["solar_system_id"] || attrs[:solar_system_id] || attrs["id"] || attrs[:id]
+    normalize_system_id(system_id)
+  end
+
+  defp normalize_system_id(id) when is_integer(id), do: id
+
+  defp normalize_system_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ -> nil
+    end
+  end
+
+  defp normalize_system_id(_), do: nil
+
+  defp parse_float(nil), do: nil
+  defp parse_float(value) when is_float(value), do: value
+  defp parse_float(value) when is_integer(value), do: value / 1.0
+
+  defp parse_float(value) when is_binary(value) do
+    case Float.parse(value) do
+      {float_val, ""} -> float_val
+      _ -> nil
+    end
+  end
+
+  defp parse_float(_), do: nil
+
+  @doc """
+  Safe constructor that returns {:ok, system} or {:error, reason}.
+  """
+  @spec new_safe(map()) :: {:ok, t()} | {:error, term()}
+  def new_safe(attrs) when is_map(attrs) do
+    try do
+      system = new(attrs)
+      {:ok, system}
+    rescue
+      e in ArgumentError -> {:error, e.message}
+      e -> {:error, "Failed to create system: #{inspect(e)}"}
+    end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
   # TrackingBehaviour Implementation
   # ══════════════════════════════════════════════════════════════════════════════
 
@@ -104,10 +188,6 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
       system_id: Map.get(data, "system_id"),
       category: :api
     )
-  end
-
-  defp extract_system_id(data) do
-    extract_field(data, ["solar_system_id", "id", "system_id"], &get_string/2)
   end
 
   defp extract_name(data) do

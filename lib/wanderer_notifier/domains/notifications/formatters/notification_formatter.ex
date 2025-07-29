@@ -571,7 +571,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp get_alliance_name(%Character{} = character) do
-    # For character notifications, we want to use ticker as the primary name since  
+    # For character notifications, we want to use ticker as the primary name since
     # we don't have full alliance names in the character tracking data
     character.alliance_ticker || "Unknown Alliance"
   end

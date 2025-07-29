@@ -397,6 +397,24 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   @doc """
+  Makes a GET request with JSON decoding enabled.
+
+  ## Parameters
+    - url: The URL to request
+    - headers: Optional headers (defaults to [])
+    - opts: Optional configuration (defaults to [])
+
+  ## Returns
+    - {:ok, response} on success with JSON-decoded body
+    - {:error, reason} on failure
+  """
+  @spec get_json(url(), headers(), opts()) :: response()
+  def get_json(url, headers \\ [], opts \\ []) do
+    json_opts = Keyword.put(opts, :decode_json, true)
+    request(:get, url, nil, headers, json_opts)
+  end
+
+  @doc """
   Makes a GET request to the ZKill API for a specific killmail.
   Requires both the killmail ID and hash for proper identification.
 

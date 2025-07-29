@@ -32,6 +32,87 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
   ]
 
   # ══════════════════════════════════════════════════════════════════════════════
+  # Constructor Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Creates a new Character struct from attributes map.
+  """
+  @spec new(map()) :: t()
+  def new(attrs) when is_map(attrs) do
+    # Extract eve_id from either eve_id or character_id field
+    eve_id = extract_eve_id(attrs)
+
+    if is_nil(eve_id) do
+      raise ArgumentError, "Character must have eve_id or character_id"
+    end
+
+    name = attrs["name"] || attrs[:name]
+
+    if is_nil(name) or name == "" do
+      raise ArgumentError, "Character must have a name"
+    end
+
+    %__MODULE__{
+      character_id: normalize_id(eve_id),
+      name: name,
+      corporation_id: parse_integer(attrs["corporation_id"] || attrs[:corporation_id]),
+      alliance_id: parse_integer(attrs["alliance_id"] || attrs[:alliance_id]),
+      eve_id: normalize_id(eve_id),
+      corporation_ticker: attrs["corporation_ticker"] || attrs[:corporation_ticker],
+      alliance_ticker: attrs["alliance_ticker"] || attrs[:alliance_ticker],
+      tracked: attrs["tracked"] || attrs[:tracked] || false
+    }
+  end
+
+  # Helper functions for character creation
+  defp extract_eve_id(attrs) do
+    attrs["eve_id"] || attrs[:eve_id] || attrs["character_id"] || attrs[:character_id]
+  end
+
+  defp normalize_id(id) when is_integer(id), do: Integer.to_string(id)
+  defp normalize_id(id) when is_binary(id), do: id
+  defp normalize_id(_), do: nil
+
+  defp parse_integer(nil), do: nil
+  defp parse_integer(id) when is_integer(id), do: id
+
+  defp parse_integer(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ -> nil
+    end
+  end
+
+  defp parse_integer(_), do: nil
+
+  @doc """
+  Safe constructor that returns {:ok, character} or {:error, reason}.
+  """
+  @spec new_safe(map()) :: {:ok, t()} | {:error, term()}
+  def new_safe(attrs) when is_map(attrs) do
+    try do
+      character = new(attrs)
+      {:ok, character}
+    rescue
+      e in ArgumentError -> {:error, e.message}
+      e -> {:error, "Failed to create character: #{inspect(e)}"}
+    end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Entity Helper Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Checks if the character has corporation information.
+  """
+  @spec has_corporation?(t()) :: boolean()
+  def has_corporation?(%__MODULE__{} = character) do
+    not is_nil(character.corporation_id) and not is_nil(character.corporation_ticker)
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
   # TrackingBehaviour Implementation
   # ══════════════════════════════════════════════════════════════════════════════
 

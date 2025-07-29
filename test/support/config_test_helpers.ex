@@ -7,7 +7,6 @@ defmodule WandererNotifier.Test.ConfigTestHelpers do
   """
 
   import ExUnit.Assertions
-  alias WandererNotifier.Shared.Config.Utils
 
   @doc """
   Creates a minimal valid configuration for testing.

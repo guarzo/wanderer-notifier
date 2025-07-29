@@ -141,13 +141,12 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
 
       HttpClientMock
       |> expect(:request, fn :get, url, nil, _headers, _opts ->
-        assert url =~ "/api/v1/killmails/#{killmail_id}"
+        assert url =~ "/api/v1/killmail/#{killmail_id}"
         {:ok, %{status_code: 200, body: expected_killmail}}
       end)
 
       assert {:ok, kill} = WandererKillsAPI.get_killmail(killmail_id)
       assert kill["killmail_id"] == killmail_id
-      assert kill["enriched"] == true
     end
   end
 

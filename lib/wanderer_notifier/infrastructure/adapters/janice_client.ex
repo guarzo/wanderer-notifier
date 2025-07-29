@@ -243,6 +243,14 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     end
   end
 
+  defp parse_appraisal_response(response) do
+    Logger.error(
+      "Unexpected Janice response format - Response: #{inspect(response, limit: :infinity)}"
+    )
+
+    {:error, :invalid_response}
+  end
+
   defp log_failures_if_present("", _item_count), do: :ok
 
   defp log_failures_if_present(failures, item_count) do
@@ -293,14 +301,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
       eid ->
         to_string(eid)
     end
-  end
-
-  defp parse_appraisal_response(response) do
-    Logger.error(
-      "Unexpected Janice response format - Response: #{inspect(response, limit: :infinity)}"
-    )
-
-    {:error, :invalid_response}
   end
 
   defp build_price_data(item) do

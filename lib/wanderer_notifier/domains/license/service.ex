@@ -299,7 +299,7 @@ defmodule WandererNotifier.Domains.License.Service do
       response[:license_valid] || response["license_valid"] || response[:valid] ||
         response["valid"] || false
 
-    # Check both possible field names for bot assignment  
+    # Check both possible field names for bot assignment
     bot_assigned =
       response[:bot_associated] || response["bot_associated"] || response[:bot_assigned] ||
         response["bot_assigned"] || false
