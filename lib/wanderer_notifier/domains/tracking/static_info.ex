@@ -240,10 +240,10 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
 
   defp update_optional_fields(system, data) do
     # Log what we're getting from the API
-    Logger.info("[StaticInfo] Updating optional fields - Data keys: #{inspect(Map.keys(data))}")
-    Logger.info("[StaticInfo] Statics from API: #{inspect(Map.get(data, "statics"))}")
-    Logger.info("[StaticInfo] Class title: #{inspect(Map.get(data, "class_title"))}")
-    Logger.info("[StaticInfo] Full data sample: #{inspect(data) |> String.slice(0, 500)}")
+    Logger.debug("[StaticInfo] Updating optional fields - Data keys: #{inspect(Map.keys(data))}")
+    Logger.debug("[StaticInfo] Statics from API: #{inspect(Map.get(data, "statics"))}")
+    Logger.debug("[StaticInfo] Class title: #{inspect(Map.get(data, "class_title"))}")
+    Logger.debug("[StaticInfo] Full data sample: #{inspect(data) |> String.slice(0, 500)}")
 
     optional_fields = [
       :statics,
@@ -282,7 +282,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
     # CRITICAL: Set system_type based on class_title or security
     result = determine_system_type(result, data)
 
-    Logger.info(
+    Logger.debug(
       "[StaticInfo] After enrichment - statics: #{inspect(result.statics)}, system_type: #{result.system_type}"
     )
 

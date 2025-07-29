@@ -27,6 +27,7 @@ defmodule WandererNotifier.Application.Services.NotificationService do
 
   require Logger
   alias WandererNotifier.Domains.Notifications.NotificationService, as: DomainNotificationService
+  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.PersistentValues
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Tracking.Entities.System
@@ -295,6 +296,28 @@ defmodule WandererNotifier.Application.Services.NotificationService do
     |> String.trim()
     |> String.downcase()
     |> :erlang.phash2()
+  end
+
+  @doc """
+  Sends a rally point notification.
+  """
+  def notify_rally_point(rally_point) do
+    if Config.rally_notifications_enabled?() do
+      Logger.info("Sending rally point notification",
+        system: rally_point.system_name,
+        character: rally_point.character_name,
+        category: :processor
+      )
+
+      # Send rally point notification through Discord notifier
+      DiscordNotifier.send_rally_point_notification(rally_point)
+    else
+      Logger.info("Rally point notifications disabled, skipping",
+        category: :processor
+      )
+
+      :skip
+    end
   end
 
   # Legacy text-based notification functions removed - using domain service with rich embeds

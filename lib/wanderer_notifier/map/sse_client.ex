@@ -283,7 +283,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncHeaders{headers: headers, id: async_id}, state) do
-    Logger.info("SSE connection headers received",
+    Logger.debug("SSE connection headers received",
       map_slug: state.map_slug,
       headers: inspect(headers)
     )
@@ -330,7 +330,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncEnd{}, state) do
-    Logger.info("SSE connection ended", map_slug: state.map_slug, category: :api)
+    Logger.debug("SSE connection ended", map_slug: state.map_slug, category: :api)
 
     # Connection ended, schedule reconnect
     new_state = %{state | connection: nil}
@@ -498,7 +498,7 @@ defmodule WandererNotifier.Map.SSEClient do
     jitter = (delay * 0.3 + delay * 0.2 * :rand.uniform()) |> trunc()
     final_delay = (delay + jitter) |> trunc()
 
-    Logger.info("Scheduling reconnect",
+    Logger.debug("Scheduling reconnect",
       map_slug: state.map_slug,
       attempt: state.reconnect_attempts + 1,
       delay_ms: final_delay

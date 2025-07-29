@@ -107,7 +107,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
       character["name"] && character["id"] ->
         # If we have name and id but no eve_id, try to find it in cache
-        Logger.info("Character update without eve_id, will try to find in cache",
+        Logger.debug("Character update without eve_id, will try to find in cache",
           name: character["name"],
           id: character["id"],
           category: :api
@@ -223,7 +223,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     matched_character = Enum.find(cached_characters, &matches_name_or_id?(&1, name, id))
 
     if matched_character do
-      Logger.info("Found cached character for update",
+      Logger.debug("Found cached character for update",
         character_name: name,
         character_id: id,
         cached_eve_id: matched_character["eve_id"],
@@ -337,7 +337,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
   defp send_character_removed_notification(character) do
     # For now, we don't have a specific "character removed" notification
-    Logger.info("Character removed from tracking",
+    Logger.debug("Character removed from tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       category: :api
@@ -348,7 +348,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
   defp send_character_updated_notification(character) do
     # For now, we don't have a specific "character updated" notification
-    Logger.info("Character updated in tracking",
+    Logger.debug("Character updated in tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       online: character["online"],

@@ -9,8 +9,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   require Logger
   alias WandererNotifier.Application.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Domains.Killmail.ItemProcessor
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Shared.Config
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -112,7 +114,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     kill_id = extract_kill_id(data)
     system_id = extract_system_id(data)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Building killmail - ID: #{inspect(kill_id)}, System: #{inspect(system_id)}"
     )
 
@@ -131,7 +133,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       true ->
         killmail = Killmail.from_websocket_data(kill_id, system_id, data)
 
-        Logger.info(
+        Logger.debug(
           "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{length(killmail.attackers || [])}"
         )
 
@@ -168,7 +170,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp should_notify?(%Killmail{} = killmail) do
     # Check global notification settings first
     enabled = notifications_enabled?()
-    Logger.info("[Pipeline] Notifications enabled: #{enabled}")
+    Logger.debug("[Pipeline] Notifications enabled: #{enabled}")
 
     if enabled do
       check_entity_tracking(killmail)
@@ -182,7 +184,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      Logger.info(
+      Logger.debug(
         "[Pipeline] Tracking check - System #{killmail.system_id}: #{system_tracked}, Characters: #{character_tracked}"
       )
 
@@ -216,7 +218,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Character tracking - Victim #{killmail.victim_character_id}: #{victim_tracked}, Any attacker: #{attacker_tracked}"
     )
 
@@ -262,11 +264,43 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec send_notification(Killmail.t()) :: result()
   defp send_notification(%Killmail{} = killmail) do
+    Logger.debug("Sending kill notification", killmail_id: killmail.killmail_id)
+
+    # Determine whether to process items based on startup suppression period
+    killmail_to_notify =
+      if in_startup_suppression_period?() do
+        # Skip item processing entirely during startup suppression period
+        killmail
+      else
+        # Process items right before sending notification (after we've decided to notify)
+        case maybe_process_items(killmail) do
+          {:ok, enriched} ->
+            Logger.debug("Item processing completed successfully",
+              killmail_id: killmail.killmail_id
+            )
+
+            enriched
+
+          {:error, reason} ->
+            Logger.warning("Item processing failed, continuing without items",
+              killmail_id: killmail.killmail_id,
+              reason: reason
+            )
+
+            killmail
+        end
+      end
+
+    handle_notification_response(killmail_to_notify)
+  end
+
+  @spec handle_notification_response(Killmail.t()) :: result()
+  defp handle_notification_response(%Killmail{} = killmail) do
     case WandererNotifier.Application.Services.NotificationService.notify_kill(killmail) do
       :ok ->
         Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
         Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-        Logger.info("Killmail #{killmail.killmail_id} notified", category: :killmail)
+        Logger.debug("Killmail #{killmail.killmail_id} notified", category: :killmail)
         {:ok, killmail.killmail_id}
 
       {:error, :notifications_disabled} ->
@@ -303,6 +337,55 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     )
 
     {:error, reason}
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Item Processing
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @spec maybe_process_items(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
+  defp maybe_process_items(%Killmail{} = killmail) do
+    enabled = Config.get(:notable_items_enabled, false)
+    token_present = Config.get(:janice_api_token) != nil
+
+    Logger.debug("Item processing status",
+      killmail_id: killmail.killmail_id,
+      notable_items_enabled: enabled,
+      janice_token_present: token_present,
+      category: :item_processing
+    )
+
+    if enabled do
+      Logger.debug("Starting item processing", killmail_id: killmail.killmail_id)
+      ItemProcessor.process_killmail_items(killmail)
+    else
+      # Skip item processing if Janice API token not configured
+      Logger.debug("Item processing disabled - no Janice API token configured",
+        killmail_id: killmail.killmail_id
+      )
+
+      {:ok, killmail}
+    end
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Startup Suppression Check
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Suppress kill notifications for 30 seconds after startup to avoid spam from initial sync
+  @startup_suppression_seconds 30
+
+  defp in_startup_suppression_period? do
+    start_time = Application.get_env(:wanderer_notifier, :start_time)
+
+    if start_time do
+      current_time = :erlang.monotonic_time(:second)
+      elapsed_seconds = current_time - start_time
+      elapsed_seconds < @startup_suppression_seconds
+    else
+      # If no start time is set, don't suppress
+      false
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

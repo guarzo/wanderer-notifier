@@ -87,7 +87,7 @@ end
 
 config :nostrum,
   token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
-  gateway_intents: [:guilds, :guild_messages]
+  gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Application Configuration
@@ -98,10 +98,13 @@ config :wanderer_notifier,
   discord_channel_id: RuntimeConfig.get_env("DISCORD_CHANNEL_ID"),
   discord_application_id: RuntimeConfig.get_env("DISCORD_APPLICATION_ID"),
   discord_bot_token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
+  discord_guild_id: RuntimeConfig.get_env("DISCORD_GUILD_ID"),
   discord_system_kill_channel_id: RuntimeConfig.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
   discord_character_kill_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
   discord_system_channel_id: RuntimeConfig.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
   discord_character_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
+  discord_rally_channel_id: RuntimeConfig.get_env("DISCORD_RALLY_CHANNEL_ID"),
+  discord_rally_group_id: RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID"),
 
   # Map settings
   map_token: RuntimeConfig.get_env("MAP_API_KEY"),
@@ -128,6 +131,12 @@ config :wanderer_notifier,
   wanderer_kills_url:
     RuntimeConfig.get_env("WANDERER_KILLS_URL", "http://host.docker.internal:4004"),
 
+  # Janice API settings
+  janice_api_token: RuntimeConfig.get_env("JANICE_API_TOKEN"),
+  janice_api_url: RuntimeConfig.get_env("JANICE_API_URL", "https://janice.e-351.com"),
+  notable_item_threshold: RuntimeConfig.get_integer("NOTABLE_ITEM_THRESHOLD", 50_000_000),
+  notable_items_enabled: RuntimeConfig.get_env("JANICE_API_TOKEN") != nil,
+
   # Cache settings
   cache_dir: RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache"),
 
@@ -137,6 +146,7 @@ config :wanderer_notifier,
   system_notifications_enabled: RuntimeConfig.get_boolean("SYSTEM_NOTIFICATIONS_ENABLED", true),
   character_notifications_enabled:
     RuntimeConfig.get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true),
+  rally_notifications_enabled: RuntimeConfig.get_boolean("RALLY_NOTIFICATIONS_ENABLED", true),
   status_messages_enabled: RuntimeConfig.get_boolean("STATUS_MESSAGES_ENABLED", false),
   priority_systems_only: RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY", false),
 

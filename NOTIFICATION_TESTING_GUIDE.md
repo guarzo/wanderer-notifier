@@ -67,6 +67,8 @@ Process a specific killmail by ID through the full notification pipeline. This f
 iex> NT.test_killmail_id("128825896")
 
 WandererNotifier.Testing.NotificationTester.test_killmail_id(128825896)
+128174877
+WandererNotifier.Testing.NotificationTester.test_killmail_id(128802471)
 
 # Also works with integer IDs
 iex> NT.test_killmail_id(123456789)

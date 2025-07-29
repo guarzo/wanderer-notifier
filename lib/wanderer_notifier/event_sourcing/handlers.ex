@@ -138,7 +138,7 @@ defmodule WandererNotifier.EventSourcing.Handlers do
     success_count = length(successes)
     failure_count = length(failures)
 
-    Logger.info("Batch processing completed",
+    Logger.debug("Batch processing completed",
       total: length(events),
       successes: success_count,
       failures: failure_count

@@ -161,11 +161,11 @@ defmodule WandererNotifier.Map.SSEConnection do
       follow_redirect: true
     ]
 
-    Logger.info("Starting SSE connection", url: url)
+    Logger.debug("Starting SSE connection", url: url)
 
     case HTTPoison.get(url, headers, options) do
       {:ok, %HTTPoison.AsyncResponse{id: async_id}} ->
-        Logger.info("SSE connection established", async_id: async_id)
+        Logger.debug("SSE connection established", async_id: async_id)
         {:ok, async_id}
 
       {:error, %HTTPoison.Error{reason: reason}} ->

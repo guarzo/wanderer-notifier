@@ -233,7 +233,7 @@ defmodule WandererNotifier.Domains.License.Service do
   @impl true
   def init(_opts) do
     schedule_refresh()
-    Logger.info("License Service starting up", category: :config)
+    Logger.debug("License Service starting up", category: :config)
 
     {:ok, State.new(), {:continue, :initial_validation}}
   end
@@ -241,29 +241,29 @@ defmodule WandererNotifier.Domains.License.Service do
   @impl true
   def handle_continue(:initial_validation, state) do
     # Perform initial license validation at startup
-    Logger.info("License Service performing initial validation", category: :config)
+    Logger.debug("License Service performing initial validation", category: :config)
 
     license_key = Config.license_key()
 
-    Logger.info("License key presence",
+    Logger.debug("License key presence",
       present: is_binary(license_key) && String.length(license_key) > 0,
       category: :config
     )
 
     notifier_api_token = Config.api_token()
 
-    Logger.info("API token presence",
+    Logger.debug("API token presence",
       present: is_binary(notifier_api_token) && String.length(notifier_api_token) > 0,
       category: :config
     )
 
     license_manager_url = Config.license_manager_api_url()
-    Logger.info("License manager URL", url: license_manager_url, category: :config)
+    Logger.debug("License manager URL", url: license_manager_url, category: :config)
 
     new_state = do_validate(state)
 
     if new_state.valid do
-      Logger.info(
+      Logger.debug(
         "License validated successfully: #{new_state.details["status"] || "valid"}",
         category: :config
       )
@@ -419,7 +419,7 @@ defmodule WandererNotifier.Domains.License.Service do
 
   @impl true
   def handle_call(:premium, _from, state) do
-    Logger.info("Premium check: not premium (premium tier removed)", category: :config)
+    Logger.debug("Premium check: not premium (premium tier removed)", category: :config)
     {:reply, false, state}
   end
 
@@ -458,7 +458,7 @@ defmodule WandererNotifier.Domains.License.Service do
         check_features_list(feature, details["features"])
 
       _ ->
-        Logger.info("Feature check: #{feature} - disabled (invalid license)", category: :config)
+        Logger.debug("Feature check: #{feature} - disabled (invalid license)", category: :config)
         false
     end
   end
@@ -476,14 +476,17 @@ defmodule WandererNotifier.Domains.License.Service do
     if is_list(features) do
       enabled = Enum.member?(features, to_string(feature))
 
-      Logger.info(
+      Logger.debug(
         "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}",
         category: :config
       )
 
       enabled
     else
-      Logger.info("Feature check: #{feature} - disabled (features not a list)", category: :config)
+      Logger.debug("Feature check: #{feature} - disabled (features not a list)",
+        category: :config
+      )
+
       false
     end
   end
@@ -538,7 +541,7 @@ defmodule WandererNotifier.Domains.License.Service do
       backoff_multiplier: 1
     }
 
-    Logger.info("🧑‍💻 Development license active")
+    Logger.debug("🧑‍💻 Development license active")
     dev_state
   end
 

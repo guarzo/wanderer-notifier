@@ -204,6 +204,56 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       {:error, e}
   end
 
+  @doc """
+  Send a rally point notification.
+  """
+  def send_rally_point_notification(rally_point) do
+    notification = NotificationFormatter.format_notification(rally_point)
+    channel_id = Config.discord_rally_channel_id()
+
+    # Add group ping content
+    content = build_rally_content(rally_point)
+    notification_with_content = Map.put(notification, :content, content)
+
+    case NeoClient.send_embed(notification_with_content, channel_id) do
+      :ok ->
+        Logger.info("Rally point notification sent",
+          system: rally_point.system_name,
+          character: rally_point.character_name,
+          category: :rally
+        )
+
+        {:ok, :sent}
+
+      {:error, reason} ->
+        Logger.error("Failed to send rally point notification",
+          reason: inspect(reason),
+          category: :rally
+        )
+
+        {:error, reason}
+    end
+  rescue
+    e ->
+      Logger.error("Exception in send_rally_point_notification",
+        error: Exception.message(e),
+        category: :rally,
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, e}
+  end
+
+  defp build_rally_content(_rally_point) do
+    group_id = Config.discord_rally_group_id()
+
+    if group_id do
+      "<@&#{group_id}> Rally point created!"
+    else
+      "Rally point created!"
+    end
+  end
+
   # ═══════════════════════════════════════════════════════════════════════════════
   # Generic Notification Handler
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -228,6 +278,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   def send_notification(:send_new_tracked_character_notification, [character]) do
     send_new_tracked_character_notification(character)
+  end
+
+  def send_notification(:send_rally_point_notification, [rally_point]) do
+    send_rally_point_notification(rally_point)
   end
 
   def send_notification(type, _data) do
@@ -298,18 +352,38 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     # Check if this is being sent to the system kill channel
     system_kill_channel = Config.discord_system_kill_channel_id()
 
+    Logger.debug(
+      "[Voice Ping Debug] Channel comparison - channel_id: #{inspect(channel_id)}, system_kill_channel: #{inspect(system_kill_channel)}, channels_match: #{channel_id == system_kill_channel}"
+    )
+
     # Check if killmail is for a tracked system (not character)
+    system_tracked = Determiner.tracked_system_for_killmail?(killmail.system_id)
+    has_tracked_char = Determiner.has_tracked_character?(killmail)
+
+    Logger.debug(
+      "[Voice Ping Debug] Kill tracking status - system_id: #{killmail.system_id}, system_tracked: #{system_tracked}, has_tracked_character: #{has_tracked_char}"
+    )
+
     is_system_kill =
       channel_id == system_kill_channel and
-        Determiner.tracked_system_for_killmail?(killmail.system_id) and
-        not Determiner.has_tracked_character?(killmail)
+        system_tracked and
+        not has_tracked_char
 
-    if is_system_kill do
+    Logger.debug(
+      "[Voice Ping Debug] System kill determination - is_system_kill: #{is_system_kill}, voice_pings_enabled: #{Config.voice_participant_notifications_enabled?()}"
+    )
+
+    if is_system_kill and Config.voice_participant_notifications_enabled?() do
       # Get voice channel mentions
       mentions = VoiceParticipants.get_active_voice_mentions()
 
+      Logger.debug(
+        "[Voice Ping Debug] Voice mentions retrieved - count: #{length(mentions)}, mentions: #{inspect(mentions)}"
+      )
+
       case mentions do
         [] ->
+          Logger.debug("[Voice Ping Debug] No voice users found")
           notification
 
         mentions_list ->
@@ -317,10 +391,15 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
           mention_string = Enum.join(mentions_list, " ")
           existing_content = Map.get(notification, :content, "")
 
+          Logger.debug(
+            "[Voice Ping Debug] Adding mentions - mention_string: #{mention_string}, existing_content: #{existing_content}"
+          )
+
           # Prepend mentions to content
           Map.put(notification, :content, "#{mention_string} #{existing_content}")
       end
     else
+      Logger.debug("[Voice Ping Debug] Not a system kill or voice pings disabled")
       notification
     end
   end

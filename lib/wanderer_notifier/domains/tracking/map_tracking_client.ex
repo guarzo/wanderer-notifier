@@ -119,20 +119,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   def is_character_tracked?(character_id) when is_binary(character_id) do
     case Cache.get("map:character_list") do
       {:ok, characters} when is_list(characters) ->
-        tracked =
-          Enum.any?(characters, fn character ->
-            case character do
-              # Check nested character structure first
-              %{"character" => %{"eve_id" => id}} -> to_string(id) == character_id
-              %{character: %{eve_id: id}} -> to_string(id) == character_id
-              # Then check flat structure
-              %{"eve_id" => id} -> to_string(id) == character_id
-              %{eve_id: id} -> to_string(id) == character_id
-              _ -> false
-            end
-          end)
-
-        {:ok, tracked}
+        check_character_in_list(characters, character_id)
 
       {:ok, _} ->
         {:ok, false}
@@ -146,36 +133,46 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     is_character_tracked?(Integer.to_string(character_id))
   end
 
+  defp check_character_in_list(characters, character_id) do
+    tracked = Enum.any?(characters, &character_matches?(character_id, &1))
+    {:ok, tracked}
+  end
+
+  defp character_matches?(character_id, %{"character" => %{"eve_id" => id}}),
+    do: to_string(id) == character_id
+
+  defp character_matches?(character_id, %{character: %{eve_id: id}}),
+    do: to_string(id) == character_id
+
+  defp character_matches?(character_id, %{"eve_id" => id}), do: to_string(id) == character_id
+  defp character_matches?(character_id, %{eve_id: id}), do: to_string(id) == character_id
+  defp character_matches?(_, _), do: false
+
   @doc """
   Checks if a system is tracked.
   """
   @spec is_system_tracked?(String.t()) :: {:ok, boolean()} | {:error, term()}
   def is_system_tracked?(system_id) when is_binary(system_id) do
     case Cache.get("map:systems") do
-      {:ok, systems} when is_list(systems) ->
-        tracked =
-          Enum.any?(systems, fn system ->
-            case system do
-              %System{solar_system_id: id} -> to_string(id) == system_id
-              %{"solar_system_id" => id} -> to_string(id) == system_id
-              %{solar_system_id: id} -> to_string(id) == system_id
-              _ -> false
-            end
-          end)
-
-        {:ok, tracked}
-
-      {:ok, _} ->
-        {:ok, false}
-
-      {:error, :not_found} ->
-        {:ok, false}
+      {:ok, systems} when is_list(systems) -> check_system_in_list(systems, system_id)
+      {:ok, _} -> {:ok, false}
+      {:error, :not_found} -> {:ok, false}
     end
   end
 
   def is_system_tracked?(system_id) when is_integer(system_id) do
     is_system_tracked?(Integer.to_string(system_id))
   end
+
+  defp check_system_in_list(systems, system_id) do
+    tracked = Enum.any?(systems, &system_matches?(system_id, &1))
+    {:ok, tracked}
+  end
+
+  defp system_matches?(system_id, %System{solar_system_id: id}), do: to_string(id) == system_id
+  defp system_matches?(system_id, %{"solar_system_id" => id}), do: to_string(id) == system_id
+  defp system_matches?(system_id, %{solar_system_id: id}), do: to_string(id) == system_id
+  defp system_matches?(_, _), do: false
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Private Implementation - No Process dictionary needed

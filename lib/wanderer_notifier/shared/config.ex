@@ -43,6 +43,8 @@ defmodule WandererNotifier.Shared.Config do
   @impl true
   def character_notifications_enabled?, do: get(:character_notifications_enabled, true)
 
+  def rally_notifications_enabled?, do: get(:rally_notifications_enabled, true)
+
   def status_messages_enabled?, do: get(:status_messages_enabled, false)
 
   def voice_participant_notifications_enabled?,
@@ -82,6 +84,8 @@ defmodule WandererNotifier.Shared.Config do
 
   def discord_charts_channel_id, do: get(:discord_charts_channel_id) || discord_channel_id()
   def discord_kill_channel_id, do: get(:discord_kill_channel_id) || discord_channel_id()
+  def discord_rally_channel_id, do: get(:discord_rally_channel_id) || discord_channel_id()
+  def discord_rally_group_id, do: get(:discord_rally_group_id)
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Map/Wanderer Configuration
@@ -173,6 +177,7 @@ defmodule WandererNotifier.Shared.Config do
       kill_notifications_enabled: kill_notifications_enabled?(),
       system_notifications_enabled: system_notifications_enabled?(),
       character_notifications_enabled: character_notifications_enabled?(),
+      rally_notifications_enabled: rally_notifications_enabled?(),
       status_messages_enabled: status_messages_enabled?(),
       debug_logging_enabled: debug_logging_enabled?()
     }

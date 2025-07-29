@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   Behaviour for deduplication services.
   """
 
-  @type notification_type :: :kill | :system | :character
+  @type notification_type :: :kill | :system | :character | :rally_point
   @type notification_id :: String.t() | integer()
   @type result :: {:ok, :new} | {:ok, :duplicate} | {:error, term()}
 

@@ -221,7 +221,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
       # Send to pipeline worker
       case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
         nil ->
-          Logger.info("PipelineWorker not found for fallback processing")
+          Logger.debug("PipelineWorker not found for fallback processing")
 
         pid ->
           # Mark as HTTP-sourced to avoid duplicate processing

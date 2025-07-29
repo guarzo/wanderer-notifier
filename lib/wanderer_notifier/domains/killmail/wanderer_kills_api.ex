@@ -73,44 +73,51 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   def get_killmail(killmail_id) do
     url = "#{base_url()}/api/v1/killmail/#{killmail_id}"
 
-    Logger.info("Fetching killmail from URL: #{url}", killmail_id: killmail_id, category: :api)
+    Logger.debug("Fetching killmail from URL: #{url}", killmail_id: killmail_id, category: :api)
 
     result = Http.request(:get, url, nil, default_headers(), service: :wanderer_kills)
-    Logger.info("HTTP request result: #{inspect(result)}", category: :api)
+    Logger.debug("HTTP request result: #{inspect(result)}", category: :api)
 
-    case result do
-      {:ok, %{status_code: 200, body: response_body}} when is_map(response_body) ->
-        Logger.info("Got 200 response with body keys: #{inspect(Map.keys(response_body))}",
-          category: :api
-        )
+    handle_killmail_response(result, killmail_id)
+  end
 
-        # Check if data is wrapped in a "data" field
-        killmail_data =
-          case response_body do
-            %{"data" => data} when is_map(data) ->
-              Logger.info("Found data wrapped in 'data' field", category: :api)
-              data
+  defp handle_killmail_response({:ok, %{status_code: 200, body: response_body}}, _killmail_id)
+       when is_map(response_body) do
+    Logger.debug("Got 200 response with body keys: #{inspect(Map.keys(response_body))}",
+      category: :api
+    )
 
-            data when is_map(data) ->
-              Logger.info("Using response body directly", category: :api)
-              data
-          end
+    killmail_data = extract_killmail_data(response_body)
+    transformed = transform_kill(killmail_data)
+    {:ok, Map.put(transformed, "enriched", true)}
+  end
 
-        transformed = transform_kill(killmail_data)
-        {:ok, Map.put(transformed, "enriched", true)}
+  defp handle_killmail_response({:ok, %{status_code: 404} = response}, killmail_id) do
+    Logger.debug("Got 404 response: #{inspect(response)}", category: :api)
+    {:error, %{type: :not_found, message: "Killmail #{killmail_id} not found"}}
+  end
 
-      {:ok, %{status_code: 404} = response} ->
-        Logger.info("Got 404 response: #{inspect(response)}", category: :api)
-        {:error, %{type: :not_found, message: "Killmail #{killmail_id} not found"}}
+  defp handle_killmail_response(
+         {:ok, %{status_code: status, body: body} = response},
+         _killmail_id
+       ) do
+    Logger.debug("Got #{status} response: #{inspect(response)}", category: :api)
+    {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+  end
 
-      {:ok, %{status_code: status, body: body} = response} ->
-        Logger.info("Got #{status} response: #{inspect(response)}", category: :api)
-        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+  defp handle_killmail_response({:error, reason}, _killmail_id) do
+    Logger.error("HTTP request error: #{inspect(reason)}", category: :api)
+    {:error, %{type: :network_error, message: inspect(reason)}}
+  end
 
-      {:error, reason} ->
-        Logger.error("HTTP request error: #{inspect(reason)}", category: :api)
-        {:error, %{type: :network_error, message: inspect(reason)}}
-    end
+  defp extract_killmail_data(%{"data" => data}) when is_map(data) do
+    Logger.debug("Found data wrapped in 'data' field", category: :api)
+    data
+  end
+
+  defp extract_killmail_data(data) when is_map(data) do
+    Logger.debug("Using response body directly", category: :api)
+    data
   end
 
   def subscribe_to_killmails(subscriber_id, system_ids, callback_url \\ nil) do

@@ -10,6 +10,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `:esi` - EVE Online ESI API with rate limiting and retry logic
   - `:wanderer_kills` - WandererKills API with moderate rate limits
   - `:license` - License validation API with conservative limits
+  - `:janice` - Janice price evaluation API with moderate rate limits
   - `:map` - Internal map API with extended timeouts
   - `:streaming` - Special configuration for streaming endpoints
 
@@ -41,7 +42,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
-  @type service :: :esi | :wanderer_kills | :license | :map | :streaming | nil
+  @type service :: :esi | :wanderer_kills | :license | :janice | :map | :streaming | nil
   @type middleware :: module()
   @type request :: %{
           method: method(),
@@ -309,6 +310,15 @@ defmodule WandererNotifier.Infrastructure.Http do
       rate_limit: [requests_per_second: 1, burst_capacity: 2, per_host: true],
       # No retry for license validation
       middlewares: [RateLimiter],
+      decode_json: true
+    ],
+    janice: [
+      timeout: 20_000,
+      retry_count: 2,
+      retry_delay: 1_000,
+      retryable_status_codes: [429, 500, 502, 503, 504],
+      rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
+      middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
     map: [

@@ -20,7 +20,7 @@ defmodule WandererNotifier.Application do
     # Validate configuration on startup
     validate_configuration()
 
-    Logger.info("Starting WandererNotifier", category: :startup)
+    Logger.debug("Starting WandererNotifier", category: :startup)
 
     # Log all environment variables to help diagnose config issues
     log_environment_variables()
@@ -28,7 +28,7 @@ defmodule WandererNotifier.Application do
     # Log scheduler configuration
     schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
 
-    Logger.info("Schedulers enabled: #{schedulers_enabled}", category: :startup)
+    Logger.debug("Schedulers enabled: #{schedulers_enabled}", category: :startup)
 
     base_children = [
       # Add Task.Supervisor first to prevent initialization races
@@ -81,7 +81,7 @@ defmodule WandererNotifier.Application do
         cache_monitoring_children ++
         realtime_children ++ killmail_children ++ sse_children ++ scheduler_children
 
-    Logger.info("Starting children: #{inspect(children)}", category: :startup)
+    Logger.debug("Starting children: #{inspect(children)}", category: :startup)
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     result = Supervisor.start_link(children, opts)
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Application do
 
   # Cache monitoring has been simplified - no initialization needed
   defp initialize_cache_monitoring do
-    Logger.info("Cache monitoring has been simplified", category: :startup)
+    Logger.debug("Cache monitoring has been simplified", category: :startup)
   end
 
   # Initialize SSE clients with proper error handling
@@ -176,7 +176,7 @@ defmodule WandererNotifier.Application do
 
   # Validates critical configuration on startup
   defp validate_configuration do
-    Logger.info("Configuration validation: PASSED", category: :startup)
+    Logger.debug("Configuration validation: PASSED", category: :startup)
     :ok
   end
 
@@ -218,7 +218,7 @@ defmodule WandererNotifier.Application do
       value ->
         # Redact sensitive values
         safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-        Logger.info("  #{key}: #{safe_value}", category: :startup)
+        Logger.debug("  #{key}: #{safe_value}", category: :startup)
     end
   end
 
@@ -227,7 +227,7 @@ defmodule WandererNotifier.Application do
   Sensitive values are redacted.
   """
   def log_environment_variables do
-    Logger.info("Environment variables at startup:", category: :startup)
+    Logger.debug("Environment variables at startup:", category: :startup)
 
     sensitive_keys = ~w(
       DISCORD_BOT_TOKEN
@@ -241,6 +241,7 @@ defmodule WandererNotifier.Application do
       DISCORD_BOT_TOKEN
       DISCORD_APPLICATION_ID
       DISCORD_CHANNEL_ID
+      DISCORD_GUILD_ID
       LICENSE_KEY
       MAP_URL
       MAP_NAME
@@ -268,11 +269,11 @@ defmodule WandererNotifier.Application do
   Logs key application configuration settings.
   """
   def log_application_config do
-    Logger.info("Application configuration:", category: :startup)
+    Logger.debug("Application configuration:", category: :startup)
 
     # Log version first
     version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
-    Logger.info("  version: #{version}", category: :startup)
+    Logger.debug("  version: #{version}", category: :startup)
 
     # Log critical config values from the application environment
     for {key, env_key} <- [
@@ -283,7 +284,7 @@ defmodule WandererNotifier.Application do
           {:schedulers_enabled, :schedulers_enabled}
         ] do
       value = Application.get_env(:wanderer_notifier, env_key)
-      Logger.info("  #{key}: #{inspect(value)}", category: :startup)
+      Logger.debug("  #{key}: #{inspect(value)}", category: :startup)
     end
   end
 
@@ -316,7 +317,7 @@ defmodule WandererNotifier.Application do
     if get_env() == :prod do
       {:error, :not_allowed_in_production}
     else
-      Logger.info("Reloading modules", category: :config, modules: inspect(modules))
+      Logger.debug("Reloading modules", category: :config, modules: inspect(modules))
 
       # Save current compiler options
       original_compiler_options = Code.compiler_options()
@@ -331,7 +332,7 @@ defmodule WandererNotifier.Application do
           :code.load_file(module)
         end)
 
-        Logger.info("Module reload complete", category: :config)
+        Logger.debug("Module reload complete", category: :config)
         {:ok, modules}
       rescue
         error ->

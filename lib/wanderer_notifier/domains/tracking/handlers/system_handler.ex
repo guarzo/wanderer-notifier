@@ -269,7 +269,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp maybe_log_system_removal(payload) do
-    Logger.info("System removed from tracking",
+    Logger.debug("System removed from tracking",
       system_id: Map.get(payload, "id"),
       category: :api
     )
@@ -278,7 +278,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp maybe_log_system_update(system) do
-    Logger.info("System metadata updated",
+    Logger.debug("System metadata updated",
       system_name: system.name,
       category: :api
     )
@@ -289,7 +289,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp send_system_notification(system) do
     case WandererNotifier.Application.Services.NotificationService.notify_system(system) do
       :ok ->
-        Logger.info("System notification sent",
+        Logger.debug("System notification sent",
           system_name: system.name,
           system_id: system.solar_system_id,
           category: :api
@@ -298,7 +298,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         :ok
 
       :skip ->
-        Logger.info("System notification skipped",
+        Logger.debug("System notification skipped",
           system_name: system.name,
           category: :api
         )
