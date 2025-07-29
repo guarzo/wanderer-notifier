@@ -76,6 +76,4 @@ defmodule WandererNotifier.Shared.Config.ConfigProvider do
       _ -> default
     end
   end
-
-  defp parse_boolean(_, default), do: default
 end

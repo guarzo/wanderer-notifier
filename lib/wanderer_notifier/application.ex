@@ -47,9 +47,11 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Shared.Utils.ValidationManager, []},
       # Enhanced Discord consumer that handles slash commands
       {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
+      # Unified application service (replaces Stats, Dependencies, NotificationService)
+      {WandererNotifier.Application.Services.ApplicationService, []},
+      # Backward compatibility adapters (no-op GenServers for supervision)
       {WandererNotifier.Application.Services.Stats, []},
       {WandererNotifier.Domains.License.LicenseService, []},
-      {WandererNotifier.Application.Services.Application.Service, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},
       # Phoenix endpoint for API and WebSocket functionality
