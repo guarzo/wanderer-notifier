@@ -34,9 +34,10 @@ defmodule WandererNotifier.Application.Services.ApplicationService.MetricsTracke
   """
   @spec increment_metric(State.t(), atom()) :: {:ok, State.t()}
   def increment_metric(state, type) do
-    new_state = State.update_metrics(state, fn metrics ->
-      update_metric_by_type(metrics, type)
-    end)
+    new_state =
+      State.update_metrics(state, fn metrics ->
+        update_metric_by_type(metrics, type)
+      end)
 
     {:ok, new_state}
   end
@@ -82,10 +83,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService.MetricsTracke
   """
   @spec mark_notification_sent(State.t(), atom()) :: {:ok, State.t()}
   def mark_notification_sent(state, type) when type in [:kill, :character, :system] do
-    new_state = State.update_metrics(state, fn metrics ->
-      first_notifications = Map.put(metrics.first_notifications, type, false)
-      %{metrics | first_notifications: first_notifications}
-    end)
+    new_state =
+      State.update_metrics(state, fn metrics ->
+        first_notifications = Map.put(metrics.first_notifications, type, false)
+        %{metrics | first_notifications: first_notifications}
+      end)
 
     Logger.debug("Marked #{type} notification as sent - no longer first notification",
       category: :config
@@ -98,14 +100,18 @@ defmodule WandererNotifier.Application.Services.ApplicationService.MetricsTracke
   Sets the tracked count for systems or characters.
   """
   @spec set_tracked_count(State.t(), atom(), non_neg_integer()) :: {:ok, State.t()}
-  def set_tracked_count(state, type, count) when type in [:systems, :characters] and is_integer(count) do
-    new_state = State.update_metrics(state, fn metrics ->
-      key = case type do
-        :systems -> :systems_count
-        :characters -> :characters_count
-      end
-      Map.put(metrics, key, count)
-    end)
+  def set_tracked_count(state, type, count)
+      when type in [:systems, :characters] and is_integer(count) do
+    new_state =
+      State.update_metrics(state, fn metrics ->
+        key =
+          case type do
+            :systems -> :systems_count
+            :characters -> :characters_count
+          end
+
+        Map.put(metrics, key, count)
+      end)
 
     {:ok, new_state}
   end

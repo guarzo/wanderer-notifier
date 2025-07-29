@@ -1,15 +1,15 @@
 defmodule WandererNotifier.Application.Services.ApplicationService.DependencyManager do
   @moduledoc """
   Manages dependency injection for the ApplicationService.
-  
+
   Provides a centralized way to resolve dependencies with support for:
   - Default implementations
   - Test overrides via application config
   - Runtime dependency swapping
   """
-  
+
   alias WandererNotifier.Application.Services.ApplicationService.State
-  
+
   @doc """
   Initializes the dependency manager with default mappings.
   """
@@ -23,17 +23,18 @@ defmodule WandererNotifier.Application.Services.ApplicationService.DependencyMan
       logger_module: WandererNotifier.Shared.Logger.Logger,
       cache_name: :wanderer_cache
     }
-    
+
     # Load any configured overrides
     overrides = load_dependency_overrides()
-    
-    new_state = State.update_dependencies(state, fn deps ->
-      %{deps | defaults: defaults, overrides: overrides}
-    end)
-    
+
+    new_state =
+      State.update_dependencies(state, fn deps ->
+        %{deps | defaults: defaults, overrides: overrides}
+      end)
+
     {:ok, new_state}
   end
-  
+
   @doc """
   Gets a dependency by name, with fallback to default.
   """
@@ -47,10 +48,12 @@ defmodule WandererNotifier.Application.Services.ApplicationService.DependencyMan
           nil -> fallback_default
           default -> default
         end
-      override -> override
+
+      override ->
+        override
     end
   end
-  
+
   @doc """
   Updates a dependency override (useful for testing).
   """
@@ -61,7 +64,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.DependencyMan
       %{deps | overrides: overrides}
     end)
   end
-  
+
   @doc """
   Clears all dependency overrides.
   """
@@ -71,11 +74,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService.DependencyMan
       %{deps | overrides: %{}}
     end)
   end
-  
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Private Helpers
   # ──────────────────────────────────────────────────────────────────────────────
-  
+
   defp load_dependency_overrides do
     # Load dependency overrides from application config
     # This allows tests to swap out dependencies by setting config

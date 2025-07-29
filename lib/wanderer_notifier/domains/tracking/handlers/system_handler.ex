@@ -288,18 +288,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp send_system_notification(system) do
     case WandererNotifier.Contexts.NotificationContext.send_system_notification(system) do
-      {:ok, _} ->
-        Logger.debug("System notification sent",
+      {:ok, :skipped} ->
+        Logger.debug("System notification skipped",
           system_name: system.name,
-          system_id: system.solar_system_id,
           category: :api
         )
 
         :ok
 
-      :skip ->
-        Logger.debug("System notification skipped",
+      {:ok, _} ->
+        Logger.debug("System notification sent",
           system_name: system.name,
+          system_id: system.solar_system_id,
           category: :api
         )
 

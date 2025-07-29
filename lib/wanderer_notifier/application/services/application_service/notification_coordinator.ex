@@ -25,7 +25,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   Processes a notification through the appropriate channels.
   """
   @spec process_notification(State.t(), map(), keyword()) ::
-    {:ok, term(), State.t()} | {:error, term(), State.t()}
+          {:ok, term(), State.t()} | {:error, term(), State.t()}
   def process_notification(state, notification, opts \\ []) do
     # Determine notification type and route accordingly
     case determine_notification_type(notification) do
@@ -44,7 +44,10 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     # Check if notifications are enabled
     cond do
       not notifications_enabled?() ->
-        Logger.debug("Notifications disabled, skipping kill notification", category: :notification)
+        Logger.debug("Notifications disabled, skipping kill notification",
+          category: :notification
+        )
+
         {:ok, :skipped, state}
 
       not kill_notifications_enabled?() ->
@@ -68,6 +71,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
+
         case send_to_discord(formatted) do
           :ok ->
             # Update metrics
@@ -80,6 +84,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
               category: :notification,
               error: inspect(reason)
             )
+
             {:error, {:discord_send_failed, reason}, state}
         end
       rescue
@@ -89,6 +94,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
             error: Exception.message(error),
             stacktrace: __STACKTRACE__
           )
+
           {:error, {:exception, error}, state}
       end
     end
@@ -98,7 +104,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   Sends a system notification.
   """
   @spec notify_system(State.t(), map(), keyword()) ::
-    {:ok, atom(), State.t()} | {:error, term(), State.t()}
+          {:ok, atom(), State.t()} | {:error, term(), State.t()}
   def notify_system(state, notification, opts \\ []) do
     if system_notifications_enabled?() do
       try do
@@ -106,6 +112,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
+
         case send_to_discord(formatted, opts) do
           :ok ->
             {:ok, new_state} = increment_notification_count(state, :systems)
@@ -117,6 +124,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
               category: :notification,
               error: inspect(reason)
             )
+
             {:error, {:discord_send_failed, reason}, state}
         end
       rescue
@@ -126,6 +134,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
             error: Exception.message(error),
             stacktrace: __STACKTRACE__
           )
+
           {:error, {:exception, error}, state}
       end
     else
@@ -138,7 +147,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   Sends a character notification.
   """
   @spec notify_character(State.t(), map(), keyword()) ::
-    {:ok, atom(), State.t()} | {:error, term(), State.t()}
+          {:ok, atom(), State.t()} | {:error, term(), State.t()}
   def notify_character(state, notification, opts \\ []) do
     if character_notifications_enabled?() do
       try do
@@ -146,6 +155,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
+
         case send_to_discord(formatted, opts) do
           :ok ->
             {:ok, new_state} = increment_notification_count(state, :characters)
@@ -157,6 +167,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
               category: :notification,
               error: inspect(reason)
             )
+
             {:error, {:discord_send_failed, reason}, state}
         end
       rescue
@@ -166,6 +177,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
             error: Exception.message(error),
             stacktrace: __STACKTRACE__
           )
+
           {:error, {:exception, error}, state}
       end
     else
@@ -180,10 +192,18 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp determine_notification_type(notification) do
     cond do
-      Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id) -> :kill
-      Map.has_key?(notification, "solar_system_id") or Map.has_key?(notification, :solar_system_id) -> :system
-      Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id) -> :character
-      true -> :unknown
+      Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id) ->
+        :kill
+
+      Map.has_key?(notification, "solar_system_id") or
+          Map.has_key?(notification, :solar_system_id) ->
+        :system
+
+      Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id) ->
+        :character
+
+      true ->
+        :unknown
     end
   end
 
