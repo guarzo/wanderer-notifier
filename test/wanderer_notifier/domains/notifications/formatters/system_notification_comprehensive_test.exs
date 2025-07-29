@@ -24,11 +24,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationCo
   alias WandererNotifier.Domains.Killmail.Enrichment
 
   # Mock recent kills response
-  @mock_recent_kills """
-  [138.7M ISK kill](https://zkillboard.com/kill/128846484/) (14 pts)
-  [10.0K ISK kill](https://zkillboard.com/kill/128845720/) (1 pts)
-  [20.1K ISK kill](https://zkillboard.com/kill/128845711/) (1 pts)
-  """
+  # @mock_recent_kills """
+  # [138.7M ISK kill](https://zkillboard.com/kill/128846484/) (14 pts)
+  # [10.0K ISK kill](https://zkillboard.com/kill/128845720/) (1 pts)
+  # [20.1K ISK kill](https://zkillboard.com/kill/128845711/) (1 pts)
+  # """
 
   setup :verify_on_exit!
 

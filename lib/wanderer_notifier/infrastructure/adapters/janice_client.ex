@@ -190,7 +190,13 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   defp execute_request(config) do
     log_request_details(config)
 
-    case Req.post(config.url, body: config.body, headers: config.headers, receive_timeout: 20_000) do
+    case WandererNotifier.Infrastructure.Http.request(
+           :post,
+           config.url,
+           config.headers,
+           config.body,
+           timeout: 20_000
+         ) do
       {:ok, response} -> handle_response(response)
       {:error, reason} -> handle_request_error(reason)
     end

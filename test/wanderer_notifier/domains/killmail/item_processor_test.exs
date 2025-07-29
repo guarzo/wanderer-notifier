@@ -2,7 +2,6 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessorTest do
   use ExUnit.Case, async: true
 
   alias WandererNotifier.Domains.Killmail.{Killmail, ItemProcessor}
-  alias WandererNotifier.Shared.Config
 
   describe "enabled?/0" do
     test "returns false when no Janice API token is configured" do
@@ -29,15 +28,6 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessorTest do
       }
 
       assert {:ok, ^killmail} = ItemProcessor.process_killmail_items(killmail)
-    end
-
-    test "processes items when enabled" do
-      # This would require mocking the Config and JaniceClient
-      # For now, just test the disabled path
-      killmail = %Killmail{killmail_id: "12345"}
-
-      assert {:ok, result} = ItemProcessor.process_killmail_items(killmail)
-      assert result == killmail
     end
   end
 end

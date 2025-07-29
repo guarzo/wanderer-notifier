@@ -135,32 +135,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
       handle_http_request(method, url, opts)
     end)
 
-    # Legacy 3-arg get/post for backward compatibility
-    stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    # Additional convenience methods
-    stub(WandererNotifier.HTTPMock, :put, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :delete, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :get_json, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: %{}}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post_json, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: %{}}}
-    end)
-
     stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
       {:ok, %{status_code: 200, body: "{}"}}
     end)

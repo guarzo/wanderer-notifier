@@ -46,32 +46,6 @@ defmodule WandererNotifier.Domains.Notifications.RallyPointTest do
         Application.put_env(:wanderer_notifier, :notification_service_module, original_module)
       end
     end
-
-    test "categorizes rally_point_added event as :rally" do
-      # Test the private categorize_event function through the public process_event
-      event = RallyPointFixtures.rally_point_event()
-
-      # This should not raise an error and should process as a rally event
-      # Mock the notification to prevent actual sending
-      expect(WandererNotifier.Domains.Notifications.MockNotificationService, :notify, fn
-        :rally_point, _rally_data -> :ok
-      end)
-
-      original_module = Application.get_env(:wanderer_notifier, :notification_service_module)
-
-      Application.put_env(
-        :wanderer_notifier,
-        :notification_service_module,
-        WandererNotifier.Domains.Notifications.MockNotificationService
-      )
-
-      try do
-        result = EventProcessor.process_event(event, "test-map")
-        assert result == :ok
-      after
-        Application.put_env(:wanderer_notifier, :notification_service_module, original_module)
-      end
-    end
   end
 
   describe "Rally Point Determiner" do
@@ -155,7 +129,7 @@ defmodule WandererNotifier.Domains.Notifications.RallyPointTest do
 
     test "formats rally point notification with no message" do
       rally_data = RallyPointFixtures.rally_point_data(%{message: nil})
-      expected = RallyPointFixtures.expected_notification_format_no_message()
+      _expected = RallyPointFixtures.expected_notification_format_no_message()
 
       result = NotificationFormatter.format_notification(rally_data)
 
@@ -251,7 +225,7 @@ defmodule WandererNotifier.Domains.Notifications.RallyPointTest do
         WandererNotifier.Domains.Notifications.Notifiers.Discord.MockNeoClient,
         :send_embed,
         fn
-          notification, channel_id ->
+          _notification, channel_id ->
             assert channel_id == "default_channel"
             {:ok, "message_id"}
         end

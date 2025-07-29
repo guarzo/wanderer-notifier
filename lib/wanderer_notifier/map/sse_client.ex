@@ -487,6 +487,9 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp schedule_reconnect(state) do
+    # Ensure we don't stack multiple timers
+    if state.reconnect_timer, do: Process.cancel_timer(state.reconnect_timer)
+
     # Calculate delay with exponential backoff
     delay =
       min(

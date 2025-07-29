@@ -14,7 +14,97 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Infrastructure.Adapters.JaniceClient
   alias WandererNotifier.Infrastructure.Adapters.ESI.Service, as: ESIService
+  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
+
+  # Helper function for safe integer parsing
+  defp safe_parse_killmail_id(killmail_id_str) when is_binary(killmail_id_str) do
+    case Integer.parse(killmail_id_str) do
+      {int_id, ""} -> {:ok, int_id}
+      {_int_id, _remainder} -> {:error, :invalid_format}
+      :error -> {:error, :invalid_format}
+    end
+  end
+
+  defp safe_parse_killmail_id(killmail_id) when is_integer(killmail_id), do: {:ok, killmail_id}
+  defp safe_parse_killmail_id(_), do: {:error, :invalid_format}
+
+  # Helper function to get type names with caching
+  defp get_type_names_cached(type_ids) do
+    # Try to get cached names first
+    cached_names =
+      type_ids
+      |> Enum.map(fn type_id ->
+        case Cache.get_universe_type(type_id) do
+          {:ok, type_data} -> {to_string(type_id), Map.get(type_data, "name", "Unknown Item")}
+          {:error, :not_found} -> nil
+        end
+      end)
+      |> Enum.filter(&(&1 != nil))
+      |> Map.new()
+
+    # Find missing type IDs
+    missing_type_ids =
+      type_ids
+      |> Enum.filter(fn type_id ->
+        not Map.has_key?(cached_names, to_string(type_id))
+      end)
+
+    # Fetch missing names from ESI
+    case missing_type_ids do
+      [] ->
+        {:ok, cached_names}
+
+      missing_ids ->
+        {:ok, fetched_names} = ESIService.get_type_names(missing_ids)
+
+        # Cache the new names
+        fetched_names
+        |> Enum.each(fn {type_id_str, name} ->
+          type_id = String.to_integer(type_id_str)
+          type_data = %{"name" => name}
+          Cache.put_universe_type(type_id, type_data)
+        end)
+
+        # Merge cached and fetched names
+        all_names = Map.merge(cached_names, fetched_names)
+        {:ok, all_names}
+    end
+  end
+
+  # Helper function to get Janice prices with caching
+  defp get_janice_prices_cached(items) do
+    # Create a cache key based on the items (simplified - using type_ids and quantities)
+    cache_key_data =
+      items
+      |> Enum.map(fn item ->
+        type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
+        quantity = Map.get(item, "quantity", 1)
+        {type_id, quantity}
+      end)
+      |> Enum.sort()
+
+    cache_key = "janice_appraisal:#{:erlang.phash2(cache_key_data)}"
+
+    # Try to get cached prices first
+    case Cache.get(cache_key) do
+      {:ok, cached_prices} ->
+        Logger.debug("Using cached Janice prices")
+        {:ok, cached_prices}
+
+      {:error, :not_found} ->
+        # Fetch fresh prices from Janice
+        case JaniceClient.appraise_items(items) do
+          {:ok, price_data} ->
+            # Cache the results with item price TTL
+            Cache.put(cache_key, price_data, Cache.item_price_ttl())
+            {:ok, price_data}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
 
   @doc """
   Check if item processing is enabled (Janice API token is configured).
@@ -108,19 +198,19 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
         {:ok, []}
 
       killmail_hash ->
-        case killmail.killmail_id
-             |> String.to_integer()
-             |> ESIService.get_killmail(killmail_hash) do
-          {:ok, esi_killmail} ->
-            esi_killmail |> extract_items_from_esi_killmail()
+        case safe_parse_killmail_id(killmail.killmail_id) do
+          {:ok, killmail_id_int} ->
+            case ESIService.get_killmail(killmail_id_int, killmail_hash) do
+              {:ok, esi_killmail} ->
+                esi_killmail |> extract_items_from_esi_killmail()
 
-          {:error, reason} ->
-            Logger.warning("Failed to fetch killmail from ESI",
-              killmail_id: killmail.killmail_id,
-              reason: reason,
-              category: :item_processing
-            )
+              {:error, reason} ->
+                Logger.warning("Failed to fetch killmail from ESI: #{inspect(reason)}")
+                {:ok, []}
+            end
 
+          {:error, :invalid_format} ->
+            Logger.warning("Invalid killmail ID format: #{inspect(killmail.killmail_id)}")
             {:ok, []}
         end
     end
@@ -181,10 +271,16 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
   end
 
   defp fetch_from_esi_service(killmail_id, killmail_hash) do
-    killmail_id
-    |> String.to_integer()
-    |> ESIService.get_killmail(killmail_hash)
-    |> handle_esi_killmail_response()
+    case safe_parse_killmail_id(killmail_id) do
+      {:ok, killmail_id_int} ->
+        killmail_id_int
+        |> ESIService.get_killmail(killmail_hash)
+        |> handle_esi_killmail_response()
+
+      {:error, :invalid_format} ->
+        Logger.warning("Invalid killmail ID format in ESI fetch: #{inspect(killmail_id)}")
+        {:ok, nil}
+    end
   end
 
   defp handle_esi_killmail_response({:ok, esi_killmail}) do
@@ -247,7 +343,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
   defp identify_and_enrich_notable_items(items) when is_list(items) do
     # First, enrich items with names from ESI
     with {:ok, enriched_items} <- enrich_items_with_names(items),
-         {:ok, price_data} <- JaniceClient.appraise_items(enriched_items) do
+         {:ok, price_data} <- get_janice_prices_cached(enriched_items) do
       process_priced_items(enriched_items, price_data)
     else
       {:error, reason} -> handle_pricing_error(reason)
@@ -260,12 +356,21 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
       items
       |> Enum.map(fn item ->
         type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
-        if is_integer(type_id), do: type_id, else: String.to_integer(type_id)
+
+        case safe_parse_killmail_id(type_id) do
+          {:ok, parsed_type_id} ->
+            parsed_type_id
+
+          {:error, :invalid_format} ->
+            Logger.warning("Invalid type_id format: #{inspect(type_id)}")
+            nil
+        end
       end)
+      |> Enum.filter(&(&1 != nil))
       |> Enum.uniq()
 
-    # Fetch names from ESI
-    {:ok, type_names} = ESIService.get_type_names(type_ids)
+    # Fetch names from ESI with caching
+    {:ok, type_names} = get_type_names_cached(type_ids)
 
     # Add names to items
     enriched_items =

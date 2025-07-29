@@ -13,6 +13,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.Startup
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -355,12 +356,19 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       category: :item_processing
     )
 
-    if enabled do
+    if enabled and token_present do
       Logger.debug("Starting item processing", killmail_id: killmail.killmail_id)
       ItemProcessor.process_killmail_items(killmail)
     else
-      # Skip item processing if Janice API token not configured
-      Logger.debug("Item processing disabled - no Janice API token configured",
+      # Skip item processing if feature is disabled or Janice API token not configured
+      reason =
+        cond do
+          not enabled -> "notable items feature disabled"
+          not token_present -> "no Janice API token configured"
+          true -> "unknown reason"
+        end
+
+      Logger.debug("Item processing skipped - #{reason}",
         killmail_id: killmail.killmail_id
       )
 
@@ -372,21 +380,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # Startup Suppression Check
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Suppress kill notifications for 30 seconds after startup to avoid spam from initial sync
-  @startup_suppression_seconds 30
-
-  defp in_startup_suppression_period? do
-    start_time = Application.get_env(:wanderer_notifier, :start_time)
-
-    if start_time do
-      current_time = :erlang.monotonic_time(:second)
-      elapsed_seconds = current_time - start_time
-      elapsed_seconds < @startup_suppression_seconds
-    else
-      # If no start time is set, don't suppress
-      false
-    end
-  end
+  defp in_startup_suppression_period?, do: Startup.in_suppression_period?()
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Utilities

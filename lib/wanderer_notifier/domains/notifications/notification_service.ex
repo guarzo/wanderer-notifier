@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Tracking.Entities.System
+  alias WandererNotifier.Shared.Utils.Startup
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Public API
@@ -59,7 +60,7 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
 
   defp send_kill_notification(%Notification{data: %{killmail: killmail}} = notification) do
     # Check if we're in the startup suppression period
-    if in_startup_suppression_period?() do
+    if Startup.in_suppression_period?() do
       Logger.info("Skipping kill notification during startup suppression period",
         killmail_id: killmail.killmail_id,
         category: :notification
@@ -332,20 +333,4 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   # ═══════════════════════════════════════════════════════════════════════════════
   # Private Helpers
   # ═══════════════════════════════════════════════════════════════════════════════
-
-  # Suppress kill notifications for 30 seconds after startup to avoid spam from initial sync
-  @startup_suppression_seconds 30
-
-  defp in_startup_suppression_period? do
-    start_time = Application.get_env(:wanderer_notifier, :start_time)
-
-    if start_time do
-      current_time = :erlang.monotonic_time(:second)
-      elapsed_seconds = current_time - start_time
-      elapsed_seconds < @startup_suppression_seconds
-    else
-      # If no start time is set, don't suppress
-      false
-    end
-  end
 end

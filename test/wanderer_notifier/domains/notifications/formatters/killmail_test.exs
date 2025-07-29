@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatterTest do
+defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailTest do
   use ExUnit.Case, async: true
   import Mox
 

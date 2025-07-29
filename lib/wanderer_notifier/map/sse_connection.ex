@@ -41,8 +41,8 @@ defmodule WandererNotifier.Map.SSEConnection do
       {:ok, connection} ->
         {:ok, connection}
 
-      error ->
-        {:error, error}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

@@ -89,7 +89,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     killmail_data = extract_killmail_data(response_body)
     transformed = transform_kill(killmail_data)
-    {:ok, Map.put(transformed, "enriched", true)}
+    {:ok, transformed}
   end
 
   defp handle_killmail_response({:ok, %{status_code: 404} = response}, killmail_id) do

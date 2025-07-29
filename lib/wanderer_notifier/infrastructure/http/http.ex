@@ -129,13 +129,8 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   defp call_mock_method(method, url, encoded_body, final_headers, final_opts) do
-    case method do
-      :get -> http_client().get(url, final_headers, final_opts)
-      :post -> http_client().post(url, encoded_body, final_headers, final_opts)
-      :put -> http_client().put(url, encoded_body, final_headers, final_opts)
-      :delete -> http_client().delete(url, final_headers, final_opts)
-      _ -> {:error, {:unsupported_method, method}}
-    end
+    # Call the mock's request/5 method directly
+    http_client().request(method, url, encoded_body, final_headers, final_opts)
   end
 
   defp make_real_request(method, url, body, headers, opts) do

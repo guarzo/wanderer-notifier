@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Pipeline
-  alias WandererNotifier.Domains.Killmail.Processor.Context
+  # alias WandererNotifier.Domains.Killmail.Processor.Context
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -316,7 +316,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
 
       # Create a direct test using our replacement module
       alias TimeoutPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, %Context{})
+      result = TestPipeline.process_killmail(zkb_data, %{})
 
       # Assert the expected error result
       assert {:error, :timeout} = result
@@ -348,7 +348,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
 
       # Create a direct test using our replacement module
       alias ApiErrorPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, %Context{})
+      result = TestPipeline.process_killmail(zkb_data, %{})
 
       # Assert the expected error result
       assert {:error, :rate_limited} = result
