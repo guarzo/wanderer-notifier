@@ -11,7 +11,6 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
-  alias WandererNotifier.Contexts.ExternalAdapters
 
   # Check every 30 seconds
   @check_interval 30_000

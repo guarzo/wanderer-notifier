@@ -287,8 +287,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp send_system_notification(system) do
-    case WandererNotifier.Application.Services.NotificationService.notify_system(system) do
-      :ok ->
+    case WandererNotifier.Contexts.NotificationContext.send_system_notification(system) do
+      {:ok, _} ->
         Logger.debug("System notification sent",
           system_name: system.name,
           system_id: system.solar_system_id,

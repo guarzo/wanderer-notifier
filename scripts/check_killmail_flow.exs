@@ -30,7 +30,7 @@ defmodule KillmailFlowCheck do
   defp check_tracked_entities do
     IO.puts("📍 Tracked Entities:")
     
-    stats = WandererNotifier.Core.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
     systems_count = stats[:systems_count] || 0
     characters_count = stats[:characters_count] || 0
     
@@ -38,7 +38,7 @@ defmodule KillmailFlowCheck do
     IO.puts("  Characters: #{characters_count}")
     
     # Get some sample systems
-    {:ok, systems} = WandererNotifier.Contexts.ExternalAdapters.get_tracked_systems()
+    {:ok, systems} = WandererNotifier.Contexts.ApiContext.get_tracked_systems()
     sample_systems = systems 
       |> Enum.take(5)
       |> Enum.map(fn s -> 
@@ -54,7 +54,7 @@ defmodule KillmailFlowCheck do
   defp check_recent_activity do
     IO.puts("📊 Recent Activity:")
     
-    stats = WandererNotifier.Core.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
     
     # Check killmail stats
     killmails_received = stats[:killmails_received] || 0

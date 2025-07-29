@@ -73,8 +73,8 @@ defmodule WebSocketDebug do
     
     try do
       # Try to get current tracking data
-      {:ok, systems} = WandererNotifier.Contexts.ExternalAdapters.get_tracked_systems()
-      {:ok, characters} = WandererNotifier.Contexts.ExternalAdapters.get_tracked_characters()
+      {:ok, systems} = WandererNotifier.Contexts.ApiContext.get_tracked_systems()
+      {:ok, characters} = WandererNotifier.Contexts.ApiContext.get_tracked_characters()
       
       # Process the data similar to how WebSocket client does
       system_ids = systems

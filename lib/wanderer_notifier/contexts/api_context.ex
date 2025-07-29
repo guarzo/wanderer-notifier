@@ -165,7 +165,7 @@ defmodule WandererNotifier.Contexts.ApiContext do
     headers = Keyword.get(opts, :headers, [])
     service = Keyword.get(opts, :service, :default)
     
-    Http.request(:get, url, headers, nil, service: service)
+    Http.request(:get, url, nil, headers, service: service)
   end
   
   @doc """
@@ -176,7 +176,7 @@ defmodule WandererNotifier.Contexts.ApiContext do
     headers = Keyword.get(opts, :headers, [])
     service = Keyword.get(opts, :service, :default)
     
-    Http.request(:post, url, headers, body, service: service)
+    Http.request(:post, url, body, headers, service: service)
   end
   
   # ──────────────────────────────────────────────────────────────────────────────

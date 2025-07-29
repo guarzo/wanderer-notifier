@@ -16,7 +16,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     memory_info = :erlang.memory()
 
     # Get uptime from stats which tracks startup time
-    stats = WandererNotifier.Application.Services.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
     uptime_seconds = stats[:uptime_seconds] || 0
 
     %{
@@ -41,7 +41,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   """
   def collect_extended_status do
     base_status = collect_detailed_status()
-    stats = WandererNotifier.Application.Services.Stats.get_stats()
+    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
 
     extended_data = %{
       tracking: extract_tracking_stats(stats),
@@ -157,7 +157,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       if websocket_pid do
         try do
           # Get connection start time from WebSocket client state
-          stats = WandererNotifier.Application.Services.Stats.get_stats()
+          stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
           websocket_stats = stats[:websocket] || %{}
           connection_start = websocket_stats[:connection_start]
 
@@ -406,7 +406,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp get_key_process_info do
     processes = [
       {"WebSocket Client", WandererNotifier.Domains.Killmail.WebSocketClient},
-      {"Stats Server", WandererNotifier.Application.Services.Stats},
+      {"Application Service", WandererNotifier.Application.Services.ApplicationService},
       {"Pipeline Worker", WandererNotifier.Domains.Killmail.PipelineWorker},
       {"Discord Consumer", WandererNotifier.Infrastructure.Adapters.Discord.Consumer}
     ]

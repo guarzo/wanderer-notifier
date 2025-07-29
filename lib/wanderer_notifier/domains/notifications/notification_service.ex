@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   require Logger
   alias WandererNotifier.Domains.Notifications.Notification
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
@@ -173,8 +173,8 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
 
   defp send_system_notification(%Notification{data: system_data} = notification) do
     # Check if this is the first notification
-    if Stats.is_first_notification?(:system) do
-      Stats.mark_notification_sent(:system)
+    if ApplicationService.first_notification?(:system) do
+      ApplicationService.mark_notification_sent(:system)
       {:ok, :skipped_first_run}
     else
       with {:ok, formatted} <- format_notification(system_data, notification),
@@ -261,8 +261,8 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
 
   defp send_character_notification(%Notification{data: character_data} = notification) do
     # Check if this is the first notification
-    if Stats.is_first_notification?(:character) do
-      Stats.mark_notification_sent(:character)
+    if ApplicationService.first_notification?(:character) do
+      ApplicationService.mark_notification_sent(:character)
       {:ok, :skipped_first_run}
     else
       with {:ok, formatted} <- format_notification(character_data),

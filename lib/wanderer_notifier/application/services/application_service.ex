@@ -121,6 +121,14 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     GenServer.cast(__MODULE__, {:update_health, service, status})
   end
   
+  @doc """
+  Sets the tracked count for systems or characters.
+  """
+  @spec set_tracked_count(atom(), non_neg_integer()) :: :ok
+  def set_tracked_count(type, count) when type in [:systems, :characters] and is_integer(count) do
+    GenServer.cast(__MODULE__, {:set_tracked_count, type, count})
+  end
+  
   # ──────────────────────────────────────────────────────────────────────────────
   # GenServer Implementation
   # ──────────────────────────────────────────────────────────────────────────────
@@ -195,6 +203,12 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
   @impl true
   def handle_cast({:update_health, service, status}, state) do
     new_state = update_service_health(state, service, status)
+    {:noreply, new_state}
+  end
+  
+  @impl true
+  def handle_cast({:set_tracked_count, type, count}, state) do
+    {:ok, new_state} = MetricsTracker.set_tracked_count(state, type, count)
     {:noreply, new_state}
   end
   

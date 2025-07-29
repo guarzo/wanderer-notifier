@@ -328,8 +328,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     # Create a MapCharacter struct for the notification
     map_character = Character.from_api_data(character)
 
-    case WandererNotifier.Application.Services.NotificationService.notify_character(map_character) do
-      :ok -> :ok
+    case WandererNotifier.Contexts.NotificationContext.send_character_notification(map_character) do
+      {:ok, _} -> :ok
       {:error, :notifications_disabled} -> :ok
       {:error, _reason} = error -> error
     end

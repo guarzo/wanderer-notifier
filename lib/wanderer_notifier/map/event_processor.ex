@@ -228,10 +228,10 @@ defmodule WandererNotifier.Map.EventProcessor do
       created_at: Map.get(payload, "created_at")
     }
 
-    # Trigger notification through the application service
-    case WandererNotifier.Application.Services.NotificationService.notify_rally_point(rally_point) do
-      :skip -> :skip
-      {:ok, :sent} -> {:ok, :sent}
+    # Trigger notification through the notification context
+    case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, :notifications_disabled} -> :skip
       {:error, reason} -> {:error, reason}
     end
   end

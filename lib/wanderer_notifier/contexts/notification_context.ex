@@ -21,6 +21,7 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.{NeoClient, Notifier}
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Domains.Tracking.Entities.System
   
   # ──────────────────────────────────────────────────────────────────────────────
   # High-Level Notification API
@@ -107,14 +108,55 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   """
   @spec send_system_notification(map(), keyword()) :: {:ok, atom()} | {:error, term()}
   def send_system_notification(system_data, opts \\ []) do
-    system_name = Map.get(system_data, :name) || Map.get(system_data, "name") || "Unknown System"
+    system = ensure_system_struct(system_data)
+    system_name = system.name || "Unknown System"
+    notifications_enabled = system_notifications_enabled?()
+    is_priority = is_priority_system?(system_name)
+    priority_only_mode = Config.get(:priority_systems_only, false)
     
-    Logger.info("Sending system notification",
-      system_name: system_name,
-      priority: Map.get(system_data, :priority, false),
-      category: :notification
-    )
-    
+    case {notifications_enabled, is_priority, priority_only_mode} do
+      {_, true, _} ->
+        # Priority systems always send notifications
+        Logger.info("Sending priority system notification",
+          system: system_name,
+          priority_only_mode: priority_only_mode,
+          category: :notification
+        )
+        
+        # Add priority flag to system
+        system_with_priority = Map.put(system, :priority, true)
+        send_system_notification_impl(system_with_priority, opts)
+        
+      {true, false, false} ->
+        # Regular notification path
+        Logger.info("Sending system notification",
+          system: system_name,
+          priority: false,
+          category: :notification
+        )
+        
+        system_with_priority = Map.put(system, :priority, false)
+        send_system_notification_impl(system_with_priority, opts)
+        
+      {_, false, true} ->
+        # Priority-only mode: skip non-priority systems
+        Logger.info("Skipping non-priority system notification (priority-only mode)",
+          system: system_name,
+          category: :notification
+        )
+        {:ok, :skipped}
+        
+      {false, false, false} ->
+        # Skip notification - disabled and not priority
+        Logger.info("Skipping system notification (disabled and not priority)",
+          system: system_name,
+          category: :notification
+        )
+        {:error, :notifications_disabled}
+    end
+  end
+  
+  defp send_system_notification_impl(system_data, opts) do
     case send_notification(system_data, opts) do
       {:ok, result} ->
         ApplicationService.increment_metric(:notification_sent)
@@ -123,7 +165,7 @@ defmodule WandererNotifier.Contexts.NotificationContext do
       {:error, reason} = error ->
         Logger.warning("System notification failed",
           reason: inspect(reason),
-          system_name: system_name,
+          system_name: Map.get(system_data, :name, "Unknown"),
           category: :notification
         )
         error
@@ -220,6 +262,157 @@ defmodule WandererNotifier.Contexts.NotificationContext do
         )
         error
     end
+  end
+  
+  @doc """
+  Sends a rally point notification.
+  """
+  @spec send_rally_point_notification(map()) :: {:ok, atom()} | {:error, term()}
+  def send_rally_point_notification(rally_point) do
+    if not notifications_enabled?() do
+      {:error, :notifications_disabled}
+    else
+      # Format rally point notification
+      message = format_rally_point_message(rally_point)
+      
+      case Notifier.send_message(message) do
+        :ok ->
+          Logger.info("Rally point notification sent", 
+            system: rally_point.system_name,
+            category: :notification
+          )
+          {:ok, :sent}
+        
+        {:error, reason} = error ->
+          Logger.error("Failed to send rally point notification",
+            reason: inspect(reason),
+            category: :notification
+          )
+          error
+      end
+    end
+  end
+  
+  defp format_rally_point_message(rally_point) do
+    """
+    🚨 **Rally Point Called!**
+    
+    📍 **System:** #{rally_point.system_name}
+    👤 **Called by:** #{rally_point.character_name}
+    💬 **Message:** #{rally_point.message || "No message provided"}
+    """
+  end
+  
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Priority System Management
+  # ──────────────────────────────────────────────────────────────────────────────
+  
+  @priority_systems_key :priority_systems
+  
+  @doc """
+  Registers a system as priority.
+  """
+  @spec register_priority_system(String.t()) :: :ok
+  def register_priority_system(system_name) when is_binary(system_name) do
+    system_hash = hash_system_name(system_name)
+    current = WandererNotifier.PersistentValues.get(@priority_systems_key)
+    
+    if system_hash not in current do
+      WandererNotifier.PersistentValues.add(@priority_systems_key, system_hash)
+      
+      Logger.info("Added priority system",
+        system: system_name,
+        hash: system_hash,
+        category: :config
+      )
+    end
+    
+    :ok
+  end
+  
+  @doc """
+  Unregisters a system from priority status.
+  """
+  @spec unregister_priority_system(String.t()) :: :ok
+  def unregister_priority_system(system_name) when is_binary(system_name) do
+    system_hash = hash_system_name(system_name)
+    current = WandererNotifier.PersistentValues.get(@priority_systems_key)
+    
+    if system_hash in current do
+      WandererNotifier.PersistentValues.remove(@priority_systems_key, system_hash)
+      
+      Logger.info("Removed priority system",
+        system: system_name,
+        hash: system_hash,
+        category: :config
+      )
+    end
+    
+    :ok
+  end
+  
+  @doc """
+  Checks if a system is marked as priority.
+  """
+  @spec is_priority_system?(String.t()) :: boolean()
+  def is_priority_system?(system_name) when is_binary(system_name) do
+    system_hash = hash_system_name(system_name)
+    current = WandererNotifier.PersistentValues.get(@priority_systems_key)
+    system_hash in current
+  end
+  
+  @doc """
+  Lists all priority systems by their hashes.
+  """
+  @spec list_priority_systems() :: [integer()]
+  def list_priority_systems do
+    WandererNotifier.PersistentValues.get(@priority_systems_key)
+  end
+  
+  @doc """
+  Gets statistics about priority systems.
+  """
+  @spec priority_system_stats() :: %{count: non_neg_integer(), notifications_enabled: boolean()}
+  def priority_system_stats do
+    %{
+      count: length(list_priority_systems()),
+      notifications_enabled: Config.get(:system_notifications_enabled, true)
+    }
+  end
+  
+  @doc """
+  Clears all priority systems.
+  """
+  @spec clear_priority_systems() :: :ok
+  def clear_priority_systems do
+    WandererNotifier.PersistentValues.put(@priority_systems_key, [])
+    Logger.info("Cleared all priority systems", category: :config)
+    :ok
+  end
+  
+  defp hash_system_name(system_name) do
+    system_name
+    |> String.trim()
+    |> String.downcase()
+    |> :erlang.phash2()
+  end
+  
+  defp ensure_system_struct(%System{} = system), do: system
+  defp ensure_system_struct(data) when is_map(data) do
+    %System{
+      solar_system_id: Map.get(data, :solar_system_id) || Map.get(data, "solar_system_id") || Map.get(data, :id) || Map.get(data, "id"),
+      name: Map.get(data, :name) || Map.get(data, "name") || "Unknown System",
+      tracked: Map.get(data, :tracked, true),
+      system_type: Map.get(data, :system_type) || Map.get(data, "system_type"),
+      type_description: Map.get(data, :type_description) || Map.get(data, "type_description"),
+      class_title: Map.get(data, :class_title) || Map.get(data, "class_title"),
+      region_name: Map.get(data, :region_name) || Map.get(data, "region_name"),
+      security_status: Map.get(data, :security_status) || Map.get(data, "security_status"),
+      is_shattered: Map.get(data, :is_shattered) || Map.get(data, "is_shattered"),
+      statics: Map.get(data, :statics) || Map.get(data, "statics"),
+      effect_name: Map.get(data, :effect_name) || Map.get(data, "effect_name"),
+      original_name: Map.get(data, :original_name) || Map.get(data, "original_name")
+    }
   end
   
   # ──────────────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Provides a unified interface for emitting events and metrics.
   """
 
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   require Logger
   alias WandererNotifier.Shared.Config
 
@@ -12,7 +12,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for killmail processing.
   """
   def killmail_processed(kill_id, system_name \\ "unknown") do
-    Stats.increment(:kill_processed)
+    ApplicationService.increment_metric(:kill_processed)
     emit(:killmail, :processed, %{kill_id: kill_id, system: system_name})
   end
 
@@ -20,8 +20,8 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for killmail notification.
   """
   def killmail_notified(kill_id, system_name \\ "unknown") do
-    Stats.increment(:kill_notified)
-    Stats.track_notification_sent()
+    ApplicationService.increment_metric(:kill_notified)
+    ApplicationService.increment_metric(:notification_sent)
     emit(:killmail, :notified, %{kill_id: kill_id, system: system_name})
   end
 
@@ -29,7 +29,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for processing start.
   """
   def processing_started(kill_id) do
-    Stats.track_processing_start()
+    ApplicationService.increment_metric(:killmail_processing_start)
     emit(:killmail, :processing_started, %{kill_id: kill_id})
   end
 
@@ -37,7 +37,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for processing completion.
   """
   def processing_completed(kill_id, result) do
-    Stats.track_processing_complete(result)
+    ApplicationService.increment_metric(:killmail_processing_complete)
     status = if match?({:ok, _}, result), do: :success, else: :error
     emit(:killmail, :processing_completed, %{kill_id: kill_id, status: status})
   end
@@ -46,7 +46,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for processing skip.
   """
   def processing_skipped(kill_id, reason) do
-    Stats.track_processing_skipped()
+    ApplicationService.increment_metric(:killmail_processing_skipped)
     emit(:killmail, :processing_skipped, %{kill_id: kill_id, reason: reason})
   end
 
@@ -54,7 +54,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for processing error.
   """
   def processing_error(kill_id, error) do
-    Stats.track_processing_error()
+    ApplicationService.increment_metric(:killmail_processing_error)
     emit(:killmail, :processing_error, %{kill_id: kill_id, error: inspect(error)})
   end
 
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for RedisQ connection status.
   """
   def redisq_status_changed(status) do
-    Stats.update_redisq(status)
+    ApplicationService.update_health(:redisq, %{status: status})
     emit(:redisq, :status_changed, status)
   end
 
@@ -70,8 +70,8 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for killmail received.
   """
   def killmail_received(kill_id) do
-    Stats.track_killmail_received()
-    Stats.update_last_activity()
+    ApplicationService.increment_metric(:killmail_received)
+    ApplicationService.update_health(:redisq, %{last_message: DateTime.utc_now()})
     emit(:killmail, :received, %{kill_id: kill_id})
   end
 
@@ -79,7 +79,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for system notification.
   """
   def system_notification_sent(system_id, system_name) do
-    Stats.increment(:systems)
+    ApplicationService.increment_metric(:systems)
     emit(:notification, :system, %{system_id: system_id, system_name: system_name})
   end
 
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for character notification.
   """
   def character_notification_sent(character_id, character_name) do
-    Stats.increment(:characters)
+    ApplicationService.increment_metric(:characters)
     emit(:notification, :character, %{character_id: character_id, character_name: character_name})
   end
 

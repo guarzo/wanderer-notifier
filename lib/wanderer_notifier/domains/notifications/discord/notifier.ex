@@ -4,7 +4,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   """
 
   require Logger
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.Killmail.{Killmail, Enrichment}
 
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.{
@@ -167,7 +167,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       NeoClient.send_message(message)
     end
 
-    Stats.increment(:characters)
+    ApplicationService.increment_metric(:characters)
 
     Logger.info("Character #{character.name} (#{character.character_id}) notified",
       category: :processor
@@ -203,7 +203,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       NeoClient.send_message(message)
     end
 
-    Stats.increment(:systems)
+    ApplicationService.increment_metric(:systems)
 
     Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
       category: :processor

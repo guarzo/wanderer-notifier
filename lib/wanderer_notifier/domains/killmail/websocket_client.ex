@@ -9,7 +9,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   use WebSockex
   require Logger
 
-  alias WandererNotifier.Contexts.ExternalAdapters
+  alias WandererNotifier.Contexts.ApiContext
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -89,7 +89,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Update stats with connection time
-    WandererNotifier.Application.Services.Stats.update_websocket_stats(%{
+    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{
       connection_start: System.system_time(:second),
       connected_at: connected_at,
       url: state.url
@@ -140,7 +140,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Clear websocket stats on disconnect
-    WandererNotifier.Application.Services.Stats.update_websocket_stats(%{})
+    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{})
 
     # Calculate exponential backoff with jitter
     delay = calculate_backoff(state.reconnect_attempts)
@@ -758,7 +758,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    case ExternalAdapters.get_tracked_systems() do
+    case ApiContext.get_tracked_systems() do
       {:ok, systems} ->
         systems
         |> Enum.map(&extract_system_id/1)
@@ -800,7 +800,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp get_tracked_characters do
     Logger.info("Fetching tracked characters from ExternalAdapters", [])
 
-    case ExternalAdapters.get_tracked_characters() do
+    case ApiContext.get_tracked_characters() do
       {:ok, characters} ->
         Logger.info("ExternalAdapters returned characters",
           count: length(characters),

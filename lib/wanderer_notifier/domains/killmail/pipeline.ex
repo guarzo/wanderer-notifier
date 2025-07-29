@@ -307,8 +307,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    case WandererNotifier.Application.Services.NotificationService.notify_kill(killmail) do
-      :ok ->
+    case WandererNotifier.Contexts.NotificationContext.send_kill_notification(killmail) do
+      {:ok, _} ->
         Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
         Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
         Logger.debug("Killmail #{killmail.killmail_id} notified", category: :killmail)

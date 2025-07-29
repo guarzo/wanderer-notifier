@@ -3,7 +3,7 @@ defmodule WandererNotifier.Application.Services.Application.ServiceTest do
   import Mox
 
   alias WandererNotifier.Application.Services.Application.Service
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.License.LicenseService
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter

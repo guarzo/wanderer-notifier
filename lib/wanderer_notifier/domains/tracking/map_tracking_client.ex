@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Notifications.Determiner
-  alias WandererNotifier.Application.Services.NotificationService
+  alias WandererNotifier.Contexts.NotificationContext
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Tracking.StaticInfo
 
@@ -317,7 +317,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
       character_id = character["eve_id"]
 
       if character_id && Determiner.should_notify?(:character, character_id, character) do
-        NotificationService.notify_character(character)
+        NotificationContext.send_character_notification(character)
       end
 
       :ok
@@ -341,7 +341,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
         # enrich_system always returns {:ok, system}, even on failure
         {:ok, enriched_system} = StaticInfo.enrich_system(system_struct)
-        NotificationService.notify_system(enriched_system)
+        NotificationContext.send_system_notification(enriched_system)
       end
 
       :ok

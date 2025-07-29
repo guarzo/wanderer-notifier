@@ -49,8 +49,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
       # Unified application service (replaces Stats, Dependencies, NotificationService)
       {WandererNotifier.Application.Services.ApplicationService, []},
-      # Backward compatibility adapters (no-op GenServers for supervision)
-      {WandererNotifier.Application.Services.Stats, []},
+      # License service
       {WandererNotifier.Domains.License.LicenseService, []},
       # Phoenix PubSub for real-time communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub},

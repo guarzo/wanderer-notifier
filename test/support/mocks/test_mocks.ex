@@ -57,9 +57,9 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     for: WandererNotifier.Domains.Tracking.StaticInfoBehaviour
   )
 
-  # External Adapters mock
-  defmock(WandererNotifier.ExternalAdaptersMock,
-    for: WandererNotifier.Contexts.ExternalAdaptersBehaviour
+  # API Context mock
+  defmock(WandererNotifier.ApiContextMock,
+    for: WandererNotifier.Contexts.ApiContextBehaviour
   )
 
   # Discord Notifier mock
@@ -83,7 +83,7 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     setup_deduplication_mocks()
     setup_service_mocks()
     setup_discord_mocks()
-    setup_external_adapters_mocks()
+    setup_api_context_mocks()
     setup_discord_notifier_mocks()
   end
 
@@ -338,12 +338,12 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   @doc """
   Sets up external adapters mocks with default behaviors.
   """
-  def setup_external_adapters_mocks do
-    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_systems, fn ->
+  def setup_api_context_mocks do
+    stub(WandererNotifier.ApiContextMock, :get_tracked_systems, fn ->
       {:ok, []}
     end)
 
-    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_characters, fn ->
+    stub(WandererNotifier.ApiContextMock, :get_tracked_characters, fn ->
       {:ok, []}
     end)
   end

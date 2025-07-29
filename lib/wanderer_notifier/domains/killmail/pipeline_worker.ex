@@ -54,7 +54,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   @impl true
   def handle_info({:websocket_killmail, killmail}, state) do
     log_killmail_received(killmail)
-    WandererNotifier.Application.Services.Stats.track_killmail_received()
+    WandererNotifier.Application.Services.ApplicationService.increment_metric(:killmail_received)
 
     _task = spawn_killmail_processing_task(killmail, state)
 
