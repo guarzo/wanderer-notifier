@@ -167,38 +167,8 @@ defmodule WandererNotifier.Application.Services.ConfigurationManager do
   def validate_all_configurations do
     Logger.info("Starting configuration validation for all services", category: :config)
 
-    results =
-      @service_configs
-      |> Map.keys()
-      |> Enum.map(&validate_service_config/1)
-      |> Enum.group_by(&elem(&1, 0))
-
-    case Map.get(results, :error, []) do
-      [] ->
-        success_count = length(Map.get(results, :ok, []))
-
-        Logger.info("Configuration validation completed successfully",
-          services_validated: success_count,
-          category: :config
-        )
-
-        success_results = Map.get(results, :ok, [])
-
-        config_map =
-          Map.new(success_results, fn {:ok, {service, config}} -> {service, config} end)
-
-        {:ok, config_map}
-
-      errors ->
-        error_services = Enum.map(errors, fn {:error, {service, _reason}} -> service end)
-
-        Logger.error("Configuration validation failed",
-          failed_services: error_services,
-          category: :config
-        )
-
-        {:error, {:validation_failed, errors}}
-    end
+    results = validate_all_service_configs()
+    process_validation_results(results)
   end
 
   @doc """
@@ -234,6 +204,52 @@ defmodule WandererNotifier.Application.Services.ConfigurationManager do
   # ──────────────────────────────────────────────────────────────────────────────
   # Configuration Building
   # ──────────────────────────────────────────────────────────────────────────────
+
+  defp validate_all_service_configs do
+    @service_configs
+    |> Map.keys()
+    |> Enum.map(&validate_service_config/1)
+    |> Enum.group_by(&elem(&1, 0))
+  end
+
+  defp process_validation_results(results) do
+    case Map.get(results, :error, []) do
+      [] ->
+        handle_validation_success(results)
+
+      errors ->
+        handle_validation_errors(errors)
+    end
+  end
+
+  defp handle_validation_success(results) do
+    success_count = length(Map.get(results, :ok, []))
+
+    Logger.info("Configuration validation completed successfully",
+      services_validated: success_count,
+      category: :config
+    )
+
+    success_results = Map.get(results, :ok, [])
+    config_map = build_config_map(success_results)
+
+    {:ok, config_map}
+  end
+
+  defp handle_validation_errors(errors) do
+    error_services = Enum.map(errors, fn {:error, {service, _reason}} -> service end)
+
+    Logger.error("Configuration validation failed",
+      failed_services: error_services,
+      category: :config
+    )
+
+    {:error, {:validation_failed, errors}}
+  end
+
+  defp build_config_map(success_results) do
+    Map.new(success_results, fn {:ok, {service, config}} -> {service, config} end)
+  end
 
   defp validate_service_config(service) do
     case get_service_config(service) do

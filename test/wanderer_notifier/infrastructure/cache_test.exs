@@ -1,8 +1,6 @@
 defmodule WandererNotifier.Infrastructure.CacheTest do
   use ExUnit.Case, async: false
 
-  @moduletag :skip
-
   alias WandererNotifier.Infrastructure.Cache
 
   setup do
@@ -38,7 +36,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       value = %{"name" => "test", "id" => 123}
 
       # Put value
-      {:ok, true} = Cache.put(key, value)
+      :ok = Cache.put(key, value)
 
       # Get value
       assert {:ok, ^value} = Cache.get(key)
@@ -55,7 +53,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       ttl = 1000
 
       # Put with TTL should succeed
-      {:ok, true} = Cache.put(key, value, ttl)
+      :ok = Cache.put(key, value, ttl)
 
       # Should exist immediately
       assert {:ok, ^value} = Cache.get(key)
@@ -69,7 +67,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       value = "to be deleted"
 
       # Put value
-      {:ok, true} = Cache.put(key, value)
+      :ok = Cache.put(key, value)
       assert {:ok, ^value} = Cache.get(key)
 
       # Delete value
@@ -85,7 +83,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       refute Cache.exists?(key)
 
       # Put value
-      {:ok, true} = Cache.put(key, value)
+      :ok = Cache.put(key, value)
 
       # Key exists now
       assert Cache.exists?(key)
@@ -97,9 +95,9 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
     test "clear removes all cached values" do
       # Put multiple values
-      {:ok, true} = Cache.put("test:1", "value1")
-      {:ok, true} = Cache.put("test:2", "value2")
-      {:ok, true} = Cache.put("test:3", "value3")
+      :ok = Cache.put("test:1", "value1")
+      :ok = Cache.put("test:2", "value2")
+      :ok = Cache.put("test:3", "value3")
 
       # Verify they exist
       assert {:ok, "value1"} = Cache.get("test:1")
@@ -123,7 +121,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
       # Put character data directly
       key = Cache.Keys.character(character_id)
-      {:ok, true} = Cache.put(key, character_data)
+      :ok = Cache.put(key, character_data)
 
       # Use helper to retrieve
       assert {:ok, ^character_data} = Cache.get_character(character_id)
@@ -134,7 +132,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       character_data = %{name: "Test Character", corp_id: 67_890}
 
       # Use helper to store
-      {:ok, true} = Cache.put_character(character_id, character_data)
+      :ok = Cache.put_character(character_id, character_data)
 
       # Verify it's stored
       assert {:ok, ^character_data} = Cache.get_character(character_id)
@@ -146,7 +144,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
       # Put corp data directly
       key = Cache.Keys.corporation(corp_id)
-      {:ok, true} = Cache.put(key, corp_data)
+      :ok = Cache.put(key, corp_data)
 
       # Use helper to retrieve
       assert {:ok, ^corp_data} = Cache.get_corporation(corp_id)
@@ -157,7 +155,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       corp_data = %{name: "Test Corp", ticker: "TEST"}
 
       # Use helper to store
-      {:ok, true} = Cache.put_corporation(corp_id, corp_data)
+      :ok = Cache.put_corporation(corp_id, corp_data)
 
       # Verify it's stored
       assert {:ok, ^corp_data} = Cache.get_corporation(corp_id)
@@ -169,7 +167,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
       # Put alliance data directly
       key = Cache.Keys.alliance(alliance_id)
-      {:ok, true} = Cache.put(key, alliance_data)
+      :ok = Cache.put(key, alliance_data)
 
       # Use helper to retrieve
       assert {:ok, ^alliance_data} = Cache.get_alliance(alliance_id)
@@ -180,7 +178,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       alliance_data = %{name: "Test Alliance", ticker: "TESTA"}
 
       # Use helper to store
-      {:ok, true} = Cache.put_alliance(alliance_id, alliance_data)
+      :ok = Cache.put_alliance(alliance_id, alliance_data)
 
       # Verify it's stored
       assert {:ok, ^alliance_data} = Cache.get_alliance(alliance_id)
@@ -192,7 +190,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
       # Put system data directly
       key = Cache.Keys.system(system_id)
-      {:ok, true} = Cache.put(key, system_data)
+      :ok = Cache.put(key, system_data)
 
       # Use helper to retrieve
       assert {:ok, ^system_data} = Cache.get_system(system_id)
@@ -203,7 +201,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       system_data = %{name: "Jita", security_status: 0.9}
 
       # Use helper to store
-      {:ok, true} = Cache.put_system(system_id, system_data)
+      :ok = Cache.put_system(system_id, system_data)
 
       # Verify it's stored
       assert {:ok, ^system_data} = Cache.get_system(system_id)
@@ -231,7 +229,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:error, :not_found} = Cache.get(key)
 
       # Mark as processed
-      {:ok, true} = Cache.put(key, true, Cache.killmail_ttl())
+      :ok = Cache.put(key, true, Cache.killmail_ttl())
 
       # Should be marked as processed
       assert {:ok, true} = Cache.get(key)
@@ -245,7 +243,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:error, :not_found} = Cache.get(key)
 
       # Mark as sent
-      {:ok, true} = Cache.put(key, true, :timer.minutes(30))
+      :ok = Cache.put(key, true, :timer.minutes(30))
 
       # Should be marked as sent
       assert {:ok, true} = Cache.get(key)
@@ -273,7 +271,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = "test:nil"
 
       # Should handle nil value storage
-      assert {:ok, true} = Cache.put(key, nil)
+      assert :ok = Cache.put(key, nil)
 
       # Cachex treats nil as not found, which is expected behavior
       assert {:error, :not_found} = Cache.get(key)

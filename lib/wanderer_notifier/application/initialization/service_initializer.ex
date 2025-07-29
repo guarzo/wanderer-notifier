@@ -38,22 +38,25 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   def initialize_services do
     Logger.info("Starting service initialization", category: :startup)
 
-    case build_service_tree() do
-      {:ok, services} ->
-        Logger.info("Service initialization completed successfully",
-          services_count: length(services),
-          category: :startup
-        )
+    try do
+      {:ok, services} = build_service_tree()
 
-        {:ok, services}
+      Logger.info("Service initialization completed successfully",
+        services_count: length(services),
+        category: :startup
+      )
 
-      {:error, reason} = error ->
+      {:ok, services}
+    rescue
+      error ->
+        reason = {:service_tree_build_failed, error}
+
         Logger.error("Service initialization failed",
           error: inspect(reason),
           category: :startup
         )
 
-        error
+        {:error, reason}
     end
   end
 
@@ -77,18 +80,14 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   # ──────────────────────────────────────────────────────────────────────────────
 
   defp build_service_tree do
-    try do
-      services =
-        infrastructure_phase() ++
-          foundation_phase() ++
-          integration_phase() ++
-          processing_phase()
+    # Let any exceptions bubble up naturally - they'll be caught by the caller
+    services =
+      infrastructure_phase() ++
+        foundation_phase() ++
+        integration_phase() ++
+        processing_phase()
 
-      {:ok, services}
-    rescue
-      error ->
-        {:error, {:service_tree_build_failed, error}}
-    end
+    {:ok, services}
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -105,8 +104,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Dependency injection registry
       {WandererNotifier.Application.Services.DependencyRegistry, []},
 
-      # Registries for process naming
-      {Registry, keys: :unique, name: WandererNotifier.Infrastructure.Cache.Registry},
+      # Registry for process naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
 
       # Cache system

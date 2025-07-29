@@ -219,7 +219,7 @@ defmodule WandererNotifier.Application.Services.DependencyRegistry do
       {:processing_context, WandererNotifier.Contexts.ProcessingContext,
        "Data processing context"},
 
-      # External Integrations  
+      # External Integrations
       {:discord, WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier,
        "Discord integration"},
       {:esi, WandererNotifier.Infrastructure.Adapters.ESI.Service, "EVE Swagger Interface"},

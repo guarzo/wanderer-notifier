@@ -3,7 +3,6 @@ defmodule WandererNotifier.Application.Services.Application.ServiceTest do
   import Mox
 
   alias WandererNotifier.Application.Services.Application.Service
-  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.License.LicenseService
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
@@ -14,15 +13,8 @@ defmodule WandererNotifier.Application.Services.Application.ServiceTest do
   setup :verify_on_exit!
 
   setup do
-    # Ensure Stats GenServer is started
-    case Process.whereis(Stats) do
-      nil ->
-        # Initialize test state for Stats
-        {:ok, _pid} = GenServer.start_link(Stats, [], name: Stats)
-
-      _ ->
-        :ok
-    end
+    # ApplicationService now handles stats functionality
+    # No need to start a separate Stats GenServer
 
     # Ensure License Service is started with a valid mock response
     case Process.whereis(LicenseService) do
