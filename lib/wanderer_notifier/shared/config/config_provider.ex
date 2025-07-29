@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Shared.ConfigProvider do
+defmodule WandererNotifier.Shared.Config.ConfigProvider do
   @moduledoc """
   Config provider for WandererNotifier runtime configuration.
 
