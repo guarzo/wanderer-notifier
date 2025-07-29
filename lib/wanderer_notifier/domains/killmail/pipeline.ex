@@ -7,7 +7,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   """
 
   require Logger
-  alias WandererNotifier.Application.Telemetry
+  alias WandererNotifier.Shared.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.ItemProcessor
   alias WandererNotifier.Domains.Notifications.Deduplication

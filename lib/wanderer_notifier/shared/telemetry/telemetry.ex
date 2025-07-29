@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Telemetry do
+defmodule WandererNotifier.Shared.Telemetry do
   @moduledoc """
   Centralized telemetry and metrics instrumentation for WandererNotifier.
   Provides a unified interface for emitting events and metrics.

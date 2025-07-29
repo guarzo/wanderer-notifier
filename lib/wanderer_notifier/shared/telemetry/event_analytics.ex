@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Telemetry.Metrics.EventAnalytics do
+defmodule WandererNotifier.Shared.Telemetry.EventAnalytics do
   @moduledoc """
   Event analytics module for tracking and analyzing events from different sources.
 

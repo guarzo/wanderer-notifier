@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Telemetry.Metrics.Dashboard do
+defmodule WandererNotifier.Shared.Telemetry.Dashboard do
   @moduledoc """
   Enhanced real-time metrics dashboard for comprehensive system monitoring.
 
@@ -9,7 +9,7 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.Dashboard do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Application.Telemetry.Metrics.{
+  alias WandererNotifier.Shared.Telemetry.{
     Collector,
     EventAnalytics,
     PerformanceMonitor

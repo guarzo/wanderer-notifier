@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Telemetry.Metrics.Collector do
+defmodule WandererNotifier.Shared.Telemetry.Collector do
   @moduledoc """
   Metrics collection system for real-time performance monitoring.
 

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
+defmodule WandererNotifier.Shared.Telemetry.PerformanceMonitor do
   @moduledoc """
   Performance monitoring system with adaptive thresholds and alerting.
 
@@ -9,7 +9,7 @@ defmodule WandererNotifier.Application.Telemetry.Metrics.PerformanceMonitor do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Application.Telemetry.Metrics.Collector
+  alias WandererNotifier.Shared.Telemetry.Collector
 
   # Monitoring configuration
   # 30 seconds (reduced frequency to prevent feedback loops)
