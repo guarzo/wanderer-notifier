@@ -452,6 +452,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
           _ -> get_fallback_system_name(killmail)
         end
 
+      {:error, :not_found} ->
+        get_fallback_system_name(killmail)
+
       _ ->
         get_fallback_system_name(killmail)
     end

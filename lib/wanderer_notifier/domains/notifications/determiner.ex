@@ -370,7 +370,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   def tracked_system_info(system_id) do
     case System.get_system(system_id) do
       {:ok, system_info} -> system_info
-      {:error, _} -> nil
+      {:error, :not_found} -> nil
     end
   end
 end

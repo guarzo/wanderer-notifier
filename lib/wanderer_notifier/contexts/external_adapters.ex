@@ -1,201 +1,113 @@
 defmodule WandererNotifier.Contexts.ExternalAdapters do
   @moduledoc """
-  Context module for external service adapters.
-  Provides a clean API boundary for all external integrations like HTTP clients,
-  Discord notifications, and third-party APIs.
+  Backward compatibility adapter for external service integrations.
+  
+  This module maintains the existing ExternalAdapters API while delegating
+  to the new consolidated context modules:
+  - ApiContext for external API integrations
+  - NotificationContext for Discord and notification operations
+  
+  This allows existing code to continue working without changes while
+  providing a migration path to the new, more focused contexts.
   """
-  require Logger
-
-  alias WandererNotifier.Infrastructure.Adapters.ESI.Client
-  alias WandererNotifier.Infrastructure.Http, as: HTTP
+  
+  # Delegate to the appropriate new contexts
+  alias WandererNotifier.Contexts.{ApiContext, NotificationContext}
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # HTTP Client
+  # HTTP Client - delegated to ApiContext
   # ──────────────────────────────────────────────────────────────────────────────
 
-  @doc """
-  Makes an HTTP GET request with retry logic and error handling.
-  """
+  @doc "Makes an HTTP GET request with retry logic and error handling."
   @spec http_get(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def http_get(url, headers \\ []) do
-    HTTP.request(:get, url, nil, headers, [])
-  end
+  defdelegate http_get(url, headers \\ []), to: ApiContext
 
-  @doc """
-  Makes an HTTP POST request with retry logic and error handling.
-  """
+  @doc "Makes an HTTP POST request with retry logic and error handling."
   @spec http_post(String.t(), any(), keyword()) :: {:ok, map()} | {:error, term()}
-  def http_post(url, body, headers \\ []) do
-    HTTP.request(:post, url, body, headers, [])
-  end
+  defdelegate http_post(url, body, headers \\ []), to: ApiContext
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # EVE ESI API
+  # EVE ESI API - delegated to ApiContext
   # ──────────────────────────────────────────────────────────────────────────────
 
-  @doc """
-  Gets character information from ESI.
-  """
+  @doc "Gets character information from ESI."
   @spec get_character(integer() | String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate get_character(character_id), to: Client, as: :get_character_info
+  defdelegate get_character(character_id), to: ApiContext
 
-  @doc """
-  Gets corporation information from ESI.
-  """
+  @doc "Gets corporation information from ESI."
   @spec get_corporation(integer() | String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate get_corporation(corporation_id), to: Client, as: :get_corporation_info
+  defdelegate get_corporation(corporation_id), to: ApiContext
 
-  @doc """
-  Gets alliance information from ESI.
-  """
+  @doc "Gets alliance information from ESI."
   @spec get_alliance(integer() | String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate get_alliance(alliance_id), to: Client, as: :get_alliance_info
+  defdelegate get_alliance(alliance_id), to: ApiContext
 
-  @doc """
-  Gets killmail from ESI.
-  """
+  @doc "Gets killmail from ESI."
   @spec get_killmail(integer() | String.t(), String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate get_killmail(killmail_id, hash), to: Client
+  defdelegate get_killmail(killmail_id, hash), to: ApiContext
 
-  @doc """
-  Gets ship type information from ESI.
-  """
+  @doc "Gets ship type information from ESI."
   @spec get_ship_type(integer() | String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate get_ship_type(type_id), to: Client, as: :get_universe_type
+  defdelegate get_ship_type(type_id), to: ApiContext
 
-  # ──────────────────────────────────────────────────────────────────────────────
-  # Map API
-  # ──────────────────────────────────────────────────────────────────────────────
-
-  @doc """
-  Gets tracked systems from the map API.
-  """
-  @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
-  def get_tracked_systems do
-    # Get from cache instead of fetching from API
-    case WandererNotifier.Infrastructure.Cache.get("map:systems") do
-      {:ok, systems} when is_list(systems) ->
-        {:ok, systems}
-
-      {:ok, _} ->
-        {:ok, []}
-
-      {:error, :not_found} ->
-        # Only fetch from API if not in cache
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems()
-    end
-  end
-
-  @doc """
-  Gets tracked characters from the map API.
-  """
-  @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
-  def get_tracked_characters do
-    Logger.info("ExternalAdapters.get_tracked_characters called", [])
-
-    # Get from cache instead of fetching from API
-    case WandererNotifier.Infrastructure.Cache.get("map:character_list") do
-      {:ok, characters} when is_list(characters) ->
-        first_char = Enum.at(characters, 0)
-
-        Logger.info("Retrieved characters from cache",
-          character_count: length(characters),
-          first_char_keys: (first_char && Map.keys(first_char)) |> inspect(),
-          first_char_sample: inspect(first_char) |> String.slice(0, 500)
-        )
-
-        {:ok, characters}
-
-      {:ok, _} ->
-        Logger.warning("Cache returned non-list data for characters")
-        {:ok, []}
-
-      {:error, :not_found} ->
-        Logger.warning("No characters found in cache, fetching from API")
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters()
-    end
-  end
-
-  @doc """
-  Gets system static information.
-  """
+  @doc "Gets system static information."
   @spec get_system_info(integer() | String.t()) :: {:ok, map()} | {:error, term()}
-  def get_system_info(system_id) do
-    WandererNotifier.Domains.Tracking.StaticInfo.get_system_info(system_id)
-  end
+  defdelegate get_system_info(system_id), to: ApiContext
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Discord Integration
+  # Map API - delegated to ApiContext
   # ──────────────────────────────────────────────────────────────────────────────
 
-  @doc """
-  Sends a Discord notification.
-  """
+  @doc "Gets tracked systems from the map API."
+  @spec get_tracked_systems() :: {:ok, list()} | {:error, term()}
+  defdelegate get_tracked_systems(), to: ApiContext
+
+  @doc "Gets tracked characters from the map API."
+  @spec get_tracked_characters() :: {:ok, list()} | {:error, term()}
+  defdelegate get_tracked_characters(), to: ApiContext
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # License Management - delegated to ApiContext
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Validates the application license."
+  @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  defdelegate validate_license(api_token, license_key), to: ApiContext
+
+  @doc "Checks if premium features are enabled."
+  @spec premium_features_enabled?() :: boolean()
+  defdelegate premium_features_enabled?(), to: ApiContext
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Discord Integration - delegated to NotificationContext
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Sends a Discord notification."
   @spec send_discord_notification(map()) :: {:ok, any()} | {:error, term()}
   def send_discord_notification(notification) do
-    case WandererNotifier.Application.Services.NotificationService.notify_kill(notification) do
-      :ok -> {:ok, :sent}
-      {:error, :notifications_disabled} -> {:ok, :sent}
-      {:error, _reason} = error -> error
+    # Convert the old API to the new notification context API
+    case NotificationContext.send_kill_notification(notification) do
+      {:ok, :sent} -> {:ok, :sent}
+      {:ok, :skipped} -> {:ok, :sent}  # Maintain backward compatibility
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  @doc """
-  Sends a status message to Discord.
-  """
+  @doc "Sends a status message to Discord."
   @spec send_status_message(String.t(), keyword()) :: {:ok, any()} | {:error, term()}
-  def send_status_message(message, opts \\ []) do
-    # Status formatter doesn't have send_status_message, using Discord notifier directly
-    _type = Keyword.get(opts, :type, :info)
-    WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_message(message)
-  end
+  defdelegate send_status_message(message, opts \\ []), to: NotificationContext
 
-  @doc """
-  Gets the configured Discord channel ID.
-  """
+  @doc "Gets the configured Discord channel ID."
   @spec discord_channel_id() :: String.t() | nil
-  defdelegate discord_channel_id(),
-    to: WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient,
-    as: :channel_id
+  defdelegate discord_channel_id(), to: NotificationContext, as: :get_discord_channel
 
-  # ──────────────────────────────────────────────────────────────────────────────
-  # License Management
-  # ──────────────────────────────────────────────────────────────────────────────
-
-  @doc """
-  Validates the application license.
-  """
-  @spec validate_license(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
-  defdelegate validate_license(api_token, license_key),
-    to: WandererNotifier.Domains.License.LicenseService,
-    as: :validate_bot
-
-  @doc """
-  Checks if premium features are enabled.
-  """
-  @spec premium_features_enabled?() :: boolean()
-  def premium_features_enabled? do
-    case WandererNotifier.Domains.License.LicenseService.status() do
-      %{status: :active} -> true
-      _ -> false
-    end
-  end
-
-  # ──────────────────────────────────────────────────────────────────────────────
-  # Notification Service
-  # ──────────────────────────────────────────────────────────────────────────────
-
-  @doc """
-  Sends a notification through the notification service.
-  """
+  @doc "Sends a notification through the notification service."
   @spec send_notification(map(), keyword()) :: {:ok, any()} | {:error, term()}
   def send_notification(notification, opts \\ []) do
-    channel_id =
-      Keyword.get(opts, :channel_id, WandererNotifier.Shared.Config.discord_channel_id())
-
-    WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient.send_embed(
-      notification,
-      channel_id
-    )
+    # Convert to new notification context format
+    case NotificationContext.send_discord_embed(notification, opts) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
   end
 end

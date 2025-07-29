@@ -11,7 +11,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   require Logger
 
   @type t :: %__MODULE__{
-          solar_system_id: String.t(),
+          solar_system_id: String.t() | integer() | nil,
           name: String.t(),
           original_name: String.t() | nil,
           system_type: String.t() | nil,
@@ -48,7 +48,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   Creates a new System struct from attributes map.
   Raises ArgumentError if required fields are missing or invalid.
   """
-  @spec new(map()) :: t()
+  @spec new(map()) :: t() | no_return()
   def new(attrs) when is_map(attrs) do
     system_id = validate_system_id(attrs)
     name = validate_name(attrs)
@@ -188,7 +188,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   Creates a system struct from API data.
   Raises ArgumentError if required fields are missing or invalid.
   """
-  @spec from_api_data(map()) :: t()
+  @spec from_api_data(map()) :: t() | no_return()
   def from_api_data(data) when is_map(data) do
     log_api_data(data)
     build_system_struct(data)

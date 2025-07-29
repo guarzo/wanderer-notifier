@@ -182,9 +182,9 @@ defmodule WandererNotifier.Testing.NotificationTester do
         Logger.debug("[TEST] Found system: #{system.name}")
         send_system_notification(system)
 
-      {:error, reason} ->
-        Logger.error("[TEST] System #{system_id} not found: #{inspect(reason)}")
-        {:error, reason}
+      {:error, :not_found} ->
+        Logger.error("[TEST] System #{system_id} not found")
+        {:error, :not_found}
     end
   end
 

@@ -1,16 +1,17 @@
 defmodule WandererNotifier.Contexts.Killmail do
   @moduledoc """
-  Context module for killmail processing functionality.
-  Provides a clean API boundary for all killmail-related operations.
+  Backward compatibility adapter for killmail processing functionality.
+  
+  This module maintains the existing Killmail context API while delegating
+  to the new ProcessingContext. This allows existing code to continue working
+  without changes while providing a migration path to the consolidated context.
   """
 
-  alias WandererNotifier.Domains.Killmail.{
-    Enrichment,
-    Pipeline
-  }
+  # Delegate to the new ProcessingContext
+  alias WandererNotifier.Contexts.ProcessingContext
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Public API
+  # Public API - delegated to ProcessingContext
   # ──────────────────────────────────────────────────────────────────────────────
 
   @doc """
@@ -25,27 +26,21 @@ defmodule WandererNotifier.Contexts.Killmail do
       {:error, :invalid_killmail}
   """
   @spec process_killmail(map()) :: {:ok, String.t() | :skipped} | {:error, term()}
-  def process_killmail(killmail) do
-    Pipeline.process_killmail(killmail)
-  end
+  defdelegate process_killmail(killmail), to: ProcessingContext
 
   @doc """
   Gets recent kills for a specific system.
   """
   @spec recent_kills_for_system(integer(), integer()) :: String.t()
-  defdelegate recent_kills_for_system(system_id, limit \\ 3), to: Enrichment
+  defdelegate recent_kills_for_system(system_id, limit \\ 3), to: ProcessingContext, as: :get_recent_system_kills
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Client Management
+  # Client Management - delegated to ProcessingContext
   # ──────────────────────────────────────────────────────────────────────────────
 
   @doc """
   Checks if the killmail stream is connected.
   """
   @spec stream_connected?() :: boolean()
-  def stream_connected? do
-    # Check if PipelineWorker (which manages WebSocket client) is running
-    pipeline_pid = Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker)
-    is_pid(pipeline_pid) and Process.alive?(pipeline_pid)
-  end
+  defdelegate stream_connected?(), to: ProcessingContext
 end
