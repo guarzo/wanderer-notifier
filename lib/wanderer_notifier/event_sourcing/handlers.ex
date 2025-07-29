@@ -176,7 +176,7 @@ defmodule WandererNotifier.EventSourcing.Handlers do
 
     case check_required_fields(data, required_fields) do
       :ok -> {:ok, data}
-      {:error, missing} -> {:error, "Missing required killmail fields: #{inspect(missing)}"}
+      {:error, missing} -> {:error, {:missing_killmail_fields, missing}}
     end
   end
 
@@ -185,7 +185,7 @@ defmodule WandererNotifier.EventSourcing.Handlers do
 
     case check_required_fields(data, required_fields) do
       :ok -> {:ok, data}
-      {:error, missing} -> {:error, "Missing required system fields: #{inspect(missing)}"}
+      {:error, missing} -> {:error, {:missing_system_fields, missing}}
     end
   end
 
@@ -194,14 +194,14 @@ defmodule WandererNotifier.EventSourcing.Handlers do
 
     case check_required_fields(data, required_fields) do
       :ok -> {:ok, data}
-      {:error, missing} -> {:error, "Missing required character fields: #{inspect(missing)}"}
+      {:error, missing} -> {:error, {:missing_character_fields, missing}}
     end
   end
 
   defp validate_generic_data(data) when is_map(data), do: {:ok, data}
 
   defp validate_generic_data(data),
-    do: {:error, "Event data must be a map, got: #{inspect(data)}"}
+    do: {:error, {:invalid_event_data, inspect(data)}}
 
   defp check_required_fields(data, required_fields) do
     missing_fields =

@@ -14,6 +14,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
+  alias WandererNotifier.Shared.Utils.ErrorHandler
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -42,30 +43,37 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp process_with_kill_id(killmail_data, kill_id) do
     Telemetry.processing_started(kill_id)
 
-    try do
-      with {:ok, :new} <- check_deduplication(kill_id),
-           {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
-           {:ok, true} <- should_notify?(killmail) do
-        send_notification(killmail)
-      else
-        {:ok, :duplicate} ->
-          handle_skipped(kill_id, :duplicate)
+    ErrorHandler.with_error_handling(fn -> process_killmail_pipeline(killmail_data, kill_id) end)
+    |> handle_pipeline_errors(kill_id)
+  end
 
-        {:ok, false} ->
-          handle_skipped(kill_id, :not_tracked)
+  @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
+  defp process_killmail_pipeline(killmail_data, kill_id) do
+    with {:ok, :new} <- check_deduplication(kill_id),
+         {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
+         {:ok, true} <- should_notify?(killmail) do
+      send_notification(killmail)
+    else
+      {:ok, :duplicate} ->
+        handle_skipped(kill_id, :duplicate)
 
-        {:error, reason} ->
-          handle_error(kill_id, reason)
-      end
-    rescue
-      exception ->
-        Logger.error("Pipeline crash",
-          kill_id: kill_id,
-          error: inspect(exception),
-          category: :killmail
-        )
+      {:ok, false} ->
+        handle_skipped(kill_id, :not_tracked)
 
-        handle_error(kill_id, {:unexpected_error, exception})
+      {:error, reason} ->
+        handle_error(kill_id, reason)
+    end
+  end
+
+  @spec handle_pipeline_errors(result(), String.t()) :: result()
+  defp handle_pipeline_errors(result, kill_id) do
+    case result do
+      {:error, {:exception, exception}} ->
+        handle_error(kill_id, {:pipeline_crash, exception})
+      {:error, {:exit, reason}} ->
+        handle_error(kill_id, {:pipeline_exit, reason})
+      result ->
+        result
     end
   end
 

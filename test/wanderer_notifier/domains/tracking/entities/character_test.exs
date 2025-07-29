@@ -116,8 +116,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
     test "returns {:error, reason} for invalid data" do
       attrs = %{"name" => "Test Character"}
 
-      assert {:error, reason} = Character.new_safe(attrs)
-      assert reason == "Character must have eve_id or character_id"
+      assert {:error, {:validation_error, message}} = Character.new_safe(attrs)
+      assert message == "Character must have eve_id or character_id"
     end
   end
 

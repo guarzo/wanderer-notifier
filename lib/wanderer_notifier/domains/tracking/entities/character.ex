@@ -122,8 +122,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
       character = new(attrs)
       {:ok, character}
     rescue
-      e in ArgumentError -> {:error, e.message}
-      e -> {:error, "Failed to create character: #{inspect(e)}"}
+      e in ArgumentError -> {:error, {:validation_error, e.message}}
+      e -> {:error, {:character_creation_failed, inspect(e)}}
     end
   end
 

@@ -148,8 +148,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
       system = new(attrs)
       {:ok, system}
     rescue
-      e in ArgumentError -> {:error, e.message}
-      e -> {:error, "Failed to create system: #{inspect(e)}"}
+      e in ArgumentError -> {:error, {:validation_error, e.message}}
+      e -> {:error, {:system_creation_failed, inspect(e)}}
     end
   end
 
