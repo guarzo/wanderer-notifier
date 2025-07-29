@@ -49,52 +49,67 @@ docker-compose up -d  # Run locally with Docker
 
 The application follows a refactored, domain-driven design with these core components:
 
-### Refactored Module Structure (Post-Sprint 2)
+### Current Module Structure (Post-Reorganization Sprint 1)
 ```
 lib/wanderer_notifier/
-├── domains/                          # Business logic domains
+├── core/                             # Application layer concerns
+│   ├── supervisors/                  # Application supervisors
+│   └── services/                     # Cross-domain services
+├── domains/                          # Business logic domains (DDD approach)
 │   ├── killmail/                     # Killmail processing domain
-│   │   ├── websocket_client.ex       # Real-time data ingestion
-│   │   ├── fallback_handler.ex       # HTTP fallback mechanism  
-│   │   ├── pipeline.ex               # Kill processing pipeline
-│   │   ├── killmail.ex               # Flattened killmail struct (195 lines)
-│   │   └── wanderer_kills_api.ex     # WandererKills API client
-│   ├── tracking/                     # Unified tracking domain
-│   │   ├── clients/
-│   │   │   └── unified_client.ex     # Single client for characters + systems
-│   │   ├── handlers/
-│   │   │   ├── shared_event_logic.ex # Common event processing patterns
-│   │   │   ├── character_handler.ex  # Character-specific event handling
-│   │   │   └── system_handler.ex     # System-specific event handling
-│   │   └── entities/
-│   │       ├── character.ex          # Character entity with Access behavior
-│   │       └── system.ex             # System entity with validation
-│   ├── notifications/                # Notification handling domain
-│   │   ├── notifiers/discord/        # Discord-specific notifiers
-│   │   ├── formatters/
-│   │   │   ├── unified.ex            # Single formatter for all types
-│   │   │   └── utilities.ex          # Shared formatting utilities
-│   │   └── determiners/              # Notification logic
-│   └── license/                      # License management domain
-├── infrastructure/                   # Shared infrastructure
-│   ├── adapters/                     # External service adapters (ESI)
-│   ├── cache/                        # Simplified caching system (3 modules)
-│   │   ├── cache.ex                  # Direct Cachex wrapper
-│   │   ├── config_simple.ex          # Simple TTL configuration
-│   │   └── keys_simple.ex            # Consistent key generation
-│   ├── http/
-│   │   └── http.ex                   # Single HTTP client with request/5
-│   └── messaging/                    # Event handling infrastructure
-├── map/                              # Map tracking via SSE
-│   ├── sse_client.ex                 # SSE connection management
-│   ├── sse_parser.ex                 # Event parsing and handling
-│   └── tracking_behaviours.ex        # Tracking behavior contracts
-├── schedulers/                       # Background task scheduling
-├── shared/                           # Shared utilities and services
+│   │   ├── entities/                 # Killmail domain entities
+│   │   ├── services/                 # Processing and client services
+│   │   ├── pipeline/                 # Pipeline and enrichment logic
+│   │   └── utils/                    # Domain-specific utilities
+│   ├── tracking/                     # Character and system tracking
+│   │   ├── entities/                 # Character and System entities
+│   │   ├── services/                 # Tracking services
+│   │   ├── clients/                  # SSE and map clients
+│   │   └── handlers/                 # Event handlers
+│   ├── notifications/                # Notification handling
+│   │   ├── entities/                 # Notification entities
+│   │   ├── services/                 # Notification logic
+│   │   ├── formatters/               # Message formatters
+│   │   └── channels/discord/         # Discord integration
+│   └── license/                      # License management
+│       ├── entities/                 # License entities
+│       └── services/                 # License validation
+├── infrastructure/                   # Technical infrastructure
+│   ├── http/                         # HTTP client with middleware
+│   │   ├── middleware/               # Rate limiting, retry, telemetry
+│   │   └── utils/                    # HTTP utilities
+│   ├── cache/                        # Caching infrastructure
+│   ├── adapters/                     # External service adapters
+│   │   ├── esi/                      # EVE Swagger Interface
+│   │   └── janice/                   # Janice pricing
+│   ├── messaging/                    # Message handling
+│   └── persistence/                  # Data persistence (future)
+├── shared/                           # Cross-cutting concerns
 │   ├── config/                       # Configuration management
-│   ├── logger/                       # Simplified logging system  
-│   └── utils/                        # Common utilities
-└── contexts/                         # Application context layer
+│   ├── utils/                        # Shared utilities
+│   ├── types/                        # Common types and constants
+│   └── telemetry/                    # Monitoring and metrics
+└── schedulers/                       # Background job scheduling
+```
+
+## File Naming Standards
+
+### Module Types
+- **Services**: `*_service.ex` (e.g., `notification_service.ex`, `license_service.ex`)
+- **Clients**: `*_client.ex` (e.g., `discord_client.ex`, `sse_client.ex`)
+- **Handlers**: `*_handler.ex` (e.g., `character_event_handler.ex`)
+- **Entities**: Plain names (e.g., `killmail.ex`, `character.ex`, `system.ex`)
+- **Utilities**: `*_utils.ex` (e.g., `formatter_utils.ex`, `http_utils.ex`)
+- **Behaviours**: `*_behaviour.ex` (e.g., `cache_behaviour.ex`)
+- **Middleware**: `*_middleware.ex` (e.g., `retry_middleware.ex`)
+- **Formatters**: `*_formatter.ex` (e.g., `killmail_formatter.ex`)
+
+### Directory Conventions
+- **Singular nouns** for single-concern directories (`cache/`, `config/`)
+- **Plural nouns** for collections (`entities/`, `services/`, `handlers/`)
+- **Descriptive names** that clearly indicate purpose (`formatters/` not `format/`)
+- **Domain grouping** under `domains/` for business logic
+- **Technical grouping** under `infrastructure/` for technical concerns
 ```
 
 ### Data Flow
@@ -109,14 +124,15 @@ lib/wanderer_notifier/
 9. **Unified Notification Formatter** (`lib/wanderer_notifier/domains/notifications/formatters/unified.ex`) - Single formatter handling all notification types
 10. **Discord Notifiers** (`lib/wanderer_notifier/domains/notifications/notifiers/discord/`) - Sends formatted notifications to Discord channels
 
-### Unified Tracking Architecture (Sprint 2)
-The tracking system has been unified to reduce code duplication and simplify maintenance:
+### Domain-Driven Design Principles
+The reorganized codebase follows DDD patterns for better maintainability:
 
-- **Single Client**: `MapTrackingClient` handles both characters and systems using Process dictionary for entity context switching
-- **Shared Event Logic**: Common patterns for event processing, entity extraction, and cache operations
-- **Entity-Specific Handlers**: Character and system handlers extend shared logic with domain-specific customization
-- **Flattened Entities**: Character and System structs with direct field access and validation
-- **Consistent APIs**: All tracking operations follow the same `{:ok, result}` | `{:error, reason}` pattern
+- **Domain Boundaries**: Clear separation between killmail, tracking, notifications, and license domains
+- **Entity Organization**: Domain entities grouped in `entities/` subdirectories
+- **Service Layer**: Business logic encapsulated in domain services
+- **Infrastructure Separation**: Technical concerns isolated from business logic
+- **Shared Kernel**: Common utilities and types in `shared/` directory
+- **Consistent Structure**: All domains follow the same organizational pattern
 
 ### Key Infrastructure Components (Post-Sprint 2 Simplification)
 - **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
@@ -154,6 +170,32 @@ The tracking system has been unified to reduce code duplication and simplify mai
 - **Infrastructure Testing**: Complete test coverage for HTTP client, cache system, license service
 - **Integration Tests**: Full flow testing from WebSocket/SSE to Discord delivery
 - **Unit Tests**: Comprehensive testing of individual modules and functions with proper mocking
+
+## Development Standards
+
+### Quality Gates (Mandatory)
+Every code change must pass these quality checks before committing:
+1. **`make compile`** - No compilation errors allowed
+2. **`make test`** - All tests must pass (100%)
+3. **`mix credo --strict`** - No credo issues allowed
+4. **`mix dialyzer`** - No dialyzer warnings allowed
+
+### Commit Standards
+- **Frequency**: Minimum 2-3 commits per day, ideally after each task completion
+- **Message format**: `[Sprint X.Y] Description of change`  
+- **Never**: Leave broken code uncommitted overnight
+- **Quality first**: Fix all quality issues before continuing to next task
+
+### Migration Progress
+The codebase is currently undergoing a structured 8-sprint reorganization:
+- **Sprint 1** (Weeks 1-2): Foundation setup and directory structure ✅
+- **Sprint 2** (Weeks 3-4): Shared utilities consolidation
+- **Sprint 3** (Weeks 5-6): Infrastructure reorganization  
+- **Sprint 4** (Weeks 7-8): Core application layer
+- **Sprint 5** (Weeks 9-10): Killmail domain reorganization
+- **Sprint 6** (Weeks 11-12): Tracking domain and map integration
+- **Sprint 7** (Weeks 13-14): Notifications domain
+- **Sprint 8** (Weeks 15-16): Testing alignment and documentation
 
 ## Important Patterns
 
