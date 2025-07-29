@@ -8,6 +8,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
   require Logger
   alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Shared.Config
 
   @base_url_key :wanderer_kills_url
@@ -24,8 +25,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       "limit" => limit
     }
 
-    query_string = URI.encode_query(params)
-    full_url = "#{url}?#{query_string}"
+    full_url = HttpUtils.build_url_with_query(url, params)
 
     Logger.info("Fetching system killmails",
       system_id: system_id,
@@ -157,8 +157,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       "limit" => limit
     }
 
-    query_string = URI.encode_query(params)
-    full_url = "#{url}?#{query_string}"
+    full_url = HttpUtils.build_url_with_query(url, params)
 
     Logger.info("Fetching character killmails",
       character_id: character_id,

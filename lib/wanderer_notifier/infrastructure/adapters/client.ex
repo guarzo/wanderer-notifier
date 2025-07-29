@@ -4,6 +4,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
   """
 
   require Logger
+  alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Infrastructure.Http.ResponseHandler
   alias WandererNotifier.Infrastructure.Http.Headers
   alias WandererNotifier.Infrastructure.Http, as: HTTP
@@ -87,7 +88,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Client do
       "strict" => to_string(strict)
     }
 
-    url = "#{@base_url}/search/?#{URI.encode_query(query_params)}"
+    url = HttpUtils.build_url_with_query("#{@base_url}/search/", query_params)
     headers = default_headers()
 
     Logger.info("ESI searching inventory type",
