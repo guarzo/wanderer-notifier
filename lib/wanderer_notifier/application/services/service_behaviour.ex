@@ -150,6 +150,14 @@ defmodule WandererNotifier.Application.Services.ServiceBehaviour do
         case validate_config(config) do
           :ok ->
             apply_configuration(config)
+
+          {:error, reason} = error ->
+            Logger.error("Configuration validation failed for #{@service_name}",
+              reason: inspect(reason),
+              service: @service_name
+            )
+
+            error
         end
       end
 
@@ -171,9 +179,7 @@ defmodule WandererNotifier.Application.Services.ServiceBehaviour do
 
       # Default configuration getter
       def get_config do
-        WandererNotifier.Application.Services.ConfigurationManager.get_service_config(
-          @service_name
-        )
+        WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(@service_name)
         |> case do
           {:ok, config} -> config
           {:error, _} -> %{}
@@ -225,6 +231,7 @@ defmodule WandererNotifier.Application.Services.ServiceBehaviour do
                      calculate_uptime: 0,
                      apply_configuration: 1,
                      validate_config: 1,
+                     configure: 1,
                      get_metrics: 0,
                      diagnostics: 0,
                      get_config: 0

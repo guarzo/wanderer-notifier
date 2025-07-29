@@ -247,111 +247,119 @@ The Makefile provides shortcuts for common tasks:
 
 ## Architecture
 
-Wanderer Notifier follows a clean, domain-driven architecture built on Elixir/OTP principles with real-time data streams. The codebase has been refactored for better modularity, testability, and maintainability.
+Wanderer Notifier follows a mature, domain-driven architecture built on Elixir/OTP principles with real-time data streams. The codebase has been extensively refactored into a production-ready architecture with consolidated services and unified infrastructure.
 
 ### Core Architecture Principles
 
-- **Domain-Driven Design**: Clear separation between business domains (killmail, notifications, map tracking)
-- **Unified Infrastructure**: Consolidated HTTP clients, cache systems, and shared utilities
-- **Real-Time Processing**: Event-driven architecture with WebSocket and SSE connections
-- **Robust Error Handling**: Comprehensive error handling and retry mechanisms
-- **Testable Design**: Behavior-based testing with comprehensive mock support
+- **Domain-Driven Design**: Clear separation between business domains (killmail, notifications, tracking, license)
+- **Unified Infrastructure**: Single HTTP client and cache module with service-specific configurations
+- **Application Service Consolidation**: Centralized service handling dependency injection, metrics, and coordination
+- **Context Layer**: Cross-domain coordination for API, notification, and processing concerns
+- **Event-Driven Architecture**: Event sourcing capabilities with extensible handlers and processing pipeline
+- **Real-Time Processing**: Advanced WebSocket and SSE connections with health monitoring
+- **Multi-Phase Initialization**: Sophisticated startup process with infrastructure, foundation, integration, and processing phases
 
 ### Real-Time Data Flow
 
-1. **WebSocket Client** (`lib/wanderer_notifier/domains/killmail/websocket_client.ex`): Maintains persistent connection to WandererKills service for pre-enriched killmail data with automatic fallback handling
+1. **Application Service** (`lib/wanderer_notifier/application/services/application_service/`): Consolidated service coordinating all application operations with dependency injection and metrics tracking
 
-2. **Fallback Handler** (`lib/wanderer_notifier/domains/killmail/fallback_handler.ex`): Automatically switches to HTTP API when WebSocket connection fails, ensuring continuity
+2. **Service Initializer** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Multi-phase startup process ensuring reliable system initialization
 
-3. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`): Real-time Server-Sent Events connection for immediate map updates (systems and characters)
+3. **WebSocket Client** (`lib/wanderer_notifier/domains/killmail/websocket_client.ex`): Maintains persistent connection to WandererKills service for pre-enriched killmail data
 
-4. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline.ex`): Processes incoming kills through supervised workers with filtering and notification stages
+4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`): Real-time Server-Sent Events connection with advanced connection monitoring and health tracking
 
-5. **ESI Integration** (`lib/wanderer_notifier/infrastructure/adapters/`): Provides additional enrichment when needed using unified HTTP client
+5. **Processing Context** (`lib/wanderer_notifier/contexts/processing_context/`): Coordinates killmail processing across domains
 
-6. **Notification Engine** (`lib/wanderer_notifier/domains/notifications/`): Determines eligibility, applies license limits, and formats messages based on tracking rules
+6. **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers for future capabilities
 
-7. **Discord Infrastructure** (`lib/wanderer_notifier/domains/notifications/notifiers/discord/`): Full bot integration with slash command registration and event consumption
+7. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`): Coordinates notification processing across domains
 
-8. **Discord Delivery**: Sends rich embed or text notifications to configured channels with multi-channel routing
+8. **Discord Integration** (`lib/wanderer_notifier/domains/notifications/discord/`): Discord bot integration with slash commands and rich notifications
 
 ### Module Organization
 
-The refactored codebase follows a clear module hierarchy:
+The refactored codebase follows a mature, layered architecture:
 
 ```
 lib/wanderer_notifier/
-├── domains/                          # Business logic domains
+├── application/                      # Application coordination layer
+│   ├── services/application_service/ # Consolidated application service
+│   │   ├── dependency_manager.ex     # Dependency injection system
+│   │   ├── metrics_tracker.ex        # Application metrics
+│   │   ├── notification_coordinator.ex # Notification processing
+│   │   └── state.ex                  # Application state management
+│   └── initialization/
+│       └── service_initializer.ex    # Multi-phase startup process
+├── contexts/                         # Cross-domain coordination
+│   ├── api_context/                  # API layer coordination
+│   ├── notification_context/         # Notification handling
+│   └── processing_context/           # Killmail processing coordination
+├── domains/                          # Business logic domains (DDD)
 │   ├── killmail/                     # Killmail processing domain
-│   │   ├── websocket_client.ex       # Real-time data ingestion
-│   │   ├── fallback_handler.ex       # HTTP fallback mechanism  
-│   │   ├── pipeline.ex               # Kill processing pipeline
-│   │   ├── killmail.ex               # Flattened killmail struct (195 lines)
-│   │   └── wanderer_kills_api.ex     # WandererKills API client
-│   ├── tracking/                     # Unified tracking domain
-│   │   ├── clients/
-│   │   │   └── unified_client.ex     # Single client for characters + systems
-│   │   ├── handlers/
-│   │   │   ├── shared_event_logic.ex # Common event processing patterns
-│   │   │   ├── character_handler.ex  # Character-specific event handling
-│   │   │   └── system_handler.ex     # System-specific event handling
-│   │   └── entities/
-│   │       ├── character.ex          # Character entity with Access behavior
-│   │       └── system.ex             # System entity with validation
-│   ├── notifications/                # Notification handling domain
-│   │   ├── notifiers/discord/        # Discord-specific notifiers
-│   │   ├── formatters/
-│   │   │   ├── unified.ex            # Single formatter for all types
-│   │   │   └── utilities.ex          # Shared formatting utilities
-│   │   └── determiners/              # Notification logic
-│   └── license/                      # License management domain
-├── infrastructure/                   # Shared infrastructure
-│   ├── adapters/                     # External service adapters (ESI)
-│   ├── cache/                        # Simplified caching system (3 modules)
-│   │   ├── cache.ex                  # Direct Cachex wrapper
-│   │   ├── config_simple.ex          # Simple TTL configuration
-│   │   └── keys_simple.ex            # Consistent key generation
-│   ├── http/
-│   │   └── http.ex                   # Single HTTP client with request/5
-│   └── messaging/                    # Event handling infrastructure
-├── map/                              # Map tracking via SSE
-│   ├── sse_client.ex                 # SSE connection management
-│   ├── sse_parser.ex                 # Event parsing and handling
-│   └── tracking_behaviours.ex        # Tracking behavior contracts
-├── schedulers/                       # Background task scheduling
-├── shared/                           # Shared utilities and services
+│   │   ├── entities/                 # Killmail domain entities
+│   │   ├── services/                 # Processing services
+│   │   ├── pipeline/                 # Processing pipeline
+│   │   └── utils/                    # Domain utilities
+│   ├── tracking/                     # Character and system tracking
+│   │   ├── entities/                 # Character and System entities
+│   │   ├── services/                 # Tracking services
+│   │   └── handlers/                 # Event handlers
+│   ├── notifications/                # Notification handling
+│   │   ├── entities/                 # Notification entities
+│   │   ├── services/                 # Notification logic
+│   │   ├── formatters/               # Message formatters
+│   │   └── discord/                  # Discord integration
+│   └── license/                      # License management
+├── infrastructure/                   # Technical infrastructure
+│   ├── http.ex                       # Unified HTTP client
+│   ├── cache.ex                      # Simplified caching (single module)
+│   ├── adapters/                     # External service adapters
+│   │   ├── esi/                      # EVE Swagger Interface
+│   │   └── janice/                   # Janice pricing
+│   └── messaging/                    # Message handling
+├── map/                              # Real-time map integration
+│   ├── sse_client.ex                 # Server-Sent Events client
+│   ├── connection_monitor.ex         # Connection health monitoring
+│   └── schemas/                      # Map data schemas
+├── event_sourcing/                   # Event-driven architecture
+│   ├── event.ex                      # Event definitions
+│   ├── handlers/                     # Event handlers
+│   └── pipeline.ex                   # Event processing pipeline
+├── shared/                           # Cross-cutting concerns
 │   ├── config/                       # Configuration management
-│   ├── logger/                       # Simplified logging system  
-│   └── utils/                        # Common utilities
-└── contexts/                         # Application context layer
+│   ├── utils/                        # Shared utilities
+│   ├── types/                        # Common types and constants
+│   └── telemetry/                    # Monitoring and metrics
+└── schedulers/                       # Background job scheduling
 ```
 
-### Key Infrastructure Components (Simplified in Sprint 2)
+### Key Infrastructure Components (Post-Consolidation)
 
-- **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http/http.ex`): Single module handling all external HTTP requests with:
+- **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
   - Service-specific configurations (ESI, WandererKills, License, Map, Streaming)
   - Built-in authentication (Bearer, API Key, Basic)
   - Middleware pipeline (Telemetry, RateLimiter, Retry, CircuitBreaker)
   - Automatic JSON encoding/decoding
 
-- **Simplified Cache System**: Reduced from 15 modules to 3 core modules:
-  - `Cache.ex`: Direct Cachex wrapper for all cache operations
-  - `ConfigSimple.ex`: Simple TTL configuration (24h for entities, 1h for systems, 30m for killmails)
-  - `KeysSimple.ex`: Consistent key generation (e.g., "esi:character:123")
+- **Simplified Cache System**: Consolidated to single module:
+  - `infrastructure/cache.ex`: Direct Cachex wrapper with domain-specific helpers and consistent key generation
 
-- **Unified Tracking Client** (`lib/wanderer_notifier/domains/tracking/clients/unified_client.ex`): Single client handling both characters and systems with:
-  - Process dictionary for entity context switching
-  - Shared caching and HTTP request logic
-  - Entity-specific batch processing and validation
+- **Application Service** (`lib/wanderer_notifier/application/services/application_service/`): Consolidated service handling:
+  - Dependency injection via `DependencyManager`
+  - Application metrics via `MetricsTracker`
+  - Notification coordination via `NotificationCoordinator`
+  - State management via `State` module
 
-- **Flattened Data Structures**: Simplified from complex nested schemas to direct field access:
-  - `Killmail` struct: 195 lines (reduced from 338) with flattened victim fields
-  - String-based keys throughout with normalization at entry points
-  - Removed 1,454 lines of unused Ecto schemas
+- **Multi-Phase Initialization** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Sophisticated startup process with infrastructure, foundation, integration, and processing phases
 
-- **Configuration Management** (`lib/wanderer_notifier/shared/config/`): Map-based configuration with validation and feature flags
+- **Context Layer** (`lib/wanderer_notifier/contexts/`): Cross-domain coordination for API, notification, and processing concerns
 
-- **Shared Event Logic** (`lib/wanderer_notifier/domains/tracking/handlers/shared_event_logic.ex`): Common event processing patterns reducing code duplication across tracking domains
+- **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers and processing pipeline
+
+- **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
+
+- **Configuration Management** (`lib/wanderer_notifier/shared/config/`): Comprehensive configuration with validation and feature flags
 
 - **Supervision Tree**: Robust fault tolerance with granular supervisor hierarchies and automatic recovery
 
@@ -377,27 +385,26 @@ lib/wanderer_notifier/
 
 ## Development & Testing
 
-### Recent Improvements (Sprint 2)
+### Recent Architectural Improvements
 
-The codebase has undergone significant architectural refactoring and modernization:
+The codebase has undergone extensive refactoring and modernization, evolving into a mature production-ready architecture:
 
-#### Unified Architecture (Sprint 2)
-- **Unified Tracking Client**: Merged character and system clients into a single, configurable client with entity context switching
-- **Simplified HTTP Infrastructure**: Consolidated from multiple HTTP modules to a single `request/5` interface with service-specific configurations
-- **Flattened Data Structures**: Simplified Killmail schema from nested Access behavior to direct field access, reducing from 338 to 195 lines
-- **Standardized Data Processing**: Eliminated dual string/atom key support, normalizing all data to string keys at entry points
-- **Consolidated Notification Formatters**: Unified all notification types into two main modules with shared utilities
+#### Application Service Consolidation (Sprint 4+)
+- **Application Service**: Consolidated all application-level concerns into a single `ApplicationService` with specialized sub-modules for dependency injection, metrics, and notification coordination
+- **Multi-Phase Initialization**: Sophisticated startup process with infrastructure → foundation → integration → processing phases
+- **Context Layer**: Added cross-domain coordination layer for API, notification, and processing concerns
+- **Event Sourcing**: Implemented event-driven architecture foundation with extensible handlers and processing pipeline
 
-#### Infrastructure Simplification
-- **HTTP Client Unification**: Single service with predefined configurations for ESI, WandererKills, License, Map, and Streaming services
-- **Data Format Standardization**: Consistent string-based data handling throughout the pipeline with normalization at boundaries
-- **Schema Reorganization**: Removed 1,454 lines of unused Ecto schemas and flattened remaining structures
-- **Event Handler Consolidation**: Shared event processing logic reducing code duplication across tracking domains
+#### Infrastructure Unification
+- **HTTP Client**: Single module with service-specific configurations for ESI, WandererKills, License, Map, and Streaming services
+- **Cache System**: Consolidated from multiple modules to single unified cache with domain-specific helpers
+- **Real-Time Integration**: Advanced SSE client with connection monitoring and health tracking for map integration
+- **Configuration Management**: Comprehensive system with validation, feature flags, and environment-based configuration
 
 #### Code Quality & Testing Improvements
-- **Comprehensive Test Coverage**: Expanded to 150+ tests covering unified architecture, tracking domains, and formatters
+- **Comprehensive Test Coverage**: Expanded to 150+ tests covering all architectural layers and integration scenarios
 - **Test Failure Reduction**: Systematically reduced test failures from 185 → 10 (94.6% improvement)
-- **Simplified Cache System**: Streamlined from 15 modules to 3 core modules with direct Cachex access
+- **Production Readiness**: Enhanced error handling, logging, telemetry, and operational monitoring
 - **Mock Standardization**: Unified test mocking approach with consistent behavior-based testing
 
 #### Testing Commands

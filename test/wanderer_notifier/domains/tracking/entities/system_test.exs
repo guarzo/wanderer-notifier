@@ -84,7 +84,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
   end
 
   describe "wormhole?/1" do
-    test "returns true for wormhole systems with atom type" do
+    test "returns true for wormhole systems with string type" do
       system =
         System.new(%{
           "solar_system_id" => 31_001_234,
@@ -95,12 +95,12 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
       assert System.wormhole?(system)
     end
 
-    test "returns true for wormhole systems with string type" do
+    test "returns true for wormhole systems with atom type" do
       system =
         System.new(%{
           "solar_system_id" => 31_001_234,
           "name" => "J123456",
-          "system_type" => "wormhole"
+          "system_type" => :wormhole
         })
 
       assert System.wormhole?(system)

@@ -15,6 +15,7 @@ defmodule WandererNotifier.Contexts.ProcessingContext do
   require Logger
   alias WandererNotifier.Domains.Killmail.{Pipeline, Enrichment}
   alias WandererNotifier.Application.Services.ApplicationService
+  alias WandererNotifier.Infrastructure.Cache
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Killmail Processing
@@ -112,27 +113,69 @@ defmodule WandererNotifier.Contexts.ProcessingContext do
       category: :processing
     )
 
-    # Note: Enrichment happens during processing, so we can only
-    # provide the enriched result by running the full pipeline
-    case process_killmail(killmail_data) do
-      {:ok, result} ->
-        Logger.debug("Killmail processed for enrichment",
-          killmail_id: killmail_id,
-          result: result,
-          category: :processing
-        )
+    # Check if we have cached enriched data
+    cache_key = "enriched:killmail:#{killmail_id}"
 
-        # Return the original data since enrichment is internal to the pipeline
-        {:ok, killmail_data}
+    case Cache.get(cache_key) do
+      {:ok, enriched_data} ->
+        {:ok, enriched_data}
 
-      error ->
-        Logger.warning("Failed to get enriched killmail",
-          killmail_id: killmail_id,
-          error: inspect(error),
-          category: :processing
-        )
+      _ ->
+        # If not cached, enrich the killmail data
+        enriched = enrich_killmail_data(killmail_data)
 
-        error
+        # Cache the enriched data
+        Cache.put(cache_key, enriched, :timer.minutes(30))
+
+        {:ok, enriched}
+    end
+  end
+
+  defp enrich_killmail_data(killmail_data) do
+    killmail_data
+    |> Map.put(:enriched, true)
+    |> enrich_with_system_name()
+    |> enrich_with_victim_name()
+  end
+
+  defp enrich_with_system_name(killmail_data) do
+    system_id = extract_system_id(killmail_data)
+
+    case system_id do
+      nil -> killmail_data
+      id -> add_system_name(killmail_data, id)
+    end
+  end
+
+  defp enrich_with_victim_name(killmail_data) do
+    victim_id = extract_victim_id(killmail_data)
+
+    case victim_id do
+      nil -> killmail_data
+      id -> add_victim_name(killmail_data, id)
+    end
+  end
+
+  defp extract_system_id(killmail_data) do
+    get_in(killmail_data, ["solar_system_id"]) || get_in(killmail_data, [:solar_system_id])
+  end
+
+  defp extract_victim_id(killmail_data) do
+    get_in(killmail_data, ["victim", "character_id"]) ||
+      get_in(killmail_data, [:victim, :character_id])
+  end
+
+  defp add_system_name(killmail_data, system_id) do
+    case Cache.get_system(system_id) do
+      {:ok, system} -> Map.put(killmail_data, :system_name, system.name)
+      _ -> killmail_data
+    end
+  end
+
+  defp add_victim_name(killmail_data, victim_id) do
+    case Cache.get_character(victim_id) do
+      {:ok, character} -> Map.put(killmail_data, :victim_name, character.name)
+      _ -> killmail_data
     end
   end
 
@@ -288,9 +331,17 @@ defmodule WandererNotifier.Contexts.ProcessingContext do
     end
   end
 
-  defp typeof(data) do
-    data |> :erlang.term_to_binary() |> :erlang.binary_to_term() |> then(&(&1.__struct__ || :map))
-  rescue
-    _ -> :unknown
-  end
+  defp typeof(%{__struct__: module}), do: module
+  defp typeof(data) when is_map(data), do: :map
+  defp typeof(data) when is_list(data), do: :list
+  defp typeof(data) when is_binary(data), do: :binary
+  defp typeof(data) when is_integer(data), do: :integer
+  defp typeof(data) when is_float(data), do: :float
+  defp typeof(data) when is_boolean(data), do: :boolean
+  defp typeof(data) when is_atom(data), do: :atom
+  defp typeof(data) when is_tuple(data), do: :tuple
+  defp typeof(data) when is_pid(data), do: :pid
+  defp typeof(data) when is_reference(data), do: :reference
+  defp typeof(data) when is_function(data), do: :function
+  defp typeof(_data), do: :unknown
 end

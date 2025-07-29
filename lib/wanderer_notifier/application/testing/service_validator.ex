@@ -146,9 +146,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   defp validate_configuration_management do
     try do
       # Test configuration loading for a service
-      case WandererNotifier.Application.Services.ConfigurationManager.get_service_config(
-             :notifications
-           ) do
+      case WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(:notifications) do
         {:ok, config} when is_map(config) ->
           {:ok, "Configuration management operational"}
 
@@ -236,11 +234,15 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
           {:error, "Application Service not running", :not_started}
 
         _pid ->
-          # Test basic functionality - just verify the service responds
-          _stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+          # Test basic functionality - verify the service responds with proper structure
+          stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
 
-          # Since get_stats() is guaranteed to return a map, just check if we got it successfully
-          {:ok, "Application Service operational"}
+          # Validate stats structure
+          if validate_stats_structure(stats) do
+            {:ok, "Application Service operational"}
+          else
+            {:error, "Application Service stats structure invalid", stats}
+          end
       end
     rescue
       error ->
@@ -255,9 +257,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
 
       # 1. Configuration loading
       {:ok, _config} =
-        WandererNotifier.Application.Services.ConfigurationManager.get_service_config(
-          :notifications
-        )
+        WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(:notifications)
 
       # 2. Dependency resolution
       notification_impl =
@@ -348,6 +348,24 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
       error ->
         {:error, {:interface_check_failed, error}}
     end
+  end
+
+  defp validate_stats_structure(stats) do
+    required_keys = [:uptime, :metrics, :dependencies]
+
+    # Check if all required keys are present
+    has_required_keys = Enum.all?(required_keys, &Map.has_key?(stats, &1))
+
+    # Check if metrics has expected structure
+    has_valid_metrics =
+      is_map(stats[:metrics]) and
+        Map.has_key?(stats[:metrics], :killmails) and
+        Map.has_key?(stats[:metrics], :notifications)
+
+    # Check if dependencies is a list
+    has_valid_dependencies = is_list(stats[:dependencies])
+
+    has_required_keys and has_valid_metrics and has_valid_dependencies
   end
 
   defp generate_validation_report(results) do

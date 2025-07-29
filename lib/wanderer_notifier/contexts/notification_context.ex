@@ -281,17 +281,30 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   @spec send_rally_point_notification(map()) :: {:ok, atom()} | {:error, term()}
   def send_rally_point_notification(rally_point) do
     if notifications_enabled?() do
-      # Format rally point notification
-      message = format_rally_point_message(rally_point)
+      # Create notification data
+      notification = %{
+        type: :rally_point,
+        rally_point: rally_point,
+        system_name: rally_point.system_name,
+        system_id: rally_point.system_id
+      }
 
-      case Notifier.send_message(message) do
-        :ok ->
+      # Process through ApplicationService
+      case ApplicationService.process_notification(notification) do
+        {:ok, result} ->
           Logger.info("Rally point notification sent",
             system: rally_point.system_name,
             category: :notification
           )
 
-          {:ok, :sent}
+          # Track metrics
+          :telemetry.execute(
+            [:wanderer_notifier, :notification, :rally_point],
+            %{count: 1},
+            %{system: rally_point.system_name}
+          )
+
+          {:ok, result}
 
         {:error, reason} = error ->
           Logger.error("Failed to send rally point notification",
@@ -304,16 +317,6 @@ defmodule WandererNotifier.Contexts.NotificationContext do
     else
       {:error, :notifications_disabled}
     end
-  end
-
-  defp format_rally_point_message(rally_point) do
-    """
-    🚨 **Rally Point Called!**
-
-    📍 **System:** #{rally_point.system_name}
-    👤 **Called by:** #{rally_point.character_name}
-    💬 **Message:** #{rally_point.message || "No message provided"}
-    """
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

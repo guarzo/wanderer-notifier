@@ -334,6 +334,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp create_ticker_from_name(name) do
+    cache_key = "generated:ticker:#{name}"
+
+    case WandererNotifier.Infrastructure.Cache.get(cache_key) do
+      {:ok, ticker} ->
+        ticker
+
+      _ ->
+        ticker = generate_ticker_from_name(name)
+        WandererNotifier.Infrastructure.Cache.put(cache_key, ticker, :timer.hours(24))
+        ticker
+    end
+  end
+
+  defp generate_ticker_from_name(name) do
     # Create a ticker from corporation name
     # Examples: "Goonswarm Federation" -> "GOONF", "Pandemic Horde" -> "HORDE"
     words = String.split(name, " ")

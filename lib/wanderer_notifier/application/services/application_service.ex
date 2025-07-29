@@ -300,7 +300,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
           processing_active: get_in(stats, [:processing, :active]) || false,
           uptime: stats.uptime || "unknown"
         },
-        memory_mb: div(Process.info(self(), :memory) |> elem(1), 1024 * 1024)
+        memory_mb:
+          case Process.info(self(), :memory) do
+            {_, memory_bytes} -> div(memory_bytes, 1024 * 1024)
+            nil -> 0
+          end
       }
     catch
       _ ->
@@ -332,6 +336,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
   end
 
   @impl true
+  def configure(config) do
+    apply_configuration(config)
+  end
+
+  @impl true
   def diagnostics do
     %{
       service_info: service_info(),
@@ -347,9 +356,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
 
   @impl true
   def get_config do
-    WandererNotifier.Application.Services.ConfigurationManager.get_service_config(
-      :application_service
-    )
+    WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(:application_service)
     |> case do
       {:ok, config} -> config
       {:error, _} -> %{}

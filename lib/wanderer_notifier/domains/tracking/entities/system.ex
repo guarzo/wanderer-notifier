@@ -186,7 +186,9 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
 
   @doc """
   Creates a system struct from API data.
-  Raises ArgumentError if required fields are missing or invalid.
+
+  Note: This function assumes the API data is valid and does not perform validation.
+  Use `new/1` or `new_safe/1` for validated construction.
   """
   @spec from_api_data(map()) :: t() | no_return()
   def from_api_data(data) when is_map(data) do

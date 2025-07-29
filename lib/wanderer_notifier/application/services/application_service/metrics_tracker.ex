@@ -149,7 +149,17 @@ defmodule WandererNotifier.Application.Services.ApplicationService.MetricsTracke
   @spec print_summary(State.t()) :: :ok
   def print_summary(state) do
     stats = get_stats(state)
+    message = format_summary_message(stats)
 
+    Logger.info(message, category: :application)
+  end
+
+  @doc """
+  Formats the summary message for the given stats.
+  This function is extracted for better testability.
+  """
+  @spec format_summary_message(map()) :: String.t()
+  def format_summary_message(stats) do
     # Format key metrics
     uptime = stats.uptime
     notifications = stats.notifications
@@ -162,13 +172,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService.MetricsTracke
     processing_skipped = Map.get(counters, :killmail_processing_skipped, 0)
     processing_error = Map.get(counters, :killmail_processing_error, 0)
 
-    Logger.info("📊 Application Stats Summary:
+    "📊 Application Stats Summary:
     Uptime: #{uptime}
     Notifications: #{notifications.total} total (#{notifications.kills} kills, #{notifications.systems} systems, #{notifications.characters} characters)
     Processing: #{processing.kills_processed} kills processed, #{processing.kills_notified} kills notified
     Killmail Metrics: #{processing_start} started, #{processing_complete} completed, #{processing_skipped} skipped, #{processing_error} errors
-    Tracked: #{stats.systems_count} systems, #{stats.characters_count} characters",
-      category: :application
-    )
+    Tracked: #{stats.systems_count} systems, #{stats.characters_count} characters"
   end
 end

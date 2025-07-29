@@ -11,44 +11,58 @@ defmodule WandererNotifier.Application do
   Starts the WandererNotifier application.
   """
   def start(_type, _args) do
-    # Prepare application environment
     prepare_application_environment()
-
     Logger.info("Starting WandererNotifier application", category: :startup)
 
-    # Initialize services using the unified service initializer
-    case WandererNotifier.Application.Initialization.ServiceInitializer.initialize_services() do
+    initialize_services()
+    |> case do
       {:ok, children} ->
-        Logger.debug("Starting supervisor with children",
-          children_count: length(children),
-          category: :startup
-        )
-
-        opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-
-        case Supervisor.start_link(children, opts) do
+        case Supervisor.start_link(children, [strategy: :one_for_one, name: WandererNotifier.Supervisor]) do
           {:ok, _pid} = result ->
-            # Perform post-startup initialization asynchronously
-            WandererNotifier.Application.Initialization.ServiceInitializer.post_startup_initialization()
-            result
+            try do
+              WandererNotifier.Application.Initialization.ServiceInitializer.post_startup_initialization()
+              result
+            rescue
+              exception ->
+                Logger.error("Post-startup initialization failed",
+                  type: "exception",
+                  error: inspect(exception),
+                  category: :startup
+                )
+                result
+            catch
+              :exit, reason ->
+                Logger.error("Post-startup initialization failed",
+                  type: "exit",
+                  error: inspect(reason),
+                  category: :startup
+                )
+                result
+            end
 
           error ->
             Logger.error("Failed to start supervisor",
               error: inspect(error),
               category: :startup
             )
-
             error
         end
 
-      {:error, reason} = error ->
-        Logger.error("Failed to initialize services",
-          error: inspect(reason),
-          category: :startup
-        )
-
+      error ->
+        log_startup_error(elem(error, 1))
         error
     end
+  end
+
+  defp initialize_services do
+    WandererNotifier.Application.Initialization.ServiceInitializer.initialize_services()
+  end
+
+  defp log_startup_error(reason) do
+    Logger.error("Failed to initialize services",
+      error: inspect(reason),
+      category: :startup
+    )
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

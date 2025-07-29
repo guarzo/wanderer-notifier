@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Services.ConfigurationManager do
+defmodule WandererNotifier.Shared.Config.ConfigurationManager do
   @moduledoc """
   Standardized configuration management for all services.
 
@@ -320,33 +320,44 @@ defmodule WandererNotifier.Application.Services.ConfigurationManager do
     end
   end
 
-  defp build_env_key(service_name, config_key) do
-    service_prefix =
-      service_name
-      |> Atom.to_string()
-      |> String.upcase()
-      |> String.replace("_", "_")
+  # Service-specific environment key mappings
+  @service_env_mappings %{
+    discord: "DISCORD",
+    map: "MAP",
+    license: %{
+      default: "LICENSE",
+      api_token: "NOTIFIER_API_TOKEN"
+    },
+    killmail: "WANDERER_KILLS"
+  }
 
+  defp build_env_key(service_name, config_key) do
     key_suffix =
       config_key
       |> Atom.to_string()
       |> String.upcase()
 
-    case service_name do
-      :discord ->
-        "DISCORD_#{key_suffix}"
+    case Map.get(@service_env_mappings, service_name) do
+      nil ->
+        # Default pattern for unmapped services
+        service_prefix =
+          service_name
+          |> Atom.to_string()
+          |> String.upcase()
 
-      :map ->
-        "MAP_#{key_suffix}"
-
-      :license ->
-        if key_suffix == "API_TOKEN", do: "NOTIFIER_API_TOKEN", else: "LICENSE_#{key_suffix}"
-
-      :killmail ->
-        "WANDERER_KILLS_#{key_suffix}"
-
-      _ ->
         "#{service_prefix}_#{key_suffix}"
+
+      %{} = mapping ->
+        # Handle services with specific key mappings
+        case Map.get(mapping, config_key, Map.get(mapping, :default)) do
+          nil -> "#{Atom.to_string(service_name) |> String.upcase()}_#{key_suffix}"
+          special_key when is_binary(special_key) -> special_key
+          prefix -> "#{prefix}_#{key_suffix}"
+        end
+
+      prefix when is_binary(prefix) ->
+        # Simple prefix mapping
+        "#{prefix}_#{key_suffix}"
     end
   end
 
@@ -354,11 +365,99 @@ defmodule WandererNotifier.Application.Services.ConfigurationManager do
   defp convert_string_to_type(value, :integer), do: String.to_integer(value)
   defp convert_string_to_type("true", :boolean), do: true
   defp convert_string_to_type("false", :boolean), do: false
-  defp convert_string_to_type(value, :boolean), do: value != "" and value != "0"
+  defp convert_string_to_type("1", :boolean), do: true
+  defp convert_string_to_type("0", :boolean), do: false
+  defp convert_string_to_type("yes", :boolean), do: true
+  defp convert_string_to_type("no", :boolean), do: false
 
-  defp validate_config_values(_service_name, _config) do
-    # For now, basic validation - can be extended later
+  defp convert_string_to_type(value, :boolean) when is_binary(value) do
+    boolean_map = %{
+      "true" => true,
+      "false" => false,
+      "1" => true,
+      "0" => false,
+      "yes" => true,
+      "no" => false,
+      "on" => true,
+      "off" => false,
+      "" => false
+    }
+
+    Map.get(boolean_map, String.downcase(value), false)
+  end
+
+  defp validate_config_values(service_name, config) do
+    case service_name do
+      :discord ->
+        validate_discord_config(config)
+
+      :esi ->
+        validate_esi_config(config)
+
+      :wanderer_kills ->
+        validate_wanderer_kills_config(config)
+
+      :license ->
+        validate_license_config(config)
+
+      :map ->
+        validate_map_config(config)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp validate_discord_config(config) do
+    required_keys = [:bot_token, :application_id, :channel_id]
+
+    case check_required_keys(config, required_keys) do
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp validate_esi_config(_config) do
+    # ESI config is mostly optional, validation already ensures it's a map
     :ok
+  end
+
+  defp validate_wanderer_kills_config(config) do
+    required_keys = [:url]
+
+    case check_required_keys(config, required_keys) do
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp validate_license_config(config) do
+    required_keys = [:api_url, :api_token]
+
+    case check_required_keys(config, required_keys) do
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp validate_map_config(config) do
+    required_keys = [:url, :name, :api_key]
+
+    case check_required_keys(config, required_keys) do
+      :ok -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp check_required_keys(config, required_keys) do
+    missing_keys =
+      required_keys
+      |> Enum.filter(fn key -> is_nil(Map.get(config, key)) or Map.get(config, key) == "" end)
+
+    case missing_keys do
+      [] -> :ok
+      keys -> {:error, "Missing required configuration keys: #{inspect(keys)}"}
+    end
   end
 
   defp service_config_cache_key(service_name) do

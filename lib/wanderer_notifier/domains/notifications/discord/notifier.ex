@@ -365,59 +365,80 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp get_system_id_from_killmail(_), do: nil
 
+  defp debug_logging_enabled? do
+    Config.get(:discord_debug_logging, false) or Logger.level() == :debug
+  end
+
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do
-    # Check if this is being sent to the system kill channel
+    if should_add_voice_mentions?(killmail, channel_id) do
+      add_voice_mentions_to_notification(notification)
+    else
+      log_voice_ping_debug("[Voice Ping Debug] Not a system kill or voice pings disabled")
+      notification
+    end
+  end
+
+  defp should_add_voice_mentions?(killmail, channel_id) do
     system_kill_channel = Config.discord_system_kill_channel_id()
 
-    Logger.debug(
-      "[Voice Ping Debug] Channel comparison - channel_id: #{inspect(channel_id)}, system_kill_channel: #{inspect(system_kill_channel)}, channels_match: #{channel_id == system_kill_channel}"
+    log_voice_ping_debug(
+      "[Voice Ping Debug] Channel comparison - channel_id: #{inspect(channel_id)}, " <>
+        "system_kill_channel: #{inspect(system_kill_channel)}, channels_match: #{channel_id == system_kill_channel}"
     )
 
-    # Check if killmail is for a tracked system (not character)
+    is_system_kill = system_kill?(killmail, channel_id, system_kill_channel)
+    voice_pings_enabled = Config.voice_participant_notifications_enabled?()
+
+    log_voice_ping_debug(
+      "[Voice Ping Debug] System kill determination - is_system_kill: #{is_system_kill}, " <>
+        "voice_pings_enabled: #{voice_pings_enabled}"
+    )
+
+    is_system_kill and voice_pings_enabled
+  end
+
+  defp system_kill?(killmail, channel_id, system_kill_channel) do
     system_tracked = Determiner.tracked_system_for_killmail?(killmail.system_id)
     has_tracked_char = Determiner.has_tracked_character?(killmail)
 
-    Logger.debug(
-      "[Voice Ping Debug] Kill tracking status - system_id: #{killmail.system_id}, system_tracked: #{system_tracked}, has_tracked_character: #{has_tracked_char}"
+    log_voice_ping_debug(
+      "[Voice Ping Debug] Kill tracking status - system_id: #{killmail.system_id}, " <>
+        "system_tracked: #{system_tracked}, has_tracked_character: #{has_tracked_char}"
     )
 
-    is_system_kill =
-      channel_id == system_kill_channel and
-        system_tracked and
-        not has_tracked_char
+    channel_id == system_kill_channel and system_tracked and not has_tracked_char
+  end
 
-    Logger.debug(
-      "[Voice Ping Debug] System kill determination - is_system_kill: #{is_system_kill}, voice_pings_enabled: #{Config.voice_participant_notifications_enabled?()}"
+  defp add_voice_mentions_to_notification(notification) do
+    mentions = VoiceParticipants.get_active_voice_mentions()
+
+    log_voice_ping_debug(
+      "[Voice Ping Debug] Voice mentions retrieved - count: #{length(mentions)}, mentions: #{inspect(mentions)}"
     )
 
-    if is_system_kill and Config.voice_participant_notifications_enabled?() do
-      # Get voice channel mentions
-      mentions = VoiceParticipants.get_active_voice_mentions()
+    case mentions do
+      [] ->
+        log_voice_ping_debug("[Voice Ping Debug] No voice users found")
+        notification
 
-      Logger.debug(
-        "[Voice Ping Debug] Voice mentions retrieved - count: #{length(mentions)}, mentions: #{inspect(mentions)}"
-      )
-
-      case mentions do
-        [] ->
-          Logger.debug("[Voice Ping Debug] No voice users found")
-          notification
-
-        mentions_list ->
-          # Add mentions to the content field
-          mention_string = Enum.join(mentions_list, " ")
-          existing_content = Map.get(notification, :content, "")
-
-          Logger.debug(
-            "[Voice Ping Debug] Adding mentions - mention_string: #{mention_string}, existing_content: #{existing_content}"
-          )
-
-          # Prepend mentions to content
-          Map.put(notification, :content, "#{mention_string} #{existing_content}")
-      end
-    else
-      Logger.debug("[Voice Ping Debug] Not a system kill or voice pings disabled")
-      notification
+      mentions_list ->
+        append_mentions_to_notification(notification, mentions_list)
     end
+  end
+
+  defp append_mentions_to_notification(notification, mentions_list) do
+    mention_string = Enum.join(mentions_list, " ")
+    existing_content = Map.get(notification, :content, "")
+
+    log_voice_ping_debug(
+      "[Voice Ping Debug] Adding mentions - mention_string: #{mention_string}, " <>
+        "existing_content: #{existing_content}"
+    )
+
+    Map.put(notification, :content, "#{mention_string} #{existing_content}")
+  end
+
+  defp log_voice_ping_debug(message) do
+    if debug_logging_enabled?(), do: Logger.debug(message)
   end
 end

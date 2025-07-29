@@ -243,12 +243,33 @@ defmodule WandererNotifier.Application.Services.DependencyRegistry do
   end
 
   defp build_default_health_check(module) do
-    fn ->
-      # Basic health check: module is loaded and has expected functions
-      case Code.ensure_loaded(module) do
-        {:module, ^module} -> true
+    fn -> perform_health_check(module) end
+  end
+
+  defp perform_health_check(module) do
+    if function_exported?(module, :health_check, 0) do
+      check_module_health_function(module)
+    else
+      check_module_loaded(module)
+    end
+  end
+
+  defp check_module_health_function(module) do
+    try do
+      case module.health_check() do
+        :ok -> true
+        {:ok, _} -> true
         _ -> false
       end
+    rescue
+      _ -> false
+    end
+  end
+
+  defp check_module_loaded(module) do
+    case Code.ensure_loaded(module) do
+      {:module, ^module} -> true
+      _ -> false
     end
   end
 

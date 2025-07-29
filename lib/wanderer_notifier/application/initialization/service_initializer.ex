@@ -39,14 +39,15 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     Logger.info("Starting service initialization", category: :startup)
 
     try do
-      {:ok, services} = build_service_tree()
+      case build_service_tree() do
+        {:ok, services} ->
+          Logger.info("Service initialization completed successfully",
+            services_count: length(services),
+            category: :startup
+          )
 
-      Logger.info("Service initialization completed successfully",
-        services_count: length(services),
-        category: :startup
-      )
-
-      {:ok, services}
+          {:ok, services}
+      end
     rescue
       error ->
         reason = {:service_tree_build_failed, error}
@@ -204,6 +205,8 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     Enum.each(critical_services, &wait_for_service/1)
   end
 
+  # Maximum wait time is approximately 50 seconds based on max_attempts (50) and backoff duration
+  # Backoff starts at 10ms and exponentially increases up to 1000ms per attempt
   defp wait_for_service(service_module, attempts \\ 0, max_attempts \\ 50) do
     if attempts >= max_attempts do
       raise "Service #{service_module} failed to start after #{max_attempts} attempts"

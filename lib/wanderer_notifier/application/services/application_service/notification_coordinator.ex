@@ -250,10 +250,43 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     WandererNotifier.Shared.Config.get(:priority_systems_only, false)
   end
 
-  defp in_priority_system?(_notification) do
-    # This would check if the killmail occurred in a priority system
-    # Implementation would depend on how priority systems are defined
-    # For now, assume all systems are priority
-    true
+  defp in_priority_system?(notification) do
+    system_id = extract_system_id_from_notification(notification)
+
+    case system_id do
+      nil -> true
+      id -> check_if_priority_system(id)
+    end
+  end
+
+  defp extract_system_id_from_notification(notification) do
+    # Try direct access patterns
+    direct_patterns = [
+      [:system_id],
+      ["system_id"]
+    ]
+
+    # Try nested killmail patterns
+    killmail_patterns = [
+      [:killmail, :system_id],
+      [:killmail, "system_id"],
+      ["killmail", "system_id"],
+      [:killmail, :solar_system_id],
+      [:killmail, "solar_system_id"],
+      ["killmail", "solar_system_id"]
+    ]
+
+    # Check all patterns
+    all_patterns = direct_patterns ++ killmail_patterns
+
+    Enum.find_value(all_patterns, fn pattern ->
+      get_in(notification, pattern)
+    end)
+  end
+
+  defp check_if_priority_system(system_id) do
+    priority_systems = WandererNotifier.Shared.Config.get(:priority_systems, [])
+    system_id_str = to_string(system_id)
+    Enum.member?(priority_systems, system_id_str)
   end
 end

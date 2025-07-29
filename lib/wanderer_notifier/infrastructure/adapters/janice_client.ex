@@ -81,24 +81,25 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   @spec format_appraisal_request(list(map())) :: String.t()
   def format_appraisal_request(items) do
     items
-    |> Enum.filter(fn item ->
-      # Use name if available, otherwise fall back to type_id
-      name_or_id =
-        Map.get(item, "name") || Map.get(item, "type_id") || Map.get(item, "item_type_id")
-
-      quantity = Map.get(item, "quantity", 1)
-      # Filter out invalid items
-      not is_nil(name_or_id) and name_or_id != "" and quantity > 0
-    end)
-    |> Enum.map(fn item ->
-      # Prefer name over type_id for Janice API
-      name_or_id =
-        Map.get(item, "name") || Map.get(item, "type_id") || Map.get(item, "item_type_id")
-
-      quantity = Map.get(item, "quantity", 1)
-      "#{name_or_id} #{quantity}"
-    end)
+    |> Enum.map(&extract_item_data/1)
+    |> Enum.filter(&valid_item?/1)
+    |> Enum.map(&format_item_line/1)
     |> Enum.join("\n")
+  end
+
+  defp extract_item_data(item) do
+    {
+      Map.get(item, "name") || Map.get(item, "type_id") || Map.get(item, "item_type_id"),
+      Map.get(item, "quantity", 1)
+    }
+  end
+
+  defp valid_item?({name_or_id, quantity}) do
+    not is_nil(name_or_id) and name_or_id != "" and quantity > 0
+  end
+
+  defp format_item_line({name_or_id, quantity}) do
+    "#{name_or_id} #{quantity}"
   end
 
   # Private functions
@@ -178,7 +179,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
 
   defp build_request_headers do
     api_token = Config.get(:janice_api_token)
-    Logger.debug("API token length: #{if api_token, do: String.length(api_token), else: "nil"}")
 
     [
       {"Content-Type", "text/plain"},

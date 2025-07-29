@@ -48,7 +48,8 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
       base_url
     else
       query_string = URI.encode_query(params)
-      "#{base_url}?#{query_string}"
+      separator = if String.contains?(base_url, "?"), do: "&", else: "?"
+      "#{base_url}#{separator}#{query_string}"
     end
   end
 
@@ -145,7 +146,16 @@ defmodule WandererNotifier.Infrastructure.Http.Utils.HttpUtils do
   """
   @spec build_headers(map(), String.t() | nil) :: [tuple()]
   def build_headers(additional_headers \\ %{}, auth_header \\ nil) do
-    base_headers = [{"Content-Type", "application/json"}]
+    # Check if additional_headers already contains a Content-Type header
+    has_content_type =
+      additional_headers
+      |> Enum.any?(fn {key, _value} ->
+        key
+        |> to_string()
+        |> String.downcase() == "content-type"
+      end)
+
+    base_headers = if has_content_type, do: [], else: [{"Content-Type", "application/json"}]
 
     headers_with_auth =
       case auth_header do

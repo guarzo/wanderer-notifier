@@ -18,10 +18,7 @@
   {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 97},
   {"lib/wanderer_notifier/domains/notifications/utils.ex", :invalid_contract, 104},
   
-  # Pattern coverage warnings from simplified pipeline - false positives as strings can be passed
-  {"lib/wanderer_notifier/domains/killmail/simplified_pipeline.ex", :pattern_match_cov, 182},
-  {"lib/wanderer_notifier/domains/killmail/simplified_pipeline.ex", :pattern_match_cov, 201},
   
   # False positive from service initialization - application works correctly at runtime
-  {"lib/wanderer_notifier/application.ex", :pattern_match, {21, 13}}
+  {"lib/wanderer_notifier/application.ex", :pattern_match, {19, 13}}
 ]

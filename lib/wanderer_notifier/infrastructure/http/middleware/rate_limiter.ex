@@ -303,8 +303,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       result = fun.()
 
       if async do
-        # Non-blocking: schedule delay asynchronously using timer
-        Process.send_after(self(), :rate_limit_delay_complete, interval_ms)
+        # Non-blocking: return a Task that sleeps for the interval
+        Task.async(fn -> Process.sleep(interval_ms) end)
       else
         # Blocking: maintain existing behavior for backward compatibility
         Process.sleep(interval_ms)
@@ -337,8 +337,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       delay = div(window_ms, max_operations)
 
       if async do
-        # Non-blocking: schedule delay asynchronously using timer
-        Process.send_after(self(), :rate_limit_delay_complete, delay)
+        # Non-blocking: return a Task that sleeps for the delay
+        Task.async(fn -> :timer.sleep(delay) end)
       else
         # Blocking: maintain existing behavior for backward compatibility
         :timer.sleep(delay)
