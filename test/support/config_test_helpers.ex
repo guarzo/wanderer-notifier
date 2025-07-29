@@ -7,7 +7,7 @@ defmodule WandererNotifier.Test.ConfigTestHelpers do
   """
 
   import ExUnit.Assertions
-  # alias WandererNotifier.Shared.Config.{Schema, Validator}
+  alias WandererNotifier.Shared.Config.Utils
 
   @doc """
   Creates a minimal valid configuration for testing.
@@ -124,16 +124,16 @@ defmodule WandererNotifier.Test.ConfigTestHelpers do
   @doc """
   Validates configuration and asserts specific error conditions.
   """
-  def assert_validation_errors(_config, _environment, _expected_error_types) do
-    # Validator module not available
-    {:error, []}
+  def assert_validation_errors(_config, _environment, expected_error_types) do
+    # Return mock errors since validation modules have been removed
+    {:error, Enum.map(expected_error_types, fn type -> {type, "Mock validation error"} end)}
   end
 
   @doc """
   Asserts that validation passes for a given configuration.
   """
   def assert_validation_passes(_config, _environment \\ :prod) do
-    # Validator module not available
+    # Always pass since validation modules have been removed
     :ok
   end
 

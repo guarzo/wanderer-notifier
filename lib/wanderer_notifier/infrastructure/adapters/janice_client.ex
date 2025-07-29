@@ -193,8 +193,8 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     case WandererNotifier.Infrastructure.Http.request(
            :post,
            config.url,
-           config.headers,
            config.body,
+           config.headers,
            timeout: 20_000
          ) do
       {:ok, response} -> handle_response(response)
@@ -209,21 +209,21 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     Logger.debug("Janice request headers: #{inspect(headers)}")
   end
 
-  defp handle_response(%Req.Response{status: 200, body: response}) do
+  defp handle_response(%{status_code: 200, body: response}) do
     parse_appraisal_response(response)
   end
 
-  defp handle_response(%Req.Response{status: 401}) do
+  defp handle_response(%{status_code: 401}) do
     Logger.warning("Janice API authentication failed - check JANICE_API_TOKEN")
     {:error, :unauthorized}
   end
 
-  defp handle_response(%Req.Response{status: 429}) do
+  defp handle_response(%{status_code: 429}) do
     Logger.warning("Janice API rate limited")
     {:error, :rate_limited}
   end
 
-  defp handle_response(%Req.Response{status: status, body: body}) do
+  defp handle_response(%{status_code: status, body: body}) do
     Logger.warning("Janice API error - HTTP #{status} - Body: #{inspect(body)}")
     {:error, %{status: status, body: body}}
   end
@@ -235,44 +235,63 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
 
   defp parse_appraisal_response(%{"items" => items, "failures" => failures})
        when is_list(items) do
-    if failures != "" do
-      Logger.warning("Janice API: Some items failed to process",
-        failures: failures,
-        successful_items: length(items),
-        category: :janice
-      )
+    log_failures_if_present(failures, length(items))
+
+    case items do
+      [] -> handle_empty_items_list()
+      _ -> parse_items_list(items)
     end
+  end
 
-    if items == [] do
-      Logger.warning(
-        "Janice API: No items were successfully processed. Items need to be item names, not type IDs",
-        category: :janice
-      )
+  defp log_failures_if_present("", _item_count), do: :ok
 
-      {:error, :no_items_processed}
-    else
-      Logger.debug("Parsing Janice response",
-        item_count: length(items),
-        category: :janice
-      )
+  defp log_failures_if_present(failures, item_count) do
+    Logger.warning("Janice API: Some items failed to process",
+      failures: failures,
+      successful_items: item_count,
+      category: :janice
+    )
+  end
 
-      parsed_items =
-        items
-        |> Enum.map(fn item ->
-          # The structure might be different based on the actual response
-          type_id = to_string(item["itemType"]["eid"])
+  defp handle_empty_items_list do
+    Logger.warning(
+      "Janice API: No items were successfully processed. Items need to be item names, not type IDs",
+      category: :janice
+    )
 
-          price_data = %{
-            "name" => item["itemType"]["name"],
-            "price" => get_in(item, ["immediatePrices", "buyPrice"]) || 0,
-            "volume" => item["itemType"]["volume"] || 0
-          }
+    {:error, :no_items_processed}
+  end
 
-          {type_id, price_data}
-        end)
-        |> Map.new()
+  defp parse_items_list(items) do
+    Logger.debug("Parsing Janice response",
+      item_count: length(items),
+      category: :janice
+    )
 
-      {:ok, parsed_items}
+    parsed_items =
+      items
+      |> Enum.map(&parse_single_item/1)
+      |> Enum.filter(&(&1 != nil))
+      |> Map.new()
+
+    {:ok, parsed_items}
+  end
+
+  defp parse_single_item(item) do
+    case extract_type_id(item) do
+      nil -> nil
+      type_id -> {type_id, build_price_data(item)}
+    end
+  end
+
+  defp extract_type_id(item) do
+    case get_in(item, ["itemType", "eid"]) do
+      nil ->
+        Logger.warning("Missing itemType.eid in Janice response: #{inspect(item)}")
+        nil
+
+      eid ->
+        to_string(eid)
     end
   end
 
@@ -282,5 +301,13 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     )
 
     {:error, :invalid_response}
+  end
+
+  defp build_price_data(item) do
+    %{
+      "name" => get_in(item, ["itemType", "name"]) || "Unknown Item",
+      "price" => get_in(item, ["immediatePrices", "buyPrice"]) || 0,
+      "volume" => get_in(item, ["itemType", "volume"]) || 0
+    }
   end
 end

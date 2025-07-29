@@ -184,19 +184,10 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
-           character_id_str
-         ) do
-      {:ok, tracked} ->
-        tracked
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
 
-      {:error, reason} ->
-        Logger.debug(
-          "Failed to check if character #{character_id_str} is tracked: #{inspect(reason)}"
-        )
-
-        false
-    end
+    tracked
   end
 
   def tracked_character?(_), do: false
@@ -210,14 +201,10 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
-      {:ok, tracked} ->
-        tracked
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str)
 
-      {:error, reason} ->
-        Logger.debug("Failed to check if system #{system_id_str} is tracked: #{inspect(reason)}")
-        false
-    end
+    tracked
   end
 
   def tracked_system?(_), do: false

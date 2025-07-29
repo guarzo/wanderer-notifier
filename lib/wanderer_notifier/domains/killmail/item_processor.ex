@@ -31,44 +31,57 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
 
   # Helper function to get type names with caching
   defp get_type_names_cached(type_ids) do
-    # Try to get cached names first
-    cached_names =
-      type_ids
-      |> Enum.map(fn type_id ->
-        case Cache.get_universe_type(type_id) do
-          {:ok, type_data} -> {to_string(type_id), Map.get(type_data, "name", "Unknown Item")}
-          {:error, :not_found} -> nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
-      |> Map.new()
+    cached_names = get_cached_type_names(type_ids)
+    missing_type_ids = find_missing_type_ids(type_ids, cached_names)
 
-    # Find missing type IDs
-    missing_type_ids =
-      type_ids
-      |> Enum.filter(fn type_id ->
-        not Map.has_key?(cached_names, to_string(type_id))
-      end)
+    fetch_and_merge_missing_names(missing_type_ids, cached_names)
+  end
 
-    # Fetch missing names from ESI
-    case missing_type_ids do
-      [] ->
-        {:ok, cached_names}
+  defp get_cached_type_names(type_ids) do
+    type_ids
+    |> Enum.map(&get_cached_type_name/1)
+    |> Enum.filter(&(&1 != nil))
+    |> Map.new()
+  end
 
-      missing_ids ->
-        {:ok, fetched_names} = ESIService.get_type_names(missing_ids)
+  defp get_cached_type_name(type_id) do
+    case Cache.get_universe_type(type_id) do
+      {:ok, type_data} -> {to_string(type_id), Map.get(type_data, "name", "Unknown Item")}
+      {:error, :not_found} -> nil
+    end
+  end
 
-        # Cache the new names
-        fetched_names
-        |> Enum.each(fn {type_id_str, name} ->
-          type_id = String.to_integer(type_id_str)
-          type_data = %{"name" => name}
-          Cache.put_universe_type(type_id, type_data)
-        end)
+  defp find_missing_type_ids(type_ids, cached_names) do
+    type_ids
+    |> Enum.filter(fn type_id ->
+      not Map.has_key?(cached_names, to_string(type_id))
+    end)
+  end
 
-        # Merge cached and fetched names
-        all_names = Map.merge(cached_names, fetched_names)
-        {:ok, all_names}
+  defp fetch_and_merge_missing_names([], cached_names) do
+    {:ok, cached_names}
+  end
+
+  defp fetch_and_merge_missing_names(missing_ids, cached_names) do
+    {:ok, fetched_names} = ESIService.get_type_names(missing_ids)
+    cache_fetched_names(fetched_names)
+
+    all_names = Map.merge(cached_names, fetched_names)
+    {:ok, all_names}
+  end
+
+  defp cache_fetched_names(fetched_names) do
+    Enum.each(fetched_names, &cache_single_type_name/1)
+  end
+
+  defp cache_single_type_name({type_id_str, name}) do
+    case safe_parse_killmail_id(type_id_str) do
+      {:ok, type_id} ->
+        type_data = %{"name" => name}
+        Cache.put_universe_type(type_id, type_data)
+
+      {:error, _} ->
+        Logger.warning("Invalid type_id format: #{inspect(type_id_str)}")
     end
   end
 
@@ -198,21 +211,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
         {:ok, []}
 
       killmail_hash ->
-        case safe_parse_killmail_id(killmail.killmail_id) do
-          {:ok, killmail_id_int} ->
-            case ESIService.get_killmail(killmail_id_int, killmail_hash) do
-              {:ok, esi_killmail} ->
-                esi_killmail |> extract_items_from_esi_killmail()
-
-              {:error, reason} ->
-                Logger.warning("Failed to fetch killmail from ESI: #{inspect(reason)}")
-                {:ok, []}
-            end
-
-          {:error, :invalid_format} ->
-            Logger.warning("Invalid killmail ID format: #{inspect(killmail.killmail_id)}")
-            {:ok, []}
-        end
+        fetch_items_with_hash(killmail.killmail_id, killmail_hash)
     end
   end
 
@@ -226,6 +225,28 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
 
     Logger.debug("Extracted items", count: length(items), category: :item_processing)
     {:ok, items}
+  end
+
+  defp fetch_items_with_hash(killmail_id, killmail_hash) do
+    case safe_parse_killmail_id(killmail_id) do
+      {:ok, killmail_id_int} ->
+        fetch_and_extract_items(killmail_id_int, killmail_hash)
+
+      {:error, :invalid_format} ->
+        Logger.warning("Invalid killmail ID format: #{inspect(killmail_id)}")
+        {:ok, []}
+    end
+  end
+
+  defp fetch_and_extract_items(killmail_id_int, killmail_hash) do
+    case ESIService.get_killmail(killmail_id_int, killmail_hash) do
+      {:ok, esi_killmail} ->
+        esi_killmail |> extract_items_from_esi_killmail()
+
+      {:error, reason} ->
+        Logger.warning("Failed to fetch killmail from ESI: #{inspect(reason)}")
+        {:ok, []}
+    end
   end
 
   defp extract_items_from_esi_data(esi_data, killmail) do

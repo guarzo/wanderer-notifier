@@ -155,11 +155,11 @@ defmodule WandererNotifier.Test.Support.Mocks.TestDataFactory do
     }
 
     %Character{
-      character_id: attrs["character_id"],
+      character_id: attrs["eve_id"],
       name: attrs["name"],
       corporation_id: attrs["corporation_id"],
       alliance_id: attrs["alliance_id"],
-      eve_id: attrs["character_id"],
+      eve_id: attrs["eve_id"],
       corporation_ticker: attrs["corporation_ticker"],
       alliance_ticker: attrs["alliance_ticker"],
       tracked: false

@@ -3,7 +3,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Pipeline
-  # alias WandererNotifier.Domains.Killmail.Processor.Context
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Shared.Utils.TimeUtils
