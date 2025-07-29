@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Infrastructure.Http.Utils.Retry do
+defmodule WandererNotifier.Shared.Utils.Retry do
   require Logger
 
   @moduledoc """
