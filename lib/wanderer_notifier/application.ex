@@ -17,7 +17,10 @@ defmodule WandererNotifier.Application do
     initialize_services()
     |> case do
       {:ok, children} ->
-        case Supervisor.start_link(children, [strategy: :one_for_one, name: WandererNotifier.Supervisor]) do
+        case Supervisor.start_link(children,
+               strategy: :one_for_one,
+               name: WandererNotifier.Supervisor
+             ) do
           {:ok, _pid} = result ->
             try do
               WandererNotifier.Application.Initialization.ServiceInitializer.post_startup_initialization()
@@ -29,6 +32,7 @@ defmodule WandererNotifier.Application do
                   error: inspect(exception),
                   category: :startup
                 )
+
                 result
             catch
               :exit, reason ->
@@ -37,6 +41,7 @@ defmodule WandererNotifier.Application do
                   error: inspect(reason),
                   category: :startup
                 )
+
                 result
             end
 
@@ -45,6 +50,7 @@ defmodule WandererNotifier.Application do
               error: inspect(error),
               category: :startup
             )
+
             error
         end
 
