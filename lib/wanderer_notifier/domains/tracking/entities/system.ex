@@ -69,48 +69,11 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
     }
   end
 
-  # Validation helpers for new/1
-  defp validate_system_id(attrs) do
-    system_id = extract_system_id(attrs)
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Shared Field Extraction Helpers
+  # ══════════════════════════════════════════════════════════════════════════════
 
-    if is_nil(system_id) do
-      raise ArgumentError, "System must have solar_system_id"
-    end
-
-    system_id
-  end
-
-  defp validate_name(attrs) do
-    name = extract_simple_field(attrs, [:name, :id])
-
-    if is_nil(name) or name == "" do
-      raise ArgumentError, "System must have a name"
-    end
-
-    name
-  end
-
-  # Field extraction helpers for new/1
-  defp extract_simple_field(attrs, keys) do
-    Enum.find_value(keys, fn key ->
-      attrs[Atom.to_string(key)] || attrs[key]
-    end)
-  end
-
-  defp extract_class_title_field(attrs) do
-    extract_simple_field(attrs, [:class_title, :system_class])
-  end
-
-  defp extract_security_status_field(attrs) do
-    value = extract_simple_field(attrs, [:security_status])
-    parse_float(value)
-  end
-
-  defp extract_tracked_field(attrs) do
-    extract_simple_field(attrs, [:tracked]) || false
-  end
-
-  # Helper functions for system creation
+  # Extract system ID from various possible keys
   defp extract_system_id(attrs) do
     system_id = attrs["solar_system_id"] || attrs[:solar_system_id] || attrs["id"] || attrs[:id]
     normalize_system_id(system_id)
@@ -127,6 +90,39 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
 
   defp normalize_system_id(_), do: nil
 
+  # Extract name field (no fallback to :id)
+  defp extract_name_field(attrs) do
+    extract_simple_field(attrs, [:name])
+  end
+
+  # Generic field extraction helper
+  defp extract_simple_field(attrs, keys) do
+    Enum.find_value(keys, fn key ->
+      cond do
+        is_atom(key) -> attrs[Atom.to_string(key)] || attrs[key]
+        is_binary(key) -> attrs[key]
+        true -> nil
+      end
+    end)
+  end
+
+  # Extract class title from multiple possible keys
+  defp extract_class_title_field(attrs) do
+    extract_simple_field(attrs, [:class_title, :system_class])
+  end
+
+  # Extract security status and parse as float
+  defp extract_security_status_field(attrs) do
+    value = extract_simple_field(attrs, [:security_status])
+    parse_float(value)
+  end
+
+  # Extract tracked field with default
+  defp extract_tracked_field(attrs) do
+    extract_simple_field(attrs, [:tracked]) || false
+  end
+
+  # Float parsing helper
   defp parse_float(nil), do: nil
   defp parse_float(value) when is_float(value), do: value
   defp parse_float(value) when is_integer(value), do: value / 1.0
@@ -139,6 +135,30 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   end
 
   defp parse_float(_), do: nil
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Validation Helpers for new/1
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  defp validate_system_id(attrs) do
+    system_id = extract_system_id(attrs)
+
+    if is_nil(system_id) do
+      raise ArgumentError, "System must have solar_system_id"
+    end
+
+    system_id
+  end
+
+  defp validate_name(attrs) do
+    name = extract_name_field(attrs)
+
+    if is_nil(name) or name == "" do
+      raise ArgumentError, "System must have a name"
+    end
+
+    name
+  end
 
   @doc """
   Safe constructor that returns {:ok, system} or {:error, reason}.
@@ -199,18 +219,53 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   defp build_system_struct(data) do
     %__MODULE__{
       solar_system_id: extract_system_id(data),
-      name: extract_name(data),
-      original_name: get_string(data, "original_name"),
-      system_type: extract_system_type(data),
-      type_description: extract_type_description(data),
-      class_title: extract_class_title(data),
-      region_name: extract_region_name(data),
-      security_status: extract_security_status(data),
-      is_shattered: extract_is_shattered(data),
-      statics: extract_statics(data),
-      effect_name: extract_effect_name(data),
+      name: extract_name_from_api(data),
+      original_name: extract_simple_field(data, ["original_name"]),
+      system_type: extract_simple_field(data, ["system_type", "type"]),
+      type_description: extract_simple_field(data, ["type_description", "class_title"]),
+      class_title: extract_simple_field(data, ["class_title", "class"]),
+      region_name: extract_simple_field(data, ["region_name", "region"]),
+      security_status: extract_security_status_from_api(data),
+      is_shattered: extract_boolean_field(data, ["is_shattered", "shattered"]),
+      statics: extract_list_field(data, ["statics", "static_wormholes"]),
+      effect_name: extract_simple_field(data, ["effect_name", "effect"]),
       tracked: true
     }
+  end
+
+  # API-specific name extraction (uses different key names)
+  defp extract_name_from_api(data) do
+    extract_simple_field(data, ["name", "system_name"])
+  end
+
+  # API-specific security status extraction
+  defp extract_security_status_from_api(data) do
+    value = extract_simple_field(data, ["security_status", "security"])
+    parse_float(value)
+  end
+
+  # Extract boolean field with multiple possible keys
+  defp extract_boolean_field(data, keys) do
+    Enum.find_value(keys, fn key ->
+      case data[key] do
+        value when is_boolean(value) -> value
+        "true" -> true
+        "false" -> false
+        1 -> true
+        0 -> false
+        _ -> nil
+      end
+    end)
+  end
+
+  # Extract list field with multiple possible keys
+  defp extract_list_field(data, keys) do
+    Enum.find_value(keys, fn key ->
+      case data[key] do
+        value when is_list(value) -> Enum.map(value, &to_string/1)
+        _ -> nil
+      end
+    end)
   end
 
   defp log_api_data(data) do
@@ -221,46 +276,6 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
       system_id: Map.get(data, "system_id"),
       category: :api
     )
-  end
-
-  defp extract_name(data) do
-    extract_field(data, ["name", "system_name"], &get_string/2)
-  end
-
-  defp extract_field(data, keys, extractor) when is_list(keys) do
-    Enum.find_value(keys, fn key -> extractor.(data, key) end)
-  end
-
-  defp extract_system_type(data) do
-    extract_field(data, ["system_type", "type"], &get_string/2)
-  end
-
-  defp extract_type_description(data) do
-    extract_field(data, ["type_description", "class_title"], &get_string/2)
-  end
-
-  defp extract_class_title(data) do
-    extract_field(data, ["class_title", "class"], &get_string/2)
-  end
-
-  defp extract_region_name(data) do
-    extract_field(data, ["region_name", "region"], &get_string/2)
-  end
-
-  defp extract_security_status(data) do
-    extract_field(data, ["security_status", "security"], &get_float/2)
-  end
-
-  defp extract_is_shattered(data) do
-    extract_field(data, ["is_shattered", "shattered"], &get_boolean/2)
-  end
-
-  defp extract_statics(data) do
-    extract_field(data, ["statics", "static_wormholes"], &get_list/2)
-  end
-
-  defp extract_effect_name(data) do
-    extract_field(data, ["effect_name", "effect"], &get_string/2)
   end
 
   @doc """
@@ -307,61 +322,5 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   @spec wormhole?(t()) :: boolean()
   def wormhole?(%__MODULE__{system_type: type}) do
     type == "wormhole" or type == :wormhole
-  end
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Utility Functions
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  @spec get_string(map(), String.t()) :: String.t() | nil
-  defp get_string(data, key) do
-    case Map.get(data, key) do
-      value when is_binary(value) -> value
-      value when is_integer(value) -> Integer.to_string(value)
-      _ -> nil
-    end
-  end
-
-  @spec get_float(map(), String.t()) :: float() | nil
-  defp get_float(data, key) do
-    case Map.get(data, key) do
-      value when is_float(value) ->
-        value
-
-      value when is_integer(value) ->
-        value / 1.0
-
-      value when is_binary(value) ->
-        case Float.parse(value) do
-          {float, ""} -> float
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  @spec get_boolean(map(), String.t()) :: boolean() | nil
-  defp get_boolean(data, key) do
-    case Map.get(data, key) do
-      value when is_boolean(value) -> value
-      "true" -> true
-      "false" -> false
-      1 -> true
-      0 -> false
-      _ -> nil
-    end
-  end
-
-  @spec get_list(map(), String.t()) :: list(String.t()) | nil
-  defp get_list(data, key) do
-    case Map.get(data, key) do
-      value when is_list(value) ->
-        Enum.map(value, &to_string/1)
-
-      _ ->
-        nil
-    end
   end
 end
