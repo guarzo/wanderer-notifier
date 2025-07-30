@@ -8,6 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   alias WandererNotifier.Domains.Tracking.Entities.{Character, System}
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
   alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Infrastructure.Cache
   require Logger
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -837,7 +838,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     eve_system_id_int = String.to_integer(rally_point.system_id)
 
     # Get system from cache and use custom name if available
-    case WandererNotifier.Infrastructure.Cache.get("map:systems") do
+    case Cache.get(Cache.Keys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         case Enum.find(systems, &(Map.get(&1, "solar_system_id") == eve_system_id_int)) do
           nil ->

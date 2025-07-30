@@ -61,14 +61,6 @@ defmodule WandererNotifier.Map.EventProcessor do
 
         :ok
 
-      {:ok, :sent} ->
-        Logger.debug("Event processed and notification sent",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-
       {:error, reason} = error ->
         Logger.error("Event processing failed",
           map_slug: map_slug,
@@ -80,14 +72,6 @@ defmodule WandererNotifier.Map.EventProcessor do
 
       :ignored ->
         Logger.debug("Event ignored",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-
-      :skip ->
-        Logger.debug("Event skipped",
           map_slug: map_slug,
           event_type: event_type
         )
@@ -259,11 +243,11 @@ defmodule WandererNotifier.Map.EventProcessor do
     case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
       {:ok, _} ->
         Logger.info("Rally point notification sent successfully")
-        {:ok, :sent}
+        :ok
 
       {:error, :notifications_disabled} ->
         Logger.info("Rally point notifications disabled")
-        :skip
+        :ignored
 
       {:error, reason} ->
         Logger.error("Rally point notification failed: #{inspect(reason)}")

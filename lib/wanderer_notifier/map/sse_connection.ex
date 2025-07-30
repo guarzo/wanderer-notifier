@@ -35,7 +35,6 @@ defmodule WandererNotifier.Map.SSEConnection do
       url: truncate_url_intelligently(url, 500),
       full_url_length: String.length(url),
       events_filter: inspect(events_filter),
-      events_count: if(is_list(events_filter), do: length(events_filter), else: 0),
       includes_rally_points:
         if(is_list(events_filter), do: "rally_point_added" in events_filter, else: false)
     )

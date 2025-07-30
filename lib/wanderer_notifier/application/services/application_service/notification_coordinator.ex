@@ -236,23 +236,30 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp determine_notification_type(notification) do
     cond do
-      Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id) ->
-        :kill
-
-      Map.get(notification, :type) == :rally_point or
-          Map.get(notification, "type") == "rally_point" ->
-        :rally_point
-
-      Map.has_key?(notification, "solar_system_id") or
-          Map.has_key?(notification, :solar_system_id) ->
-        :system
-
-      Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id) ->
-        :character
-
-      true ->
-        :unknown
+      killmail_notification?(notification) -> :kill
+      rally_point_notification?(notification) -> :rally_point
+      system_notification?(notification) -> :system
+      character_notification?(notification) -> :character
+      true -> :unknown
     end
+  end
+
+  defp killmail_notification?(notification) do
+    Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id)
+  end
+
+  defp rally_point_notification?(notification) do
+    Map.get(notification, :type) == :rally_point or
+      Map.get(notification, "type") == "rally_point"
+  end
+
+  defp system_notification?(notification) do
+    Map.has_key?(notification, "solar_system_id") or
+      Map.has_key?(notification, :solar_system_id)
+  end
+
+  defp character_notification?(notification) do
+    Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id)
   end
 
   defp increment_notification_count(state, type) do
