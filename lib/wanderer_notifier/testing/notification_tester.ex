@@ -44,7 +44,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
   Looks up character data from cache and sends a test notification.
   """
   def test_character(character_id) when is_binary(character_id) do
-    Logger.info("[TEST] Testing character notification for ID: #{character_id}")
+    Logger.debug("[TEST] Testing character notification for ID: #{character_id}")
 
     # Debug: check what cache keys exist
     debug_cache_keys()
@@ -72,7 +72,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
   defp debug_cache_keys do
     # Try to get cache statistics or check common keys
-    Logger.info("[TEST] Checking cache contents...")
+    Logger.debug("[TEST] Checking cache contents...")
 
     # Check a few common cache keys
     keys_to_check = [
@@ -85,19 +85,19 @@ defmodule WandererNotifier.Testing.NotificationTester do
     Enum.each(keys_to_check, fn key ->
       case Cache.get(key) do
         {:ok, data} when is_list(data) ->
-          Logger.info("[TEST] Cache key #{key}: list with #{length(data)} items")
+          Logger.debug("[TEST] Cache key #{key}: list with #{length(data)} items")
 
         {:ok, data} ->
-          Logger.info("[TEST] Cache key #{key}: #{inspect(data)}")
+          Logger.debug("[TEST] Cache key #{key}: #{inspect(data)}")
 
         {:error, :not_found} ->
-          Logger.info("[TEST] Cache key #{key}: not found")
+          Logger.debug("[TEST] Cache key #{key}: not found")
       end
     end)
   end
 
   defp handle_character_list(character_list, character_id) do
-    Logger.info("[TEST] Found #{length(character_list)} characters in map:character_list")
+    Logger.debug("[TEST] Found #{length(character_list)} characters in map:character_list")
     log_sample_character(character_list)
 
     character_id_int = String.to_integer(character_id)
@@ -107,7 +107,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
         handle_character_not_found(character_list, character_id, character_id_int)
 
       character_data ->
-        Logger.info("[TEST] Found character in map list: #{inspect(character_data)}")
+        Logger.debug("[TEST] Found character in map list: #{inspect(character_data)}")
         character = create_character_struct(character_data, character_id)
         send_character_notification(character)
     end
@@ -116,7 +116,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
   defp log_sample_character(character_list) do
     if length(character_list) > 0 do
       first_char = Enum.at(character_list, 0)
-      Logger.info("[TEST] Sample character structure: #{inspect(first_char)}")
+      Logger.debug("[TEST] Sample character structure: #{inspect(first_char)}")
     end
   end
 
@@ -143,8 +143,8 @@ defmodule WandererNotifier.Testing.NotificationTester do
   end
 
   defp handle_character_not_found(character_list, character_id, character_id_int) do
-    Logger.info("[TEST] Character #{character_id} not found in map list")
-    Logger.info("[TEST] Checking if character ID is in the list as integer...")
+    Logger.debug("[TEST] Character #{character_id} not found in map list")
+    Logger.debug("[TEST] Checking if character ID is in the list as integer...")
 
     all_eve_ids =
       Enum.map(character_list, fn char ->
@@ -152,7 +152,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
         Map.get(character_data, "eve_id")
       end)
 
-    Logger.info("[TEST] All eve_ids in cache: #{inspect(Enum.take(all_eve_ids, 10))}...")
+    Logger.debug("[TEST] All eve_ids in cache: #{inspect(Enum.take(all_eve_ids, 10))}...")
 
     if character_id_int in all_eve_ids do
       Logger.info("[TEST] Character ID #{character_id_int} IS in the list!")
@@ -175,15 +175,15 @@ defmodule WandererNotifier.Testing.NotificationTester do
   Looks up system data from cache and sends a test notification.
   """
   def test_system(system_id) when is_binary(system_id) do
-    Logger.info("[TEST] Testing system notification for ID: #{system_id}")
+    Logger.debug("[TEST] Testing system notification for ID: #{system_id}")
 
     case System.get_system(system_id) do
       {:ok, system} ->
-        Logger.info("[TEST] Found system: #{system.name}")
+        Logger.debug("[TEST] Found system: #{system.name}")
         send_system_notification(system)
 
       {:error, :not_found} ->
-        Logger.error("[TEST] System #{system_id} not found in cache")
+        Logger.error("[TEST] System #{system_id} not found")
         {:error, :not_found}
     end
   end
@@ -203,11 +203,11 @@ defmodule WandererNotifier.Testing.NotificationTester do
   as a new notification through the normal pipeline.
   """
   def test_killmail_id(killmail_id) when is_binary(killmail_id) do
-    Logger.info("[TEST] Processing killmail ID: #{killmail_id}")
+    Logger.debug("[TEST] Processing killmail ID: #{killmail_id}")
 
     with {:ok, killmail_data} <- fetch_killmail_data(killmail_id),
          {:ok, result} <- process_killmail(killmail_data) do
-      Logger.info("[TEST] Killmail #{killmail_id} processed successfully: #{inspect(result)}")
+      Logger.debug("[TEST] Killmail #{killmail_id} processed successfully: #{inspect(result)}")
       {:ok, result}
     else
       {:error, %{type: :not_found}} ->
@@ -233,18 +233,18 @@ defmodule WandererNotifier.Testing.NotificationTester do
   end
 
   defp fetch_killmail_data(killmail_id) do
-    Logger.info("[TEST] Fetching killmail data from WandererKills service")
+    Logger.debug("[TEST] Fetching killmail data from WandererKills service")
 
     # Log the base URL being used
     base_url =
       WandererNotifier.Shared.Config.get(:wanderer_kills_url, "http://host.docker.internal:4004")
 
     full_url = "#{base_url}/api/v1/killmail/#{killmail_id}"
-    Logger.info("[TEST] Request URL: #{full_url}")
+    Logger.debug("[TEST] Request URL: #{full_url}")
 
     case WandererKillsAPI.get_killmail(killmail_id) do
       {:ok, killmail_data} ->
-        Logger.info(
+        Logger.debug(
           "[TEST] Successfully fetched killmail data: #{inspect(Map.keys(killmail_data))}"
         )
 
@@ -264,15 +264,11 @@ defmodule WandererNotifier.Testing.NotificationTester do
         Logger.error("[TEST] Network error: #{message}")
         Logger.info("[TEST] Check network connectivity to: #{base_url}")
         {:error, error}
-
-      {:error, other_error} ->
-        Logger.error("[TEST] Unexpected error: #{inspect(other_error)}")
-        {:error, other_error}
     end
   end
 
   defp process_killmail(killmail_data) do
-    Logger.info("[TEST] Processing killmail through pipeline")
+    Logger.debug("[TEST] Processing killmail through pipeline")
     Pipeline.process_killmail(killmail_data)
   end
 

@@ -75,10 +75,16 @@ defmodule WandererNotifier.Map.Initializer do
         # Update the stats tracking
         case type do
           "systems" ->
-            WandererNotifier.Application.Services.Stats.set_tracked_count(:systems, count)
+            WandererNotifier.Application.Services.ApplicationService.set_tracked_count(
+              :systems,
+              count
+            )
 
           "characters" ->
-            WandererNotifier.Application.Services.Stats.set_tracked_count(:characters, count)
+            WandererNotifier.Application.Services.ApplicationService.set_tracked_count(
+              :characters,
+              count
+            )
 
           _ ->
             :ok

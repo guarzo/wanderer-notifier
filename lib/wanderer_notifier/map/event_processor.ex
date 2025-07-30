@@ -37,7 +37,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
 
-    Logger.info("Processing SSE event",
+    Logger.debug("Processing SSE event",
       map_slug: map_slug,
       event_type: event_type,
       event_id: Map.get(event, "id")
@@ -45,7 +45,7 @@ defmodule WandererNotifier.Map.EventProcessor do
 
     case route_event(event_type, event, map_slug) do
       :ok ->
-        Logger.info("Event processed successfully",
+        Logger.debug("Event processed successfully",
           map_slug: map_slug,
           event_type: event_type
         )
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Map.EventProcessor do
         error
 
       :ignored ->
-        Logger.info("Event ignored",
+        Logger.debug("Event ignored",
           map_slug: map_slug,
           event_type: event_type
         )
@@ -96,6 +96,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       :signature -> handle_signature_event(event_type, event, map_slug)
       :character -> handle_character_event(event_type, event, map_slug)
       :acl -> handle_acl_event(event_type, event, map_slug)
+      :rally -> handle_rally_event(event_type, event, map_slug)
       :special -> handle_special_event(event_type, event, map_slug)
       :unknown -> handle_unknown_event(event_type, event, map_slug)
     end
@@ -119,6 +120,9 @@ defmodule WandererNotifier.Map.EventProcessor do
 
       event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
         :acl
+
+      event_type in ["rally_point_added", "rally_point_removed"] ->
+        :rally
 
       event_type in ["connected", "map_kill"] ->
         :special
@@ -203,10 +207,44 @@ defmodule WandererNotifier.Map.EventProcessor do
     :ignored
   end
 
+  # Rally point event handlers
+  @spec handle_rally_event(String.t(), map(), String.t()) :: :ok | {:error, term()} | :ignored
+  defp handle_rally_event("rally_point_added", event, _map_slug) do
+    payload = Map.get(event, "payload", %{})
+
+    Logger.debug("Rally point created",
+      system: Map.get(payload, "system_name"),
+      character: Map.get(payload, "character_name"),
+      category: :rally
+    )
+
+    rally_point = %{
+      id: Map.get(payload, "rally_point_id"),
+      system_id: Map.get(payload, "solar_system_id"),
+      system_name: Map.get(payload, "system_name"),
+      character_name: Map.get(payload, "character_name"),
+      character_eve_id: Map.get(payload, "character_eve_id"),
+      message: Map.get(payload, "message"),
+      created_at: Map.get(payload, "created_at")
+    }
+
+    # Trigger notification through the notification context
+    case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, :notifications_disabled} -> :skip
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp handle_rally_event("rally_point_removed", _event, _map_slug) do
+    # Not handling removed events for now
+    :ignored
+  end
+
   # Special event handlers
   @spec handle_special_event(String.t(), map(), String.t()) :: :ok | :ignored
   defp handle_special_event("connected", event, map_slug) do
-    Logger.info("SSE connection established",
+    Logger.debug("SSE connection established",
       map_slug: map_slug,
       event_id: Map.get(event, "id"),
       server_time: Map.get(event, "server_time")

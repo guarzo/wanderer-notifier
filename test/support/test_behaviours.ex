@@ -124,9 +124,9 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfoBehaviour do
   @callback enrich_system(map()) :: map()
 end
 
-defmodule WandererNotifier.Contexts.ExternalAdaptersBehaviour do
+defmodule WandererNotifier.Contexts.ApiContextBehaviour do
   @moduledoc """
-  Behaviour for external adapters operations
+  Behaviour for API context operations
   """
   @callback get_tracked_systems() :: {:ok, list()} | {:error, term()}
   @callback get_tracked_characters() :: {:ok, list()} | {:error, term()}

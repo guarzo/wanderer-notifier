@@ -6,11 +6,12 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   require Logger
   alias WandererNotifier.Domains.Notifications.Notification
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Tracking.Entities.System
+  alias WandererNotifier.Shared.Utils.Startup
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Public API
@@ -58,23 +59,33 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp send_kill_notification(%Notification{data: %{killmail: killmail}} = notification) do
-    with {:ok, channel_id} <- determine_kill_channel(killmail),
-         {:ok, _} <- validate_kill_data(killmail),
-         :ok <- DiscordNotifier.send_kill_notification_to_channel(killmail, channel_id) do
-      Logger.info("Successfully sent kill notification",
-        type: :kill_notification,
+    # Check if we're in the startup suppression period
+    if Startup.in_suppression_period?() do
+      Logger.info("Skipping kill notification during startup suppression period",
+        killmail_id: killmail.killmail_id,
         category: :notification
       )
 
-      {:ok, notification}
+      {:ok, :skipped_startup_suppression}
     else
-      {:error, reason} = error ->
-        Logger.error("Failed to send kill notification",
-          reason: inspect(reason),
+      with {:ok, channel_id} <- determine_kill_channel(killmail),
+           {:ok, _} <- validate_kill_data(killmail),
+           :ok <- DiscordNotifier.send_kill_notification_to_channel(killmail, channel_id) do
+        Logger.info("Successfully sent kill notification",
+          type: :kill_notification,
           category: :notification
         )
 
-        error
+        {:ok, notification}
+      else
+        {:error, reason} = error ->
+          Logger.error("Failed to send kill notification",
+            reason: inspect(reason),
+            category: :notification
+          )
+
+          error
+      end
     end
   end
 
@@ -109,11 +120,24 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
     has_tracked_system = Determiner.tracked_system_for_killmail?(system_id)
     has_tracked_character = Determiner.has_tracked_character?(killmail)
 
+    Logger.debug(
+      "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}"
+    )
+
     channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
+
+    Logger.debug(
+      "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}"
+    )
+
     {:ok, channel_id || Config.discord_channel_id()}
   end
 
   defp select_channel_by_priority(has_tracked_character, has_tracked_system) do
+    Logger.debug(
+      "[Channel Priority Debug] has_tracked_character: #{has_tracked_character}, has_tracked_system: #{has_tracked_system}, char_enabled: #{Config.character_notifications_enabled?()}, sys_enabled: #{Config.system_notifications_enabled?()}, char_channel: #{Config.discord_character_kill_channel_id()}, sys_channel: #{Config.discord_system_kill_channel_id()}, default: #{Config.discord_channel_id()}"
+    )
+
     cond do
       has_tracked_character and Config.character_notifications_enabled?() ->
         Config.discord_character_kill_channel_id()
@@ -149,8 +173,8 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
 
   defp send_system_notification(%Notification{data: system_data} = notification) do
     # Check if this is the first notification
-    if Stats.is_first_notification?(:system) do
-      Stats.mark_notification_sent(:system)
+    if ApplicationService.first_notification?(:system) do
+      ApplicationService.mark_notification_sent(:system)
       {:ok, :skipped_first_run}
     else
       with {:ok, formatted} <- format_notification(system_data, notification),
@@ -179,14 +203,14 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
       system_struct =
         case system_data do
           %System{} = system ->
-            Logger.info(
+            Logger.debug(
               "[NotificationService] Using existing System struct - type: #{system.system_type}, statics: #{inspect(system.statics)}"
             )
 
             system
 
           _ ->
-            Logger.info(
+            Logger.debug(
               "[NotificationService] Converting map to System struct from data: #{inspect(Map.keys(system_data))}"
             )
 
@@ -237,8 +261,8 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
 
   defp send_character_notification(%Notification{data: character_data} = notification) do
     # Check if this is the first notification
-    if Stats.is_first_notification?(:character) do
-      Stats.mark_notification_sent(:character)
+    if ApplicationService.first_notification?(:character) do
+      ApplicationService.mark_notification_sent(:character)
       {:ok, :skipped_first_run}
     else
       with {:ok, formatted} <- format_notification(character_data),
@@ -305,4 +329,8 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
         error
     end
   end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Private Helpers
+  # ═══════════════════════════════════════════════════════════════════════════════
 end

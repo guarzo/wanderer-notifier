@@ -202,6 +202,27 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
   end
 
   @doc """
+  Get type names for multiple type IDs efficiently.
+  Returns a map of type_id => name
+  """
+  @spec get_type_names(list(integer())) :: {:ok, map()} | {:error, term()}
+  def get_type_names(type_ids) when is_list(type_ids) do
+    results =
+      type_ids
+      |> Enum.uniq()
+      |> Enum.map(fn type_id ->
+        case get_type_info(type_id) do
+          {:ok, %{"name" => name}} -> {to_string(type_id), name}
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Map.new()
+
+    {:ok, results}
+  end
+
+  @doc """
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do

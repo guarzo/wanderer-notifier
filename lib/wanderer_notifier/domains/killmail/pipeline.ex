@@ -7,10 +7,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   """
 
   require Logger
-  alias WandererNotifier.Application.Telemetry
+  alias WandererNotifier.Shared.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Domains.Killmail.ItemProcessor
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.Startup
+  alias WandererNotifier.Shared.Utils.ErrorHandler
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -39,30 +43,39 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp process_with_kill_id(killmail_data, kill_id) do
     Telemetry.processing_started(kill_id)
 
-    try do
-      with {:ok, :new} <- check_deduplication(kill_id),
-           {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
-           {:ok, true} <- should_notify?(killmail) do
-        send_notification(killmail)
-      else
-        {:ok, :duplicate} ->
-          handle_skipped(kill_id, :duplicate)
+    ErrorHandler.with_error_handling(fn -> process_killmail_pipeline(killmail_data, kill_id) end)
+    |> handle_pipeline_errors(kill_id)
+  end
 
-        {:ok, false} ->
-          handle_skipped(kill_id, :not_tracked)
+  @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
+  defp process_killmail_pipeline(killmail_data, kill_id) do
+    with {:ok, :new} <- check_deduplication(kill_id),
+         {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
+         {:ok, true} <- should_notify?(killmail) do
+      send_notification(killmail)
+    else
+      {:ok, :duplicate} ->
+        handle_skipped(kill_id, :duplicate)
 
-        {:error, reason} ->
-          handle_error(kill_id, reason)
-      end
-    rescue
-      exception ->
-        Logger.error("Pipeline crash",
-          kill_id: kill_id,
-          error: inspect(exception),
-          category: :killmail
-        )
+      {:ok, false} ->
+        handle_skipped(kill_id, :not_tracked)
 
-        handle_error(kill_id, {:unexpected_error, exception})
+      {:error, reason} ->
+        handle_error(kill_id, reason)
+    end
+  end
+
+  @spec handle_pipeline_errors(result(), String.t()) :: result()
+  defp handle_pipeline_errors(result, kill_id) do
+    case result do
+      {:error, {:exception, exception}} ->
+        handle_error(kill_id, {:pipeline_crash, exception})
+
+      {:error, {:exit, reason}} ->
+        handle_error(kill_id, {:pipeline_exit, reason})
+
+      result ->
+        result
     end
   end
 
@@ -112,7 +125,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     kill_id = extract_kill_id(data)
     system_id = extract_system_id(data)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Building killmail - ID: #{inspect(kill_id)}, System: #{inspect(system_id)}"
     )
 
@@ -131,7 +144,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       true ->
         killmail = Killmail.from_websocket_data(kill_id, system_id, data)
 
-        Logger.info(
+        Logger.debug(
           "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{length(killmail.attackers || [])}"
         )
 
@@ -168,7 +181,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp should_notify?(%Killmail{} = killmail) do
     # Check global notification settings first
     enabled = notifications_enabled?()
-    Logger.info("[Pipeline] Notifications enabled: #{enabled}")
+    Logger.debug("[Pipeline] Notifications enabled: #{enabled}")
 
     if enabled do
       check_entity_tracking(killmail)
@@ -182,7 +195,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      Logger.info(
+      Logger.debug(
         "[Pipeline] Tracking check - System #{killmail.system_id}: #{system_tracked}, Characters: #{character_tracked}"
       )
 
@@ -216,7 +229,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Character tracking - Victim #{killmail.victim_character_id}: #{victim_tracked}, Any attacker: #{attacker_tracked}"
     )
 
@@ -262,11 +275,43 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec send_notification(Killmail.t()) :: result()
   defp send_notification(%Killmail{} = killmail) do
-    case WandererNotifier.Application.Services.NotificationService.notify_kill(killmail) do
-      :ok ->
+    Logger.debug("Sending kill notification", killmail_id: killmail.killmail_id)
+
+    # Determine whether to process items based on startup suppression period
+    killmail_to_notify =
+      if in_startup_suppression_period?() do
+        # Skip item processing entirely during startup suppression period
+        killmail
+      else
+        # Process items right before sending notification (after we've decided to notify)
+        case maybe_process_items(killmail) do
+          {:ok, enriched} ->
+            Logger.debug("Item processing completed successfully",
+              killmail_id: killmail.killmail_id
+            )
+
+            enriched
+
+          {:error, reason} ->
+            Logger.warning("Item processing failed, continuing without items",
+              killmail_id: killmail.killmail_id,
+              reason: reason
+            )
+
+            killmail
+        end
+      end
+
+    handle_notification_response(killmail_to_notify)
+  end
+
+  @spec handle_notification_response(Killmail.t()) :: result()
+  defp handle_notification_response(%Killmail{} = killmail) do
+    case WandererNotifier.Contexts.NotificationContext.send_kill_notification(killmail) do
+      {:ok, _} ->
         Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
         Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-        Logger.info("Killmail #{killmail.killmail_id} notified", category: :killmail)
+        Logger.debug("Killmail #{killmail.killmail_id} notified", category: :killmail)
         {:ok, killmail.killmail_id}
 
       {:error, :notifications_disabled} ->
@@ -304,6 +349,48 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     {:error, reason}
   end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Item Processing
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @spec maybe_process_items(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
+  defp maybe_process_items(%Killmail{} = killmail) do
+    enabled = Config.get(:notable_items_enabled, false)
+    token_present = Config.get(:janice_api_token) != nil
+
+    Logger.debug("Item processing status",
+      killmail_id: killmail.killmail_id,
+      notable_items_enabled: enabled,
+      janice_token_present: token_present,
+      category: :item_processing
+    )
+
+    if enabled and token_present do
+      Logger.debug("Starting item processing", killmail_id: killmail.killmail_id)
+      ItemProcessor.process_killmail_items(killmail)
+    else
+      # Skip item processing if feature is disabled or Janice API token not configured
+      reason =
+        cond do
+          not enabled -> "notable items feature disabled"
+          not token_present -> "no Janice API token configured"
+          true -> "unknown reason"
+        end
+
+      Logger.debug("Item processing skipped - #{reason}",
+        killmail_id: killmail.killmail_id
+      )
+
+      {:ok, killmail}
+    end
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Startup Suppression Check
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp in_startup_suppression_period?, do: Startup.in_suppression_period?()
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Utilities

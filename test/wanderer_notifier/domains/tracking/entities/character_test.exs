@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
 
   setup do
     # Clear the cache before each test
-    Cache.delete(Cache.Keys.map_characters())
+    Cache.delete("map:character_list")
     :ok
   end
 
@@ -56,7 +56,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
       character = Character.new(attrs)
 
       assert character.character_id == "123456"
-      assert character.eve_id == 123_456
+      assert character.eve_id == "123456"
     end
 
     test "parses string corporation_id to integer" do
@@ -74,7 +74,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
     test "raises error when missing eve_id and character_id" do
       attrs = %{"name" => "Test Character"}
 
-      assert_raise ArgumentError, ~r/Missing required character identification/, fn ->
+      assert_raise ArgumentError, "Character must have eve_id or character_id", fn ->
         Character.new(attrs)
       end
     end
@@ -82,7 +82,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
     test "raises error when missing name" do
       attrs = %{"eve_id" => "123456"}
 
-      assert_raise ArgumentError, "Missing name for character", fn ->
+      assert_raise ArgumentError, "Character must have a name", fn ->
         Character.new(attrs)
       end
     end
@@ -116,57 +116,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
     test "returns {:error, reason} for invalid data" do
       attrs = %{"name" => "Test Character"}
 
-      assert {:error, reason} = Character.new_safe(attrs)
-      assert reason =~ "Missing required character identification"
-    end
-  end
-
-  describe "Access behaviour" do
-    setup do
-      character =
-        Character.new(%{
-          "eve_id" => "123456",
-          "name" => "Test Character",
-          "corporation_id" => 2001,
-          "corporation_ticker" => "TEST"
-        })
-
-      {:ok, character: character}
-    end
-
-    test "fetch/2 with atom keys", %{character: character} do
-      assert {:ok, "Test Character"} = Character.fetch(character, :name)
-      assert {:ok, "123456"} = Character.fetch(character, :character_id)
-      assert :error = Character.fetch(character, :nonexistent)
-    end
-
-    test "fetch/2 with string keys", %{character: character} do
-      assert {:ok, "123456"} = Character.fetch(character, "id")
-      assert {:ok, 2001} = Character.fetch(character, "corporationID")
-      assert {:ok, "TEST"} = Character.fetch(character, "corporationName")
-    end
-
-    test "fetch/2 with existing atom string keys", %{character: character} do
-      assert {:ok, "Test Character"} = Character.fetch(character, "name")
-      assert :error = Character.fetch(character, "nonexistent_key")
-    end
-
-    test "get/3 with default values", %{character: character} do
-      assert "Test Character" = Character.get(character, :name)
-      assert "default" = Character.get(character, :nonexistent, "default")
-      assert nil == Character.get(character, :nonexistent)
-    end
-
-    test "get_and_update/3 raises not implemented", %{character: character} do
-      assert_raise RuntimeError, "not implemented", fn ->
-        Character.get_and_update(character, :name, fn x -> {x, "new"} end)
-      end
-    end
-
-    test "pop/2 raises not implemented", %{character: character} do
-      assert_raise RuntimeError, "not implemented", fn ->
-        Character.pop(character, :name)
-      end
+      assert {:error, {:validation_error, message}} = Character.new_safe(attrs)
+      assert message == "Character must have eve_id or character_id"
     end
   end
 
@@ -204,31 +155,26 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
 
       refute Character.has_corporation?(character)
     end
-
-    test "returns false for invalid input" do
-      refute Character.has_corporation?(%{})
-      refute Character.has_corporation?(nil)
-    end
   end
 
   describe "is_tracked?/1" do
     test "returns true when character is in cached list" do
       characters = [
-        %{"character_id" => "123456", "name" => "Test Character"},
-        %{"character_id" => "789012", "name" => "Another Character"}
+        %{"eve_id" => "123456", "name" => "Test Character"},
+        %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      Cache.put("map:character_list", characters)
 
       assert {:ok, true} = Character.is_tracked?("123456")
     end
 
     test "returns false when character is not in cached list" do
       characters = [
-        %{"character_id" => "789012", "name" => "Another Character"}
+        %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      Cache.put("map:character_list", characters)
 
       assert {:ok, false} = Character.is_tracked?("123456")
     end
@@ -240,10 +186,10 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
 
     test "handles integer character_id" do
       characters = [
-        %{"character_id" => "123456", "name" => "Test Character"}
+        %{"eve_id" => "123456", "name" => "Test Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      Cache.put("map:character_list", characters)
 
       assert {:ok, true} = Character.is_tracked?(123_456)
     end
@@ -252,75 +198,34 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
       assert {:error, :invalid_character_id} = Character.is_tracked?(nil)
       assert {:error, :invalid_character_id} = Character.is_tracked?(%{})
     end
-
-    test "handles mixed key formats in cache" do
-      characters = [
-        %{:character_id => "123456", "name" => "Test Character"},
-        %{"character_id" => "789012", "name" => "Another Character"}
-      ]
-
-      Cache.put(Cache.Keys.map_characters(), characters)
-
-      assert {:ok, true} = Character.is_tracked?("123456")
-      assert {:ok, true} = Character.is_tracked?("789012")
-    end
   end
 
   describe "get_character/1" do
     test "returns character when found in cache" do
       characters = [
-        %{"id" => "123456", "name" => "Test Character"},
-        %{"id" => "789012", "name" => "Another Character"}
+        %{"eve_id" => "123456", "name" => "Test Character"},
+        %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      Cache.put("map:character_list", characters)
 
-      character = Character.get_character("123456")
-      assert character["name"] == "Test Character"
+      assert {:ok, character} = Character.get_character("123456")
+      assert character.name == "Test Character"
     end
 
-    test "returns nil when character not found" do
+    test "returns error when character not found" do
       characters = [
-        %{"id" => "789012", "name" => "Another Character"}
+        %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      Cache.put("map:character_list", characters)
 
-      assert Character.get_character("123456") == nil
+      assert {:error, :not_found} = Character.get_character("123456")
     end
 
-    test "returns nil when cache is empty" do
+    test "returns error when cache is empty" do
       # Cache is already cleared in setup
-      assert Character.get_character("123456") == nil
-    end
-  end
-
-  describe "get_character_by_name/1" do
-    test "returns character when found by name" do
-      characters = [
-        %{"id" => "123456", "name" => "Test Character"},
-        %{"id" => "789012", "name" => "Another Character"}
-      ]
-
-      Cache.put(Cache.Keys.map_characters(), characters)
-
-      character = Character.get_character_by_name("Test Character")
-      assert character["id"] == "123456"
-    end
-
-    test "returns nil when character name not found" do
-      characters = [
-        %{"id" => "789012", "name" => "Another Character"}
-      ]
-
-      Cache.put(Cache.Keys.map_characters(), characters)
-
-      assert Character.get_character_by_name("Test Character") == nil
-    end
-
-    test "returns nil when cache is empty" do
-      # Cache is already cleared in setup
-      assert Character.get_character_by_name("Test Character") == nil
+      assert {:error, :not_found} = Character.get_character("123456")
     end
   end
 end

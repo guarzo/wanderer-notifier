@@ -162,15 +162,15 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
   """
   alias WandererNotifier.Domains.Notifications.Formatters.Status, as: StatusFormatter
   alias WandererNotifier.Domains.Notifications.Formatters.Common, as: CommonFormatter
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Domains.License.Service, as: LicenseService
+  alias WandererNotifier.Domains.License.LicenseService
 
   @doc """
   Gathers all relevant state and sends a status message to the main notification channel.
   """
   def send_status_message(title, description) do
-    stats = Stats.get_stats()
+    stats = ApplicationService.get_stats()
     features_status = Config.features()
 
     # Convert features_status (always a list) to a map for the formatter
@@ -204,7 +204,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
         data: embed
       }
 
-      WandererNotifier.Domains.Notifications.NotificationService.send(notification)
+      WandererNotifier.Contexts.NotificationContext.send_discord_embed(notification)
     rescue
       e ->
         # Log but don't crash the process

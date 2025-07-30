@@ -9,7 +9,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   use WebSockex
   require Logger
 
-  alias WandererNotifier.Contexts.ExternalAdapters
+  alias WandererNotifier.Contexts.ApiContext
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -22,14 +22,14 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
     name = Keyword.get(opts, :name, __MODULE__)
 
-    Logger.info("Starting WebSocket client",
+    Logger.debug("Starting WebSocket client",
       url: websocket_url
     )
 
     # Build the WebSocket URL with Phoenix socket path
     socket_url = build_socket_url(websocket_url)
 
-    Logger.info("Attempting WebSocket connection",
+    Logger.debug("Attempting WebSocket connection",
       socket_url: socket_url
     )
 
@@ -59,7 +59,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   def handle_connect(_conn, state) do
     connected_at = DateTime.utc_now()
 
-    Logger.info(
+    Logger.debug(
       "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
     )
 
@@ -89,7 +89,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Update stats with connection time
-    WandererNotifier.Application.Services.Stats.update_websocket_stats(%{
+    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{
       connection_start: System.system_time(:second),
       connected_at: connected_at,
       url: state.url
@@ -140,12 +140,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Clear websocket stats on disconnect
-    WandererNotifier.Application.Services.Stats.update_websocket_stats(%{})
+    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{})
 
     # Calculate exponential backoff with jitter
     delay = calculate_backoff(state.reconnect_attempts)
 
-    Logger.info(
+    Logger.debug(
       "WebSocket scheduling reconnect in #{delay}ms (attempt #{state.reconnect_attempts + 1})"
     )
 
@@ -288,13 +288,13 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   def handle_info(:join_channel, state) do
-    Logger.info("WebSocket handling join_channel message")
+    Logger.debug("WebSocket handling join_channel message")
 
     try do
       {limited_systems, limited_characters} = prepare_subscription_data()
       join_params = build_join_params(limited_systems, limited_characters)
       result = send_join_message(join_params, limited_systems, limited_characters, state)
-      Logger.info("Join channel result: #{inspect(result)}")
+      Logger.debug("Join channel result: #{inspect(result)}")
       result
     rescue
       error ->
@@ -307,7 +307,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         retry_count = Map.get(state, :join_retry_count, 0)
         delay = calculate_backoff(retry_count)
 
-        Logger.info("Scheduling channel join retry in #{delay}ms (attempt #{retry_count + 1})")
+        Logger.debug("Scheduling channel join retry in #{delay}ms (attempt #{retry_count + 1})")
 
         Process.send_after(self(), :join_channel, delay)
         {:ok, %{state | join_retry_count: retry_count + 1}}
@@ -317,7 +317,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp log_heartbeat_uptime(state) do
     uptime = calculate_connection_uptime(state)
 
-    Logger.info(
+    Logger.debug(
       "WebSocket heartbeat - Connection uptime: #{uptime}s (#{div(uptime, 60)}m #{rem(uptime, 60)}s)"
     )
   end
@@ -423,7 +423,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          current_characters,
          state
        ) do
-    Logger.info("Subscription update check completed",
+    Logger.debug("Subscription update check completed",
       systems_changed: systems_changed,
       characters_changed: characters_changed,
       current_systems_count: MapSet.size(current_systems),
@@ -483,7 +483,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_subscription_data(all_systems, all_characters, limited_systems, limited_characters) do
-    Logger.info("WebSocket channel join data preparation",
+    Logger.debug("WebSocket channel join data preparation",
       total_systems_count: length(all_systems),
       total_characters_count: length(all_characters),
       limited_systems_count: length(limited_systems),
@@ -495,7 +495,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp build_join_params(systems, characters) do
     if systems == [] and characters == [] do
-      Logger.info("No valid systems or characters found, joining with empty subscription")
+      Logger.debug("No valid systems or characters found, joining with empty subscription")
 
       %{
         systems: [],
@@ -503,7 +503,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         preload: %{enabled: false}
       }
     else
-      Logger.info("Subscribing to all tracked systems and characters")
+      Logger.debug("Subscribing to all tracked systems and characters")
 
       %{
         systems: systems,
@@ -528,15 +528,15 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     }
 
     # Log the full subscription data being sent
-    Logger.info(
+    Logger.debug(
       "WebSocket subscription data: #{length(systems)} systems, #{length(characters)} characters"
     )
 
-    Logger.info("Systems sample: #{inspect(Enum.take(systems, 10))}")
+    Logger.debug("Systems sample: #{inspect(Enum.take(systems, 10))}")
 
-    Logger.info("Characters sample: #{inspect(Enum.take(characters, 10))}")
+    Logger.debug("Characters sample: #{inspect(Enum.take(characters, 10))}")
 
-    Logger.info("Full join params: #{inspect(join_params, limit: :infinity)}")
+    Logger.debug("Full join params: #{inspect(join_params, limit: :infinity)}")
 
     case Jason.encode(join_message) do
       {:ok, json} ->
@@ -564,7 +564,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_join_success(systems, characters) do
-    Logger.info("Joining killmails channel",
+    Logger.debug("Joining killmails channel",
       systems_count: length(systems),
       characters_count: length(characters)
     )
@@ -576,7 +576,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          state
        )
        when ref == state.channel_ref do
-    Logger.info("Successfully joined killmails channel")
+    Logger.debug("Successfully joined killmails channel")
     # Reset join retry count on successful join
     {:ok, %{state | join_retry_count: 0}}
   end
@@ -758,7 +758,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked systems from ExternalAdapters
   defp get_tracked_systems do
-    case ExternalAdapters.get_tracked_systems() do
+    case ApiContext.get_tracked_systems() do
       {:ok, systems} ->
         systems
         |> Enum.map(&extract_system_id/1)
@@ -800,7 +800,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp get_tracked_characters do
     Logger.info("Fetching tracked characters from ExternalAdapters", [])
 
-    case ExternalAdapters.get_tracked_characters() do
+    case ApiContext.get_tracked_characters() do
       {:ok, characters} ->
         Logger.info("ExternalAdapters returned characters",
           count: length(characters),

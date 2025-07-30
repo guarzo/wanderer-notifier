@@ -1,36 +1,20 @@
 defmodule WandererNotifier.Application.Services.Dependencies do
-  require Logger
-
   @moduledoc """
-  Centralized dependency injection for WandererNotifier.
+  Backward compatibility adapter for the Dependencies service.
 
-  This module provides a standardized approach to dependency injection across
-  the entire application. It allows for easy testing by swapping out dependencies
-  via application configuration.
-
-  ## Usage
-
-  Instead of calling Application.get_env directly in modules, use the functions
-  provided by this module:
-
-      # Instead of:
-      Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.Infrastructure.Adapters.ESI.Service)
-
-      # Use:
-      Dependencies.esi_service()
-
-  ## Testing
-
-  In tests, dependencies can be swapped by setting application environment variables:
-
-      Application.put_env(:wanderer_notifier, :esi_service, MockESIService)
+  This module maintains the existing Dependencies API while delegating
+  to the new ApplicationService's DependencyManager for actual functionality.
   """
 
-  # Core Services
+  alias WandererNotifier.Application.Services.ApplicationService
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Original Dependencies API - delegated to ApplicationService
+  # ──────────────────────────────────────────────────────────────────────────────
+
   @doc "Returns the ESI service module"
   def esi_service do
-    Application.get_env(
-      :wanderer_notifier,
+    ApplicationService.get_dependency(
       :esi_service,
       WandererNotifier.Infrastructure.Adapters.ESI.Service
     )
@@ -38,8 +22,7 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the ESI client module"
   def esi_client do
-    Application.get_env(
-      :wanderer_notifier,
+    ApplicationService.get_dependency(
       :esi_client,
       WandererNotifier.Infrastructure.Adapters.ESI.Client
     )
@@ -47,10 +30,8 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the HTTP client module"
   def http_client do
-    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.Http)
+    ApplicationService.get_dependency(:http_client, WandererNotifier.Infrastructure.Http)
   end
-
-  # Configuration and Tracking Modules
 
   @doc "Returns the system tracking module"
   def system_module do
@@ -62,11 +43,9 @@ defmodule WandererNotifier.Application.Services.Dependencies do
     WandererNotifier.Shared.Config.character_track_module()
   end
 
-  # Pipeline and Processing Modules
   @doc "Returns the killmail pipeline module"
   def killmail_pipeline do
-    Application.get_env(
-      :wanderer_notifier,
+    ApplicationService.get_dependency(
       :killmail_pipeline,
       WandererNotifier.Domains.Killmail.Pipeline
     )
@@ -74,27 +53,17 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the deduplication module"
   def deduplication_module do
-    Application.get_env(
-      :wanderer_notifier,
-      :deduplication_module,
-      WandererNotifier.Shared.Config.deduplication_module()
-    )
+    WandererNotifier.Shared.Config.deduplication_module()
   end
 
-  # Notification Modules
   @doc "Returns the killmail cache module"
   def killmail_cache_module do
-    Application.get_env(
-      :wanderer_notifier,
-      :killmail_cache,
-      WandererNotifier.Domains.Killmail.Cache
-    )
+    ApplicationService.get_dependency(:killmail_cache, WandererNotifier.Domains.Killmail.Cache)
   end
 
   @doc "Returns the killmail notification module"
   def killmail_notification_module do
-    Application.get_env(
-      :wanderer_notifier,
+    ApplicationService.get_dependency(
       :killmail_notification_module,
       WandererNotifier.Domains.Killmail.KillmailNotification
     )
@@ -102,12 +71,11 @@ defmodule WandererNotifier.Application.Services.Dependencies do
 
   @doc "Returns the logger module"
   def logger_module do
-    Application.get_env(:wanderer_notifier, :logger_module, WandererNotifier.Shared.Logger.Logger)
+    ApplicationService.get_dependency(:logger_module, WandererNotifier.Shared.Logger.Logger)
   end
 
-  # Cache
   @doc "Returns the cache name"
   def cache_name do
-    Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    ApplicationService.get_dependency(:cache_name, :wanderer_cache)
   end
 end

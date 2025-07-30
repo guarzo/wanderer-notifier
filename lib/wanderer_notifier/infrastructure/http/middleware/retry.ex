@@ -5,7 +5,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
   HTTP middleware that implements retry logic with exponential backoff and jitter.
 
   This middleware wraps HTTP requests with configurable retry logic, handling
-  transient failures gracefully. It uses the existing WandererNotifier.Infrastructure.Http.Utils.Retry
+  transient failures gracefully. It uses the shared WandererNotifier.Shared.Utils.Retry
   utility for consistent retry behavior across the application.
 
   ## Features
@@ -32,7 +32,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
 
   @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
 
-  alias WandererNotifier.Infrastructure.Http.Utils.Retry, as: RetryUtils
+  alias WandererNotifier.Shared.Utils.Retry, as: RetryUtils
 
   @type retry_options :: [
           max_attempts: pos_integer(),

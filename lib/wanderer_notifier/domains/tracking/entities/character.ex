@@ -32,6 +32,114 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
   ]
 
   # ══════════════════════════════════════════════════════════════════════════════
+  # Constructor Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Creates a new Character struct from attributes map.
+  """
+  @spec new(map()) :: t()
+  def new(attrs) when is_map(attrs) do
+    eve_id = validate_eve_id(attrs)
+    name = validate_name(attrs)
+
+    %__MODULE__{
+      character_id: normalize_id(eve_id),
+      name: name,
+      corporation_id: extract_integer_field(attrs, [:corporation_id]),
+      alliance_id: extract_integer_field(attrs, [:alliance_id]),
+      eve_id: normalize_id(eve_id),
+      corporation_ticker: extract_simple_field(attrs, [:corporation_ticker]),
+      alliance_ticker: extract_simple_field(attrs, [:alliance_ticker]),
+      tracked: extract_tracked_field(attrs)
+    }
+  end
+
+  # Validation helpers for new/1
+  defp validate_eve_id(attrs) do
+    eve_id = extract_eve_id(attrs)
+
+    if is_nil(eve_id) do
+      raise ArgumentError, "Character must have eve_id or character_id"
+    end
+
+    eve_id
+  end
+
+  defp validate_name(attrs) do
+    name = extract_simple_field(attrs, [:name])
+
+    if is_nil(name) or name == "" do
+      raise ArgumentError, "Character must have a name"
+    end
+
+    name
+  end
+
+  # Field extraction helpers for new/1
+  defp extract_simple_field(attrs, keys) do
+    Enum.find_value(keys, fn key ->
+      attrs[Atom.to_string(key)] || attrs[key]
+    end)
+  end
+
+  defp extract_integer_field(attrs, keys) do
+    value = extract_simple_field(attrs, keys)
+    parse_integer(value)
+  end
+
+  defp extract_tracked_field(attrs) do
+    extract_simple_field(attrs, [:tracked]) || false
+  end
+
+  # Helper functions for character creation
+  defp extract_eve_id(attrs) do
+    attrs["eve_id"] || attrs[:eve_id] || attrs["character_id"] || attrs[:character_id]
+  end
+
+  defp normalize_id(id) when is_integer(id), do: Integer.to_string(id)
+  defp normalize_id(id) when is_binary(id), do: id
+  defp normalize_id(_), do: nil
+
+  defp parse_integer(nil), do: nil
+  defp parse_integer(id) when is_integer(id), do: id
+
+  defp parse_integer(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ -> nil
+    end
+  end
+
+  defp parse_integer(_), do: nil
+
+  @doc """
+  Safe constructor that returns {:ok, character} or {:error, reason}.
+  """
+  @spec new_safe(map()) :: {:ok, t()} | {:error, term()}
+  def new_safe(attrs) when is_map(attrs) do
+    try do
+      character = new(attrs)
+      {:ok, character}
+    rescue
+      e in ArgumentError -> {:error, {:validation_error, e.message}}
+      e -> {:error, {:character_creation_failed, inspect(e)}}
+    end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Entity Helper Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Checks if the character has corporation information.
+  """
+  @spec has_corporation?(t()) :: boolean()
+  def has_corporation?(%__MODULE__{} = character) do
+    not is_nil(character.corporation_id) and not is_nil(character.corporation_ticker)
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
   # TrackingBehaviour Implementation
   # ══════════════════════════════════════════════════════════════════════════════
 

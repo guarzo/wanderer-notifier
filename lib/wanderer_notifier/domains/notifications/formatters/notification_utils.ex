@@ -132,7 +132,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
     wormhole: 0x9D4EDD,
     # Green for high-sec
     highsec: 0x00FF00,
-    # Yellow for low-sec  
+    # Yellow for low-sec
     lowsec: 0xFFFF00,
     # Red for null-sec
     nullsec: 0xFF0000,

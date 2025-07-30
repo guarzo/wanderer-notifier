@@ -13,7 +13,7 @@ defmodule WandererNotifier.Domains.Notifications.LicenseLimiter do
     Application.get_env(
       :wanderer_notifier,
       :license_service,
-      WandererNotifier.Domains.License.Service
+      WandererNotifier.Domains.License.LicenseService
     )
   end
 

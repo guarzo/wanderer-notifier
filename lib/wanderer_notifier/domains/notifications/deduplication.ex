@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   Behaviour for deduplication services.
   """
 
-  @type notification_type :: :kill | :system | :character
+  @type notification_type :: :kill | :system | :character | :rally_point
   @type notification_id :: String.t() | integer()
   @type result :: {:ok, :new} | {:ok, :duplicate} | {:error, term()}
 
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   This function delegates to the configured implementation module.
 
   ## Parameters
-    - type: The type of notification (:system, :character, or :kill)
+    - type: The type of notification (:system, :character, :kill, or :rally_point)
     - id: The ID of the notification to check
 
   ## Returns
@@ -33,7 +33,7 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   This function delegates to the configured implementation module.
 
   ## Parameters
-    - type: The type of notification (:system, :character, or :kill)
+    - type: The type of notification (:system, :character, :kill, or :rally_point)
     - id: The ID of the notification to clear
 
   ## Returns

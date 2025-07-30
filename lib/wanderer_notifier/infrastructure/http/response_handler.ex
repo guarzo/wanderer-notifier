@@ -229,22 +229,10 @@ defmodule WandererNotifier.Infrastructure.Http.ResponseHandler do
         })
     )
 
-    case Keyword.get(opts, :error_format, :tuple) do
-      :string ->
-        {:error, "HTTP error: #{status_code}"}
-
-      :tuple ->
-        {:error, {:http_error, status_code}}
-    end
+    {:error, {:http_error, status_code}}
   end
 
-  defp format_error(reason, opts) do
-    case Keyword.get(opts, :error_format, :tuple) do
-      :string ->
-        {:error, "Request error: #{inspect(reason)}"}
-
-      :tuple ->
-        {:error, reason}
-    end
+  defp format_error(reason, _opts) do
+    {:error, reason}
   end
 end

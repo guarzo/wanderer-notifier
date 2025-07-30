@@ -11,7 +11,6 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
-  alias WandererNotifier.Contexts.ExternalAdapters
 
   # Check every 30 seconds
   @check_interval 30_000
@@ -221,7 +220,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
       # Send to pipeline worker
       case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
         nil ->
-          Logger.info("PipelineWorker not found for fallback processing")
+          Logger.warning("PipelineWorker not found for fallback processing")
 
         pid ->
           # Mark as HTTP-sourced to avoid duplicate processing

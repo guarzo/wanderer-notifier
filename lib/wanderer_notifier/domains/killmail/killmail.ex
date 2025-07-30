@@ -34,7 +34,11 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
     :value,
     :points,
     :esi_data,
-    enriched?: false
+    :enriched?,
+
+    # Items data
+    :items_dropped,
+    :notable_items
   ]
 
   @type t :: %__MODULE__{
@@ -56,7 +60,9 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
           value: number() | nil,
           points: integer() | nil,
           esi_data: map() | nil,
-          enriched?: boolean()
+          enriched?: boolean(),
+          items_dropped: list(map()) | nil,
+          notable_items: list(map()) | nil
         }
 
   @doc """

@@ -4,6 +4,13 @@ defmodule WandererNotifier.Map.SSERealTest do
   require Logger
   alias WandererNotifier.Map.SSEClient
 
+  # This test is skipped by default as it requires real external credentials and network access.
+  # It's useful for manual testing of SSE connectivity but not suitable for CI/automated testing.
+  #
+  # To enable this test:
+  # 1. Set environment variables: MAP_ID, MAP_NAME, MAP_API_KEY
+  # 2. Remove the @moduletag :skip line below
+  # 3. Run: mix test test/wanderer_notifier/map/sse_real_test.exs
   @moduletag :skip
 
   describe "Real SSE Connection" do
@@ -22,8 +29,7 @@ defmodule WandererNotifier.Map.SSERealTest do
         events: ["add_system", "deleted_system", "system_metadata_changed"]
       ]
 
-      # This test is skipped by default since it requires real credentials
-      # To run: set up your real map credentials and remove @moduletag :skip
+      # This test requires real external services and credentials
       {:ok, _pid} = SSEClient.start_link(opts)
 
       # Give it time to attempt connection

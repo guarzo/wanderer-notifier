@@ -57,9 +57,9 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     for: WandererNotifier.Domains.Tracking.StaticInfoBehaviour
   )
 
-  # External Adapters mock
-  defmock(WandererNotifier.ExternalAdaptersMock,
-    for: WandererNotifier.Contexts.ExternalAdaptersBehaviour
+  # API Context mock
+  defmock(WandererNotifier.ApiContextMock,
+    for: WandererNotifier.Contexts.ApiContextBehaviour
   )
 
   # Discord Notifier mock
@@ -83,7 +83,7 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     setup_deduplication_mocks()
     setup_service_mocks()
     setup_discord_mocks()
-    setup_external_adapters_mocks()
+    setup_api_context_mocks()
     setup_discord_notifier_mocks()
   end
 
@@ -133,32 +133,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   def setup_http_mocks do
     stub(WandererNotifier.HTTPMock, :request, fn method, url, _body, _headers, opts ->
       handle_http_request(method, url, opts)
-    end)
-
-    # Legacy 3-arg get/post for backward compatibility
-    stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    # Additional convenience methods
-    stub(WandererNotifier.HTTPMock, :put, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :delete, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :get_json, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: %{}}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post_json, fn _url, _body, _headers, _opts ->
-      {:ok, %{status_code: 200, body: %{}}}
     end)
 
     stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
@@ -364,12 +338,12 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   @doc """
   Sets up external adapters mocks with default behaviors.
   """
-  def setup_external_adapters_mocks do
-    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_systems, fn ->
+  def setup_api_context_mocks do
+    stub(WandererNotifier.ApiContextMock, :get_tracked_systems, fn ->
       {:ok, []}
     end)
 
-    stub(WandererNotifier.ExternalAdaptersMock, :get_tracked_characters, fn ->
+    stub(WandererNotifier.ApiContextMock, :get_tracked_characters, fn ->
       {:ok, []}
     end)
   end

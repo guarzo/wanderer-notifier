@@ -7,7 +7,7 @@ defmodule WandererNotifier.Application.Services.Application.API do
   """
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
 
   # --- Environment and Version ---
 
@@ -239,11 +239,11 @@ defmodule WandererNotifier.Application.Services.Application.API do
   @doc """
   Gets all current statistics.
   """
-  def get_all_stats, do: Stats.get_stats()
+  def get_all_stats, do: ApplicationService.get_stats()
 
   @doc """
   Increments a counter statistic for the given type.
   Types can be :kill, :system, :character, etc.
   """
-  def increment_counter(type), do: Stats.increment(type)
+  def increment_counter(type), do: ApplicationService.increment_metric(type)
 end

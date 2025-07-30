@@ -1,8 +1,8 @@
-defmodule WandererNotifier.Domains.License.ServiceTest do
+defmodule WandererNotifier.Domains.License.LicenseServiceTest do
   use ExUnit.Case, async: false
   import Mox
 
-  alias WandererNotifier.Domains.License.Service
+  alias WandererNotifier.Domains.License.LicenseService, as: Service
 
   setup :verify_on_exit!
 
@@ -11,9 +11,9 @@ defmodule WandererNotifier.Domains.License.ServiceTest do
     Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
     # Start the License Service if not already running
-    case Process.whereis(WandererNotifier.Domains.License.Service) do
+    case Process.whereis(WandererNotifier.Domains.License.LicenseService) do
       nil ->
-        {:ok, _pid} = WandererNotifier.Domains.License.Service.start_link([])
+        {:ok, _pid} = WandererNotifier.Domains.License.LicenseService.start_link([])
 
       _pid ->
         :ok

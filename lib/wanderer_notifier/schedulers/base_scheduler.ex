@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Application.Services.Stats
+  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Shared.Types.Constants
 
   @callback feature_flag() :: atom()
@@ -302,7 +302,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         # This function will only be called from schedulers that return :systems or :characters
         case module.stats_type() do
           stat_type when stat_type in [:systems, :characters] ->
-            Stats.set_tracked_count(stat_type, count)
+            ApplicationService.set_tracked_count(stat_type, count)
 
           _ ->
             :ok

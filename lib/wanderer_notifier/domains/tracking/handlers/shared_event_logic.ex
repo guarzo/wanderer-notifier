@@ -42,7 +42,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
     payload = Map.get(event, "payload", %{})
 
     # Log payload information with size limiting to prevent log flooding
-    Logger.info("#{event_type} payload received",
+    Logger.debug("#{event_type} payload received",
       map_slug: map_slug,
       event_type: event_type,
       payload: truncate_payload(payload),
@@ -51,7 +51,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       category: :api
     )
 
-    Logger.info("Processing #{event_type} event",
+    Logger.debug("Processing #{event_type} event",
       map_slug: map_slug,
       event_type: event_type,
       entity_name: extract_entity_name(payload),
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
     with {:ok, entity} <- extract_fn.(payload),
          :ok <- cache_fn.(entity),
          :ok <- notify_fn.(entity) do
-      Logger.info("#{event_type} processed successfully",
+      Logger.debug("#{event_type} processed successfully",
         map_slug: map_slug,
         event_type: event_type,
         entity_name: extract_entity_name_from_result(entity),
@@ -162,7 +162,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       entity_name = extract_entity_name_from_result(entity)
       entity_id = extract_entity_id_from_result(entity)
 
-      Logger.info(action_description,
+      Logger.debug(action_description,
         entity_name: entity_name,
         entity_id: entity_id,
         category: :api

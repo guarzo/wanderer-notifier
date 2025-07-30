@@ -109,11 +109,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
   """
   def setup_client_mocks do
     # HTTP Client defaults
-    stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-      {:ok, %{status_code: 200, body: "{}"}}
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post, fn _url, _body, _headers, _opts ->
+    stub(WandererNotifier.HTTPMock, :request, fn _method, _url, _body, _headers, _opts ->
       {:ok, %{status_code: 200, body: "{}"}}
     end)
 
@@ -174,11 +170,7 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
       })
   """
   def setup_http_mocks(url_responses) when is_map(url_responses) do
-    stub(WandererNotifier.HTTPMock, :get, fn url, _headers, _opts ->
-      Map.get(url_responses, url, {:ok, %{status_code: 404, body: "Not Found"}})
-    end)
-
-    stub(WandererNotifier.HTTPMock, :post, fn url, _body, _headers, _opts ->
+    stub(WandererNotifier.HTTPMock, :request, fn _method, url, _body, _headers, _opts ->
       Map.get(url_responses, url, {:ok, %{status_code: 404, body: "Not Found"}})
     end)
   end

@@ -7,6 +7,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Tracking.Entities.{Character, System}
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
+  alias WandererNotifier.Domains.Notifications.Determiner
   require Logger
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -28,6 +29,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     format_system_notification(system)
   end
 
+  def format_notification(%{id: _id} = rally_point) when is_map_key(rally_point, :system_name) do
+    format_rally_point_notification(rally_point)
+  end
+
   # ═══════════════════════════════════════════════════════════════════════════════
   # Kill Notifications
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -36,12 +41,25 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     # Build complete description with all information
     full_description = build_full_kill_description(killmail)
 
+    # Determine color based on tracked character role
+    tracked_role = get_tracked_character_role(killmail)
+
+    embed_color =
+      case tracked_role do
+        # Green for kills
+        :attacker -> Utils.get_color(:success)
+        # Red for losses
+        :victim -> Utils.get_color(:kill)
+        # Default red for system kills
+        :none -> Utils.get_color(:kill)
+      end
+
     %{
       type: :kill_notification,
       # No title to avoid duplication
       title: nil,
       description: full_description,
-      color: Utils.get_color(:kill),
+      color: embed_color,
       url: Utils.zkillboard_url(killmail.killmail_id),
       # Keep corp icon with "Kill"
       author: build_kill_author_icon(killmail),
@@ -56,6 +74,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp build_kill_author_icon(%Killmail{} = killmail) do
+    # Determine if tracked character is victim or attacker
+    tracked_as = get_tracked_character_role(killmail)
+    author_name = if tracked_as == :victim, do: "Loss", else: "Kill"
+
     final_blow = get_final_blow_attacker(killmail.attackers)
 
     corp_id =
@@ -65,21 +87,21 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
     if corp_id do
       %{
-        name: "Kill",
+        name: author_name,
         icon_url: Utils.corporation_logo_url(corp_id, 32),
         url: Utils.zkillboard_url(killmail.killmail_id)
       }
     else
       %{
-        name: "Kill",
+        name: author_name,
         url: Utils.zkillboard_url(killmail.killmail_id)
       }
     end
   end
 
   defp build_full_kill_description(%Killmail{} = killmail) do
-    # System line
-    system_name = killmail.system_name || "Unknown System"
+    # System line - use custom name if available
+    system_name = get_system_display_name(killmail)
 
     system_link =
       if killmail.system_id do
@@ -93,6 +115,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     attacker_part = build_attacker_description_part(killmail)
     main_line = "#{victim_part} #{attacker_part}"
 
+    # Notable loot section
+    notable_loot_section = build_notable_loot_section(killmail)
+
     # Value and timestamp
     value_time_line =
       if killmail.value && killmail.value > 0 do
@@ -105,7 +130,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     """
     Ship destroyed in #{system_link}
 
-    #{main_line}
+    #{main_line}#{notable_loot_section}
 
     #{value_time_line}
     """
@@ -163,75 +188,76 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     final_blow = get_final_blow_attacker(killmail.attackers)
     attacker_count = length(killmail.attackers || [])
 
-    if final_blow do
-      attacker_name = Map.get(final_blow, "character_name", "Unknown")
-      attacker_id = Map.get(final_blow, "character_id")
-      attacker_corp_id = Map.get(final_blow, "corporation_id")
-      attacker_ship = Map.get(final_blow, "ship_name", "Unknown Ship")
+    case final_blow do
+      nil ->
+        "unknown attackers"
 
-      # Get corporation ticker
-      attacker_ticker = get_attacker_corp_ticker(final_blow)
-
-      # Create character link
-      attacker_link =
-        if attacker_id do
-          "[#{attacker_name}](https://zkillboard.com/character/#{attacker_id}/)"
-        else
-          attacker_name
-        end
-
-      # Create corp ticker link
-      attacker_corp_link =
-        if attacker_corp_id do
-          "[#{attacker_ticker}](https://zkillboard.com/corporation/#{attacker_corp_id}/)"
-        else
-          attacker_ticker
-        end
-
-      attacker_display = "#{attacker_link}(#{attacker_corp_link})"
-
-      if attacker_count == 1 do
-        "#{attacker_display} flying in a #{attacker_ship} solo."
-      else
-        top_damage = get_top_damage_attacker(killmail.attackers)
-
-        top_damage_part =
-          if top_damage && top_damage != final_blow do
-            top_name = Map.get(top_damage, "character_name", "Unknown")
-            top_id = Map.get(top_damage, "character_id")
-            top_corp_id = Map.get(top_damage, "corporation_id")
-            top_ship = Map.get(top_damage, "ship_name", "Unknown Ship")
-            top_ticker = get_attacker_corp_ticker(top_damage)
-
-            # Create character link
-            top_link =
-              if top_id do
-                "[#{top_name}](https://zkillboard.com/character/#{top_id}/)"
-              else
-                top_name
-              end
-
-            # Create corp ticker link
-            top_corp_link =
-              if top_corp_id do
-                "[#{top_ticker}](https://zkillboard.com/corporation/#{top_corp_id}/)"
-              else
-                top_ticker
-              end
-
-            ", Top Damage was done by #{top_link}(#{top_corp_link}) flying in a #{top_ship}"
-          else
-            ""
-          end
-
-        others_count = attacker_count - 1
-
-        "#{attacker_display} flying in a #{attacker_ship}#{top_damage_part} and #{others_count} others"
-      end
-    else
-      "unknown attackers"
+      final_blow ->
+        build_attacker_description_with_final_blow(final_blow, killmail.attackers, attacker_count)
     end
   end
+
+  defp build_attacker_description_with_final_blow(final_blow, attackers, attacker_count) do
+    attacker_display = build_attacker_display(final_blow)
+    attacker_ship = Map.get(final_blow, "ship_name", "Unknown Ship")
+
+    if attacker_count == 1 do
+      "#{attacker_display} flying in a #{attacker_ship} solo."
+    else
+      build_multi_attacker_description(
+        attacker_display,
+        attacker_ship,
+        final_blow,
+        attackers,
+        attacker_count
+      )
+    end
+  end
+
+  defp build_attacker_display(attacker) do
+    attacker_name = Map.get(attacker, "character_name", "Unknown")
+    attacker_id = Map.get(attacker, "character_id")
+    attacker_corp_id = Map.get(attacker, "corporation_id")
+    attacker_ticker = get_attacker_corp_ticker(attacker)
+
+    attacker_link = create_character_link(attacker_name, attacker_id)
+    attacker_corp_link = create_corporation_link(attacker_ticker, attacker_corp_id)
+
+    "#{attacker_link}(#{attacker_corp_link})"
+  end
+
+  defp build_multi_attacker_description(
+         attacker_display,
+         attacker_ship,
+         final_blow,
+         attackers,
+         attacker_count
+       ) do
+    top_damage_part = build_top_damage_part(attackers, final_blow)
+    others_count = attacker_count - 1
+
+    "#{attacker_display} flying in a #{attacker_ship}#{top_damage_part} and #{others_count} others"
+  end
+
+  defp build_top_damage_part(attackers, final_blow) do
+    top_damage = get_top_damage_attacker(attackers)
+
+    if top_damage && top_damage != final_blow do
+      top_display = build_attacker_display(top_damage)
+      top_ship = Map.get(top_damage, "ship_name", "Unknown Ship")
+      ", Top Damage was done by #{top_display} flying in a #{top_ship}"
+    else
+      ""
+    end
+  end
+
+  defp create_character_link(name, nil), do: name
+  defp create_character_link(name, id), do: "[#{name}](https://zkillboard.com/character/#{id}/)"
+
+  defp create_corporation_link(ticker, nil), do: ticker
+
+  defp create_corporation_link(ticker, id),
+    do: "[#{ticker}](https://zkillboard.com/corporation/#{id}/)"
 
   defp get_top_damage_attacker(nil), do: nil
   defp get_top_damage_attacker([]), do: nil
@@ -242,28 +268,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   defp get_corp_ticker_from_killmail(%Killmail{} = killmail, "victim") do
     case killmail.victim_corporation_id do
-      nil ->
-        "NONE"
-
-      corp_id ->
-        # Try to get ticker from ESI
-        case get_corp_ticker_from_esi(corp_id) do
-          {:ok, ticker} ->
-            ticker
-
-          _ ->
-            # Fallback to abbreviated corp name
-            case killmail.victim_corporation_name do
-              nil ->
-                "CORP"
-
-              name ->
-                # Try to extract a reasonable ticker from the name
-                create_ticker_from_name(name)
-            end
-        end
+      nil -> "NONE"
+      corp_id -> get_victim_corp_ticker(corp_id, killmail.victim_corporation_name)
     end
   end
+
+  defp get_victim_corp_ticker(corp_id, corp_name) do
+    case get_corp_ticker_from_esi(corp_id) do
+      {:ok, ticker} -> ticker
+      _ -> fallback_victim_ticker(corp_name)
+    end
+  end
+
+  defp fallback_victim_ticker(nil), do: "CORP"
+  defp fallback_victim_ticker(name), do: create_ticker_from_name(name)
 
   defp get_attacker_corp_ticker(attacker) do
     # First check if we have a ticker in the attacker data
@@ -272,26 +290,26 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     if ticker do
       ticker
     else
-      case Map.get(attacker, "corporation_id") do
-        nil ->
-          "NONE"
-
-        corp_id ->
-          # Try to get ticker from ESI
-          case get_corp_ticker_from_esi(corp_id) do
-            {:ok, ticker} ->
-              ticker
-
-            _ ->
-              # Fallback to creating ticker from name
-              case Map.get(attacker, "corporation_name") do
-                nil -> "CORP"
-                name -> create_ticker_from_name(name)
-              end
-          end
-      end
+      get_ticker_from_corp_data(attacker)
     end
   end
+
+  defp get_ticker_from_corp_data(attacker) do
+    case Map.get(attacker, "corporation_id") do
+      nil -> "NONE"
+      corp_id -> get_ticker_with_fallback(corp_id, Map.get(attacker, "corporation_name"))
+    end
+  end
+
+  defp get_ticker_with_fallback(corp_id, corp_name) do
+    case get_corp_ticker_from_esi(corp_id) do
+      {:ok, ticker} -> ticker
+      _ -> fallback_ticker_from_name(corp_name)
+    end
+  end
+
+  defp fallback_ticker_from_name(nil), do: "CORP"
+  defp fallback_ticker_from_name(name), do: create_ticker_from_name(name)
 
   defp get_corp_ticker_from_esi(corp_id) do
     # Check cache first
@@ -316,6 +334,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp create_ticker_from_name(name) do
+    cache_key = "generated:ticker:#{name}"
+
+    case WandererNotifier.Infrastructure.Cache.get(cache_key) do
+      {:ok, ticker} ->
+        ticker
+
+      _ ->
+        ticker = generate_ticker_from_name(name)
+        WandererNotifier.Infrastructure.Cache.put(cache_key, ticker, :timer.hours(24))
+        ticker
+    end
+  end
+
+  defp generate_ticker_from_name(name) do
     # Create a ticker from corporation name
     # Examples: "Goonswarm Federation" -> "GOONF", "Pandemic Horde" -> "HORDE"
     words = String.split(name, " ")
@@ -351,29 +383,28 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   defp format_timestamp(_), do: "Recently"
 
   defp format_time_from_iso(iso_time) do
-    # Simple time extraction - in production would use proper date parsing
-    case String.split(iso_time, "T") do
-      [_date, time_part] ->
-        case String.split(time_part, ":") do
-          [hour_str, minute_str | _] ->
-            hour = String.to_integer(hour_str)
-
-            {display_hour, period} =
-              if hour >= 12 do
-                {if(hour > 12, do: hour - 12, else: hour), "PM"}
-              else
-                {if(hour == 0, do: 12, else: hour), "AM"}
-              end
-
-            "#{display_hour}:#{minute_str} #{period}"
-
-          _ ->
-            "Unknown time"
-        end
-
-      _ ->
-        "Unknown time"
+    with [_date, time_part] <- String.split(iso_time, "T"),
+         [hour_str, minute_str | _] <- String.split(time_part, ":") do
+      format_12_hour_time(hour_str, minute_str)
+    else
+      _ -> "Unknown time"
     end
+  end
+
+  defp format_12_hour_time(hour_str, minute_str) do
+    hour = String.to_integer(hour_str)
+    {display_hour, period} = convert_to_12_hour(hour)
+    "#{display_hour}:#{minute_str} #{period}"
+  end
+
+  defp convert_to_12_hour(hour) when hour >= 12 do
+    display_hour = if hour > 12, do: hour - 12, else: hour
+    {display_hour, "PM"}
+  end
+
+  defp convert_to_12_hour(hour) do
+    display_hour = if hour == 0, do: 12, else: hour
+    {display_hour, "AM"}
   end
 
   defp get_final_blow_attacker(nil), do: nil
@@ -382,6 +413,105 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   defp get_final_blow_attacker(attackers) do
     Enum.find(attackers, fn att -> Map.get(att, "final_blow") == true end) ||
       Enum.max_by(attackers, fn att -> Map.get(att, "damage_done", 0) end, fn -> nil end)
+  end
+
+  defp get_tracked_character_role(%Killmail{} = killmail) do
+    cond do
+      victim_tracked?(killmail) -> :victim
+      any_attacker_tracked?(killmail) -> :attacker
+      true -> :none
+    end
+  end
+
+  defp victim_tracked?(%Killmail{victim_character_id: nil}), do: false
+
+  defp victim_tracked?(%Killmail{victim_character_id: id}),
+    do: Determiner.tracked_character?(id)
+
+  defp any_attacker_tracked?(%Killmail{attackers: nil}), do: false
+  defp any_attacker_tracked?(%Killmail{attackers: []}), do: false
+
+  defp any_attacker_tracked?(%Killmail{attackers: attackers}) do
+    Enum.any?(attackers, fn attacker ->
+      case Map.get(attacker, "character_id") do
+        nil -> false
+        id -> Determiner.tracked_character?(id)
+      end
+    end)
+  end
+
+  defp get_system_display_name(%Killmail{} = killmail) do
+    case killmail.system_id do
+      nil -> get_fallback_system_name(killmail)
+      system_id -> get_custom_system_name(system_id, killmail)
+    end
+  end
+
+  defp get_custom_system_name(system_id, killmail) when is_integer(system_id) do
+    system_id
+    |> Integer.to_string()
+    |> fetch_system_name(killmail)
+  end
+
+  defp get_custom_system_name(system_id, killmail) when is_binary(system_id) do
+    fetch_system_name(system_id, killmail)
+  end
+
+  defp fetch_system_name(system_id_string, killmail) do
+    case WandererNotifier.Domains.Tracking.Entities.System.get_system(system_id_string) do
+      {:ok, system_struct} when is_struct(system_struct) ->
+        # Use struct field access instead of Access behavior
+        case system_struct.name do
+          name when is_binary(name) and name != "" -> name
+          _ -> get_fallback_system_name(killmail)
+        end
+
+      {:error, :not_found} ->
+        get_fallback_system_name(killmail)
+
+      _ ->
+        get_fallback_system_name(killmail)
+    end
+  end
+
+  defp get_fallback_system_name(killmail) do
+    killmail.system_name || "Unknown System"
+  end
+
+  defp build_notable_loot_section(%Killmail{notable_items: nil}), do: ""
+  defp build_notable_loot_section(%Killmail{notable_items: []}), do: ""
+
+  defp build_notable_loot_section(%Killmail{notable_items: items}) when is_list(items) do
+    # Format as shown in loot.png
+    items_text =
+      items
+      |> Enum.map(&format_notable_item/1)
+      |> Enum.join("\n")
+
+    "\n\n**Notable Loot**\n#{items_text}"
+  end
+
+  defp format_notable_item(item) do
+    # Format: "Abyssal Stasis Webifier x1 (500M ISK)"
+    # or: "50MN Abyssal Microwarpdrive x1 (1.2B ISK)"
+    name = Map.get(item, "name", "Unknown Item")
+    quantity = Map.get(item, "quantity", 1)
+    total_value = Map.get(item, "total_value", 0)
+
+    # Format the item with quantity
+    item_text =
+      if quantity > 1 do
+        "#{name} x#{quantity}"
+      else
+        name
+      end
+
+    # Add value in parentheses
+    if total_value > 0 do
+      "#{item_text} (#{Utils.format_isk(total_value)})"
+    else
+      item_text
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -458,7 +588,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp get_alliance_name(%Character{} = character) do
-    # For character notifications, we want to use ticker as the primary name since  
+    # For character notifications, we want to use ticker as the primary name since
     # we don't have full alliance names in the character tracking data
     character.alliance_ticker || "Unknown Alliance"
   end
@@ -663,6 +793,43 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   defp icon_from_security_status(security) when security > 0.0, do: :lowsec
   defp icon_from_security_status(+0.0), do: :nullsec
   defp icon_from_security_status(_), do: :wormhole
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Rally Point Notifications
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp format_rally_point_notification(rally_point) do
+    %{
+      type: :rally_point,
+      title: "Rally Point Created",
+      description:
+        "#{rally_point.character_name} has created a rally point in **#{rally_point.system_name}**",
+      # Green
+      color: 0x00FF00,
+      fields: [
+        %{
+          name: "System",
+          value: rally_point.system_name,
+          inline: true
+        },
+        %{
+          name: "Created By",
+          value: rally_point.character_name,
+          inline: true
+        },
+        %{
+          name: "Message",
+          value: rally_point.message || "No message provided",
+          inline: false
+        }
+      ],
+      footer: %{
+        text: "Rally Point Notification",
+        icon_url: nil
+      },
+      timestamp: rally_point[:created_at] || DateTime.utc_now()
+    }
+  end
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Plain Text Formatting

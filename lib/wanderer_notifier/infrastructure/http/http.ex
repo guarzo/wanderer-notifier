@@ -10,6 +10,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `:esi` - EVE Online ESI API with rate limiting and retry logic
   - `:wanderer_kills` - WandererKills API with moderate rate limits
   - `:license` - License validation API with conservative limits
+  - `:janice` - Janice price evaluation API with moderate rate limits
   - `:map` - Internal map API with extended timeouts
   - `:streaming` - Special configuration for streaming endpoints
 
@@ -41,7 +42,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
-  @type service :: :esi | :wanderer_kills | :license | :map | :streaming | nil
+  @type service :: :esi | :wanderer_kills | :license | :janice | :map | :streaming | nil
   @type middleware :: module()
   @type request :: %{
           method: method(),
@@ -128,13 +129,8 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   defp call_mock_method(method, url, encoded_body, final_headers, final_opts) do
-    case method do
-      :get -> http_client().get(url, final_headers, final_opts)
-      :post -> http_client().post(url, encoded_body, final_headers, final_opts)
-      :put -> http_client().put(url, encoded_body, final_headers, final_opts)
-      :delete -> http_client().delete(url, final_headers, final_opts)
-      _ -> {:error, {:unsupported_method, method}}
-    end
+    # Call the mock's request/5 method directly
+    http_client().request(method, url, encoded_body, final_headers, final_opts)
   end
 
   defp make_real_request(method, url, body, headers, opts) do
@@ -311,6 +307,15 @@ defmodule WandererNotifier.Infrastructure.Http do
       middlewares: [RateLimiter],
       decode_json: true
     ],
+    janice: [
+      timeout: 20_000,
+      retry_count: 2,
+      retry_delay: 1_000,
+      retryable_status_codes: [429, 500, 502, 503, 504],
+      rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
+      middlewares: [Retry, RateLimiter],
+      decode_json: true
+    ],
     map: [
       timeout: 60_000,
       retry_count: 2,
@@ -389,6 +394,24 @@ defmodule WandererNotifier.Infrastructure.Http do
 
   defp transform_response({:error, reason}) do
     ErrorHandler.normalize_error({:error, reason})
+  end
+
+  @doc """
+  Makes a GET request with JSON decoding enabled.
+
+  ## Parameters
+    - url: The URL to request
+    - headers: Optional headers (defaults to [])
+    - opts: Optional configuration (defaults to [])
+
+  ## Returns
+    - {:ok, response} on success with JSON-decoded body
+    - {:error, reason} on failure
+  """
+  @spec get_json(url(), headers(), opts()) :: response()
+  def get_json(url, headers \\ [], opts \\ []) do
+    json_opts = Keyword.put(opts, :decode_json, true)
+    request(:get, url, nil, headers, json_opts)
   end
 
   @doc """

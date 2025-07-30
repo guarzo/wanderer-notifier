@@ -154,11 +154,18 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # Convert to Nostrum.Struct.Embed
     discord_embed = convert_to_nostrum_embed(embed)
 
+    # Check if there's content to send with the embed
+    content = Map.get(embed, :content, "")
+
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     try do
-      channel_id
-      |> String.to_integer()
-      |> send_discord_message(discord_embed)
+      channel_id_int = String.to_integer(channel_id)
+
+      if is_binary(content) and String.trim(content) != "" do
+        send_discord_message(channel_id_int, discord_embed, content)
+      else
+        send_discord_message(channel_id_int, discord_embed)
+      end
     rescue
       e ->
         handle_exception(e, channel_id)
@@ -174,6 +181,23 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       {:error, response} ->
         handle_discord_error(response, channel_id_int)
     end
+  end
+
+  # Send message with content to Discord and handle the response
+  defp send_discord_message(channel_id_int, discord_embed, content)
+       when is_binary(content) and content != "" do
+    case Message.create(channel_id_int, content: content, embeds: [discord_embed]) do
+      {:ok, _message} ->
+        :ok
+
+      {:error, response} ->
+        handle_discord_error(response, channel_id_int)
+    end
+  end
+
+  defp send_discord_message(channel_id_int, discord_embed, _content) do
+    # Fallback to embed-only if content is empty or nil
+    send_discord_message(channel_id_int, discord_embed)
   end
 
   # Handle different types of Discord API errors
@@ -455,7 +479,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   """
   @impl true
   def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    Logger.info("Received Discord interaction",
+    Logger.debug("Received Discord interaction",
       type: interaction.type,
       guild_id: interaction.guild_id,
       channel_id: interaction.channel_id,

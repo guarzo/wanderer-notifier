@@ -154,7 +154,16 @@ defmodule WandererNotifier.Test.Support.Mocks.TestDataFactory do
       "alliance_ticker" => Keyword.get(opts, :alliance_ticker, "ALLY")
     }
 
-    Character.new(attrs)
+    %Character{
+      character_id: attrs["eve_id"],
+      name: attrs["name"],
+      corporation_id: attrs["corporation_id"],
+      alliance_id: attrs["alliance_id"],
+      eve_id: attrs["eve_id"],
+      corporation_ticker: attrs["corporation_ticker"],
+      alliance_ticker: attrs["alliance_ticker"],
+      tracked: false
+    }
   end
 
   @doc """
@@ -194,7 +203,14 @@ defmodule WandererNotifier.Test.Support.Mocks.TestDataFactory do
       "security_status" => Keyword.get(opts, :security_status, 0.946)
     }
 
-    System.new(attrs)
+    %System{
+      solar_system_id: to_string(attrs["solar_system_id"]),
+      name: attrs["name"],
+      region_name: attrs["region_name"],
+      system_type: to_string(attrs["system_type"]),
+      security_status: attrs["security_status"],
+      tracked: false
+    }
   end
 
   @doc """
@@ -211,7 +227,16 @@ defmodule WandererNotifier.Test.Support.Mocks.TestDataFactory do
       "effect_name" => Keyword.get(opts, :effect_name, "Pulsar")
     }
 
-    System.new(attrs)
+    %System{
+      solar_system_id: to_string(attrs["solar_system_id"]),
+      name: attrs["name"],
+      system_type: to_string(attrs["system_type"]),
+      class_title: attrs["class_title"],
+      is_shattered: attrs["is_shattered"],
+      statics: attrs["statics"],
+      effect_name: attrs["effect_name"],
+      tracked: false
+    }
   end
 
   @doc """

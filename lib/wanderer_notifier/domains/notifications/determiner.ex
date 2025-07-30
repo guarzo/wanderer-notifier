@@ -11,7 +11,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
-  alias WandererNotifier.Domains.Tracking.Entities.Character, as: Character
   alias WandererNotifier.Domains.Tracking.Entities.System, as: System
   alias WandererNotifier.Domains.Killmail.Killmail
 
@@ -68,6 +67,18 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   def should_notify?(:kill, _killmail_id, killmail_data) do
     # For killmails, we delegate to the specialized killmail logic
     should_notify_killmail?(killmail_data)
+  end
+
+  def should_notify?(:rally_point, rally_id, _rally_data) do
+    if Config.rally_notifications_enabled?() do
+      case Deduplication.check(:rally_point, rally_id) do
+        {:ok, :new} -> true
+        {:ok, :duplicate} -> false
+        {:error, _reason} -> true
+      end
+    else
+      false
+    end
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -173,9 +184,10 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    case Character.is_tracked?(character_id_str) do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
+           character_id_str
+         ) do
       {:ok, tracked} -> tracked
-      _ -> false
     end
   end
 
@@ -190,9 +202,8 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    case System.is_tracked?(system_id_str) do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
       {:ok, tracked} -> tracked
-      _ -> false
     end
   end
 
@@ -359,7 +370,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   def tracked_system_info(system_id) do
     case System.get_system(system_id) do
       {:ok, system_info} -> system_info
-      {:error, _} -> nil
+      {:error, :not_found} -> nil
     end
   end
 end

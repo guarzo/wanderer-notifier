@@ -182,11 +182,11 @@ defmodule WandererNotifier.EventSourcing.Event do
          data: data
        }) do
     cond do
-      is_nil(id) or id == "" -> {:error, "Event ID is required"}
-      is_nil(type) or type == "" -> {:error, "Event type is required"}
-      is_nil(source) -> {:error, "Event source is required"}
-      is_nil(timestamp) -> {:error, "Event timestamp is required"}
-      is_nil(data) -> {:error, "Event data is required"}
+      is_nil(id) or id == "" -> {:error, :event_id_required}
+      is_nil(type) or type == "" -> {:error, :event_type_required}
+      is_nil(source) -> {:error, :event_source_required}
+      is_nil(timestamp) -> {:error, :event_timestamp_required}
+      is_nil(data) -> {:error, :event_data_required}
       true -> :ok
     end
   end

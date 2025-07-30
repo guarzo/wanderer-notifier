@@ -158,7 +158,7 @@ defmodule WandererNotifier.EventSourcing.Pipeline do
     # Update statistics
     stats = update_batch_stats(state.stats, results, processing_time)
 
-    Logger.info("Batch processed",
+    Logger.debug("Batch processed",
       batch_size: length(batch),
       processing_time_ms: processing_time,
       successes: results.successes,

@@ -3,7 +3,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   Mock implementation of the cache behavior for testing.
   """
 
-  alias WandererNotifier.Shared.Logger.Logger, as: AppLogger
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
 
   # Mock state that can be configured per test
@@ -81,11 +80,6 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   end
 
   def set(key, value, _ttl) do
-    AppLogger.cache_debug("Setting cache value with TTL",
-      key: key,
-      value: value
-    )
-
     Process.put({:cache, key}, value)
     :ok
   end

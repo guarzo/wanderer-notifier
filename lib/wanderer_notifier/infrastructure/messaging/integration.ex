@@ -22,7 +22,7 @@ defmodule WandererNotifier.Infrastructure.Messaging.Integration do
 
   alias WandererNotifier.EventSourcing.{Event, Pipeline}
 
-  alias WandererNotifier.Application.Telemetry.Metrics.{
+  alias WandererNotifier.Shared.Telemetry.{
     Collector,
     Dashboard,
     PerformanceMonitor,

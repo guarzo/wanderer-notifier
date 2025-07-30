@@ -34,6 +34,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @universe_type_ttl :timer.hours(24)
   @killmail_ttl :timer.minutes(30)
   @map_data_ttl :timer.hours(1)
+  @item_price_ttl :timer.hours(6)
 
   @type cache_key :: String.t()
   @type cache_value :: term()
@@ -54,6 +55,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   def universe_type_ttl, do: @universe_type_ttl
   def killmail_ttl, do: @killmail_ttl
   def map_ttl, do: @map_data_ttl
+  def item_price_ttl, do: @item_price_ttl
 
   def ttl_for(:map_data), do: @map_data_ttl
   def ttl_for(_), do: @default_ttl
@@ -70,6 +72,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
     def alliance(id), do: "esi:alliance:#{id}"
     def system(id), do: "esi:system:#{id}"
     def universe_type(id), do: "esi:universe_type:#{id}"
+    def item_price(id), do: "esi:item_price:#{id}"
     def killmail(id), do: "killmail:#{id}"
     def notification_dedup(key), do: "notification:dedup:#{key}"
     def map_systems, do: "map:systems"
@@ -253,6 +256,22 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @spec put_universe_type(integer(), map()) :: :ok | {:error, term()}
   def put_universe_type(type_id, data) when is_integer(type_id) and is_map(data) do
     put(Keys.universe_type(type_id), data, universe_type_ttl())
+  end
+
+  @doc """
+  Gets item price data from cache.
+  """
+  @spec get_item_price(integer()) :: cache_result()
+  def get_item_price(type_id) when is_integer(type_id) do
+    get(Keys.item_price(type_id))
+  end
+
+  @doc """
+  Puts item price data in cache with 6-hour TTL.
+  """
+  @spec put_item_price(integer(), map()) :: :ok | {:error, term()}
+  def put_item_price(type_id, data) when is_integer(type_id) and is_map(data) do
+    put(Keys.item_price(type_id), data, item_price_ttl())
   end
 
   # ============================================================================
