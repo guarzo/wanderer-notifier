@@ -67,8 +67,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     connection_id =
       "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
 
-    if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-      WandererNotifier.Infrastructure.Messaging.Integration.register_websocket_connection(
+    if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
+      WandererNotifier.Infrastructure.ConnectionHealthService.register_websocket_connection(
         connection_id,
         %{
           url: state.url,
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       )
 
       # Update connection status
-      WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
+      WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
         connection_id,
         :connected
       )
@@ -124,10 +124,10 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     cancel_timer(state.heartbeat_ref)
     cancel_timer(state.subscription_update_ref)
 
-    # Update connection status in monitoring system (skip if Integration not running)
+    # Update connection status in monitoring system (skip if ConnectionHealthService not running)
     if Map.has_key?(state, :connection_id) &&
-         Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-      WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
+         Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
+      WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
         state.connection_id,
         :disconnected,
         %{reason: reason}
@@ -328,17 +328,10 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp calculate_connection_uptime(_), do: 0
 
-  defp record_heartbeat_in_monitoring(state) do
-    # Record heartbeat in monitoring system (skip if Integration not running)
-    if should_record_heartbeat?(state) do
-      WandererNotifier.Infrastructure.Messaging.Integration.record_heartbeat(state.connection_id)
-    end
-  end
-
-  defp should_record_heartbeat?(state) do
-    Map.has_key?(state, :connection_id) &&
-      state.connection_id &&
-      Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) != nil
+  defp record_heartbeat_in_monitoring(_state) do
+    # Heartbeat recording removed - ConnectionHealthService doesn't need explicit heartbeats
+    # Connection status is updated on connect/disconnect events only
+    :ok
   end
 
   defp send_phoenix_heartbeat(state) do
@@ -712,33 +705,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Send transformed killmail to pipeline worker
   defp send_to_pipeline(killmail, state) do
-    # Process through the new integrated pipeline (skip if Integration not running)
-    if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-      case WandererNotifier.Infrastructure.Messaging.Integration.process_websocket_killmail(
-             killmail
-           ) do
-        {:ok, :duplicate} ->
-          # Duplicate filtered, don't send to legacy pipeline
-          :ok
-
-        {:ok, _event} ->
-          # Successfully processed, also send to legacy pipeline for backward compatibility
-          send_to_legacy_pipeline(killmail, state)
-
-        {:error, reason} ->
-          Logger.error(
-            "Failed to process killmail through integration pipeline",
-            error: inspect(reason),
-            killmail_id: Map.get(killmail, :killmail_id)
-          )
-
-          # Still send to legacy pipeline as fallback
-          send_to_legacy_pipeline(killmail, state)
-      end
-    else
-      # Integration not running, send directly to legacy pipeline
-      send_to_legacy_pipeline(killmail, state)
-    end
+    # Skip Integration module entirely - it has redundant deduplication
+    # The Pipeline module has the proper domain-specific deduplication
+    send_to_legacy_pipeline(killmail, state)
   end
 
   defp send_to_legacy_pipeline(killmail, state) do

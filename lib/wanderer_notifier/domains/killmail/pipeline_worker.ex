@@ -156,9 +156,16 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   end
 
   defp log_killmail_received(killmail) do
-    Logger.debug("Received WebSocket killmail",
-      killmail_id: killmail[:killmail_id],
-      system_id: killmail[:system_id]
+    victim_info = extract_victim_info(killmail)
+    system_info = extract_system_info(killmail)
+
+    Logger.info("Received WebSocket killmail",
+      killmail_id: get_killmail_value(killmail, "killmail_id"),
+      system_id: get_killmail_value(killmail, "system_id"),
+      system_name: system_info.name,
+      victim_id: victim_info.id,
+      victim_name: victim_info.name,
+      data_keys: Map.keys(killmail) |> Enum.take(10)
     )
   end
 
@@ -191,5 +198,22 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
       system_id: Map.get(killmail, "system_id") || Map.get(killmail, :system_id),
       data_keys: Map.keys(killmail)
     )
+  end
+
+  defp extract_victim_info(killmail) do
+    victim_info = killmail["victim"] || killmail[:victim] || %{}
+    victim_name = victim_info["character_name"] || victim_info[:character_name] || "Unknown"
+    victim_id = victim_info["character_id"] || victim_info[:character_id]
+
+    %{name: victim_name, id: victim_id}
+  end
+
+  defp extract_system_info(killmail) do
+    system_name = killmail["system_name"] || killmail[:system_name] || "Unknown System"
+    %{name: system_name}
+  end
+
+  defp get_killmail_value(killmail, key) do
+    killmail[key] || killmail[String.to_atom(key)]
   end
 end

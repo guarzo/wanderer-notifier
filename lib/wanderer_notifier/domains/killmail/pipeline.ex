@@ -58,7 +58,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
         handle_skipped(kill_id, :duplicate)
 
       {:ok, false} ->
-        handle_skipped(kill_id, :not_tracked)
+        # Get killmail for logging details even though we're not notifying
+        case build_killmail(killmail_data) do
+          {:ok, %Killmail{} = killmail} ->
+            handle_skipped_with_details(kill_id, :not_tracked, killmail)
+
+          _ ->
+            handle_skipped(kill_id, :not_tracked)
+        end
 
       {:error, reason} ->
         handle_error(kill_id, reason)
@@ -195,8 +202,17 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      Logger.debug(
-        "[Pipeline] Tracking check - System #{killmail.system_id}: #{system_tracked}, Characters: #{character_tracked}"
+      victim_name = killmail.victim_character_name || "Unknown"
+      system_name = killmail.system_name || "Unknown System"
+
+      Logger.info(
+        "[Pipeline] Tracking check for killmail #{killmail.killmail_id}",
+        system_id: killmail.system_id,
+        system_name: system_name,
+        system_tracked: system_tracked,
+        victim_id: killmail.victim_character_id,
+        victim_name: victim_name,
+        character_tracked: character_tracked
       )
 
       {:ok, system_tracked or character_tracked}
@@ -229,8 +245,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
 
-    Logger.debug(
-      "[Pipeline] Character tracking - Victim #{killmail.victim_character_id}: #{victim_tracked}, Any attacker: #{attacker_tracked}"
+    victim_name = killmail.victim_character_name || "Unknown"
+
+    Logger.info(
+      "[Pipeline] Character tracking for killmail #{killmail.killmail_id}",
+      victim_id: killmail.victim_character_id,
+      victim_name: victim_name,
+      victim_tracked: victim_tracked,
+      any_attacker_tracked: attacker_tracked
     )
 
     {:ok, victim_tracked or attacker_tracked}
@@ -333,6 +355,30 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
     Logger.info("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
+
+    {:ok, :skipped}
+  end
+
+  @spec handle_skipped_with_details(String.t(), atom(), Killmail.t()) :: result()
+  defp handle_skipped_with_details(kill_id, reason, %Killmail{} = killmail) do
+    Telemetry.processing_completed(kill_id, {:ok, :skipped})
+    Telemetry.processing_skipped(kill_id, reason)
+
+    reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
+
+    victim_name = killmail.victim_character_name || "Unknown"
+    system_name = killmail.system_name || "Unknown System"
+
+    Logger.info("Killmail #{kill_id} skipped: #{reason_text}",
+      category: :killmail,
+      system_id: killmail.system_id,
+      system_name: system_name,
+      victim_id: killmail.victim_character_id,
+      victim_name: victim_name,
+      victim_corp: killmail.victim_corporation_name,
+      victim_alliance: killmail.victim_alliance_name,
+      attacker_count: length(killmail.attackers || [])
+    )
 
     {:ok, :skipped}
   end

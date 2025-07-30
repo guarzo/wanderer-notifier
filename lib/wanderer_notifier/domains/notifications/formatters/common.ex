@@ -53,26 +53,4 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Common do
       Map.put(embed, "components", components)
     end
   end
-
-  @doc """
-  Legacy color functions - now delegate to Utilities
-  """
-  def colors() do
-    # Return the legacy color map for backward compatibility
-    %{
-      default: 0x3498DB,
-      success: 0x5CB85C,
-      warning: 0xE28A0D,
-      error: 0xD9534F,
-      info: 0x3498DB,
-      wormhole: 0x428BCA,
-      highsec: 0x5CB85C,
-      lowsec: 0xE28A0D,
-      nullsec: 0xD9534F
-    }
-  end
-
-  defdelegate convert_color(color),
-    to: WandererNotifier.Domains.Notifications.Formatters.NotificationUtils,
-    as: :get_color
 end

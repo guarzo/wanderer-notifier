@@ -61,37 +61,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # System-Specific Implementation (Legacy API Compatibility)
   # ══════════════════════════════════════════════════════════════════════════════
 
-  @doc """
-  Handles the `add_system` event.
-
-  This event is fired when a new system is added to the map.
-  We process it similarly to how we handle new systems in the polling approach,
-  but without the need for cache comparison.
-  """
-  def handle_system_added(event, map_slug) do
-    handle_entity_added(event, map_slug)
-  end
-
-  @doc """
-  Handles the `deleted_system` event.
-
-  This event is fired when a system is removed from the map.
-  We update our cache but don't send notifications for deletions.
-  """
-  def handle_system_deleted(event, map_slug) do
-    handle_entity_removed(event, map_slug)
-  end
-
-  @doc """
-  Handles the `system_metadata_changed` event.
-
-  This event is fired when system properties are updated.
-  We update our cache but typically don't send notifications for metadata changes.
-  """
-  def handle_system_metadata_changed(event, map_slug) do
-    handle_entity_updated(event, map_slug)
-  end
-
   # ══════════════════════════════════════════════════════════════════════════════
   # System-Specific Data Processing
   # ══════════════════════════════════════════════════════════════════════════════
