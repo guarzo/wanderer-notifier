@@ -30,7 +30,9 @@ defmodule WandererNotifier.Map.SSEClient do
     "system_metadata_changed",
     "character_added",
     "character_removed",
-    "character_updated"
+    "character_updated",
+    "rally_point_added",
+    "rally_point_removed"
   ]
   @initial_reconnect_delay 1000
   @max_reconnect_delay 30_000
@@ -113,9 +115,8 @@ defmodule WandererNotifier.Map.SSEClient do
       connection_id: nil
     }
 
-    Logger.debug("SSE client initialized",
+    Logger.info("SSE client initialized with events: #{inspect(state.events_filter)}",
       map_slug: map_slug,
-      events_filter: inspect(state.events_filter),
       category: :api
     )
 
@@ -297,19 +298,26 @@ defmodule WandererNotifier.Map.SSEClient do
   @impl GenServer
   def handle_info(%HTTPoison.AsyncChunk{chunk: chunk, id: async_id}, state) do
     # Log raw chunk for debugging
-    Logger.debug("Received SSE chunk",
+    Logger.info("Received SSE chunk: #{String.slice(chunk, 0, 500)}",
       map_slug: state.map_slug,
-      chunk_size: byte_size(chunk),
-      chunk_preview: String.slice(chunk, 0, 200)
+      chunk_size: byte_size(chunk)
     )
 
     # Process SSE chunk
     case SSEParser.parse_chunk(chunk) do
       {:ok, events} ->
-        Logger.debug("Parsed SSE chunk into events",
-          map_slug: state.map_slug,
-          event_count: length(events)
+        Logger.info("Parsed #{length(events)} SSE events",
+          map_slug: state.map_slug
         )
+
+        # Log first event details if any
+        if length(events) > 0 do
+          first_event = hd(events)
+
+          Logger.info("First event type: #{inspect(Map.get(first_event, "type", "unknown"))}",
+            event: inspect(first_event, limit: 300)
+          )
+        end
 
         # Process events and return the updated state
         process_sse_events(events, state, async_id)

@@ -81,25 +81,37 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   """
   @spec send_kill_notification(map()) :: {:ok, atom()} | {:error, term()}
   def send_kill_notification(killmail_data) do
-    Logger.info("Sending kill notification",
-      killmail_id: Map.get(killmail_data, :killmail_id) || Map.get(killmail_data, "killmail_id"),
-      category: :notification
-    )
+    # Check if we're in the startup suppression period
+    if WandererNotifier.Shared.Utils.Startup.in_suppression_period?() do
+      Logger.info("Skipping kill notification during startup suppression period",
+        killmail_id:
+          Map.get(killmail_data, :killmail_id) || Map.get(killmail_data, "killmail_id"),
+        category: :notification
+      )
 
-    case ApplicationService.notify_kill(killmail_data) do
-      {:ok, result} ->
-        # Track the notification in metrics
-        ApplicationService.increment_metric(:notification_sent)
-        {:ok, result}
+      {:ok, :skipped_startup_suppression}
+    else
+      Logger.info("Sending kill notification",
+        killmail_id:
+          Map.get(killmail_data, :killmail_id) || Map.get(killmail_data, "killmail_id"),
+        category: :notification
+      )
 
-      {:error, reason} = error ->
-        Logger.warning("Kill notification failed",
-          reason: inspect(reason),
-          killmail_id: Map.get(killmail_data, :killmail_id),
-          category: :notification
-        )
+      case ApplicationService.notify_kill(killmail_data) do
+        {:ok, result} ->
+          # Track the notification in metrics
+          ApplicationService.increment_metric(:notification_sent)
+          {:ok, result}
 
-        error
+        {:error, reason} = error ->
+          Logger.warning("Kill notification failed",
+            reason: inspect(reason),
+            killmail_id: Map.get(killmail_data, :killmail_id),
+            category: :notification
+          )
+
+          error
+      end
     end
   end
 
@@ -280,6 +292,12 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   """
   @spec send_rally_point_notification(map()) :: {:ok, atom()} | {:error, term()}
   def send_rally_point_notification(rally_point) do
+    Logger.info("Rally point notification requested",
+      rally_enabled: Config.rally_notifications_enabled?(),
+      notifications_enabled: notifications_enabled?(),
+      rally_point: inspect(rally_point)
+    )
+
     if notifications_enabled?() do
       # Create notification data
       notification = %{
@@ -307,8 +325,9 @@ defmodule WandererNotifier.Contexts.NotificationContext do
           {:ok, result}
 
         {:error, reason} = error ->
-          Logger.error("Failed to send rally point notification",
-            reason: inspect(reason),
+          Logger.error("Failed to send rally point notification: #{inspect(reason)}",
+            rally_point: inspect(rally_point),
+            notification: inspect(notification),
             category: :notification
           )
 

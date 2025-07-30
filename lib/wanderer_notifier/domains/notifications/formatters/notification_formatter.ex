@@ -799,24 +799,24 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp format_rally_point_notification(rally_point) do
+    # Get system name with custom name support (same logic as system notifications)
+    system_name = get_rally_system_name(rally_point)
+
+    # Build character portrait URL using EVE's image server
+    character_portrait_url =
+      "https://images.evetech.net/characters/#{rally_point.character_eve_id}/portrait?size=128"
+
     %{
       type: :rally_point,
       title: "Rally Point Created",
       description:
-        "#{rally_point.character_name} has created a rally point in **#{rally_point.system_name}**",
+        "#{rally_point.character_name} has created a rally point in **#{system_name}**",
       # Green
       color: 0x00FF00,
+      thumbnail: %{
+        url: character_portrait_url
+      },
       fields: [
-        %{
-          name: "System",
-          value: rally_point.system_name,
-          inline: true
-        },
-        %{
-          name: "Created By",
-          value: rally_point.character_name,
-          inline: true
-        },
         %{
           name: "Message",
           value: rally_point.message || "No message provided",
@@ -827,8 +827,33 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         text: "Rally Point Notification",
         icon_url: nil
       },
-      timestamp: rally_point[:created_at] || DateTime.utc_now()
+      timestamp: Map.get(rally_point, :created_at) || DateTime.utc_now()
     }
+  end
+
+  # Helper function to get system name for rally points with custom name support
+  defp get_rally_system_name(rally_point) do
+    # The rally_point.system_id contains the EVE solar system ID
+    eve_system_id_int = String.to_integer(rally_point.system_id)
+
+    # Get system from cache and use custom name if available
+    case WandererNotifier.Infrastructure.Cache.get("map:systems") do
+      {:ok, systems} when is_list(systems) ->
+        case Enum.find(systems, &(Map.get(&1, "solar_system_id") == eve_system_id_int)) do
+          nil ->
+            # System not found in cache, use fallback name
+            rally_point.system_name || "Unknown System"
+
+          system_data ->
+            # System found, use custom name
+            system = WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
+            system.name
+        end
+
+      _error ->
+        # Cache lookup failed, use fallback name
+        rally_point.system_name || "Unknown System"
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
