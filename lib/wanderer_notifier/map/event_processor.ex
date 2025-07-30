@@ -37,10 +37,19 @@ defmodule WandererNotifier.Map.EventProcessor do
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
 
-    Logger.debug("Processing SSE event",
+    # Change to info level and add payload preview for rally events
+    log_level =
+      if event_type in ["rally_point_added", "rally_point_removed"], do: :info, else: :debug
+
+    Logger.log(log_level, "Processing SSE event",
       map_slug: map_slug,
       event_type: event_type,
-      event_id: Map.get(event, "id")
+      event_id: Map.get(event, "id"),
+      payload_preview:
+        if(event_type in ["rally_point_added", "rally_point_removed"],
+          do: inspect(Map.get(event, "payload", %{}), limit: 200),
+          else: nil
+        )
     )
 
     case route_event(event_type, event, map_slug) do
@@ -212,9 +221,11 @@ defmodule WandererNotifier.Map.EventProcessor do
   defp handle_rally_event("rally_point_added", event, _map_slug) do
     payload = Map.get(event, "payload", %{})
 
-    Logger.debug("Rally point created",
+    Logger.info("Rally point created",
       system: Map.get(payload, "system_name"),
       character: Map.get(payload, "character_name"),
+      rally_point_id: Map.get(payload, "rally_point_id"),
+      full_payload: inspect(payload),
       category: :rally
     )
 
@@ -230,9 +241,17 @@ defmodule WandererNotifier.Map.EventProcessor do
 
     # Trigger notification through the notification context
     case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
-      {:ok, _} -> {:ok, :sent}
-      {:error, :notifications_disabled} -> :skip
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        Logger.info("Rally point notification sent successfully")
+        :ok
+
+      {:error, :notifications_disabled} ->
+        Logger.info("Rally point notifications disabled")
+        :ignored
+
+      {:error, reason} ->
+        Logger.error("Rally point notification failed: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 

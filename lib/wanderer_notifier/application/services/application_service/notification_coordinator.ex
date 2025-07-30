@@ -32,6 +32,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
       :kill -> notify_kill(state, notification)
       :system -> notify_system(state, notification, opts)
       :character -> notify_character(state, notification, opts)
+      :rally_point -> notify_rally_point(state, notification)
       :unknown -> {:error, {:unknown_notification_type, notification}, state}
     end
   end
@@ -144,6 +145,49 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   @doc """
+  Sends a rally point notification.
+  """
+  @spec notify_rally_point(State.t(), map()) ::
+          {:ok, atom(), State.t()} | {:error, term(), State.t()}
+  def notify_rally_point(state, notification) do
+    if rally_notifications_enabled?() do
+      try do
+        # Extract rally point data from notification
+        rally_point = Map.get(notification, :rally_point)
+
+        case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(
+               rally_point
+             ) do
+          {:ok, :sent} ->
+            {:ok, new_state} = increment_notification_count(state, :rally_points)
+            Logger.debug("Rally point notification sent successfully", category: :notification)
+            {:ok, :sent, new_state}
+
+          {:error, reason} ->
+            Logger.warning("Failed to send rally point notification to Discord",
+              category: :notification,
+              error: inspect(reason)
+            )
+
+            {:error, {:discord_send_failed, reason}, state}
+        end
+      rescue
+        error ->
+          Logger.error("Exception in rally point notification processing",
+            category: :notification,
+            error: Exception.message(error),
+            stacktrace: __STACKTRACE__
+          )
+
+          {:error, {:exception, error}, state}
+      end
+    else
+      Logger.debug("Rally point notifications disabled, skipping", category: :notification)
+      {:ok, :skipped, state}
+    end
+  end
+
+  @doc """
   Sends a character notification.
   """
   @spec notify_character(State.t(), map(), keyword()) ::
@@ -192,19 +236,30 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp determine_notification_type(notification) do
     cond do
-      Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id) ->
-        :kill
-
-      Map.has_key?(notification, "solar_system_id") or
-          Map.has_key?(notification, :solar_system_id) ->
-        :system
-
-      Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id) ->
-        :character
-
-      true ->
-        :unknown
+      killmail_notification?(notification) -> :kill
+      rally_point_notification?(notification) -> :rally_point
+      system_notification?(notification) -> :system
+      character_notification?(notification) -> :character
+      true -> :unknown
     end
+  end
+
+  defp killmail_notification?(notification) do
+    Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id)
+  end
+
+  defp rally_point_notification?(notification) do
+    Map.get(notification, :type) == :rally_point or
+      Map.get(notification, "type") == "rally_point"
+  end
+
+  defp system_notification?(notification) do
+    Map.has_key?(notification, "solar_system_id") or
+      Map.has_key?(notification, :solar_system_id)
+  end
+
+  defp character_notification?(notification) do
+    Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id)
   end
 
   defp increment_notification_count(state, type) do
@@ -244,6 +299,10 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp character_notifications_enabled? do
     WandererNotifier.Shared.Config.get(:character_notifications_enabled, true)
+  end
+
+  defp rally_notifications_enabled? do
+    WandererNotifier.Shared.Config.get(:rally_notifications_enabled, true)
   end
 
   defp priority_systems_only? do

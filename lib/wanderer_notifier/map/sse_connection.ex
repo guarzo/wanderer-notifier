@@ -34,7 +34,9 @@ defmodule WandererNotifier.Map.SSEConnection do
       map_slug: map_slug,
       url: truncate_url_intelligently(url, 500),
       full_url_length: String.length(url),
-      events_count: if(is_list(events_filter), do: length(events_filter), else: 0)
+      events_filter: inspect(events_filter),
+      includes_rally_points:
+        if(is_list(events_filter), do: "rally_point_added" in events_filter, else: false)
     )
 
     case start_connection(url, headers) do
@@ -88,9 +90,8 @@ defmodule WandererNotifier.Map.SSEConnection do
     query_params = []
 
     # Add events filter if available (nil means no filtering)
-    Logger.info("Building SSE URL with events filter",
-      map_slug: map_slug,
-      events_filter: inspect(events_filter)
+    Logger.info("Building SSE URL with events filter: #{inspect(events_filter)}",
+      map_slug: map_slug
     )
 
     query_params =
