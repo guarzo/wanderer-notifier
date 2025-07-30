@@ -306,7 +306,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec wormhole?(t()) :: boolean()
   def wormhole?(%__MODULE__{system_type: type}) do
-    type == "wormhole"
+    type == "wormhole" or type == :wormhole
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
