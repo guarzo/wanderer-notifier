@@ -135,6 +135,16 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   defp check_character_in_list(characters, character_id) do
     tracked = Enum.any?(characters, &character_matches?(character_id, &1))
+
+    if not tracked do
+      Logger.info(
+        "[MapTrackingClient] Character #{character_id} not found in tracked list of #{length(characters)} characters"
+      )
+
+      sample_ids = extract_sample_character_ids(characters)
+      Logger.info("[MapTrackingClient] Sample tracked character IDs: #{inspect(sample_ids)}")
+    end
+
     {:ok, tracked}
   end
 
@@ -166,6 +176,16 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   defp check_system_in_list(systems, system_id) do
     tracked = Enum.any?(systems, &system_matches?(system_id, &1))
+
+    if not tracked do
+      Logger.info(
+        "[MapTrackingClient] System #{system_id} not found in tracked list of #{length(systems)} systems"
+      )
+
+      sample_ids = extract_sample_system_ids(systems)
+      Logger.info("[MapTrackingClient] Sample tracked system IDs: #{inspect(sample_ids)}")
+    end
+
     {:ok, tracked}
   end
 
@@ -173,6 +193,33 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp system_matches?(system_id, %{"solar_system_id" => id}), do: to_string(id) == system_id
   defp system_matches?(system_id, %{solar_system_id: id}), do: to_string(id) == system_id
   defp system_matches?(_, _), do: false
+
+  defp extract_sample_system_ids(systems) do
+    systems
+    |> Enum.take(5)
+    |> Enum.map(fn sys ->
+      case sys do
+        %System{solar_system_id: id} -> id
+        %{"solar_system_id" => id} -> id
+        %{solar_system_id: id} -> id
+        _ -> "unknown"
+      end
+    end)
+  end
+
+  defp extract_sample_character_ids(characters) do
+    characters
+    |> Enum.take(5)
+    |> Enum.map(fn char ->
+      case char do
+        %{"character" => %{"eve_id" => id}} -> id
+        %{character: %{eve_id: id}} -> id
+        %{"eve_id" => id} -> id
+        %{eve_id: id} -> id
+        _ -> "unknown"
+      end
+    end)
+  end
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Private Implementation - No Process dictionary needed

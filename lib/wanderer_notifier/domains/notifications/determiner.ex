@@ -11,7 +11,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
-  alias WandererNotifier.Domains.Tracking.Entities.System, as: System
   alias WandererNotifier.Domains.Killmail.Killmail
 
   @type notification_type :: :character | :system | :kill
@@ -355,22 +354,4 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   # ══════════════════════════════════════════════════════════════════════════════
   # Legacy Compatibility Functions
   # ══════════════════════════════════════════════════════════════════════════════
-
-  @doc """
-  Legacy compatibility: Get system ID from killmail data.
-  """
-  def get_kill_system_id(%Killmail{} = killmail), do: Killmail.get_system_id(killmail)
-  def get_kill_system_id(%{"solar_system_id" => id}), do: id
-  def get_kill_system_id(%{system_id: id}), do: id
-  def get_kill_system_id(_), do: "unknown"
-
-  @doc """
-  Legacy compatibility: Get tracked system info.
-  """
-  def tracked_system_info(system_id) do
-    case System.get_system(system_id) do
-      {:ok, system_info} -> system_info
-      {:error, :not_found} -> nil
-    end
-  end
 end

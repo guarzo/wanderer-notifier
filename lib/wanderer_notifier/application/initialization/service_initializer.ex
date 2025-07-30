@@ -153,7 +153,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     if Application.get_env(:wanderer_notifier, :env) != :test do
       base_integrations ++
         [
-          {WandererNotifier.Infrastructure.Messaging.Integration, []}
+          {WandererNotifier.Infrastructure.ConnectionHealthService, []}
         ]
     else
       base_integrations

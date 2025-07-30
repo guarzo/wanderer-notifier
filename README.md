@@ -8,6 +8,7 @@ Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-t
 - **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the Wanderer map
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications with real-time updates
+- **Rally Point Notifications:** Get instant alerts when players create rally points in your tracked systems
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
 - **Discord Slash Commands:** Full Discord bot integration with slash commands to manage priority systems and check bot status
 - **Priority Systems:** Mark critical systems for special notifications with targeted mentions, with priority-only mode support
@@ -49,7 +50,14 @@ The application provides several types of Discord notifications:
    - Links to character profiles
    - Green color scheme for visual distinction
 
-4. **Service Status Updates**
+4. **Rally Point Notifications**
+
+   - Instant alerts when players create rally points in tracked systems
+   - Character portraits and rally point messages
+   - System identification and location details
+   - Green color scheme with distinctive formatting
+
+5. **Service Status Updates**
    - System startup confirmations
    - Connection status monitoring
    - Error reporting and diagnostic information
@@ -207,6 +215,7 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `KILL_NOTIFICATIONS_ENABLED`: Enable killmail notifications (default: true)
    - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
+   - `RALLY_NOTIFICATIONS_ENABLED`: Enable rally point notifications (default: true)
    - `ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: false)
    - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
@@ -219,8 +228,6 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `WEBSOCKET_URL`: WebSocket URL for killmail data (default: "ws://host.docker.internal:4004")
    - `WANDERER_KILLS_URL`: Base URL for WandererKills API (default: "http://host.docker.internal:4004")
 
-7. **Additional Configuration**
-   - `CHARACTER_EXCLUDE_LIST`: Comma-separated character IDs to exclude from tracking
 
 ## Development
 

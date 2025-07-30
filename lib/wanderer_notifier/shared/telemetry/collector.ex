@@ -9,8 +9,7 @@ defmodule WandererNotifier.Shared.Telemetry.Collector do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Infrastructure.Messaging.{ConnectionMonitor, Deduplicator}
-  alias WandererNotifier.EventSourcing.Pipeline
+  alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
 
   # Collection intervals
   # 30 seconds
@@ -262,60 +261,26 @@ defmodule WandererNotifier.Shared.Telemetry.Collector do
   end
 
   defp collect_processing_metrics do
-    case Pipeline.get_stats() do
-      pipeline_stats when is_map(pipeline_stats) ->
-        total_processed = Map.get(pipeline_stats, :events_processed, 0)
-        total_failed = Map.get(pipeline_stats, :events_failed, 0)
-        avg_processing_time = Map.get(pipeline_stats, :average_processing_time, 0.0)
-
-        # Calculate events per second based on average processing time
-        events_per_second =
-          if avg_processing_time > 0 do
-            1000.0 / avg_processing_time
-          else
-            0.0
-          end
-
-        %{
-          events_processed: total_processed,
-          events_failed: total_failed,
-          success_rate: calculate_success_rate(total_processed, total_failed),
-          average_processing_time: avg_processing_time,
-          events_per_second: events_per_second,
-          batches_processed: Map.get(pipeline_stats, :batches_processed, 0)
-        }
-
-      error ->
-        Logger.warning("Failed to collect pipeline metrics", reason: inspect(error))
-        %{events_processed: 0, events_failed: 0, success_rate: 0.0}
-    end
+    # Pipeline module has been removed - return empty metrics
+    %{
+      events_processed: 0,
+      events_failed: 0,
+      success_rate: 0.0,
+      average_processing_time: 0.0,
+      events_per_second: 0.0,
+      batches_processed: 0
+    }
   end
 
   defp collect_deduplication_metrics do
-    case Deduplicator.get_stats() do
-      dedup_stats when is_map(dedup_stats) ->
-        total_processed = Map.get(dedup_stats, :total_processed, 0)
-        duplicates_found = Map.get(dedup_stats, :duplicates_found, 0)
-
-        duplication_rate =
-          if total_processed > 0 do
-            duplicates_found / total_processed * 100.0
-          else
-            0.0
-          end
-
-        %{
-          total_processed: total_processed,
-          duplicates_found: duplicates_found,
-          duplication_rate: duplication_rate,
-          current_strategy: Map.get(dedup_stats, :current_strategy, :unknown),
-          tracker_stats: Map.get(dedup_stats, :tracker_stats, %{})
-        }
-
-      error ->
-        Logger.warning("Failed to collect deduplication metrics", reason: inspect(error))
-        %{total_processed: 0, duplicates_found: 0, duplication_rate: 0.0}
-    end
+    # Deduplicator module has been removed - return empty metrics
+    %{
+      total_processed: 0,
+      duplicates_found: 0,
+      duplication_rate: 0.0,
+      current_strategy: :none,
+      tracker_stats: %{}
+    }
   end
 
   defp collect_system_metrics do
@@ -437,16 +402,6 @@ defmodule WandererNotifier.Shared.Telemetry.Collector do
       Enum.sum(uptimes) / length(uptimes)
     else
       0.0
-    end
-  end
-
-  defp calculate_success_rate(processed, failed) do
-    total = processed + failed
-
-    if total > 0 do
-      processed / total * 100.0
-    else
-      100.0
     end
   end
 

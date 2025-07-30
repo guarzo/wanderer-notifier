@@ -269,6 +269,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
   defp process_killmail(killmail_data) do
     Logger.debug("[TEST] Processing killmail through pipeline")
+    # Direct to pipeline - matches WebSocket flow which now skips Integration
     Pipeline.process_killmail(killmail_data)
   end
 

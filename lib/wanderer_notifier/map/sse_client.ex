@@ -131,9 +131,9 @@ defmodule WandererNotifier.Map.SSEClient do
 
     case do_connect(state) do
       {:ok, connection} ->
-        # Register and update connection status (skip if Integration not running)
-        if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-          WandererNotifier.Infrastructure.Messaging.Integration.register_sse_connection(
+        # Register and update connection status (skip if ConnectionHealthService not running)
+        if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
+          WandererNotifier.Infrastructure.ConnectionHealthService.register_sse_connection(
             connection_id,
             %{
               map_slug: state.map_slug,
@@ -142,7 +142,7 @@ defmodule WandererNotifier.Map.SSEClient do
             }
           )
 
-          WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
+          WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
             connection_id,
             :connected
           )
@@ -156,7 +156,7 @@ defmodule WandererNotifier.Map.SSEClient do
             connection_id: connection_id
         }
 
-        Logger.info("SSE connected", map_slug: state.map_slug, category: :api)
+        Logger.info("SSE connected: #{state.map_slug}")
         {:noreply, new_state}
 
       {:error, reason} ->
@@ -165,9 +165,9 @@ defmodule WandererNotifier.Map.SSEClient do
           error: inspect(reason)
         )
 
-        # Update connection status (skip if Integration not running)
-        if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-          WandererNotifier.Infrastructure.Messaging.Integration.register_sse_connection(
+        # Update connection status (skip if ConnectionHealthService not running)
+        if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
+          WandererNotifier.Infrastructure.ConnectionHealthService.register_sse_connection(
             connection_id,
             %{
               map_slug: state.map_slug,
@@ -176,7 +176,7 @@ defmodule WandererNotifier.Map.SSEClient do
             }
           )
 
-          WandererNotifier.Infrastructure.Messaging.Integration.update_connection_health(
+          WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
             connection_id,
             :failed,
             %{
@@ -259,11 +259,6 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncStatus{code: status_code, id: async_id}, state) do
-    Logger.info("SSE connection status",
-      map_slug: state.map_slug,
-      status_code: status_code
-    )
-
     if status_code == 200 do
       # Connection successful, continue streaming
       # Create the AsyncResponse struct that stream_next expects
@@ -297,29 +292,10 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncChunk{chunk: chunk, id: async_id}, state) do
-    # Log raw chunk for debugging
-    Logger.info("Received SSE chunk: #{String.slice(chunk, 0, 500)}",
-      map_slug: state.map_slug,
-      chunk_size: byte_size(chunk)
-    )
-
     # Process SSE chunk
     case SSEParser.parse_chunk(chunk) do
       {:ok, events} ->
-        Logger.info("Parsed #{length(events)} SSE events",
-          map_slug: state.map_slug
-        )
-
-        # Log first event details if any
-        if length(events) > 0 do
-          first_event = hd(events)
-
-          Logger.info("First event type: #{inspect(Map.get(first_event, "type", "unknown"))}",
-            event: inspect(first_event, limit: 300)
-          )
-        end
-
-        # Process events and return the updated state
+        log_sse_events(events, chunk, state.map_slug)
         process_sse_events(events, state, async_id)
 
       {:error, reason} ->
@@ -396,33 +372,9 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp process_validated_event(validated_event, state) do
-    if Process.whereis(WandererNotifier.Infrastructure.Messaging.Integration) do
-      process_with_integration(validated_event, state)
-    else
-      process_legacy_only(validated_event, state)
-    end
-  end
-
-  defp process_with_integration(validated_event, state) do
-    event_type = Map.get(validated_event, "event", "unknown")
-
-    integration_result =
-      WandererNotifier.Infrastructure.Messaging.Integration.process_sse_event(
-        event_type,
-        validated_event
-      )
-
-    case integration_result do
-      {:ok, :duplicate} ->
-        extract_event_id(validated_event)
-
-      {:ok, _} ->
-        process_legacy_only(validated_event, state)
-
-      {:error, reason} ->
-        log_integration_error(reason, event_type)
-        process_legacy_only(validated_event, state)
-    end
+    # Skip Integration processing - it has redundant deduplication
+    # Go directly to legacy processing which has proper domain-specific deduplication
+    process_legacy_only(validated_event, state)
   end
 
   defp process_legacy_only(validated_event, state) do
@@ -435,13 +387,6 @@ defmodule WandererNotifier.Map.SSEClient do
   defp extract_event_id(validated_event) do
     event_id = Map.get(validated_event, "id")
     {:ok, event_id}
-  end
-
-  defp log_integration_error(reason, event_type) do
-    Logger.error("Failed to process SSE event through integration",
-      error: inspect(reason),
-      event_type: event_type
-    )
   end
 
   defp parse_event(event_data) when is_binary(event_data) do
@@ -529,7 +474,7 @@ defmodule WandererNotifier.Map.SSEClient do
     # Process multiple events from a single chunk
     last_event_id = state.last_event_id
 
-    {new_last_event_id, processed_count} =
+    {new_last_event_id, _processed_count} =
       events
       |> Enum.reduce({last_event_id, 0}, fn event, {last_id, count} ->
         case process_event(event, state) do
@@ -547,13 +492,7 @@ defmodule WandererNotifier.Map.SSEClient do
         end
       end)
 
-    if processed_count > 0 do
-      Logger.debug("Processed SSE events",
-        map_slug: state.map_slug,
-        count: processed_count,
-        last_event_id: new_last_event_id
-      )
-    end
+    # Removed verbose debug logging
 
     # Continue streaming
     async_response = %HTTPoison.AsyncResponse{id: async_id}
@@ -562,5 +501,15 @@ defmodule WandererNotifier.Map.SSEClient do
     # Update state with new last_event_id
     new_state = %{state | last_event_id: new_last_event_id}
     {:noreply, new_state}
+  end
+
+  defp log_sse_events(events, chunk, map_slug) do
+    Enum.each(events, fn event ->
+      event_type = Map.get(event, "type", "unknown")
+
+      unless chunk =~ ": keepalive" do
+        Logger.info("SSE event: #{event_type}", map_slug: map_slug)
+      end
+    end)
   end
 end
