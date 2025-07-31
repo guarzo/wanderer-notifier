@@ -242,7 +242,12 @@ defmodule WandererNotifier.Infrastructure.Http do
     base_headers =
       if method in [:get, :head, :delete], do: @default_get_headers, else: @default_headers
 
-    base_headers ++ custom_headers
+    # If custom headers already have Content-Type, don't add the default one
+    if has_content_type?(custom_headers) do
+      custom_headers
+    else
+      base_headers ++ custom_headers
+    end
   end
 
   defp default_middlewares do

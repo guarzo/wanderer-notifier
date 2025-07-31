@@ -156,7 +156,7 @@ defmodule WandererNotifier.Map.SSEClient do
             connection_id: connection_id
         }
 
-        Logger.info("SSE connected: #{state.map_slug}")
+        Logger.info("[SSE] Connected: #{state.map_slug}")
         {:noreply, new_state}
 
       {:error, reason} ->
@@ -508,7 +508,7 @@ defmodule WandererNotifier.Map.SSEClient do
       event_type = Map.get(event, "type", "unknown")
 
       unless chunk =~ ": keepalive" do
-        Logger.info("SSE event: #{event_type}", map_slug: map_slug)
+        Logger.debug("[SSE] Event: #{event_type} (#{map_slug})")
       end
     end)
   end

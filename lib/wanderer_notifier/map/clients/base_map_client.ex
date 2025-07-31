@@ -342,18 +342,12 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           {:ok, items}
         else
           {:error, {:api_error, status}} ->
-            Logger.info("API request failed", %{
-              status: status,
-              url: url
-            })
+            Logger.info("API request failed with status: #{status}, url: #{url}")
 
             {:error, :api_request_failed}
 
           {:error, reason} ->
-            Logger.info("API request error", %{
-              reason: reason,
-              url: url
-            })
+            Logger.info("API request error: #{inspect(reason)}, url: #{url}")
 
             {:error, reason}
         end

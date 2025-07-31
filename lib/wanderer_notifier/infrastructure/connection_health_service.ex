@@ -52,16 +52,12 @@ defmodule WandererNotifier.Infrastructure.ConnectionHealthService do
   Updates connection health status.
   """
   @spec update_connection_health(String.t(), atom(), map()) :: :ok
-  def update_connection_health(connection_id, status, metadata \\ %{}) do
+  def update_connection_health(connection_id, status, _metadata \\ %{}) do
     ConnectionMonitor.update_connection_status(connection_id, status)
 
     # Log significant status changes
     if status in [:connected, :failed, :disconnected] do
-      Logger.info("Connection status changed",
-        connection_id: connection_id,
-        status: status,
-        metadata: metadata
-      )
+      Logger.debug("[Connection] #{connection_id}: #{status}")
     end
 
     :ok

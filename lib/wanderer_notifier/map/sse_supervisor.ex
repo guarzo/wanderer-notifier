@@ -179,7 +179,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     case get_map_configuration() do
       {:ok, map_config} ->
-        Logger.info("Starting SSE client after successful data initialization")
+        Logger.info("Starting SSE client after successful map data initialization")
         start_sse_client_from_config(map_config)
 
       {:error, reason} ->

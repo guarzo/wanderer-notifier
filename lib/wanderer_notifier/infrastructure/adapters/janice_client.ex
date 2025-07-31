@@ -182,8 +182,8 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
 
     [
       {"Content-Type", "text/plain"},
-      # Note: lowercase 'k' in Apikey
-      {"X-Apikey", "#{api_token}"}
+      # Match the exact header casing from the curl example
+      {"X-ApiKey", "#{api_token}"}
     ]
   end
 
@@ -195,7 +195,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
            config.url,
            config.body,
            config.headers,
-           timeout: 20_000
+           service: :janice
          ) do
       {:ok, response} -> handle_response(response)
       {:error, reason} -> handle_request_error(reason)

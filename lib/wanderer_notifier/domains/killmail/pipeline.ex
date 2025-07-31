@@ -202,22 +202,29 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      victim_name = killmail.victim_character_name || "Unknown"
-      system_name = killmail.system_name || "Unknown System"
+      _victim_name = killmail.victim_character_name || "Unknown"
+      _system_name = killmail.system_name || "Unknown System"
 
-      Logger.info(
-        "[Pipeline] Tracking check for killmail #{killmail.killmail_id}",
-        system_id: killmail.system_id,
-        system_name: system_name,
-        system_tracked: system_tracked,
-        victim_id: killmail.victim_character_id,
-        victim_name: victim_name,
-        character_tracked: character_tracked
-      )
+      is_tracked = system_tracked or character_tracked
+      log_tracking_status(killmail.killmail_id, system_tracked, character_tracked, is_tracked)
 
-      {:ok, system_tracked or character_tracked}
+      {:ok, is_tracked}
     end
   end
+
+  defp log_tracking_status(killmail_id, system_tracked, character_tracked, is_tracked) do
+    if is_tracked do
+      tracking_reason = get_tracking_reason(system_tracked, character_tracked)
+      Logger.info("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
+    else
+      Logger.debug("[Pipeline] Killmail #{killmail_id} not tracked")
+    end
+  end
+
+  defp get_tracking_reason(true, true), do: "system+character"
+  defp get_tracking_reason(true, false), do: "system"
+  defp get_tracking_reason(false, true), do: "character"
+  defp get_tracking_reason(false, false), do: "none"
 
   @spec notifications_enabled?() :: boolean()
   defp notifications_enabled? do
@@ -245,15 +252,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
 
-    victim_name = killmail.victim_character_name || "Unknown"
+    _victim_name = killmail.victim_character_name || "Unknown"
 
-    Logger.info(
-      "[Pipeline] Character tracking for killmail #{killmail.killmail_id}",
-      victim_id: killmail.victim_character_id,
-      victim_name: victim_name,
-      victim_tracked: victim_tracked,
-      any_attacker_tracked: attacker_tracked
-    )
+    if victim_tracked or attacker_tracked do
+      Logger.debug(
+        "[Pipeline] Killmail #{killmail.killmail_id} - victim: #{victim_tracked}, attacker: #{attacker_tracked}"
+      )
+    end
 
     {:ok, victim_tracked or attacker_tracked}
   end

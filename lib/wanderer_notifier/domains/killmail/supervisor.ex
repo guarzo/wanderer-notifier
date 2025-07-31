@@ -17,7 +17,9 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   @impl true
   def init(_init_arg) do
-    Logger.info("Starting Killmail Supervisor", category: :processor)
+    Logger.info("Starting Killmail Supervisor with PipelineWorker and FallbackHandler",
+      category: :processor
+    )
 
     children = [
       # Start the pipeline worker that will process messages

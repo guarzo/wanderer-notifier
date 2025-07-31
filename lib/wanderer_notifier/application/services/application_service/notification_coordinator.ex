@@ -90,11 +90,17 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
         end
       rescue
         error ->
-          Logger.error("Exception in kill notification processing",
-            category: :notification,
-            error: Exception.message(error),
-            stacktrace: __STACKTRACE__
+          error_message = Exception.message(error)
+          error_type = error.__struct__
+          notification_keys = Map.keys(notification)
+
+          Logger.error(
+            "Exception in kill notification processing: #{error_type} - #{error_message}"
           )
+
+          Logger.error("Notification keys: #{inspect(notification_keys)}")
+          Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
+          Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
 
           {:error, {:exception, error}, state}
       end
@@ -130,11 +136,17 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
         end
       rescue
         error ->
-          Logger.error("Exception in system notification processing",
-            category: :notification,
-            error: Exception.message(error),
-            stacktrace: __STACKTRACE__
+          error_message = Exception.message(error)
+          error_type = error.__struct__
+          notification_keys = Map.keys(notification)
+
+          Logger.error(
+            "Exception in system notification processing: #{error_type} - #{error_message}"
           )
+
+          Logger.error("Notification keys: #{inspect(notification_keys)}")
+          Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
+          Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
 
           {:error, {:exception, error}, state}
       end

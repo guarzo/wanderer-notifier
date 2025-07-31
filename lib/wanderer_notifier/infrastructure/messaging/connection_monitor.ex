@@ -130,7 +130,7 @@ defmodule WandererNotifier.Infrastructure.Messaging.ConnectionMonitor do
 
   @impl true
   def init(_opts) do
-    Logger.info("Connection monitor started")
+    Logger.info("Connection monitor started (monitoring WebSocket and SSE connections)")
 
     # Schedule periodic health checks
     schedule_health_check()
@@ -151,7 +151,7 @@ defmodule WandererNotifier.Infrastructure.Messaging.ConnectionMonitor do
 
   @impl true
   def handle_cast({:register_connection, id, type, pid}, state) do
-    Logger.info("Registering connection: #{id} (#{type})")
+    Logger.debug("[ConnectionMonitor] Registered: #{id} (#{type})")
 
     connection = %Connection{
       id: id,

@@ -36,12 +36,15 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   """
   @spec initialize_services() :: {:ok, [Supervisor.child_spec()]} | {:error, term()}
   def initialize_services do
+    start_time = System.monotonic_time(:millisecond)
     Logger.info("Starting service initialization", category: :startup)
 
     try do
       case build_service_tree() do
         {:ok, services} ->
-          Logger.info("Service initialization completed successfully",
+          duration = System.monotonic_time(:millisecond) - start_time
+
+          Logger.info("Service initialization completed successfully in #{duration}ms",
             services_count: length(services),
             category: :startup
           )
@@ -66,7 +69,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   """
   @spec post_startup_initialization() :: :ok
   def post_startup_initialization do
-    Logger.info("Starting post-startup initialization", category: :startup)
+    Logger.info("Starting post-startup initialization (async)", category: :startup)
 
     # Start finalization phase in a supervised task
     Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
@@ -176,6 +179,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   end
 
   defp finalization_phase do
+    start_time = System.monotonic_time(:millisecond)
     Logger.debug("Starting finalization phase", category: :startup)
 
     # Wait for core services to be ready
@@ -189,7 +193,8 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       initialize_sse_clients()
     end
 
-    Logger.info("Finalization phase completed", category: :startup)
+    duration = System.monotonic_time(:millisecond) - start_time
+    Logger.info("Finalization phase completed in #{duration}ms", category: :startup)
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

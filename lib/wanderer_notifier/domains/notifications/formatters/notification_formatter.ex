@@ -22,16 +22,59 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     format_kill_notification(killmail)
   end
 
+  # Handle killmail notifications that have been converted to maps (e.g., from cache)
+  def format_notification(%{killmail_id: _} = killmail_map)
+      when is_map_key(killmail_map, :victim_character_id) do
+    Logger.debug("NotificationFormatter received killmail as map, converting to struct")
+    killmail = struct(Killmail, killmail_map)
+    format_kill_notification(killmail)
+  end
+
   def format_notification(%Character{} = character) do
     format_character_notification(character)
   end
 
+  # Handle character notifications that have been converted to maps (e.g., from cache)
+  def format_notification(%{character_id: _} = character_map)
+      when is_map_key(character_map, :character_name) and is_map_key(character_map, :tracked) do
+    Logger.debug("NotificationFormatter received character as map, converting to struct")
+    character = struct(Character, character_map)
+    format_character_notification(character)
+  end
+
   def format_notification(%System{} = system) do
+    Logger.debug(
+      "NotificationFormatter received System struct with keys: #{inspect(Map.keys(system))}"
+    )
+
+    Logger.debug("System sample: #{inspect(system, limit: 500)}")
+    format_system_notification(system)
+  end
+
+  # Handle system notifications that have been converted to maps (e.g., from cache)
+  def format_notification(%{solar_system_id: _} = system_map)
+      when is_map_key(system_map, :name) and is_map_key(system_map, :tracked) do
+    Logger.debug("NotificationFormatter received system as map, converting to struct")
+    system = struct(System, system_map)
     format_system_notification(system)
   end
 
   def format_notification(%{id: _id} = rally_point) when is_map_key(rally_point, :system_name) do
     format_rally_point_notification(rally_point)
+  end
+
+  def format_notification(notification) do
+    struct_type = Map.get(notification, :__struct__, "no struct")
+    keys = Map.keys(notification)
+
+    Logger.error(
+      "NotificationFormatter received unexpected notification type: #{inspect(struct_type)}"
+    )
+
+    Logger.error("Notification keys: #{inspect(keys)}")
+    Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
+
+    raise "Unexpected notification type: #{inspect(struct_type)}"
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

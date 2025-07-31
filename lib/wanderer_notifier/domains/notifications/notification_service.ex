@@ -221,10 +221,12 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
       formatted = NotificationFormatter.format_notification(system_struct)
 
       # Add priority styling if needed
+      # Priority is only present in the map data, not in the struct
       is_priority =
         case system_data do
-          %System{} -> Map.get(system_data, :priority, false)
-          _ -> Map.get(system_data, :priority, false)
+          %System{} -> false
+          %{priority: priority} -> priority || false
+          _ -> false
         end
 
       embed =

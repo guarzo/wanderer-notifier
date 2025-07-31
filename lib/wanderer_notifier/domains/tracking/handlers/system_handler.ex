@@ -150,6 +150,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     case Cache.get(cache_key) do
       {:ok, cached_systems} when is_list(cached_systems) ->
         updated_systems = update_system_in_list(cached_systems, system)
+        Logger.debug("Storing system in cache, type: #{inspect(system.__struct__)}")
         Cache.put_with_ttl(cache_key, updated_systems, Cache.map_ttl())
 
       {:ok, nil} ->
@@ -168,43 +169,48 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp remove_system_from_cache(payload) do
     cache_key = Cache.Keys.map_systems()
+    system_id = Map.get(payload, "id")
 
-    case Cache.get(cache_key) do
-      {:ok, cached_systems} when is_list(cached_systems) ->
-        # Remove the system from the cache
-        system_id = Map.get(payload, "id")
-
-        updated_systems =
-          Enum.reject(cached_systems, fn system ->
-            # Handle both potential ID fields in cached systems
-            Map.get(system, :solar_system_id) == system_id ||
-              Map.get(system, :id) == system_id ||
-              Map.get(system, "id") == system_id
-          end)
-
-        Cache.put_with_ttl(cache_key, updated_systems, Cache.map_ttl())
-
-      {:ok, nil} ->
-        # No cached systems, nothing to remove
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to read system cache for removal",
-          cache_key: cache_key,
-          error: inspect(reason),
-          category: :api
-        )
-
-        {:error, {:cache_read_failed, reason}}
-    end
+    Cache.get(cache_key)
+    |> handle_cache_result_for_removal(cache_key, system_id)
   end
+
+  defp handle_cache_result_for_removal({:ok, cached_systems}, cache_key, system_id)
+       when is_list(cached_systems) do
+    updated_systems = filter_out_system(cached_systems, system_id)
+    Cache.put_with_ttl(cache_key, updated_systems, Cache.map_ttl())
+  end
+
+  defp handle_cache_result_for_removal({:ok, nil}, _cache_key, _system_id) do
+    # No cached systems, nothing to remove
+    :ok
+  end
+
+  defp handle_cache_result_for_removal({:error, reason}, cache_key, _system_id) do
+    Logger.error("Failed to read system cache for removal",
+      cache_key: cache_key,
+      error: inspect(reason),
+      category: :api
+    )
+
+    {:error, {:cache_read_failed, reason}}
+  end
+
+  defp filter_out_system(systems, system_id) do
+    Enum.reject(systems, &has_matching_system_id?(&1, system_id))
+  end
+
+  defp has_matching_system_id?(%System{solar_system_id: sid}, system_id), do: sid == system_id
+  defp has_matching_system_id?(%{solar_system_id: sid}, system_id), do: sid == system_id
+  defp has_matching_system_id?(%{"solar_system_id" => sid}, system_id), do: sid == system_id
+  defp has_matching_system_id?(%{id: id}, system_id), do: id == system_id
+  defp has_matching_system_id?(%{"id" => id}, system_id), do: id == system_id
+  defp has_matching_system_id?(_, _), do: false
 
   defp update_system_in_list(systems, new_system) do
     system_id = new_system.solar_system_id
 
-    case Enum.find_index(systems, fn system ->
-           Map.get(system, :solar_system_id) == system_id
-         end) do
+    case find_system_index(systems, system_id) do
       nil ->
         # System not found, add it
         [new_system | systems]
@@ -214,6 +220,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         List.replace_at(systems, index, new_system)
     end
   end
+
+  defp find_system_index(systems, system_id) do
+    Enum.find_index(systems, &system_matches?(&1, system_id))
+  end
+
+  defp system_matches?(%System{solar_system_id: sid}, system_id), do: sid == system_id
+  defp system_matches?(%{solar_system_id: sid}, system_id), do: sid == system_id
+  defp system_matches?(_, _), do: false
 
   # ══════════════════════════════════════════════════════════════════════════════
   # System-Specific Notification Logic
@@ -256,6 +270,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp send_system_notification(system) do
+    Logger.debug("send_system_notification called with type: #{inspect(system.__struct__)}")
+    Logger.debug("System keys: #{inspect(Map.keys(system))}")
+
     case WandererNotifier.Contexts.NotificationContext.send_system_notification(system) do
       {:ok, :skipped} ->
         Logger.debug("System notification skipped",

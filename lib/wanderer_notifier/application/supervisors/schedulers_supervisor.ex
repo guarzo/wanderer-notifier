@@ -25,7 +25,7 @@ defmodule WandererNotifier.Application.Supervisors.Schedulers.Supervisor do
         {WandererNotifier.Schedulers.ServiceStatusScheduler, []}
       ]
 
-      Logger.info("Starting scheduler children: #{inspect(children)}")
+      Logger.info("Starting #{length(children)} scheduler(s): ServiceStatusScheduler")
       Supervisor.init(children, strategy: :one_for_one)
     else
       # Return empty children list if schedulers are disabled
