@@ -624,45 +624,66 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @dialyzer {:nowarn_function, create_valid_license_state: 2}
   defp create_valid_license_state(response, state) do
-    # Check if bot is actually assigned from the normalized response
-    # The response uses "bot_associated" field from the API
-    bot_assigned =
-      response[:bot_associated] || response["bot_associated"] || response[:bot_assigned] ||
-        response["bot_assigned"] || false
+    bot_assigned = extract_bot_assigned_status(response)
 
-    # If license is valid but bot not assigned, handle it differently
-    if !bot_assigned do
+    maybe_log_bot_assignment_warning(bot_assigned)
+
+    valid_state = build_valid_state(response, state, bot_assigned)
+
+    maybe_log_license_status_change(state, bot_assigned)
+
+    valid_state
+  end
+
+  # Helper functions to reduce complexity
+  defp extract_bot_assigned_status(response) do
+    response[:bot_associated] || response["bot_associated"] ||
+      response[:bot_assigned] || response["bot_assigned"] || false
+  end
+
+  defp maybe_log_bot_assignment_warning(bot_assigned) do
+    unless bot_assigned do
       Logger.debug(
         "License is valid but no bot is assigned. Please assign a bot to your license.",
         category: :config
       )
     end
+  end
 
-    valid_state = %State{
+  defp build_valid_state(response, state, bot_assigned) do
+    %State{
       valid: true,
       bot_assigned: bot_assigned,
       details: response,
       error: nil,
-      error_message: if(bot_assigned, do: nil, else: "License valid but bot not assigned"),
+      error_message: get_error_message_for_bot_status(bot_assigned),
       last_validated: :os.system_time(:second),
       notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
-      # Reset backoff on successful validation
       backoff_multiplier: 1
     }
+  end
 
-    # Only log when license status changes
-    if not state.valid or state.bot_assigned != bot_assigned do
-      log_message =
-        if bot_assigned,
-          do: "✅  License validated - bot assigned",
-          else: "✅  License validated - awaiting bot assignment"
+  defp get_error_message_for_bot_status(bot_assigned) do
+    if bot_assigned, do: nil, else: "License valid but bot not assigned"
+  end
 
+  defp maybe_log_license_status_change(state, bot_assigned) do
+    if license_status_changed?(state, bot_assigned) do
+      log_message = get_license_status_message(bot_assigned)
       Logger.info(log_message)
     else
       Logger.debug("License validation successful (status unchanged)")
     end
+  end
 
-    valid_state
+  defp license_status_changed?(state, bot_assigned) do
+    not state.valid or state.bot_assigned != bot_assigned
+  end
+
+  defp get_license_status_message(bot_assigned) do
+    if bot_assigned,
+      do: "✅  License validated - bot assigned",
+      else: "✅  License validated - awaiting bot assignment"
   end
 
   @dialyzer {:nowarn_function, create_invalid_license_state: 3}

@@ -288,32 +288,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec get_system(String.t()) :: {:ok, t()} | {:error, term()}
   def get_system(system_id) when is_binary(system_id) do
-    case Cache.get("map:systems") do
-      {:ok, systems} when is_list(systems) ->
-        case Enum.find(systems, fn
-               %__MODULE__{} = sys -> to_string(sys.solar_system_id) == system_id
-               sys when is_map(sys) -> sys["solar_system_id"] == system_id
-             end) do
-          nil -> {:error, :not_found}
-          %__MODULE__{} = system -> {:ok, system}
-          system_data -> {:ok, from_api_data(system_data)}
-        end
-
-      {:ok, %__MODULE__{} = system} ->
-        # Handle case where cache contains a single System struct
-        if to_string(system.solar_system_id) == system_id do
-          {:ok, system}
-        else
-          {:error, :not_found}
-        end
-
-      {:ok, _} ->
-        # Handle unexpected data structure
-        Logger.warning("Unexpected data structure in map:systems cache")
-        {:error, :invalid_cache_data}
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, cache_data} <- Cache.get("map:systems") do
+      find_system_by_id(cache_data, system_id)
     end
   end
 
@@ -326,34 +302,67 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec get_system_by_name(String.t()) :: {:ok, t()} | {:error, term()}
   def get_system_by_name(system_name) when is_binary(system_name) do
-    case Cache.get("map:systems") do
-      {:ok, systems} when is_list(systems) ->
-        case Enum.find(systems, fn
-               %__MODULE__{} = sys -> sys.name == system_name
-               sys when is_map(sys) -> sys["name"] == system_name
-             end) do
-          nil -> {:error, :not_found}
-          %__MODULE__{} = system -> {:ok, system}
-          system_data -> {:ok, from_api_data(system_data)}
-        end
-
-      {:ok, %__MODULE__{} = system} ->
-        # Handle case where cache contains a single System struct
-        if system.name == system_name do
-          {:ok, system}
-        else
-          {:error, :not_found}
-        end
-
-      {:ok, _} ->
-        # Handle unexpected data structure
-        Logger.warning("Unexpected data structure in map:systems cache")
-        {:error, :invalid_cache_data}
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, cache_data} <- Cache.get("map:systems") do
+      find_system_by_name(cache_data, system_name)
     end
   end
+
+  # Private helper functions to reduce complexity
+  defp find_system_by_id(systems, system_id) when is_list(systems) do
+    case find_system_in_list(systems, &match_system_id(&1, system_id)) do
+      nil -> {:error, :not_found}
+      system -> {:ok, system}
+    end
+  end
+
+  defp find_system_by_id(%__MODULE__{} = system, system_id) do
+    if to_string(system.solar_system_id) == system_id do
+      {:ok, system}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp find_system_by_id(_, _) do
+    Logger.warning("Unexpected data structure in map:systems cache")
+    {:error, :invalid_cache_data}
+  end
+
+  defp find_system_by_name(systems, system_name) when is_list(systems) do
+    case find_system_in_list(systems, &match_system_name(&1, system_name)) do
+      nil -> {:error, :not_found}
+      system -> {:ok, system}
+    end
+  end
+
+  defp find_system_by_name(%__MODULE__{} = system, system_name) do
+    if system.name == system_name do
+      {:ok, system}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp find_system_by_name(_, _) do
+    Logger.warning("Unexpected data structure in map:systems cache")
+    {:error, :invalid_cache_data}
+  end
+
+  defp find_system_in_list(systems, matcher_fn) do
+    case Enum.find(systems, matcher_fn) do
+      nil -> nil
+      %__MODULE__{} = system -> system
+      system_data -> from_api_data(system_data)
+    end
+  end
+
+  defp match_system_id(%__MODULE__{} = sys, system_id),
+    do: to_string(sys.solar_system_id) == system_id
+
+  defp match_system_id(sys, system_id) when is_map(sys), do: sys["solar_system_id"] == system_id
+
+  defp match_system_name(%__MODULE__{} = sys, system_name), do: sys.name == system_name
+  defp match_system_name(sys, system_name) when is_map(sys), do: sys["name"] == system_name
 
   @doc """
   Checks if a system is a wormhole system.
