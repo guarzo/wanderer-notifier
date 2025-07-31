@@ -20,9 +20,11 @@
   
   
   # False positive from service initialization - application works correctly at runtime
-  {"lib/wanderer_notifier/application.ex", :pattern_match, {19, 13}},
+  {"lib/wanderer_notifier/application.ex", :pattern_match, {22, 13}},
   
   # False positives - dialyzer incorrectly infers these fields can't be nil in these specific flows
+  {"lib/wanderer_notifier/domains/killmail/pipeline.ex", :guard_fail, 205},
   {"lib/wanderer_notifier/domains/killmail/pipeline.ex", :guard_fail, 206},
-  {"lib/wanderer_notifier/domains/killmail/pipeline.ex", :guard_fail, 370}
+  {"lib/wanderer_notifier/domains/killmail/pipeline.ex", :guard_fail, 374},
+  {"lib/wanderer_notifier/domains/killmail/pipeline.ex", :guard_fail, 375}
 ]
