@@ -91,11 +91,8 @@ defmodule WandererNotifier.Contexts.NotificationContext do
 
       {:ok, :skipped_startup_suppression}
     else
-      Logger.info("Sending kill notification",
-        killmail_id:
-          Map.get(killmail_data, :killmail_id) || Map.get(killmail_data, "killmail_id"),
-        category: :notification
-      )
+      killmail_id = Map.get(killmail_data, :killmail_id) || Map.get(killmail_data, "killmail_id")
+      Logger.info("[Notification] Sending kill #{killmail_id}")
 
       case ApplicationService.notify_kill(killmail_data) do
         {:ok, result} ->
@@ -138,20 +135,16 @@ defmodule WandererNotifier.Contexts.NotificationContext do
           category: :notification
         )
 
-        # Add priority flag to system
-        system_with_priority = Map.put(system, :priority, true)
-        send_system_notification_impl(system_with_priority, opts)
+        # Add priority flag to system data
+        system_map = Map.from_struct(system) |> Map.put(:priority, true)
+        send_system_notification_impl(system_map, opts)
 
       {true, false, false} ->
         # Regular notification path
-        Logger.info("Sending system notification",
-          system: system_name,
-          priority: false,
-          category: :notification
-        )
+        Logger.info("[Notification] Sending system #{system_name}")
 
-        system_with_priority = Map.put(system, :priority, false)
-        send_system_notification_impl(system_with_priority, opts)
+        system_map = Map.from_struct(system) |> Map.put(:priority, false)
+        send_system_notification_impl(system_map, opts)
 
       {_, false, true} ->
         # Priority-only mode: skip non-priority systems
@@ -174,18 +167,20 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   end
 
   defp send_system_notification_impl(system_data, opts) do
+    Logger.debug(
+      "send_system_notification_impl called with system_data type: #{inspect(Map.get(system_data, :__struct__, "no struct"))}"
+    )
+
+    Logger.debug("System data keys: #{inspect(Map.keys(system_data))}")
+
     case send_notification(system_data, opts) do
       {:ok, result} ->
         ApplicationService.increment_metric(:notification_sent)
         {:ok, result}
 
       {:error, reason} = error ->
-        Logger.warning("System notification failed",
-          reason: inspect(reason),
-          system_name: Map.get(system_data, :name, "Unknown"),
-          category: :notification
-        )
-
+        Logger.warning("System notification failed: #{inspect(reason)}")
+        Logger.warning("System name: #{Map.get(system_data, :name, "Unknown")}")
         error
     end
   end

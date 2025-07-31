@@ -12,10 +12,13 @@ defmodule WandererNotifier.Application do
   """
   def start(_type, _args) do
     prepare_application_environment()
-    Logger.info("Starting WandererNotifier application", category: :startup)
 
-    initialize_services()
-    |> case do
+    Logger.info(
+      "Starting WandererNotifier application v#{Application.spec(:wanderer_notifier, :vsn) || "dev"} in #{get_env()} mode",
+      category: :startup
+    )
+
+    case initialize_services() do
       {:ok, children} ->
         case Supervisor.start_link(children,
                strategy: :one_for_one,
@@ -54,8 +57,8 @@ defmodule WandererNotifier.Application do
             error
         end
 
-      error ->
-        log_startup_error(elem(error, 1))
+      {:error, reason} = error ->
+        log_startup_error(reason)
         error
     end
   end

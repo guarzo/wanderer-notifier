@@ -78,7 +78,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   @impl true
   def handle_cast(:websocket_down, state) do
-    Logger.info("WebSocket connection down, activating HTTP fallback")
+    Logger.info("WebSocket connection down, activating HTTP fallback for killmail processing")
 
     # Update tracked entities first
     updated_state = update_tracked_entities(state)
@@ -92,7 +92,9 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   @impl true
   def handle_cast(:websocket_connected, state) do
-    Logger.info("WebSocket connection restored, deactivating HTTP fallback")
+    Logger.info(
+      "WebSocket connection restored, deactivating HTTP fallback (returning to real-time WebSocket)"
+    )
 
     {:noreply, %{state | fallback_active: false}}
   end

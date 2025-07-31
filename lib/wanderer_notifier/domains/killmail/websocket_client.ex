@@ -767,7 +767,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    Logger.info("Fetching tracked characters from ExternalAdapters", [])
+    Logger.info("Fetching tracked characters from ExternalAdapters")
 
     case ApiContext.get_tracked_characters() do
       {:ok, characters} ->
@@ -818,10 +818,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
     processed = Enum.uniq(valid_ids)
 
-    Logger.info("Final processed character IDs",
-      input_count: length(characters),
-      final_count: length(processed),
-      final_ids: Enum.take(processed, 10)
+    Logger.debug(
+      "Processed #{length(processed)} tracked characters from #{length(characters)} inputs"
     )
 
     processed

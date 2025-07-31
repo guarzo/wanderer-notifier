@@ -49,7 +49,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec fetch_and_cache_characters() :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_characters do
-    Logger.info("MapTrackingClient.fetch_and_cache_characters called", [])
+    Logger.info("MapTrackingClient.fetch_and_cache_characters called")
     fetch_and_cache_entities(:characters)
   end
 
@@ -136,17 +136,42 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp check_character_in_list(characters, character_id) do
     tracked = Enum.any?(characters, &character_matches?(character_id, &1))
 
-    if not tracked do
-      Logger.info(
-        "[MapTrackingClient] Character #{character_id} not found in tracked list of #{length(characters)} characters"
-      )
-
-      sample_ids = extract_sample_character_ids(characters)
-      Logger.info("[MapTrackingClient] Sample tracked character IDs: #{inspect(sample_ids)}")
+    unless tracked do
+      handle_untracked_character(characters, character_id)
     end
 
     {:ok, tracked}
   end
+
+  defp handle_untracked_character(characters, character_id) do
+    Logger.debug("[MapTrackingClient] Character #{character_id} not tracked")
+
+    exact_match = find_exact_character_match(characters, character_id)
+
+    if exact_match do
+      Logger.error(
+        "[MapTrackingClient] Character WAS found but matching failed! Data: #{inspect(exact_match)}"
+      )
+    end
+  end
+
+  defp find_exact_character_match(characters, character_id) do
+    Enum.find(characters, fn char ->
+      check_character_eve_id(char, character_id)
+    end)
+  end
+
+  defp check_character_eve_id(%{"character" => %{"eve_id" => id}}, character_id) do
+    result = to_string(id) == to_string(character_id)
+
+    if result do
+      Logger.info("[MapTrackingClient] Found exact match! eve_id: #{id}")
+    end
+
+    result
+  end
+
+  defp check_character_eve_id(_, _), do: false
 
   defp character_matches?(character_id, %{"character" => %{"eve_id" => id}}),
     do: to_string(id) == character_id
@@ -202,20 +227,6 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
         %System{solar_system_id: id} -> id
         %{"solar_system_id" => id} -> id
         %{solar_system_id: id} -> id
-        _ -> "unknown"
-      end
-    end)
-  end
-
-  defp extract_sample_character_ids(characters) do
-    characters
-    |> Enum.take(5)
-    |> Enum.map(fn char ->
-      case char do
-        %{"character" => %{"eve_id" => id}} -> id
-        %{character: %{eve_id: id}} -> id
-        %{"eve_id" => id} -> id
-        %{eve_id: id} -> id
         _ -> "unknown"
       end
     end)
@@ -304,11 +315,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec parse_response(entity_type(), term()) :: {:ok, list()} | {:error, term()}
   defp parse_response(:characters, %{"data" => characters}) when is_list(characters) do
-    Logger.info("MapTrackingClient parsed character response",
-      character_count: length(characters),
-      first_character: inspect(Enum.at(characters, 0)),
-      character_structure: characters |> Enum.take(2) |> Enum.map(&Map.keys/1) |> inspect()
-    )
+    Logger.info("MapTrackingClient parsed #{length(characters)} characters from API response")
 
     {:ok, characters}
   end

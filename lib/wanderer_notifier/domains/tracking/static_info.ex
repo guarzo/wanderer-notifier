@@ -212,11 +212,8 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   defp extract_data_from_static_info(_), do: %{}
 
   defp update_system_with_static_info(system, data_to_merge) do
-    # First update with basic static info
-    enhanced_system = Map.merge(system, data_to_merge)
-
-    # Then handle special cases
-    enhanced_system
+    # Don't merge raw data into struct - only update specific fields
+    system
     |> update_security_status(data_to_merge)
     |> update_optional_fields(data_to_merge)
   end
