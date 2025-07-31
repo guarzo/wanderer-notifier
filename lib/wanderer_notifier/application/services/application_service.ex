@@ -100,7 +100,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
   """
   @spec process_notification(map(), keyword()) :: service_result()
   def process_notification(notification, opts \\ []) do
-    GenServer.call(__MODULE__, {:process_notification, notification, opts})
+    GenServer.call(__MODULE__, {:process_notification, notification, opts}, 30_000)
   end
 
   @doc """

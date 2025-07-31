@@ -364,12 +364,28 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         {:ok, ticker}
 
       _ ->
-        # Fetch from ESI
-        case WandererNotifier.Infrastructure.Adapters.ESI.Service.get_corporation_info(corp_id) do
-          {:ok, %{"ticker" => ticker}} when is_binary(ticker) ->
+        # Fetch from ESI with a timeout wrapper
+        task =
+          Task.async(fn ->
+            WandererNotifier.Infrastructure.Adapters.ESI.Service.get_corporation_info(corp_id)
+          end)
+
+        case Task.yield(task, 3000) || Task.shutdown(task, :brutal_kill) do
+          {:ok, {:ok, %{"ticker" => ticker}}} when is_binary(ticker) ->
             # Cache for 24 hours
             WandererNotifier.Infrastructure.Cache.put(cache_key, ticker, :timer.hours(24))
             {:ok, ticker}
+
+          {:ok, _} ->
+            {:error, :not_found}
+
+          nil ->
+            Logger.warning("ESI corporation info request timed out",
+              corp_id: corp_id,
+              category: :esi
+            )
+
+            {:error, :timeout}
 
           _ ->
             {:error, :not_found}

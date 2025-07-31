@@ -112,10 +112,7 @@ defmodule WandererNotifier.Contexts.ApiContext do
 
     case Cache.get("map:character_list") do
       {:ok, characters} when is_list(characters) ->
-        Logger.info("Retrieved tracked characters from cache",
-          character_count: length(characters),
-          category: :api
-        )
+        Logger.debug("Retrieved #{length(characters)} tracked characters from cache")
 
         {:ok, characters}
 

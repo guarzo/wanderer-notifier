@@ -182,7 +182,12 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   def is_tracked?(system_id) when is_binary(system_id) do
     case Cache.get("map:systems") do
       {:ok, systems} when is_list(systems) ->
-        tracked = Enum.any?(systems, &(&1["solar_system_id"] == system_id))
+        tracked =
+          Enum.any?(systems, fn
+            %__MODULE__{} = sys -> to_string(sys.solar_system_id) == system_id
+            sys when is_map(sys) -> sys["solar_system_id"] == system_id
+          end)
+
         {:ok, tracked}
 
       {:ok, _} ->
@@ -285,10 +290,27 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   def get_system(system_id) when is_binary(system_id) do
     case Cache.get("map:systems") do
       {:ok, systems} when is_list(systems) ->
-        case Enum.find(systems, &(&1["solar_system_id"] == system_id)) do
+        case Enum.find(systems, fn
+               %__MODULE__{} = sys -> to_string(sys.solar_system_id) == system_id
+               sys when is_map(sys) -> sys["solar_system_id"] == system_id
+             end) do
           nil -> {:error, :not_found}
+          %__MODULE__{} = system -> {:ok, system}
           system_data -> {:ok, from_api_data(system_data)}
         end
+
+      {:ok, %__MODULE__{} = system} ->
+        # Handle case where cache contains a single System struct
+        if to_string(system.solar_system_id) == system_id do
+          {:ok, system}
+        else
+          {:error, :not_found}
+        end
+
+      {:ok, _} ->
+        # Handle unexpected data structure
+        Logger.warning("Unexpected data structure in map:systems cache")
+        {:error, :invalid_cache_data}
 
       {:error, reason} ->
         {:error, reason}
@@ -306,10 +328,27 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   def get_system_by_name(system_name) when is_binary(system_name) do
     case Cache.get("map:systems") do
       {:ok, systems} when is_list(systems) ->
-        case Enum.find(systems, &(&1["name"] == system_name)) do
+        case Enum.find(systems, fn
+               %__MODULE__{} = sys -> sys.name == system_name
+               sys when is_map(sys) -> sys["name"] == system_name
+             end) do
           nil -> {:error, :not_found}
+          %__MODULE__{} = system -> {:ok, system}
           system_data -> {:ok, from_api_data(system_data)}
         end
+
+      {:ok, %__MODULE__{} = system} ->
+        # Handle case where cache contains a single System struct
+        if system.name == system_name do
+          {:ok, system}
+        else
+          {:error, :not_found}
+        end
+
+      {:ok, _} ->
+        # Handle unexpected data structure
+        Logger.warning("Unexpected data structure in map:systems cache")
+        {:error, :invalid_cache_data}
 
       {:error, reason} ->
         {:error, reason}

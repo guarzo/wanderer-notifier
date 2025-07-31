@@ -650,12 +650,18 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       backoff_multiplier: 1
     }
 
-    log_message =
-      if bot_assigned,
-        do: "✅  Valid license with bot assigned",
-        else: "✅  Valid license"
+    # Only log when license status changes
+    if not state.valid or state.bot_assigned != bot_assigned do
+      log_message =
+        if bot_assigned,
+          do: "✅  License validated - bot assigned",
+          else: "✅  License validated - awaiting bot assignment"
 
-    Logger.info(log_message)
+      Logger.info(log_message)
+    else
+      Logger.debug("License validation successful (status unchanged)")
+    end
+
     valid_state
   end
 

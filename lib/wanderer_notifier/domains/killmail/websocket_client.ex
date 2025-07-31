@@ -277,7 +277,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   def handle_info(:subscription_update, state) do
-    Logger.info("Starting subscription update check")
+    Logger.debug("Starting subscription update check")
 
     try do
       check_and_update_subscriptions(state)
@@ -767,15 +767,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked characters from ExternalAdapters
   defp get_tracked_characters do
-    Logger.info("Fetching tracked characters from ExternalAdapters")
+    Logger.debug("Fetching tracked characters from ExternalAdapters")
 
     case ApiContext.get_tracked_characters() do
       {:ok, characters} ->
-        Logger.info("ExternalAdapters returned characters",
-          count: length(characters),
-          first_char: inspect(Enum.at(characters, 0)) |> String.slice(0, 200)
-        )
-
+        Logger.debug("ExternalAdapters returned #{length(characters)} characters")
         log_raw_characters(characters)
         process_character_list(characters)
 
@@ -800,26 +796,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp process_character_list(characters) do
-    Logger.info("Starting to process character list", count: length(characters))
-
     extracted_ids = Enum.map(characters, &extract_character_id/1)
-
-    Logger.info("Extracted character IDs",
-      extracted_count: length(extracted_ids),
-      sample_ids: Enum.take(extracted_ids, 5)
-    )
-
     valid_ids = Enum.filter(extracted_ids, &valid_character_id?/1)
-
-    Logger.info("After validity filter",
-      valid_count: length(valid_ids),
-      sample_valid_ids: Enum.take(valid_ids, 5)
-    )
-
     processed = Enum.uniq(valid_ids)
 
     Logger.debug(
-      "Processed #{length(processed)} tracked characters from #{length(characters)} inputs"
+      "Processed character list: #{length(characters)} inputs → #{length(extracted_ids)} extracted → #{length(valid_ids)} valid → #{length(processed)} unique"
     )
 
     processed
