@@ -97,15 +97,15 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   @doc """
   Checks if a type ID represents a ship.
   """
-  @spec is_ship?(integer()) :: boolean()
-  def is_ship?(type_id) when is_integer(type_id) do
+  @spec ship?(integer()) :: boolean()
+  def ship?(type_id) when is_integer(type_id) do
     case GenServer.call(__MODULE__, {:get_ship, type_id}) do
       {:ok, _ship} -> true
       _ -> false
     end
   end
 
-  def is_ship?(_), do: false
+  def ship?(_), do: false
 
   @doc """
   Gets information about loaded data.
@@ -159,7 +159,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
 
   @impl GenServer
   def handle_call({:get_item, type_id}, _from, %{items: items, ships: ships} = state)
-      when not is_nil(items) do
+      when items != nil do
     result =
       case Map.get(items, type_id) || Map.get(ships, type_id) do
         nil -> {:error, :not_found}
@@ -173,7 +173,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     {:reply, {:error, :not_loaded}, state}
   end
 
-  def handle_call({:get_ship, type_id}, _from, %{ships: ships} = state) when not is_nil(ships) do
+  def handle_call({:get_ship, type_id}, _from, %{ships: ships} = state) when ships != nil do
     result =
       case Map.get(ships, type_id) do
         nil -> {:error, :not_found}
@@ -188,7 +188,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   end
 
   def handle_call({:get_items, type_ids}, _from, %{items: items, ships: ships} = state)
-      when not is_nil(items) do
+      when items != nil do
     {found_items, missing_ids} =
       Enum.reduce(type_ids, {[], []}, fn type_id, {found, missing} ->
         case Map.get(items, type_id) || Map.get(ships, type_id) do

@@ -271,7 +271,10 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   defp parse_integer(nil), do: nil
 
   defp parse_integer(str) when is_binary(str) do
-    case Integer.parse(String.trim(str)) do
+    str
+    |> String.trim()
+    |> Integer.parse()
+    |> case do
       {int, ""} -> int
       _ -> nil
     end
@@ -285,7 +288,10 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   defp parse_float(nil), do: 0.0
 
   defp parse_float(str) when is_binary(str) do
-    case Float.parse(String.trim(str)) do
+    str
+    |> String.trim()
+    |> Float.parse()
+    |> case do
       {float, _} -> float
       :error -> 0.0
     end

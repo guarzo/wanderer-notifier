@@ -459,36 +459,56 @@ defmodule WandererNotifier.Testing.NotificationTester do
   def check_tracking_data do
     Logger.info("[TEST] Checking current tracking data...")
 
-    # Check tracked systems
+    check_tracked_systems()
+    check_tracked_characters()
+    check_startup_suppression()
+
+    :ok
+  end
+
+  defp check_tracked_systems do
     case WandererNotifier.Contexts.ApiContext.get_tracked_systems() do
-      {:ok, systems} ->
-        Logger.info("[TEST] Tracked systems: #{length(systems)}")
-        sample_systems = Enum.take(systems, 5)
-
-        Enum.each(sample_systems, fn system ->
-          Logger.info("[TEST] System: #{system["name"]} (#{system["solar_system_id"]})")
-        end)
-
-      {:error, reason} ->
-        Logger.error("[TEST] Failed to get tracked systems: #{inspect(reason)}")
+      {:ok, systems} -> log_tracked_systems(systems)
+      {:error, reason} -> Logger.error("[TEST] Failed to get tracked systems: #{inspect(reason)}")
     end
+  end
 
-    # Check tracked characters
+  defp log_tracked_systems(systems) do
+    Logger.info("[TEST] Tracked systems: #{length(systems)}")
+
+    systems
+    |> Enum.take(5)
+    |> Enum.each(&log_system_info/1)
+  end
+
+  defp log_system_info(system) do
+    Logger.info("[TEST] System: #{system["name"]} (#{system["solar_system_id"]})")
+  end
+
+  defp check_tracked_characters do
     case WandererNotifier.Contexts.ApiContext.get_tracked_characters() do
       {:ok, characters} ->
-        Logger.info("[TEST] Tracked characters: #{length(characters)}")
-        sample_chars = Enum.take(characters, 5)
-
-        Enum.each(sample_chars, fn char ->
-          char_data = char["character"]
-          Logger.info("[TEST] Character: #{char_data["name"]} (#{char_data["eve_id"]})")
-        end)
+        log_tracked_characters(characters)
 
       {:error, reason} ->
         Logger.error("[TEST] Failed to get tracked characters: #{inspect(reason)}")
     end
+  end
 
-    # Check if startup suppression is still active
+  defp log_tracked_characters(characters) do
+    Logger.info("[TEST] Tracked characters: #{length(characters)}")
+
+    characters
+    |> Enum.take(5)
+    |> Enum.each(&log_character_info/1)
+  end
+
+  defp log_character_info(char) do
+    char_data = char["character"]
+    Logger.info("[TEST] Character: #{char_data["name"]} (#{char_data["eve_id"]})")
+  end
+
+  defp check_startup_suppression do
     try do
       stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
       startup_suppression = Map.get(stats, :startup_suppression_active, false)
@@ -497,8 +517,6 @@ defmodule WandererNotifier.Testing.NotificationTester do
       e ->
         Logger.debug("[TEST] Could not check startup suppression: #{inspect(e)}")
     end
-
-    :ok
   end
 
   @doc """
@@ -508,66 +526,86 @@ defmodule WandererNotifier.Testing.NotificationTester do
     Logger.info("[TEST] Checking cached killmails...")
 
     try do
-      # Get all cache keys and find killmail-related ones
       {:ok, keys} = Cachex.keys(:wanderer_cache)
 
-      killmail_keys =
-        Enum.filter(keys, fn key ->
-          is_binary(key) && String.contains?(key, "killmail")
-        end)
+      killmail_keys = filter_killmail_keys(keys)
+      process_killmail_keys(killmail_keys)
 
-      Logger.info("[TEST] Found #{length(killmail_keys)} killmail-related cache entries")
-
-      if length(killmail_keys) > 0 do
-        # Show first 10 killmail keys and their data
-        sample_keys = Enum.take(killmail_keys, 10)
-
-        Enum.each(sample_keys, fn key ->
-          case Cachex.get(:wanderer_cache, key) do
-            {:ok, data} when data != nil ->
-              Logger.info(
-                "[TEST] #{key}: #{inspect(data, limit: :infinity, printable_limit: 200)}"
-              )
-
-            {:ok, nil} ->
-              Logger.info("[TEST] #{key}: nil")
-
-            {:error, reason} ->
-              Logger.info("[TEST] #{key}: error - #{inspect(reason)}")
-          end
-        end)
-
-        if length(killmail_keys) > 10 do
-          Logger.info("[TEST] ... and #{length(killmail_keys) - 10} more killmail entries")
-        end
-      else
-        Logger.warning("[TEST] No killmail entries found in cache")
-      end
-
-      # Also check for recent killmail IDs that might be tracked separately
-      recent_keys =
-        Enum.filter(keys, fn key ->
-          is_binary(key) &&
-            (String.contains?(key, "recent") || String.contains?(key, "processed"))
-        end)
-
-      if length(recent_keys) > 0 do
-        Logger.info("[TEST] Found #{length(recent_keys)} recent/processed entries")
-
-        Enum.take(recent_keys, 5)
-        |> Enum.each(fn key ->
-          case Cachex.get(:wanderer_cache, key) do
-            {:ok, data} -> Logger.info("[TEST] #{key}: #{inspect(data)}")
-            _ -> Logger.info("[TEST] #{key}: no data")
-          end
-        end)
-      end
+      recent_keys = filter_recent_keys(keys)
+      process_recent_keys(recent_keys)
 
       {:ok, length(killmail_keys)}
     rescue
       e ->
         Logger.error("[TEST] Error checking cache: #{inspect(e)}")
         {:error, e}
+    end
+  end
+
+  defp filter_killmail_keys(keys) do
+    Enum.filter(keys, fn key ->
+      is_binary(key) && String.contains?(key, "killmail")
+    end)
+  end
+
+  defp filter_recent_keys(keys) do
+    Enum.filter(keys, fn key ->
+      is_binary(key) &&
+        (String.contains?(key, "recent") || String.contains?(key, "processed"))
+    end)
+  end
+
+  defp process_killmail_keys(killmail_keys) do
+    count = length(killmail_keys)
+    Logger.info("[TEST] Found #{count} killmail-related cache entries")
+
+    if count > 0 do
+      display_sample_keys(killmail_keys)
+      log_remaining_entries(count)
+    else
+      Logger.warning("[TEST] No killmail entries found in cache")
+    end
+  end
+
+  defp display_sample_keys(keys) do
+    keys
+    |> Enum.take(10)
+    |> Enum.each(&log_cache_entry/1)
+  end
+
+  defp log_cache_entry(key) do
+    case Cachex.get(:wanderer_cache, key) do
+      {:ok, data} when data != nil ->
+        Logger.info("[TEST] #{key}: #{inspect(data, limit: :infinity, printable_limit: 200)}")
+
+      {:ok, nil} ->
+        Logger.info("[TEST] #{key}: nil")
+
+      {:error, reason} ->
+        Logger.info("[TEST] #{key}: error - #{inspect(reason)}")
+    end
+  end
+
+  defp log_remaining_entries(total) when total > 10 do
+    Logger.info("[TEST] ... and #{total - 10} more killmail entries")
+  end
+
+  defp log_remaining_entries(_), do: :ok
+
+  defp process_recent_keys([]), do: :ok
+
+  defp process_recent_keys(recent_keys) do
+    Logger.info("[TEST] Found #{length(recent_keys)} recent/processed entries")
+
+    recent_keys
+    |> Enum.take(5)
+    |> Enum.each(&log_recent_entry/1)
+  end
+
+  defp log_recent_entry(key) do
+    case Cachex.get(:wanderer_cache, key) do
+      {:ok, data} -> Logger.info("[TEST] #{key}: #{inspect(data)}")
+      _ -> Logger.info("[TEST] #{key}: no data")
     end
   end
 
@@ -659,7 +697,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
         # Monitor for connection issues
         # Wait 10 seconds
-        Process.sleep(10000)
+        Process.sleep(10_000)
 
         if Process.alive?(new_pid) do
           try do

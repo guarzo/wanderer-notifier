@@ -92,48 +92,42 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
     quantity = Map.get(item, "quantity", 1)
 
-    # Use ItemLookupService to get the item name for Janice
-    # Fall back to type_id if name lookup fails
-    name_or_id =
-      case type_id do
-        nil ->
-          # No type_id available, try existing name
-          Map.get(item, "name") || "Unknown Item"
+    name_or_id = determine_item_name(type_id, item)
+    log_missing_identifier(name_or_id, item)
 
-        id when is_integer(id) ->
-          # Get name from lookup service, fall back to type_id
-          case ItemLookupService.get_item_name(id) do
-            # Use type_id if name lookup fails
-            "Unknown Item" -> id
-            # Use the resolved name
-            name -> name
-          end
+    {name_or_id, quantity}
+  end
 
-        id when is_binary(id) ->
-          # String type_id, try to parse and lookup
-          case Integer.parse(id) do
-            {int_id, ""} ->
-              case ItemLookupService.get_item_name(int_id) do
-                "Unknown Item" -> int_id
-                name -> name
-              end
+  defp determine_item_name(nil, item) do
+    Map.get(item, "name") || "Unknown Item"
+  end
 
-            # Invalid format, use as-is
-            _ ->
-              id
-          end
+  defp determine_item_name(id, _item) when is_integer(id) do
+    case ItemLookupService.get_item_name(id) do
+      "Unknown Item" -> id
+      name -> name
+    end
+  end
 
-        # Use type_id as fallback
-        id ->
-          id
-      end
+  defp determine_item_name(id, _item) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} ->
+        case ItemLookupService.get_item_name(int_id) do
+          "Unknown Item" -> int_id
+          name -> name
+        end
 
-    # Log if we don't have a valid identifier
+      _ ->
+        id
+    end
+  end
+
+  defp determine_item_name(id, _item), do: id
+
+  defp log_missing_identifier(name_or_id, item) do
     if is_nil(name_or_id) or name_or_id == "" do
       Logger.debug("Item missing type_id and name: #{inspect(item)}")
     end
-
-    {name_or_id, quantity}
   end
 
   defp valid_item?({name_or_id, quantity}) do
