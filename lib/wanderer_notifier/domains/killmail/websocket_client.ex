@@ -180,6 +180,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     )
   end
 
+  defp log_disconnect_reason({:remote, 1012, message}, state) do
+    Logger.info(
+      "WebSocket server restarting (code 1012). Message: #{inspect(message)}. Connected systems: #{MapSet.size(state.subscribed_systems)}, characters: #{MapSet.size(state.subscribed_characters)}. URL: #{state.url}"
+    )
+  end
+
   defp log_disconnect_reason({:remote, code, message}, state) when is_integer(code) do
     Logger.error(
       "WebSocket closed by remote server with code #{code}. Message: #{inspect(message)}. Connected systems: #{MapSet.size(state.subscribed_systems)}, characters: #{MapSet.size(state.subscribed_characters)}. URL: #{state.url}"

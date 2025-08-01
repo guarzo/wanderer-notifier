@@ -1,0 +1,65 @@
+# This is a suggested fix for the version selection logic in deploy.yml
+# Replace lines 67-92 in deploy.yml with this improved logic:
+
+- name: Determine deployment parameters (IMPROVED)
+  id: params
+  run: |
+    # Set environment (default to production for auto-deploy)
+    if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+      ENVIRONMENT="${{ github.event.inputs.environment }}"
+      ACTION="${{ github.event.inputs.action }}"
+      VERSION="${{ github.event.inputs.version }}"
+    else
+      ENVIRONMENT="production"
+      ACTION="deploy"
+      
+      # Improved version selection logic
+      echo "🔍 Looking for version tags..."
+      
+      # Get all version tags sorted by version number
+      ALL_TAGS=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$" | sort -V)
+      echo "All version tags found: $ALL_TAGS"
+      
+      # Get the latest semantic version (v4.3.4)
+      SEMANTIC_VERSION=$(echo "$ALL_TAGS" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | tail -1)
+      echo "Latest semantic version: $SEMANTIC_VERSION"
+      
+      # Get the latest dated version based on the semantic version (v4.3.4.20240714123456)
+      if [ -n "$SEMANTIC_VERSION" ]; then
+        DATED_VERSION=$(echo "$ALL_TAGS" | grep "^${SEMANTIC_VERSION}\." | tail -1)
+        echo "Latest dated version for $SEMANTIC_VERSION: $DATED_VERSION"
+      fi
+      
+      # Choose the version: prefer dated, fall back to semantic
+      if [ -n "$DATED_VERSION" ]; then
+        VERSION="$DATED_VERSION"
+        echo "✅ Using dated version: $VERSION"
+      elif [ -n "$SEMANTIC_VERSION" ]; then
+        VERSION="$SEMANTIC_VERSION"  
+        echo "✅ Using semantic version: $VERSION"
+      else
+        echo "❌ No version tag found! Cannot deploy without a version tag."
+        echo "Available tags:"
+        git tag -l | head -10
+        exit 1
+      fi
+    fi
+    
+    # Validate that the Docker image exists
+    echo "🐳 Checking if Docker image exists: guarzo/wanderer-notifier:$VERSION"
+    if ! docker manifest inspect guarzo/wanderer-notifier:$VERSION >/dev/null 2>&1; then
+      echo "❌ Docker image guarzo/wanderer-notifier:$VERSION does not exist!"
+      echo "Available tags on Docker Hub:"
+      curl -s "https://registry.hub.docker.com/v2/repositories/guarzo/wanderer-notifier/tags/" | jq -r '.results[].name' | head -10 || echo "Failed to check Docker Hub"
+      exit 1
+    fi
+    echo "✅ Docker image confirmed to exist"
+    
+    echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT
+    echo "ACTION=$ACTION" >> $GITHUB_OUTPUT  
+    echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+    
+    echo "📋 Final Deployment Parameters:"
+    echo "  Environment: $ENVIRONMENT"
+    echo "  Action: $ACTION"
+    echo "  Version: $VERSION"
