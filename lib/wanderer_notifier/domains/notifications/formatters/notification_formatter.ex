@@ -8,7 +8,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   alias WandererNotifier.Domains.Tracking.Entities.{Character, System}
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
   alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Domains.Universe.Services.ItemLookupService
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Shared.Utils.TimeUtils
   require Logger
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -204,7 +206,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     victim_name = killmail.victim_character_name || "Unknown pilot"
     victim_id = killmail.victim_character_id
     corp_id = killmail.victim_corporation_id
-    ship_name = killmail.victim_ship_name || "ship"
+    ship_name = get_ship_name_from_killmail(killmail, :victim)
 
     # Get corporation ticker
     corp_ticker = get_corp_ticker_from_killmail(killmail, "victim")
@@ -243,7 +245,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   defp build_attacker_description_with_final_blow(final_blow, attackers, attacker_count) do
     attacker_display = build_attacker_display(final_blow)
-    attacker_ship = Map.get(final_blow, "ship_name", "Unknown Ship")
+    attacker_ship = get_attacker_ship_name(final_blow)
 
     if attacker_count == 1 do
       "#{attacker_display} flying in a #{attacker_ship} solo."
@@ -288,7 +290,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
     if top_damage && top_damage != final_blow do
       top_display = build_attacker_display(top_damage)
-      top_ship = Map.get(top_damage, "ship_name", "Unknown Ship")
+      top_ship = get_attacker_ship_name(top_damage)
       ", Top Damage was done by #{top_display} flying in a #{top_ship}"
     else
       ""
@@ -906,7 +908,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         text: "Rally Point Notification",
         icon_url: nil
       },
-      timestamp: Map.get(rally_point, :created_at) || DateTime.utc_now()
+      timestamp: TimeUtils.to_iso8601(Map.get(rally_point, :created_at) || DateTime.utc_now())
     }
 
     Logger.info(
@@ -1037,6 +1039,38 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       category: :formatter
     )
   end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Ship Name Lookup Helpers
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp get_ship_name_from_killmail(%Killmail{} = killmail, :victim) do
+    # Try the pre-enriched ship name first
+    case killmail.victim_ship_name do
+      name when is_binary(name) and name != "" -> name
+      _ -> lookup_ship_name_by_type_id(killmail.victim_ship_type_id)
+    end
+  end
+
+  defp get_attacker_ship_name(attacker) when is_map(attacker) do
+    # Try the pre-enriched ship name first
+    case Map.get(attacker, "ship_name") do
+      name when is_binary(name) and name != "" -> name
+      _ -> lookup_ship_name_by_type_id(Map.get(attacker, "ship_type_id"))
+    end
+  end
+
+  defp lookup_ship_name_by_type_id(nil), do: "Unknown Ship"
+  defp lookup_ship_name_by_type_id(type_id) when is_integer(type_id) do
+    ItemLookupService.get_ship_name(type_id)
+  end
+  defp lookup_ship_name_by_type_id(type_id) when is_binary(type_id) do
+    case Integer.parse(type_id) do
+      {int_id, ""} -> ItemLookupService.get_ship_name(int_id)
+      _ -> "Unknown Ship"
+    end
+  end
+  defp lookup_ship_name_by_type_id(_), do: "Unknown Ship"
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Plain Text Formatting

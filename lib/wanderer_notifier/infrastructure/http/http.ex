@@ -13,6 +13,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `:janice` - Janice price evaluation API with moderate rate limits
   - `:map` - Internal map API with extended timeouts
   - `:streaming` - Special configuration for streaming endpoints
+  - `:fuzzworks` - Fuzzworks data dump API for static EVE data
 
   ## Usage Examples
 
@@ -42,7 +43,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
-  @type service :: :esi | :wanderer_kills | :license | :janice | :map | :streaming | nil
+  @type service :: :esi | :wanderer_kills | :license | :janice | :map | :streaming | :fuzzworks | nil
   @type middleware :: module()
   @type request :: %{
           method: method(),
@@ -77,7 +78,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `opts` - Request options (see below)
 
   ## Options
-  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :streaming)
+  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :streaming, :fuzzworks)
   - `:timeout` - Request timeout in milliseconds
   - `:retry_count` - Number of retries
   - `:decode_json` - Automatically decode JSON responses (default: true)
@@ -242,11 +243,14 @@ defmodule WandererNotifier.Infrastructure.Http do
     base_headers =
       if method in [:get, :head, :delete], do: @default_get_headers, else: @default_headers
 
+    # Ensure custom_headers is a list
+    safe_headers = custom_headers || []
+
     # If custom headers already have Content-Type, don't add the default one
-    if has_content_type?(custom_headers) do
-      custom_headers
+    if has_content_type?(safe_headers) do
+      safe_headers
     else
-      base_headers ++ custom_headers
+      base_headers ++ safe_headers
     end
   end
 
@@ -337,6 +341,19 @@ defmodule WandererNotifier.Infrastructure.Http do
       disable_middleware: true,
       follow_redirects: false,
       decode_json: false
+    ],
+    fuzzworks: [
+      timeout: 60_000,
+      retry_count: 2,
+      retry_delay: 2_000,
+      retryable_status_codes: [429, 500, 502, 503, 504],
+      rate_limit: [
+        service: :fuzzworks,
+        requests_per_second: 5,
+        burst_capacity: 10,
+        per_host: true
+      ],
+      decode_json: false
     ]
   }
 
@@ -381,12 +398,14 @@ defmodule WandererNotifier.Infrastructure.Http do
     end)
   end
 
-  defp has_content_type?(headers) do
+  defp has_content_type?(nil), do: false
+  defp has_content_type?(headers) when is_list(headers) do
     Enum.any?(headers, fn
       {"Content-Type", _} -> true
       _ -> false
     end)
   end
+  defp has_content_type?(_), do: false
 
   defp transform_response({:ok, response}) do
     {:ok, response}

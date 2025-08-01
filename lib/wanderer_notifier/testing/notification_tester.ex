@@ -5,7 +5,8 @@ defmodule WandererNotifier.Testing.NotificationTester do
   Usage in IEx:
 
       iex> alias WandererNotifier.Testing.NotificationTester, as: NT
-
+      NT.debug_websocket_restart()
+      NT.check_websocket_supervision()
       # Test character notification (with real character ID)
       iex> NT.test_character("123456789")
 
@@ -13,15 +14,18 @@ defmodule WandererNotifier.Testing.NotificationTester do
       iex> NT.test_system("30000142")
 
       # Process killmail by ID as new notification
-      iex> NT.test_killmail_id("128893901")
+      iex> NT.test_killmail_id("128914153")
 
       # Test WandererKills service connectivity
       iex> NT.test_wanderer_kills_connection()
-
+      1. Check tracking configuration:
+      iex> NT.check_tracking_data()
+      2. List cached killmails:
+      iex> NT.list_cached_killmails()
       # Override next kill classification
       iex> NT.set_kill_override(:character)
       iex> # Next real kill will be treated as character kill
-
+      NT.websocket_status()
       iex> NT.set_kill_override(:system)
       iex> # Next real kill will be treated as system kill
   """
@@ -274,6 +278,412 @@ defmodule WandererNotifier.Testing.NotificationTester do
   end
 
   @doc """
+  Check if WebSocket process is being supervised and can restart.
+  """
+  def check_websocket_supervision do
+    Logger.info("[TEST] Checking WebSocket supervision...")
+
+    # Check current status
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+    Logger.info("[TEST] Current WebSocket PID: #{inspect(pid)}")
+
+    if pid do
+      # Kill the process and see if it restarts
+      Logger.info("[TEST] Killing WebSocket process to test supervision...")
+      Process.exit(pid, :kill)
+
+      # Wait and check multiple times
+      for i <- 1..10 do
+        Process.sleep(1000)
+        new_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+        Logger.info("[TEST] After #{i}s - WebSocket PID: #{inspect(new_pid)}")
+
+        if new_pid && new_pid != pid do
+          Logger.info("[TEST] SUCCESS: WebSocket restarted with new PID after #{i}s")
+          websocket_status()
+        end
+      end
+
+      Logger.error("[TEST] FAILED: WebSocket was not restarted by supervisor after 10 seconds")
+      {:error, :not_restarted}
+    else
+      Logger.error("[TEST] WebSocket not running")
+      {:error, :not_running}
+    end
+  end
+
+  @doc """
+  Check WebSocket connection status.
+
+  Shows if the WebSocket client is alive and connected.
+  """
+  def websocket_status do
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+    if pid do
+      if Process.alive?(pid) do
+        # Get process info
+        info = Process.info(pid, [:message_queue_len, :current_function, :status, :memory])
+
+        Logger.info("[TEST] WebSocket client is ALIVE")
+        Logger.info("[TEST] PID: #{inspect(pid)}")
+        Logger.info("[TEST] Status: #{inspect(info[:status])}")
+        Logger.info("[TEST] Message queue length: #{info[:message_queue_len]}")
+        Logger.info("[TEST] Memory: #{info[:memory]} bytes")
+
+        # Try to get the actual WebSocket state
+        try do
+          state = :sys.get_state(pid)
+
+          if state.connected_at do
+            Logger.info("[TEST] WebSocket is CONNECTED!")
+            Logger.info("[TEST] Connected at: #{state.connected_at}")
+            Logger.info("[TEST] Connection ID: #{state.connection_id}")
+            Logger.info("[TEST] Reconnect attempts: #{state.reconnect_attempts}")
+            Logger.info("[TEST] Channel ref: #{inspect(state.channel_ref)}")
+            Logger.info("[TEST] Subscribed systems: #{MapSet.size(state.subscribed_systems)}")
+            Logger.info("[TEST] Subscribed characters: #{MapSet.size(state.subscribed_characters)}")
+          else
+            Logger.warning("[TEST] WebSocket process is alive but NOT CONNECTED")
+            Logger.info("[TEST] Reconnect attempts: #{state.reconnect_attempts}")
+          end
+        rescue
+          e ->
+            Logger.debug("[TEST] Could not get WebSocket state: #{inspect(e)}")
+            Logger.warning("[TEST] WebSocket is likely CONNECTED (receiving killmails)")
+        end
+
+        {:ok, :alive}
+      else
+        Logger.error("[TEST] WebSocket client process exists but is NOT ALIVE")
+        {:error, :dead}
+      end
+    else
+      Logger.error("[TEST] WebSocket client is NOT RUNNING")
+      {:error, :not_running}
+    end
+  end
+
+  @doc """
+  Send a message to the WebSocket client to trigger reconnection.
+
+  This is gentler than killing the process.
+  """
+  def trigger_websocket_reconnect do
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+    if pid do
+      Logger.info("[TEST] Sending :join_channel message to WebSocket client...")
+      send(pid, :join_channel)
+
+      # Wait a bit for it to process
+      Process.sleep(2000)
+
+      # Check status
+      websocket_status()
+    else
+      Logger.error("[TEST] WebSocket client not found")
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Force WebSocket reconnection.
+
+  Kills the current WebSocket process to trigger a supervisor restart.
+  """
+  def reconnect_websocket do
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+    if pid do
+      Logger.info("[TEST] Killing WebSocket client process to force reconnection...")
+      Process.exit(pid, :kill)
+
+      # Wait a bit for supervisor to restart it
+      Process.sleep(2000)
+
+      # Check new status
+      new_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+      if new_pid && new_pid != pid do
+        Logger.info("[TEST] WebSocket client restarted with new PID: #{inspect(new_pid)}")
+        websocket_status()
+      else
+        Logger.error("[TEST] WebSocket client failed to restart")
+        {:error, :restart_failed}
+      end
+    else
+      Logger.error("[TEST] WebSocket client not found")
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Force the WebSocket to try joining the channel.
+  """
+  def force_websocket_join do
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+    if pid do
+      Logger.info("[TEST] Forcing WebSocket to attempt channel join...")
+      send(pid, :join_channel)
+
+      Process.sleep(2000)
+      websocket_status()
+    else
+      Logger.error("[TEST] WebSocket client not found")
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Manually start the WebSocket client.
+  """
+  def start_websocket_client do
+    Logger.info("[TEST] Attempting to manually start WebSocket client...")
+
+    case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
+      {:ok, pid} ->
+        Logger.info("[TEST] WebSocket client started with PID: #{inspect(pid)}")
+        Process.sleep(2000)
+        websocket_status()
+    end
+  end
+
+  @doc """
+  Check what systems and characters are being tracked.
+  """
+  def check_tracking_data do
+    Logger.info("[TEST] Checking current tracking data...")
+
+    # Check tracked systems
+    case WandererNotifier.Contexts.ApiContext.get_tracked_systems() do
+      {:ok, systems} ->
+        Logger.info("[TEST] Tracked systems: #{length(systems)}")
+        sample_systems = Enum.take(systems, 5)
+        Enum.each(sample_systems, fn system ->
+          Logger.info("[TEST] System: #{system["name"]} (#{system["solar_system_id"]})")
+        end)
+
+      {:error, reason} ->
+        Logger.error("[TEST] Failed to get tracked systems: #{inspect(reason)}")
+    end
+
+    # Check tracked characters
+    case WandererNotifier.Contexts.ApiContext.get_tracked_characters() do
+      {:ok, characters} ->
+        Logger.info("[TEST] Tracked characters: #{length(characters)}")
+        sample_chars = Enum.take(characters, 5)
+        Enum.each(sample_chars, fn char ->
+          char_data = char["character"]
+          Logger.info("[TEST] Character: #{char_data["name"]} (#{char_data["eve_id"]})")
+        end)
+
+      {:error, reason} ->
+        Logger.error("[TEST] Failed to get tracked characters: #{inspect(reason)}")
+    end
+
+    # Check if startup suppression is still active
+    try do
+      stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+      startup_suppression = Map.get(stats, :startup_suppression_active, false)
+      Logger.info("[TEST] Startup suppression active: #{startup_suppression}")
+    rescue
+      e ->
+        Logger.debug("[TEST] Could not check startup suppression: #{inspect(e)}")
+    end
+
+    :ok
+  end
+
+  @doc """
+  List all killmails currently in the cache.
+  """
+  def list_cached_killmails do
+    Logger.info("[TEST] Checking cached killmails...")
+
+    try do
+      # Get all cache keys and find killmail-related ones
+      {:ok, keys} = Cachex.keys(:wanderer_cache)
+
+      killmail_keys = Enum.filter(keys, fn key ->
+        is_binary(key) && String.contains?(key, "killmail")
+      end)
+
+      Logger.info("[TEST] Found #{length(killmail_keys)} killmail-related cache entries")
+
+      if length(killmail_keys) > 0 do
+        # Show first 10 killmail keys and their data
+        sample_keys = Enum.take(killmail_keys, 10)
+
+        Enum.each(sample_keys, fn key ->
+          case Cachex.get(:wanderer_cache, key) do
+            {:ok, data} when data != nil ->
+              Logger.info("[TEST] #{key}: #{inspect(data, limit: :infinity, printable_limit: 200)}")
+
+            {:ok, nil} ->
+              Logger.info("[TEST] #{key}: nil")
+
+            {:error, reason} ->
+              Logger.info("[TEST] #{key}: error - #{inspect(reason)}")
+          end
+        end)
+
+        if length(killmail_keys) > 10 do
+          Logger.info("[TEST] ... and #{length(killmail_keys) - 10} more killmail entries")
+        end
+      else
+        Logger.warning("[TEST] No killmail entries found in cache")
+      end
+
+      # Also check for recent killmail IDs that might be tracked separately
+      recent_keys = Enum.filter(keys, fn key ->
+        is_binary(key) && (String.contains?(key, "recent") || String.contains?(key, "processed"))
+      end)
+
+      if length(recent_keys) > 0 do
+        Logger.info("[TEST] Found #{length(recent_keys)} recent/processed entries")
+        Enum.take(recent_keys, 5) |> Enum.each(fn key ->
+          case Cachex.get(:wanderer_cache, key) do
+            {:ok, data} -> Logger.info("[TEST] #{key}: #{inspect(data)}")
+            _ -> Logger.info("[TEST] #{key}: no data")
+          end
+        end)
+      end
+
+      {:ok, length(killmail_keys)}
+
+    rescue
+      e ->
+        Logger.error("[TEST] Error checking cache: #{inspect(e)}")
+        {:error, e}
+    end
+  end
+
+  @doc """
+  Monitor WebSocket for real-time killmail activity.
+  """
+  def monitor_websocket_activity(duration_seconds \\ 30) do
+    Logger.info("[TEST] Monitoring WebSocket for #{duration_seconds} seconds...")
+
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+
+    if pid do
+      # Get initial state
+      initial_state = :sys.get_state(pid)
+      initial_memory = Process.info(pid, :memory)
+
+      Logger.info("[TEST] Initial memory: #{initial_memory} bytes")
+      Logger.info("[TEST] Monitoring started - make some kills now...")
+
+      # Wait for the specified duration
+      Process.sleep(duration_seconds * 1000)
+
+      # Check final state
+      final_state = :sys.get_state(pid)
+      final_memory = Process.info(pid, :memory)
+
+      Logger.info("[TEST] Final memory: #{final_memory} bytes (change: #{final_memory - initial_memory})")
+
+      # Check for any changes that might indicate activity
+      if final_state != initial_state do
+        Logger.info("[TEST] WebSocket state changed during monitoring")
+      else
+        Logger.warning("[TEST] No WebSocket state changes detected")
+      end
+
+      # Check cache again
+      list_cached_killmails()
+
+    else
+      Logger.error("[TEST] WebSocket client not running")
+      {:error, :not_running}
+    end
+  end
+
+  @doc """
+  Test WebSocket subscription with minimal data to isolate connection issues.
+  """
+  def test_minimal_websocket_subscription do
+    Logger.info("[TEST] Testing WebSocket with minimal subscription...")
+
+    # Kill current WebSocket
+    pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+    if pid, do: Process.exit(pid, :kill)
+
+    Process.sleep(1000)
+
+    # Temporarily override the subscription limits
+    Logger.info("[TEST] Setting minimal subscription limits...")
+
+    # You can try different combinations:
+    # 1. Just systems, no characters
+    # 2. Just characters, no systems
+    # 3. Very small numbers of each
+
+    Application.put_env(:wanderer_notifier, :websocket_max_systems, 3)
+    Application.put_env(:wanderer_notifier, :websocket_max_characters, 10)
+
+    Logger.info("[TEST] Starting WebSocket with limited subscription (3 systems, 10 characters)...")
+
+    # Start new WebSocket
+    case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
+      {:ok, new_pid} ->
+        Logger.info("[TEST] WebSocket started with PID: #{inspect(new_pid)}")
+
+        # Monitor for connection issues
+        Process.sleep(10000)  # Wait 10 seconds
+
+        if Process.alive?(new_pid) do
+          try do
+            state = :sys.get_state(new_pid)
+            if state.connected_at do
+              Logger.info("[TEST] SUCCESS: WebSocket stayed connected with minimal subscription!")
+              Logger.info("[TEST] Connected at: #{state.connected_at}")
+            else
+              Logger.warning("[TEST] WebSocket alive but not connected")
+            end
+          rescue
+            _ -> Logger.info("[TEST] WebSocket process is running (may be reconnection process)")
+          end
+        else
+          Logger.error("[TEST] WebSocket process died")
+        end
+
+        # Reset limits
+        Application.put_env(:wanderer_notifier, :websocket_max_systems, 1000)
+        Application.put_env(:wanderer_notifier, :websocket_max_characters, 500)
+    end
+  end
+
+  @doc """
+  Debug WebSocket restart failure.
+  """
+  def debug_websocket_restart do
+    Logger.info("[TEST] Debugging WebSocket restart...")
+
+    # Check if the name is still registered
+    current_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+    Logger.info("[TEST] Current registered PID: #{inspect(current_pid)}")
+
+    if current_pid do
+      Logger.info("[TEST] Process alive? #{Process.alive?(current_pid)}")
+      if Process.alive?(current_pid) do
+        info = Process.info(current_pid)
+        Logger.info("[TEST] Process info: #{inspect(info)}")
+      end
+    end
+
+    # Try to start manually
+    Logger.info("[TEST] Attempting manual start...")
+    case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
+      {:ok, pid} ->
+        Logger.info("[TEST] SUCCESS: Started with PID #{inspect(pid)}")
+        websocket_status()
+    end
+  end
+
+  @doc """
   Test connectivity to the WandererKills service.
 
   Useful for debugging connection issues before testing killmail IDs.
@@ -286,13 +696,21 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
     Logger.info("[TEST] WandererKills base URL: #{base_url}")
 
-    case WandererKillsAPI.health_check() do
-      {:ok, health_data} ->
-        Logger.info("[TEST] WandererKills service is healthy: #{inspect(health_data)}")
+    # Try to fetch a known killmail to test connectivity
+    # Using a high ID that's likely to exist
+    test_killmail_id = "128000000"
+
+    case WandererKillsAPI.get_killmail(test_killmail_id) do
+      {:ok, _killmail_data} ->
+        Logger.info("[TEST] WandererKills service is healthy - successfully fetched test killmail")
+        {:ok, :healthy}
+
+      {:error, %{type: :not_found}} ->
+        Logger.info("[TEST] WandererKills service is healthy - responded with 404 for test killmail")
         {:ok, :healthy}
 
       {:error, reason} ->
-        Logger.error("[TEST] WandererKills service health check failed: #{inspect(reason)}")
+        Logger.error("[TEST] WandererKills service connection failed: #{inspect(reason)}")
         Logger.info("[TEST] Make sure the WandererKills service is running at: #{base_url}")
         {:error, reason}
     end

@@ -136,6 +136,9 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Core application service
       {WandererNotifier.Application.Services.ApplicationService, []},
 
+      # Universe item and ship lookup service
+      {WandererNotifier.Domains.Universe.Services.ItemLookupService, []},
+
       # License management
       {WandererNotifier.Domains.License.LicenseService, []}
     ]

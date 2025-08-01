@@ -12,6 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
 
   require Logger
   alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Domains.Universe.Services.ItemLookupService
   alias WandererNotifier.Infrastructure.Adapters.JaniceClient
   alias WandererNotifier.Infrastructure.Adapters.ESI.Service, as: ESIService
   alias WandererNotifier.Infrastructure.Cache
@@ -29,60 +30,11 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
   defp safe_parse_killmail_id(killmail_id) when is_integer(killmail_id), do: {:ok, killmail_id}
   defp safe_parse_killmail_id(_), do: {:error, :invalid_format}
 
-  # Helper function to get type names with caching
+  # Helper function to get type names using the fast lookup service
   defp get_type_names_cached(type_ids) do
-    cached_names = get_cached_type_names(type_ids)
-    missing_type_ids = find_missing_type_ids(type_ids, cached_names)
-
-    fetch_and_merge_missing_names(missing_type_ids, cached_names)
-  end
-
-  defp get_cached_type_names(type_ids) do
-    type_ids
-    |> Enum.map(&get_cached_type_name/1)
-    |> Enum.filter(&(&1 != nil))
-    |> Map.new()
-  end
-
-  defp get_cached_type_name(type_id) do
-    case Cache.get_universe_type(type_id) do
-      {:ok, type_data} -> {to_string(type_id), Map.get(type_data, "name", "Unknown Item")}
-      {:error, :not_found} -> nil
-    end
-  end
-
-  defp find_missing_type_ids(type_ids, cached_names) do
-    type_ids
-    |> Enum.filter(fn type_id ->
-      not Map.has_key?(cached_names, to_string(type_id))
-    end)
-  end
-
-  defp fetch_and_merge_missing_names([], cached_names) do
-    {:ok, cached_names}
-  end
-
-  defp fetch_and_merge_missing_names(missing_ids, cached_names) do
-    {:ok, fetched_names} = ESIService.get_type_names(missing_ids)
-    cache_fetched_names(fetched_names)
-
-    all_names = Map.merge(cached_names, fetched_names)
-    {:ok, all_names}
-  end
-
-  defp cache_fetched_names(fetched_names) do
-    Enum.each(fetched_names, &cache_single_type_name/1)
-  end
-
-  defp cache_single_type_name({type_id_str, name}) do
-    case safe_parse_killmail_id(type_id_str) do
-      {:ok, type_id} ->
-        type_data = %{"name" => name}
-        Cache.put_universe_type(type_id, type_data)
-
-      {:error, _} ->
-        Logger.warning("Invalid type_id format: #{inspect(type_id_str)}")
-    end
+    # Use the fast ItemLookupService instead of ESI + caching
+    type_names = ItemLookupService.get_item_names(type_ids)
+    {:ok, type_names}
   end
 
   # Helper function to get Janice prices with caching

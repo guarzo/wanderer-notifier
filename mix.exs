@@ -48,6 +48,7 @@ defmodule WandererNotifier.MixProject do
       {:websockex, "~> 0.4"},
       {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},
+      {:nimble_csv, "~> 1.2"},
       {:plug, "~> 1.18"},
       {:plug_cowboy, "~> 2.7"},
       {:mime, "~> 2.0"},

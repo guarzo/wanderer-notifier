@@ -40,7 +40,6 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       subscription_update_ref: nil,
       subscribed_systems: MapSet.new(),
       subscribed_characters: MapSet.new(),
-      pipeline_worker: Keyword.get(opts, :pipeline_worker),
       connected_at: nil,
       reconnect_attempts: 0,
       connection_id: nil,
@@ -599,10 +598,16 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       preload: is_preload
     )
 
-    # Transform and send each killmail to the pipeline
+    # Transform and send each killmail to the pipeline with deduplication
     Enum.each(killmails, fn killmail ->
-      transformed_killmail = transform_killmail(killmail)
-      send_to_pipeline(transformed_killmail, state)
+      killmail_id = killmail["killmail_id"]
+      
+      if should_process_killmail?(killmail_id) do
+        transformed_killmail = transform_killmail(killmail)
+        send_to_pipeline(transformed_killmail, state)
+      else
+        Logger.debug("WebSocket: Skipping duplicate killmail #{killmail_id}")
+      end
     end)
 
     {:ok, state}
@@ -710,18 +715,14 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     send_to_legacy_pipeline(killmail, state)
   end
 
-  defp send_to_legacy_pipeline(killmail, state) do
-    if state.pipeline_worker do
-      send(state.pipeline_worker, {:websocket_killmail, killmail})
-    else
-      # If no specific pipeline worker, send to the default one
-      case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
-        nil ->
-          Logger.error("PipelineWorker not found")
+  defp send_to_legacy_pipeline(killmail, _state) do
+    # Send to the registered PipelineWorker process
+    case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
+      nil ->
+        Logger.error("PipelineWorker not found")
 
-        pid ->
-          send(pid, {:websocket_killmail, killmail})
-      end
+      pid ->
+        send(pid, {:websocket_killmail, killmail})
     end
   end
 
@@ -829,6 +830,21 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp valid_character_id?(char_id) do
     is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000
+  end
+
+  # WebSocket-level deduplication to prevent immediate duplicates
+  defp should_process_killmail?(killmail_id) do
+    cache_key = "websocket_dedup:#{killmail_id}"
+    
+    case WandererNotifier.Infrastructure.Cache.get(cache_key) do
+      {:ok, _} -> 
+        # Already processed recently, skip
+        false
+      {:error, :not_found} ->
+        # Not seen recently, mark as processing and allow
+        WandererNotifier.Infrastructure.Cache.put(cache_key, true, :timer.minutes(5))
+        true
+    end
   end
 
   # Build the WebSocket URL with proper Phoenix socket path

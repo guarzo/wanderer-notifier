@@ -12,11 +12,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   use GenServer
 
-  alias WandererNotifier.Domains.Killmail.{Pipeline, WebSocketClient}
+  alias WandererNotifier.Domains.Killmail.Pipeline
 
   defmodule State do
     @moduledoc false
-    defstruct websocket_pid: nil
+    defstruct []
   end
 
   def start_link(opts \\ []) do
@@ -25,30 +25,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
 
   @impl true
   def init(_opts) do
-    Logger.debug("Starting Pipeline Worker - waiting for map initialization")
+    Logger.debug("Starting Pipeline Worker")
     state = %State{}
-
-    # Don't start WebSocket immediately - wait for map initialization
-    # If in test mode, start immediately
-    if Application.get_env(:wanderer_notifier, :env) == :test do
-      case start_websocket_client() do
-        {:ok, pid} ->
-          Logger.debug("WebSocket client started (test mode)", pid: inspect(pid))
-          {:ok, %{state | websocket_pid: pid}}
-
-        {:error, reason} ->
-          Logger.debug("Failed to start WebSocket client, will retry",
-            reason: inspect(reason)
-          )
-
-          Process.send_after(self(), :retry_websocket_start, 15_000)
-          {:ok, state}
-      end
-    else
-      # In normal mode, wait for map initialization signal
-      Logger.debug("Waiting for map initialization before starting WebSocket")
-      {:ok, state}
-    end
+    {:ok, state}
   end
 
   @impl true
@@ -62,76 +41,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, reason}, %{websocket_pid: pid} = state) do
-    Logger.debug("WebSocket client died, attempting restart", reason: inspect(reason))
-
-    # Attempt to restart the WebSocket client
-    case start_websocket_client() do
-      {:ok, new_pid} ->
-        Logger.debug("WebSocket client restarted successfully", pid: inspect(new_pid))
-        {:noreply, %{state | websocket_pid: new_pid}}
-
-      {:error, restart_reason} ->
-        Logger.debug("Failed to restart WebSocket client",
-          error: inspect(restart_reason)
-        )
-
-        # Schedule a retry with longer delay
-        Process.send_after(self(), :retry_websocket_start, 60_000)
-        {:noreply, %{state | websocket_pid: nil}}
-    end
-  end
-
-  @impl true
-  def handle_info(:map_initialization_complete, state) do
-    Logger.debug("Map initialization complete signal received")
-
-    if is_nil(state.websocket_pid) do
-      case start_websocket_client() do
-        {:ok, pid} ->
-          Logger.debug("WebSocket client started after map initialization",
-            pid: inspect(pid)
-          )
-
-          {:noreply, %{state | websocket_pid: pid}}
-
-        {:error, reason} ->
-          Logger.debug("Failed to start WebSocket client after map init, will retry",
-            reason: inspect(reason)
-          )
-
-          Process.send_after(self(), :retry_websocket_start, 15_000)
-          {:noreply, state}
-      end
-    else
-      # WebSocket client already running
-      {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info(:retry_websocket_start, state) do
-    if is_nil(state.websocket_pid) do
-      case start_websocket_client() do
-        {:ok, pid} ->
-          Logger.debug("WebSocket client started on retry", pid: inspect(pid))
-          {:noreply, %{state | websocket_pid: pid}}
-
-        {:error, reason} ->
-          Logger.debug("Retry failed for WebSocket client", error: inspect(reason))
-          # Schedule another retry with longer delay
-          Process.send_after(self(), :retry_websocket_start, 60_000)
-          {:noreply, state}
-      end
-    else
-      # WebSocket client already running
-      {:noreply, state}
-    end
-  end
-
-  @impl true
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
-    # Handle other DOWN messages (like from tasks)
+    # Handle DOWN messages from tasks
     {:noreply, state}
   end
 
@@ -142,18 +53,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   end
 
   # Private helper functions
-
-  defp start_websocket_client do
-    case WebSocketClient.start_link(pipeline_worker: self()) do
-      {:ok, pid} ->
-        # Monitor the WebSocket client process
-        Process.monitor(pid)
-        {:ok, pid}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
 
   defp log_killmail_received(killmail) do
     victim_info = extract_victim_info(killmail)

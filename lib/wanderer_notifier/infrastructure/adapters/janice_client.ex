@@ -7,6 +7,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   """
 
   require Logger
+  alias WandererNotifier.Domains.Universe.Services.ItemLookupService
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
 
@@ -88,10 +89,43 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   end
 
   defp extract_item_data(item) do
-    {
-      Map.get(item, "name") || Map.get(item, "type_id") || Map.get(item, "item_type_id"),
-      Map.get(item, "quantity", 1)
-    }
+    type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
+    quantity = Map.get(item, "quantity", 1)
+    
+    # Use ItemLookupService to get the item name for Janice
+    # Fall back to type_id if name lookup fails
+    name_or_id = case type_id do
+      nil -> 
+        # No type_id available, try existing name
+        Map.get(item, "name") || "Unknown Item"
+      
+      id when is_integer(id) ->
+        # Get name from lookup service, fall back to type_id
+        case ItemLookupService.get_item_name(id) do
+          "Unknown Item" -> id  # Use type_id if name lookup fails
+          name -> name          # Use the resolved name
+        end
+      
+      id when is_binary(id) ->
+        # String type_id, try to parse and lookup
+        case Integer.parse(id) do
+          {int_id, ""} ->
+            case ItemLookupService.get_item_name(int_id) do
+              "Unknown Item" -> int_id
+              name -> name
+            end
+          _ -> id  # Invalid format, use as-is
+        end
+      
+      id -> id  # Use type_id as fallback
+    end
+    
+    # Log if we don't have a valid identifier
+    if is_nil(name_or_id) or name_or_id == "" do
+      Logger.debug("Item missing type_id and name: #{inspect(item)}")
+    end
+    
+    {name_or_id, quantity}
   end
 
   defp valid_item?({name_or_id, quantity}) do
@@ -263,7 +297,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
 
   defp handle_empty_items_list do
     Logger.warning(
-      "Janice API: No items were successfully processed. Items need to be item names, not type IDs",
+      "Janice API: No items were successfully processed. Check if items have valid type IDs or names",
       category: :janice
     )
 
