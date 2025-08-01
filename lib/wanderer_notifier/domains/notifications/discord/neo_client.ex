@@ -183,7 +183,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     send_discord_message_with_retry(channel_id_int, discord_embed, content, 0)
   end
 
-  defp send_discord_message_with_retry(channel_id_int, discord_embed, content, attempt) when attempt < 3 do
+  defp send_discord_message_with_retry(channel_id_int, discord_embed, content, attempt)
+       when attempt < 3 do
     context = build_retry_context(channel_id_int, discord_embed, content, attempt)
 
     log_api_attempt(context.channel_id, context.has_content, context.rally_id, context.attempt)
@@ -228,32 +229,49 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp do_retry(response, context) do
     elapsed = System.monotonic_time(:millisecond) - context.start_time
-    Logger.warning("[RALLY_TIMING] Discord API error on attempt #{context.attempt + 1} after #{elapsed}ms, retrying...",
+
+    Logger.warning(
+      "[RALLY_TIMING] Discord API error on attempt #{context.attempt + 1} after #{elapsed}ms, retrying...",
       error: inspect(response),
       rally_id: context.rally_id,
       category: :api
     )
+
     Process.sleep(1000 * (context.attempt + 1))
-    send_discord_message_with_retry(context.channel_id, context.discord_embed,
-                                  context.content, context.attempt + 1)
+
+    send_discord_message_with_retry(
+      context.channel_id,
+      context.discord_embed,
+      context.content,
+      context.attempt + 1
+    )
   end
 
   defp do_timeout_retry(context) do
     elapsed = System.monotonic_time(:millisecond) - context.start_time
-    Logger.warning("[RALLY_TIMING] Discord API call timed out after 5 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
+
+    Logger.warning(
+      "[RALLY_TIMING] Discord API call timed out after 5 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
       channel_id: context.channel_id,
       rally_id: context.rally_id,
       category: :api
     )
+
     Process.sleep(1000 * (context.attempt + 1))
-    send_discord_message_with_retry(context.channel_id, context.discord_embed,
-                                  context.content, context.attempt + 1)
+
+    send_discord_message_with_retry(
+      context.channel_id,
+      context.discord_embed,
+      context.content,
+      context.attempt + 1
+    )
   end
 
   defp extract_rally_id(discord_embed) do
     case discord_embed do
       %{description: desc} when is_binary(desc) ->
         if Regex.match?(~r/rally point/i, desc), do: "rally_point", else: nil
+
       _ ->
         nil
     end
@@ -271,6 +289,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp create_discord_api_task(channel_id_int, discord_embed, content, rally_id) do
     Task.async(fn ->
       api_start = System.monotonic_time(:millisecond)
+
       Logger.info("[RALLY_TIMING] Calling Message.create",
         rally_id: rally_id,
         category: :api
@@ -278,7 +297,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
       result = call_discord_api(channel_id_int, discord_embed, content)
 
-      Logger.info("[RALLY_TIMING] Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
+      Logger.info(
+        "[RALLY_TIMING] Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
         rally_id: rally_id,
         result: inspect(elem(result, 0)),
         category: :api
@@ -300,7 +320,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     elapsed = System.monotonic_time(:millisecond) - start_time
 
     if attempt > 0 do
-      Logger.info("[RALLY_TIMING] Discord API call succeeded on attempt #{attempt + 1} after #{elapsed}ms",
+      Logger.info(
+        "[RALLY_TIMING] Discord API call succeeded on attempt #{attempt + 1} after #{elapsed}ms",
         rally_id: rally_id,
         category: :api
       )
@@ -316,11 +337,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp handle_rate_limit(response, _channel_id_int, start_time, rally_id) do
     elapsed = System.monotonic_time(:millisecond) - start_time
+
     Logger.warning("[RALLY_TIMING] Discord rate limited after #{elapsed}ms",
       rally_id: rally_id,
       category: :api
     )
-    
+
     retry_after = get_retry_after(Map.get(response, :response))
     Logger.error("Discord rate limit hit via Nostrum", retry_after: retry_after, category: :api)
     {:error, {:rate_limited, retry_after}}

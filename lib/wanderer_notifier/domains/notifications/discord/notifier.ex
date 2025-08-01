@@ -235,7 +235,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       channel_id = get_rally_channel_id(rally_id, start_time)
       notification_with_content = add_rally_content(notification, rally_point)
 
-      send_rally_to_discord(notification_with_content, channel_id, rally_point, rally_id, start_time)
+      send_rally_to_discord(
+        notification_with_content,
+        channel_id,
+        rally_point,
+        rally_id,
+        start_time
+      )
     rescue
       e ->
         handle_rally_exception(e, rally_id, start_time)
@@ -258,7 +264,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
     notification = NotificationFormatter.format_notification(rally_point)
 
-    Logger.info("[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :rally
     )
@@ -269,7 +276,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   defp get_rally_channel_id(rally_id, start_time) do
     channel_id = Config.discord_rally_channel_id()
 
-    Logger.info("[RALLY_TIMING] Retrieved channel_id: #{inspect(channel_id)} after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Retrieved channel_id: #{inspect(channel_id)} after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :rally
     )
@@ -303,7 +311,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp log_rally_success(rally_point, rally_id, start_time) do
     total_time = System.monotonic_time(:millisecond) - start_time
-    Logger.info("[RALLY_TIMING] NeoClient.send_embed returned success after #{total_time}ms total",
+
+    Logger.info(
+      "[RALLY_TIMING] NeoClient.send_embed returned success after #{total_time}ms total",
       rally_id: rally_id,
       system: rally_point.system_name,
       character: rally_point.character_name,
@@ -313,6 +323,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp log_rally_error(reason, rally_id, start_time) do
     total_time = System.monotonic_time(:millisecond) - start_time
+
     Logger.error("[RALLY_TIMING] NeoClient.send_embed returned error after #{total_time}ms total",
       rally_id: rally_id,
       reason: inspect(reason),
@@ -322,11 +333,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp handle_rally_exception(e, rally_id, start_time) do
     total_time = System.monotonic_time(:millisecond) - start_time
-    Logger.error("[RALLY_TIMING] Exception in send_rally_point_notification after #{total_time}ms",
+
+    Logger.error(
+      "[RALLY_TIMING] Exception in send_rally_point_notification after #{total_time}ms",
       rally_id: rally_id,
       error: Exception.message(e),
       category: :rally
     )
+
     {:error, e}
   end
 

@@ -185,7 +185,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   defp extract_rally_point(notification, rally_id, start_time) do
     rally_point = Map.get(notification, :rally_point)
 
-    Logger.info("[RALLY_TIMING] Extracted rally point data after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Extracted rally point data after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :notification
     )
@@ -200,7 +201,9 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
       category: :notification
     )
 
-    case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(rally_point) do
+    case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(
+           rally_point
+         ) do
       {:ok, :sent} ->
         handle_rally_success(state, rally_id, start_time)
 
@@ -210,7 +213,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   defp handle_rally_success(state, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Discord notifier returned success after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Discord notifier returned success after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :notification
     )
@@ -221,7 +225,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   defp handle_rally_error(state, reason, rally_id, start_time) do
-    Logger.warning("[RALLY_TIMING] Discord notifier returned error after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.warning(
+      "[RALLY_TIMING] Discord notifier returned error after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :notification,
       error: inspect(reason)
@@ -231,7 +236,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   defp handle_rally_notification_error(error, state, start_time) do
-    Logger.error("[RALLY_TIMING] Exception in rally point notification after #{System.monotonic_time(:millisecond) - start_time}ms",
+    Logger.error(
+      "[RALLY_TIMING] Exception in rally point notification after #{System.monotonic_time(:millisecond) - start_time}ms",
       category: :notification,
       error: Exception.message(error)
     )

@@ -860,6 +860,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   defp format_rally_point_notification(rally_point) do
     start_time = :erlang.monotonic_time(:millisecond)
+
     Logger.info("[RALLY_TIMING] Starting format_rally_point_notification",
       rally_id: rally_point[:id],
       category: :formatter
@@ -871,9 +872,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       elapsed_ms: :erlang.monotonic_time(:millisecond) - start_time,
       category: :formatter
     )
+
     system_name = get_rally_system_name(rally_point)
 
-    Logger.info("[RALLY_TIMING] Got system name: #{inspect(system_name)} after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Got system name: #{inspect(system_name)} after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_point[:id],
       category: :formatter
     )
@@ -906,7 +909,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       timestamp: Map.get(rally_point, :created_at) || DateTime.utc_now()
     }
 
-    Logger.info("[RALLY_TIMING] format_rally_point_notification completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] format_rally_point_notification completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_point[:id],
       category: :formatter
     )
@@ -967,7 +971,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp log_cache_result(systems, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Cache returned #{length(systems)} systems after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Cache returned #{length(systems)} systems after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :formatter
     )
@@ -992,26 +997,31 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp handle_system_not_found(rally_point, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] System not found in cache after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] System not found in cache after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :formatter
     )
+
     rally_point.system_name || "Unknown System"
   end
 
   defp handle_system_found(system_data, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] System found, converting to entity after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] System found, converting to entity after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :formatter
     )
 
     # Check if it's already a System struct or needs conversion
-    system = case system_data do
-      %WandererNotifier.Domains.Tracking.Entities.System{} = s -> s
-      _ -> WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
-    end
+    system =
+      case system_data do
+        %WandererNotifier.Domains.Tracking.Entities.System{} = s -> s
+        _ -> WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
+      end
 
-    Logger.info("[RALLY_TIMING] get_rally_system_name completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] get_rally_system_name completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       system_name: system.name,
       category: :formatter
@@ -1021,7 +1031,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp log_cache_failure(rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Cache lookup failed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+    Logger.info(
+      "[RALLY_TIMING] Cache lookup failed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :formatter
     )

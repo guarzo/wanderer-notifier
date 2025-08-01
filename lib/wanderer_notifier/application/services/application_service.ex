@@ -187,6 +187,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     result = NotificationCoordinator.process_notification(state, notification, opts)
 
     elapsed = System.monotonic_time(:millisecond) - start_time
+
     Logger.debug("Notification processing completed",
       elapsed_ms: elapsed,
       result: elem(result, 0),
