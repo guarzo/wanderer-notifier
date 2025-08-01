@@ -7,7 +7,7 @@ defmodule WandererNotifier.Contexts.NotificationContext do
   scattered across multiple modules and provides a clean API for:
 
   - Kill notifications
-  - System notifications  
+  - System notifications
   - Character notifications
   - Status messages and alerts
   - Discord integration
@@ -37,10 +37,10 @@ defmodule WandererNotifier.Contexts.NotificationContext do
 
       # Kill notification
       NotificationContext.send_notification(%{killmail_id: 123, ...})
-      
+
       # System notification
       NotificationContext.send_notification(%{solar_system_id: 30000142, ...})
-      
+
       # Character notification
       NotificationContext.send_notification(%{character_id: 456, ...})
   """

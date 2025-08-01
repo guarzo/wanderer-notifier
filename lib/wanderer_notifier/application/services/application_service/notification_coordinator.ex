@@ -66,43 +66,37 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
       Logger.debug("Kill not in priority system, skipping", category: :notification)
       {:ok, :skipped, state}
     else
-      try do
-        # Use the unified notification formatter and Discord notifier
-        formatted =
+      # Format the notification synchronously to catch any formatting errors
+      formatted =
+        try do
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
+        rescue
+          error ->
+            error_message = Exception.message(error)
+            error_type = error.__struct__
+            notification_keys = Map.keys(notification)
 
-        case send_to_discord(formatted) do
-          :ok ->
-            # Update metrics
-            {:ok, new_state} = increment_notification_count(state, :kills)
-            Logger.debug("Kill notification sent successfully", category: :notification)
-            {:ok, :sent, new_state}
-
-          {:error, reason} ->
-            Logger.warning("Failed to send kill notification to Discord",
-              category: :notification,
-              error: inspect(reason)
+            Logger.error(
+              "Exception in kill notification formatting: #{error_type} - #{error_message}"
             )
 
-            {:error, {:discord_send_failed, reason}, state}
+            Logger.error("Notification keys: #{inspect(notification_keys)}")
+            Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
+            Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
+
+            nil
         end
-      rescue
-        error ->
-          error_message = Exception.message(error)
-          error_type = error.__struct__
-          notification_keys = Map.keys(notification)
 
-          Logger.error(
-            "Exception in kill notification processing: #{error_type} - #{error_message}"
-          )
+      case formatted do
+        nil ->
+          {:error, :formatting_failed, state}
 
-          Logger.error("Notification keys: #{inspect(notification_keys)}")
-          Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
-          Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
-
-          {:error, {:exception, error}, state}
+        _ ->
+          send_kill_notification_async(formatted)
+          {:ok, new_state} = increment_notification_count(state, :kills)
+          {:ok, :queued, new_state}
       end
     end
   end
@@ -114,41 +108,37 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           {:ok, atom(), State.t()} | {:error, term(), State.t()}
   def notify_system(state, notification, opts \\ []) do
     if system_notifications_enabled?() do
-      try do
-        formatted =
+      # Format synchronously to catch errors
+      formatted =
+        try do
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
+        rescue
+          error ->
+            error_message = Exception.message(error)
+            error_type = error.__struct__
+            notification_keys = Map.keys(notification)
 
-        case send_to_discord(formatted, opts) do
-          :ok ->
-            {:ok, new_state} = increment_notification_count(state, :systems)
-            Logger.debug("System notification sent successfully", category: :notification)
-            {:ok, :sent, new_state}
-
-          {:error, reason} ->
-            Logger.warning("Failed to send system notification to Discord",
-              category: :notification,
-              error: inspect(reason)
+            Logger.error(
+              "Exception in system notification formatting: #{error_type} - #{error_message}"
             )
 
-            {:error, {:discord_send_failed, reason}, state}
+            Logger.error("Notification keys: #{inspect(notification_keys)}")
+            Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
+            Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
+
+            nil
         end
-      rescue
-        error ->
-          error_message = Exception.message(error)
-          error_type = error.__struct__
-          notification_keys = Map.keys(notification)
 
-          Logger.error(
-            "Exception in system notification processing: #{error_type} - #{error_message}"
-          )
+      case formatted do
+        nil ->
+          {:error, :formatting_failed, state}
 
-          Logger.error("Notification keys: #{inspect(notification_keys)}")
-          Logger.error("Notification sample: #{inspect(notification, limit: 500)}")
-          Logger.error("Stacktrace: #{inspect(__STACKTRACE__, limit: :infinity)}")
-
-          {:error, {:exception, error}, state}
+        _ ->
+          send_system_notification_async(formatted, opts)
+          {:ok, new_state} = increment_notification_count(state, :systems)
+          {:ok, :queued, new_state}
       end
     else
       Logger.debug("System notifications disabled, skipping", category: :notification)
@@ -162,41 +152,91 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   @spec notify_rally_point(State.t(), map()) ::
           {:ok, atom(), State.t()} | {:error, term(), State.t()}
   def notify_rally_point(state, notification) do
+    start_time = System.monotonic_time(:millisecond)
+    rally_id = get_in(notification, [:rally_point, :id])
+
+    log_rally_notification_start(rally_id)
+
     if rally_notifications_enabled?() do
-      try do
-        # Extract rally point data from notification
-        rally_point = Map.get(notification, :rally_point)
-
-        case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(
-               rally_point
-             ) do
-          {:ok, :sent} ->
-            {:ok, new_state} = increment_notification_count(state, :rally_points)
-            Logger.debug("Rally point notification sent successfully", category: :notification)
-            {:ok, :sent, new_state}
-
-          {:error, reason} ->
-            Logger.warning("Failed to send rally point notification to Discord",
-              category: :notification,
-              error: inspect(reason)
-            )
-
-            {:error, {:discord_send_failed, reason}, state}
-        end
-      rescue
-        error ->
-          Logger.error("Exception in rally point notification processing",
-            category: :notification,
-            error: Exception.message(error),
-            stacktrace: __STACKTRACE__
-          )
-
-          {:error, {:exception, error}, state}
-      end
+      process_rally_notification(state, notification, rally_id, start_time)
     else
       Logger.debug("Rally point notifications disabled, skipping", category: :notification)
       {:ok, :skipped, state}
     end
+  end
+
+  defp log_rally_notification_start(rally_id) do
+    Logger.info("[RALLY_TIMING] Starting notify_rally_point",
+      rally_id: rally_id,
+      category: :notification
+    )
+  end
+
+  defp process_rally_notification(state, notification, rally_id, start_time) do
+    try do
+      rally_point = extract_rally_point(notification, rally_id, start_time)
+      send_rally_notification(state, rally_point, rally_id, start_time)
+    rescue
+      error ->
+        handle_rally_notification_error(error, state, start_time)
+    end
+  end
+
+  defp extract_rally_point(notification, rally_id, start_time) do
+    rally_point = Map.get(notification, :rally_point)
+
+    Logger.info("[RALLY_TIMING] Extracted rally point data after #{System.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :notification
+    )
+
+    rally_point
+  end
+
+  defp send_rally_notification(state, rally_point, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Calling Discord.Notifier.send_rally_point_notification",
+      rally_id: rally_id,
+      elapsed_ms: System.monotonic_time(:millisecond) - start_time,
+      category: :notification
+    )
+
+    case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(rally_point) do
+      {:ok, :sent} ->
+        handle_rally_success(state, rally_id, start_time)
+
+      {:error, reason} ->
+        handle_rally_error(state, reason, rally_id, start_time)
+    end
+  end
+
+  defp handle_rally_success(state, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Discord notifier returned success after #{System.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :notification
+    )
+
+    {:ok, new_state} = increment_notification_count(state, :rally_points)
+    Logger.debug("Rally point notification sent successfully", category: :notification)
+    {:ok, :sent, new_state}
+  end
+
+  defp handle_rally_error(state, reason, rally_id, start_time) do
+    Logger.warning("[RALLY_TIMING] Discord notifier returned error after #{System.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :notification,
+      error: inspect(reason)
+    )
+
+    {:error, {:discord_send_failed, reason}, state}
+  end
+
+  defp handle_rally_notification_error(error, state, start_time) do
+    Logger.error("[RALLY_TIMING] Exception in rally point notification after #{System.monotonic_time(:millisecond) - start_time}ms",
+      category: :notification,
+      error: Exception.message(error)
+    )
+
+    {:error, {:exception, error}, state}
   end
 
   @doc """
@@ -206,35 +246,31 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           {:ok, atom(), State.t()} | {:error, term(), State.t()}
   def notify_character(state, notification, opts \\ []) do
     if character_notifications_enabled?() do
-      try do
-        formatted =
+      # Format synchronously to catch errors
+      formatted =
+        try do
           WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter.format_notification(
             notification
           )
-
-        case send_to_discord(formatted, opts) do
-          :ok ->
-            {:ok, new_state} = increment_notification_count(state, :characters)
-            Logger.debug("Character notification sent successfully", category: :notification)
-            {:ok, :sent, new_state}
-
-          {:error, reason} ->
-            Logger.warning("Failed to send character notification to Discord",
+        rescue
+          error ->
+            Logger.error("Exception in character notification formatting",
               category: :notification,
-              error: inspect(reason)
+              error: Exception.message(error),
+              stacktrace: __STACKTRACE__
             )
 
-            {:error, {:discord_send_failed, reason}, state}
+            nil
         end
-      rescue
-        error ->
-          Logger.error("Exception in character notification processing",
-            category: :notification,
-            error: Exception.message(error),
-            stacktrace: __STACKTRACE__
-          )
 
-          {:error, {:exception, error}, state}
+      case formatted do
+        nil ->
+          {:error, :formatting_failed, state}
+
+        _ ->
+          send_character_notification_async(formatted, opts)
+          {:ok, new_state} = increment_notification_count(state, :characters)
+          {:ok, :queued, new_state}
       end
     else
       Logger.debug("Character notifications disabled, skipping", category: :notification)
@@ -359,5 +395,51 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     priority_systems = WandererNotifier.Shared.Config.get(:priority_systems, [])
     system_id_str = to_string(system_id)
     Enum.member?(priority_systems, system_id_str)
+  end
+
+  # Async notification helpers to reduce nesting
+  defp send_kill_notification_async(formatted) do
+    Task.start(fn ->
+      case send_to_discord(formatted) do
+        :ok ->
+          Logger.debug("Kill notification sent successfully", category: :notification)
+
+        {:error, reason} ->
+          Logger.warning("Failed to send kill notification to Discord",
+            category: :notification,
+            error: inspect(reason)
+          )
+      end
+    end)
+  end
+
+  defp send_system_notification_async(formatted, opts) do
+    Task.start(fn ->
+      case send_to_discord(formatted, opts) do
+        :ok ->
+          Logger.debug("System notification sent successfully", category: :notification)
+
+        {:error, reason} ->
+          Logger.warning("Failed to send system notification to Discord",
+            category: :notification,
+            error: inspect(reason)
+          )
+      end
+    end)
+  end
+
+  defp send_character_notification_async(formatted, opts) do
+    Task.start(fn ->
+      case send_to_discord(formatted, opts) do
+        :ok ->
+          Logger.debug("Character notification sent successfully", category: :notification)
+
+        {:error, reason} ->
+          Logger.warning("Failed to send character notification to Discord",
+            category: :notification,
+            error: inspect(reason)
+          )
+      end
+    end)
   end
 end

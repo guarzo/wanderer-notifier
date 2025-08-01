@@ -3,7 +3,7 @@ defmodule WandererNotifier.Shared.Config.ConfigurationManager do
   Standardized configuration management for all services.
 
   This module provides a unified interface for service configuration,
-  replacing scattered configuration approaches with a single, 
+  replacing scattered configuration approaches with a single,
   consistent pattern across all services.
 
   ## Features

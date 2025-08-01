@@ -225,40 +225,109 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a rally point notification.
   """
   def send_rally_point_notification(rally_point) do
+    start_time = System.monotonic_time(:millisecond)
+    rally_id = rally_point[:id]
+
+    try do
+      log_rally_start(rally_id)
+
+      notification = format_rally_notification(rally_point, rally_id, start_time)
+      channel_id = get_rally_channel_id(rally_id, start_time)
+      notification_with_content = add_rally_content(notification, rally_point)
+
+      send_rally_to_discord(notification_with_content, channel_id, rally_point, rally_id, start_time)
+    rescue
+      e ->
+        handle_rally_exception(e, rally_id, start_time)
+    end
+  end
+
+  defp log_rally_start(rally_id) do
+    Logger.info("[RALLY_TIMING] Starting send_rally_point_notification",
+      rally_id: rally_id,
+      category: :rally
+    )
+  end
+
+  defp format_rally_notification(rally_point, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Calling NotificationFormatter.format_notification",
+      rally_id: rally_id,
+      elapsed_ms: System.monotonic_time(:millisecond) - start_time,
+      category: :rally
+    )
+
     notification = NotificationFormatter.format_notification(rally_point)
+
+    Logger.info("[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :rally
+    )
+
+    notification
+  end
+
+  defp get_rally_channel_id(rally_id, start_time) do
     channel_id = Config.discord_rally_channel_id()
 
-    # Add group ping content
+    Logger.info("[RALLY_TIMING] Retrieved channel_id: #{inspect(channel_id)} after #{System.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :rally
+    )
+
+    channel_id
+  end
+
+  defp add_rally_content(notification, rally_point) do
     content = build_rally_content(rally_point)
-    notification_with_content = Map.put(notification, :content, content)
+    Map.put(notification, :content, content)
+  end
 
-    case NeoClient.send_embed(notification_with_content, channel_id) do
+  defp send_rally_to_discord(notification, channel_id, rally_point, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Calling NeoClient.send_embed",
+      rally_id: rally_id,
+      channel_id: channel_id,
+      elapsed_ms: System.monotonic_time(:millisecond) - start_time,
+      category: :rally
+    )
+
+    case NeoClient.send_embed(notification, channel_id) do
       :ok ->
-        Logger.info("Rally point notification sent",
-          system: rally_point.system_name,
-          character: rally_point.character_name,
-          category: :rally
-        )
-
+        log_rally_success(rally_point, rally_id, start_time)
         {:ok, :sent}
 
       {:error, reason} ->
-        Logger.error("Failed to send rally point notification",
-          reason: inspect(reason),
-          category: :rally
-        )
-
+        log_rally_error(reason, rally_id, start_time)
         {:error, reason}
     end
-  rescue
-    e ->
-      Logger.error("Exception in send_rally_point_notification",
-        error: Exception.message(e),
-        category: :rally,
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
+  end
 
-      {:error, e}
+  defp log_rally_success(rally_point, rally_id, start_time) do
+    total_time = System.monotonic_time(:millisecond) - start_time
+    Logger.info("[RALLY_TIMING] NeoClient.send_embed returned success after #{total_time}ms total",
+      rally_id: rally_id,
+      system: rally_point.system_name,
+      character: rally_point.character_name,
+      category: :rally
+    )
+  end
+
+  defp log_rally_error(reason, rally_id, start_time) do
+    total_time = System.monotonic_time(:millisecond) - start_time
+    Logger.error("[RALLY_TIMING] NeoClient.send_embed returned error after #{total_time}ms total",
+      rally_id: rally_id,
+      reason: inspect(reason),
+      category: :rally
+    )
+  end
+
+  defp handle_rally_exception(e, rally_id, start_time) do
+    total_time = System.monotonic_time(:millisecond) - start_time
+    Logger.error("[RALLY_TIMING] Exception in send_rally_point_notification after #{total_time}ms",
+      rally_id: rally_id,
+      error: Exception.message(e),
+      category: :rally
+    )
+    {:error, e}
   end
 
   defp build_rally_content(_rally_point) do

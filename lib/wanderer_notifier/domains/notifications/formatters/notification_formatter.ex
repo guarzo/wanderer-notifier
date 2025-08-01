@@ -859,14 +859,30 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp format_rally_point_notification(rally_point) do
+    start_time = :erlang.monotonic_time(:millisecond)
+    Logger.info("[RALLY_TIMING] Starting format_rally_point_notification",
+      rally_id: rally_point[:id],
+      category: :formatter
+    )
+
     # Get system name with custom name support (same logic as system notifications)
+    Logger.info("[RALLY_TIMING] Calling get_rally_system_name",
+      rally_id: rally_point[:id],
+      elapsed_ms: :erlang.monotonic_time(:millisecond) - start_time,
+      category: :formatter
+    )
     system_name = get_rally_system_name(rally_point)
+
+    Logger.info("[RALLY_TIMING] Got system name: #{inspect(system_name)} after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_point[:id],
+      category: :formatter
+    )
 
     # Build character portrait URL using EVE's image server
     character_portrait_url =
       "https://images.evetech.net/characters/#{rally_point.character_eve_id}/portrait?size=128"
 
-    %{
+    result = %{
       type: :rally_point,
       title: "Rally Point Created",
       description:
@@ -889,31 +905,116 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       },
       timestamp: Map.get(rally_point, :created_at) || DateTime.utc_now()
     }
+
+    Logger.info("[RALLY_TIMING] format_rally_point_notification completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_point[:id],
+      category: :formatter
+    )
+
+    result
   end
 
   # Helper function to get system name for rally points with custom name support
   defp get_rally_system_name(rally_point) do
-    # The rally_point.system_id contains the EVE solar system ID
+    start_time = :erlang.monotonic_time(:millisecond)
+    rally_id = rally_point[:id]
+
+    log_rally_lookup_start(rally_id, rally_point.system_id)
+
     eve_system_id_int = String.to_integer(rally_point.system_id)
 
-    # Get system from cache and use custom name if available
+    log_cache_lookup(rally_id, start_time)
+
     case Cache.get(Cache.Keys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
-        case Enum.find(systems, &(Map.get(&1, "solar_system_id") == eve_system_id_int)) do
-          nil ->
-            # System not found in cache, use fallback name
-            rally_point.system_name || "Unknown System"
-
-          system_data ->
-            # System found, use custom name
-            system = WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
-            system.name
-        end
+        handle_cached_systems(systems, eve_system_id_int, rally_point, rally_id, start_time)
 
       _error ->
-        # Cache lookup failed, use fallback name
+        log_cache_failure(rally_id, start_time)
         rally_point.system_name || "Unknown System"
     end
+  end
+
+  defp log_rally_lookup_start(rally_id, system_id) do
+    Logger.info("[RALLY_TIMING] Starting get_rally_system_name",
+      rally_id: rally_id,
+      system_id: system_id,
+      category: :formatter
+    )
+  end
+
+  defp log_cache_lookup(rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Calling Cache.get for map_systems",
+      rally_id: rally_id,
+      cache_key: Cache.Keys.map_systems(),
+      elapsed_ms: :erlang.monotonic_time(:millisecond) - start_time,
+      category: :formatter
+    )
+  end
+
+  defp handle_cached_systems(systems, eve_system_id_int, rally_point, rally_id, start_time) do
+    log_cache_result(systems, rally_id, start_time)
+
+    log_system_search(eve_system_id_int, rally_id, start_time)
+
+    case find_system_in_cache(systems, eve_system_id_int) do
+      nil ->
+        handle_system_not_found(rally_point, rally_id, start_time)
+
+      system_data ->
+        handle_system_found(system_data, rally_id, start_time)
+    end
+  end
+
+  defp log_cache_result(systems, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Cache returned #{length(systems)} systems after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :formatter
+    )
+  end
+
+  defp log_system_search(system_id, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Starting Enum.find for system_id #{system_id}",
+      rally_id: rally_id,
+      elapsed_ms: :erlang.monotonic_time(:millisecond) - start_time,
+      category: :formatter
+    )
+  end
+
+  defp find_system_in_cache(systems, system_id) do
+    Enum.find(systems, &(Map.get(&1, "solar_system_id") == system_id))
+  end
+
+  defp handle_system_not_found(rally_point, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] System not found in cache after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :formatter
+    )
+    rally_point.system_name || "Unknown System"
+  end
+
+  defp handle_system_found(system_data, rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] System found, converting to entity after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :formatter
+    )
+
+    system = WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
+
+    Logger.info("[RALLY_TIMING] get_rally_system_name completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      system_name: system.name,
+      category: :formatter
+    )
+
+    system.name
+  end
+
+  defp log_cache_failure(rally_id, start_time) do
+    Logger.info("[RALLY_TIMING] Cache lookup failed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
+      rally_id: rally_id,
+      category: :formatter
+    )
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

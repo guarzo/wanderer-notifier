@@ -177,8 +177,24 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
 
   @impl true
   def handle_call({:process_notification, notification, opts}, _from, state) do
-    case NotificationCoordinator.process_notification(state, notification, opts) do
-      {:ok, result, new_state} -> {:reply, {:ok, result}, new_state}
+    start_time = System.monotonic_time(:millisecond)
+
+    Logger.debug("Processing notification",
+      type: determine_notification_type(notification),
+      category: :notification
+    )
+
+    result = NotificationCoordinator.process_notification(state, notification, opts)
+
+    elapsed = System.monotonic_time(:millisecond) - start_time
+    Logger.debug("Notification processing completed",
+      elapsed_ms: elapsed,
+      result: elem(result, 0),
+      category: :notification
+    )
+
+    case result do
+      {:ok, _result, new_state} -> {:reply, {:ok, :queued}, new_state}
       {:error, reason, new_state} -> {:reply, {:error, reason}, new_state}
     end
   end
@@ -372,5 +388,31 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     # For now, configuration changes don't require runtime updates
     # This could be extended to support dynamic configuration changes
     :ok
+  end
+
+  defp determine_notification_type(notification) do
+    cond do
+      has_killmail_id?(notification) -> :kill
+      rally_point?(notification) -> :rally_point
+      has_system_id?(notification) -> :system
+      has_character_id?(notification) -> :character
+      true -> :unknown
+    end
+  end
+
+  defp has_killmail_id?(notification) do
+    Map.has_key?(notification, "killmail_id") or Map.has_key?(notification, :killmail_id)
+  end
+
+  defp rally_point?(notification) do
+    Map.get(notification, :type) == :rally_point or Map.get(notification, "type") == "rally_point"
+  end
+
+  defp has_system_id?(notification) do
+    Map.has_key?(notification, "solar_system_id") or Map.has_key?(notification, :solar_system_id)
+  end
+
+  defp has_character_id?(notification) do
+    Map.has_key?(notification, "character_id") or Map.has_key?(notification, :character_id)
   end
 end

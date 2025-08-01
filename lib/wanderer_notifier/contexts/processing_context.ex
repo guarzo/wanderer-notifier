@@ -34,7 +34,7 @@ defmodule WandererNotifier.Contexts.ProcessingContext do
 
       iex> ProcessingContext.process_killmail(%{"killmail_id" => 123})
       {:ok, "notification_sent"}
-      
+
       iex> ProcessingContext.process_killmail(%{})
       {:error, :invalid_killmail}
   """

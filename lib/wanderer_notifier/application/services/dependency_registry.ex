@@ -12,10 +12,10 @@ defmodule WandererNotifier.Application.Services.DependencyRegistry do
 
       # Register an implementation
       DependencyRegistry.register(:cache, WandererNotifier.Infrastructure.Cache)
-      
+
       # Resolve a dependency
       cache_module = DependencyRegistry.resolve(:cache)
-      
+
       # Use in tests
       DependencyRegistry.register(:cache, MockCache)
   """
