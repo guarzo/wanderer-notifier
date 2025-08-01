@@ -982,7 +982,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp find_system_in_cache(systems, system_id) do
-    Enum.find(systems, &(Map.get(&1, "solar_system_id") == system_id))
+    Enum.find(systems, fn system ->
+      case system do
+        %{solar_system_id: id} -> to_string(id) == to_string(system_id)
+        %{"solar_system_id" => id} -> to_string(id) == to_string(system_id)
+        _ -> false
+      end
+    end)
   end
 
   defp handle_system_not_found(rally_point, rally_id, start_time) do
@@ -999,7 +1005,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       category: :formatter
     )
 
-    system = WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
+    # Check if it's already a System struct or needs conversion
+    system = case system_data do
+      %WandererNotifier.Domains.Tracking.Entities.System{} = s -> s
+      _ -> WandererNotifier.Domains.Tracking.Entities.System.from_api_data(system_data)
+    end
 
     Logger.info("[RALLY_TIMING] get_rally_system_name completed after #{:erlang.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
