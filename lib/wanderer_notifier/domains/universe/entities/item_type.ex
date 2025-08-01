@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Domains.Universe.Entities.ItemType do
   @moduledoc """
   Represents an EVE Online item type with cached data from Fuzzworks.
-  
+
   This entity contains both ship types and regular items, providing
   fast lookups without requiring ESI API calls.
   """

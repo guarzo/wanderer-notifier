@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   @moduledoc """
   Processes CSV files from Fuzzworks to extract item types and ship data.
-  
+
   This module handles parsing the invTypes.csv and invGroups.csv files
   to build a comprehensive database of EVE Online items and ships.
   """
@@ -12,17 +12,63 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   alias WandererNotifier.Shared.Utils.ErrorHandler
 
   # Ship group IDs from EVE Online (these groups contain ships)
-  @ship_group_ids [6, 7, 9, 11, 16, 17, 23, 25, 26, 27, 28, 29, 30, 31, 237, 324, 358, 380, 381, 463, 540, 541, 543, 547, 659, 830, 831, 832, 833, 834, 883, 893, 894, 906, 963, 1022, 1201, 1202, 1283, 1305, 1527, 1534, 1538, 1972, 2016]
+  @ship_group_ids [
+    6,
+    7,
+    9,
+    11,
+    16,
+    17,
+    23,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    237,
+    324,
+    358,
+    380,
+    381,
+    463,
+    540,
+    541,
+    543,
+    547,
+    659,
+    830,
+    831,
+    832,
+    833,
+    834,
+    883,
+    893,
+    894,
+    906,
+    963,
+    1022,
+    1201,
+    1202,
+    1283,
+    1305,
+    1527,
+    1534,
+    1538,
+    1972,
+    2016
+  ]
 
   @type csv_result :: %{
-    items: %{integer() => ItemType.t()},
-    ships: %{integer() => ItemType.t()},
-    stats: map()
-  }
+          items: %{integer() => ItemType.t()},
+          ships: %{integer() => ItemType.t()},
+          stats: map()
+        }
 
   @doc """
   Processes CSV files to extract all item types and ships.
-  
+
   Returns a map containing items, ships, and processing statistics.
   """
   @spec process_csv_files(String.t(), String.t()) :: {:ok, csv_result()} | {:error, term()}
@@ -47,11 +93,16 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
 
     with {:ok, groups_map} <- parse_groups_file(groups_path),
          {:ok, {items_map, ships_map, stats}} <- parse_types_file(types_path, groups_map) do
-      
       processing_time = System.monotonic_time() - start_time
-      final_stats = Map.put(stats, :processing_time_ms, System.convert_time_unit(processing_time, :native, :millisecond))
-      
-      Logger.info("CSV processing completed", 
+
+      final_stats =
+        Map.put(
+          stats,
+          :processing_time_ms,
+          System.convert_time_unit(processing_time, :native, :millisecond)
+        )
+
+      Logger.info("CSV processing completed",
         items: map_size(items_map),
         ships: map_size(ships_map),
         processing_time_ms: final_stats.processing_time_ms
@@ -66,19 +117,19 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
 
     with {:ok, content} <- File.read(groups_path),
          {:ok, groups} <- parse_groups_csv(content) do
-      
       groups_map = Map.new(groups, fn group -> {group.group_id, group.name} end)
       Logger.debug("Parsed #{map_size(groups_map)} groups")
-      
+
       {:ok, groups_map}
     end
   end
 
   defp parse_groups_csv(content) do
-    groups = 
+    groups =
       content
       |> CSVParser.parse_string()
-      |> Stream.drop(1)  # Skip header
+      # Skip header
+      |> Stream.drop(1)
       |> Stream.map(&parse_group_row/1)
       |> Stream.filter(&(&1 != nil))
       |> Enum.to_list()
@@ -94,7 +145,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
     case Integer.parse(group_id_str) do
       {group_id, ""} ->
         %{group_id: group_id, name: String.trim(name)}
-      
+
       _ ->
         nil
     end
@@ -107,23 +158,23 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
 
     with {:ok, content} <- File.read(types_path),
          {:ok, {items, ships, stats}} <- parse_types_csv(content, groups_map) do
-      
       Logger.debug("Parsed #{length(items)} items and #{length(ships)} ships")
       {:ok, {Map.new(items, &{&1.type_id, &1}), Map.new(ships, &{&1.type_id, &1}), stats}}
     end
   end
 
   defp parse_types_csv(content, groups_map) do
-    items_and_ships = 
+    items_and_ships =
       content
       |> CSVParser.parse_string()
-      |> Stream.drop(1)  # Skip header
+      # Skip header
+      |> Stream.drop(1)
       |> Stream.map(&parse_type_row(&1, groups_map))
       |> Stream.filter(&(&1 != nil))
       |> Enum.to_list()
 
     {items, ships} = partition_items_and_ships(items_and_ships)
-    
+
     stats = %{
       total_parsed: length(items_and_ships),
       items_count: length(items),
@@ -143,32 +194,43 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
         with {type_id, ""} <- Integer.parse(type_id_str),
              {group_id, ""} <- Integer.parse(group_id_str),
              true <- valid_item?(name, type_id, group_id) do
-          
           parse_full_type_data(type_id, group_id, name, rest, groups_map)
         else
           _ -> nil
         end
-      
-      _ -> nil
+
+      _ ->
+        nil
     end
   rescue
     _ -> nil
   end
 
   defp valid_item?(name, type_id, group_id) do
-    is_binary(name) and 
-    String.trim(name) != "" and 
-    is_integer(type_id) and 
-    type_id > 0 and
-    is_integer(group_id) and 
-    group_id > 0
+    is_binary(name) and
+      String.trim(name) != "" and
+      is_integer(type_id) and
+      type_id > 0 and
+      is_integer(group_id) and
+      group_id > 0
   end
 
   defp parse_full_type_data(type_id, group_id, name, rest, groups_map) do
     # Extract additional fields from the CSV row
-    [mass_str, volume_str, capacity_str, portion_size_str, race_id_str, 
-     base_price_str, published_str, market_group_id_str, icon_id_str, 
-     sound_id_str, graphic_id_str | _] = rest ++ List.duplicate("", 20)  # Pad with empty strings
+    [
+      mass_str,
+      volume_str,
+      capacity_str,
+      portion_size_str,
+      race_id_str,
+      base_price_str,
+      published_str,
+      market_group_id_str,
+      icon_id_str,
+      # Pad with empty strings
+      sound_id_str,
+      graphic_id_str | _
+    ] = rest ++ List.duplicate("", 20)
 
     csv_data = %{
       type_id: type_id,
@@ -207,6 +269,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
 
   defp parse_integer(""), do: nil
   defp parse_integer(nil), do: nil
+
   defp parse_integer(str) when is_binary(str) do
     case Integer.parse(String.trim(str)) do
       {int, ""} -> int
@@ -220,6 +283,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
 
   defp parse_float(""), do: 0.0
   defp parse_float(nil), do: 0.0
+
   defp parse_float(str) when is_binary(str) do
     case Float.parse(String.trim(str)) do
       {float, _} -> float

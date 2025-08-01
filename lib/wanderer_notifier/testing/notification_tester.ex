@@ -342,7 +342,10 @@ defmodule WandererNotifier.Testing.NotificationTester do
             Logger.info("[TEST] Reconnect attempts: #{state.reconnect_attempts}")
             Logger.info("[TEST] Channel ref: #{inspect(state.channel_ref)}")
             Logger.info("[TEST] Subscribed systems: #{MapSet.size(state.subscribed_systems)}")
-            Logger.info("[TEST] Subscribed characters: #{MapSet.size(state.subscribed_characters)}")
+
+            Logger.info(
+              "[TEST] Subscribed characters: #{MapSet.size(state.subscribed_characters)}"
+            )
           else
             Logger.warning("[TEST] WebSocket process is alive but NOT CONNECTED")
             Logger.info("[TEST] Reconnect attempts: #{state.reconnect_attempts}")
@@ -461,6 +464,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
       {:ok, systems} ->
         Logger.info("[TEST] Tracked systems: #{length(systems)}")
         sample_systems = Enum.take(systems, 5)
+
         Enum.each(sample_systems, fn system ->
           Logger.info("[TEST] System: #{system["name"]} (#{system["solar_system_id"]})")
         end)
@@ -474,6 +478,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
       {:ok, characters} ->
         Logger.info("[TEST] Tracked characters: #{length(characters)}")
         sample_chars = Enum.take(characters, 5)
+
         Enum.each(sample_chars, fn char ->
           char_data = char["character"]
           Logger.info("[TEST] Character: #{char_data["name"]} (#{char_data["eve_id"]})")
@@ -506,9 +511,10 @@ defmodule WandererNotifier.Testing.NotificationTester do
       # Get all cache keys and find killmail-related ones
       {:ok, keys} = Cachex.keys(:wanderer_cache)
 
-      killmail_keys = Enum.filter(keys, fn key ->
-        is_binary(key) && String.contains?(key, "killmail")
-      end)
+      killmail_keys =
+        Enum.filter(keys, fn key ->
+          is_binary(key) && String.contains?(key, "killmail")
+        end)
 
       Logger.info("[TEST] Found #{length(killmail_keys)} killmail-related cache entries")
 
@@ -519,7 +525,9 @@ defmodule WandererNotifier.Testing.NotificationTester do
         Enum.each(sample_keys, fn key ->
           case Cachex.get(:wanderer_cache, key) do
             {:ok, data} when data != nil ->
-              Logger.info("[TEST] #{key}: #{inspect(data, limit: :infinity, printable_limit: 200)}")
+              Logger.info(
+                "[TEST] #{key}: #{inspect(data, limit: :infinity, printable_limit: 200)}"
+              )
 
             {:ok, nil} ->
               Logger.info("[TEST] #{key}: nil")
@@ -537,13 +545,17 @@ defmodule WandererNotifier.Testing.NotificationTester do
       end
 
       # Also check for recent killmail IDs that might be tracked separately
-      recent_keys = Enum.filter(keys, fn key ->
-        is_binary(key) && (String.contains?(key, "recent") || String.contains?(key, "processed"))
-      end)
+      recent_keys =
+        Enum.filter(keys, fn key ->
+          is_binary(key) &&
+            (String.contains?(key, "recent") || String.contains?(key, "processed"))
+        end)
 
       if length(recent_keys) > 0 do
         Logger.info("[TEST] Found #{length(recent_keys)} recent/processed entries")
-        Enum.take(recent_keys, 5) |> Enum.each(fn key ->
+
+        Enum.take(recent_keys, 5)
+        |> Enum.each(fn key ->
           case Cachex.get(:wanderer_cache, key) do
             {:ok, data} -> Logger.info("[TEST] #{key}: #{inspect(data)}")
             _ -> Logger.info("[TEST] #{key}: no data")
@@ -552,7 +564,6 @@ defmodule WandererNotifier.Testing.NotificationTester do
       end
 
       {:ok, length(killmail_keys)}
-
     rescue
       e ->
         Logger.error("[TEST] Error checking cache: #{inspect(e)}")
@@ -583,7 +594,9 @@ defmodule WandererNotifier.Testing.NotificationTester do
       final_state = :sys.get_state(pid)
       final_memory = Process.info(pid, :memory)
 
-      Logger.info("[TEST] Final memory: #{final_memory} bytes (change: #{final_memory - initial_memory})")
+      Logger.info(
+        "[TEST] Final memory: #{final_memory} bytes (change: #{final_memory - initial_memory})"
+      )
 
       # Check for any changes that might indicate activity
       if final_state != initial_state do
@@ -594,7 +607,6 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
       # Check cache again
       list_cached_killmails()
-
     else
       Logger.error("[TEST] WebSocket client not running")
       {:error, :not_running}
@@ -624,7 +636,9 @@ defmodule WandererNotifier.Testing.NotificationTester do
     Application.put_env(:wanderer_notifier, :websocket_max_systems, 3)
     Application.put_env(:wanderer_notifier, :websocket_max_characters, 10)
 
-    Logger.info("[TEST] Starting WebSocket with limited subscription (3 systems, 10 characters)...")
+    Logger.info(
+      "[TEST] Starting WebSocket with limited subscription (3 systems, 10 characters)..."
+    )
 
     # Start new WebSocket
     case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
@@ -632,11 +646,13 @@ defmodule WandererNotifier.Testing.NotificationTester do
         Logger.info("[TEST] WebSocket started with PID: #{inspect(new_pid)}")
 
         # Monitor for connection issues
-        Process.sleep(10000)  # Wait 10 seconds
+        # Wait 10 seconds
+        Process.sleep(10000)
 
         if Process.alive?(new_pid) do
           try do
             state = :sys.get_state(new_pid)
+
             if state.connected_at do
               Logger.info("[TEST] SUCCESS: WebSocket stayed connected with minimal subscription!")
               Logger.info("[TEST] Connected at: #{state.connected_at}")
@@ -668,6 +684,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
     if current_pid do
       Logger.info("[TEST] Process alive? #{Process.alive?(current_pid)}")
+
       if Process.alive?(current_pid) do
         info = Process.info(current_pid)
         Logger.info("[TEST] Process info: #{inspect(info)}")
@@ -676,6 +693,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
     # Try to start manually
     Logger.info("[TEST] Attempting manual start...")
+
     case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
       {:ok, pid} ->
         Logger.info("[TEST] SUCCESS: Started with PID #{inspect(pid)}")
@@ -702,11 +720,17 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
     case WandererKillsAPI.get_killmail(test_killmail_id) do
       {:ok, _killmail_data} ->
-        Logger.info("[TEST] WandererKills service is healthy - successfully fetched test killmail")
+        Logger.info(
+          "[TEST] WandererKills service is healthy - successfully fetched test killmail"
+        )
+
         {:ok, :healthy}
 
       {:error, %{type: :not_found}} ->
-        Logger.info("[TEST] WandererKills service is healthy - responded with 404 for test killmail")
+        Logger.info(
+          "[TEST] WandererKills service is healthy - responded with 404 for test killmail"
+        )
+
         {:ok, :healthy}
 
       {:error, reason} ->

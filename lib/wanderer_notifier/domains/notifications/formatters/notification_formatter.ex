@@ -1061,15 +1061,18 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp lookup_ship_name_by_type_id(nil), do: "Unknown Ship"
+
   defp lookup_ship_name_by_type_id(type_id) when is_integer(type_id) do
     ItemLookupService.get_ship_name(type_id)
   end
+
   defp lookup_ship_name_by_type_id(type_id) when is_binary(type_id) do
     case Integer.parse(type_id) do
       {int_id, ""} -> ItemLookupService.get_ship_name(int_id)
       _ -> "Unknown Ship"
     end
   end
+
   defp lookup_ship_name_by_type_id(_), do: "Unknown Ship"
 
   # ═══════════════════════════════════════════════════════════════════════════════

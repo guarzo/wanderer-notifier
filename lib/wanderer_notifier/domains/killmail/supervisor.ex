@@ -17,7 +17,8 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   @impl true
   def init(_init_arg) do
-    Logger.info("Starting Killmail Supervisor with WebSocketClient, PipelineWorker and FallbackHandler",
+    Logger.info(
+      "Starting Killmail Supervisor with WebSocketClient, PipelineWorker and FallbackHandler",
       category: :processor
     )
 
@@ -31,7 +32,8 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
     # Start WebSocket client asynchronously to avoid blocking startup
     spawn(fn ->
-      Process.sleep(2000)  # Wait for application to fully start
+      # Wait for application to fully start
+      Process.sleep(2000)
       start_websocket_client()
     end)
 
@@ -40,13 +42,15 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   defp start_websocket_client do
     Logger.info("Starting WebSocket client asynchronously")
-    
+
     case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
       {:ok, pid} ->
         Logger.info("WebSocket client started successfully", pid: inspect(pid))
+
       {:error, reason} ->
-        Logger.warning("WebSocket client failed to start, will be handled by fallback", 
-          reason: inspect(reason))
+        Logger.warning("WebSocket client failed to start, will be handled by fallback",
+          reason: inspect(reason)
+        )
     end
   end
 end

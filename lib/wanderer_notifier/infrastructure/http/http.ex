@@ -43,7 +43,8 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type method :: :get | :post | :put | :delete | :head | :options | :patch
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
-  @type service :: :esi | :wanderer_kills | :license | :janice | :map | :streaming | :fuzzworks | nil
+  @type service ::
+          :esi | :wanderer_kills | :license | :janice | :map | :streaming | :fuzzworks | nil
   @type middleware :: module()
   @type request :: %{
           method: method(),
@@ -399,12 +400,14 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   defp has_content_type?(nil), do: false
+
   defp has_content_type?(headers) when is_list(headers) do
     Enum.any?(headers, fn
       {"Content-Type", _} -> true
       _ -> false
     end)
   end
+
   defp has_content_type?(_), do: false
 
   defp transform_response({:ok, response}) do

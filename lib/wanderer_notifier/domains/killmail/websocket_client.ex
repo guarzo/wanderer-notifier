@@ -601,7 +601,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     # Transform and send each killmail to the pipeline with deduplication
     Enum.each(killmails, fn killmail ->
       killmail_id = killmail["killmail_id"]
-      
+
       if should_process_killmail?(killmail_id) do
         transformed_killmail = transform_killmail(killmail)
         send_to_pipeline(transformed_killmail, state)
@@ -835,11 +835,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   # WebSocket-level deduplication to prevent immediate duplicates
   defp should_process_killmail?(killmail_id) do
     cache_key = "websocket_dedup:#{killmail_id}"
-    
+
     case WandererNotifier.Infrastructure.Cache.get(cache_key) do
-      {:ok, _} -> 
+      {:ok, _} ->
         # Already processed recently, skip
         false
+
       {:error, :not_found} ->
         # Not seen recently, mark as processing and allow
         WandererNotifier.Infrastructure.Cache.put(cache_key, true, :timer.minutes(5))
