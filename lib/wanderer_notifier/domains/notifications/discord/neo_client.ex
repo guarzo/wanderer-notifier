@@ -237,7 +237,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :api
     )
 
-    Process.sleep(min(10_000, 1000 * :math.pow(2, context.attempt)))
+    delay =
+      2
+      |> :math.pow(context.attempt)
+      |> Kernel.*(1000)
+      |> min(10_000)
+
+    Process.sleep(delay)
 
     send_discord_message_with_retry(
       context.channel_id,
@@ -257,7 +263,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :api
     )
 
-    Process.sleep(min(10_000, 1000 * :math.pow(2, context.attempt)))
+    delay =
+      2
+      |> :math.pow(context.attempt)
+      |> Kernel.*(1000)
+      |> min(10_000)
+
+    Process.sleep(delay)
 
     send_discord_message_with_retry(
       context.channel_id,
