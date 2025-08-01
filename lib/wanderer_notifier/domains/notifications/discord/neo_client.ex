@@ -184,7 +184,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp send_discord_message_with_retry(channel_id_int, discord_embed, content, attempt)
-       when attempt < 3 do
+       when attempt < 5 do
     context = build_retry_context(channel_id_int, discord_embed, content, attempt)
 
     log_api_attempt(context.channel_id, context.has_content, context.rally_id, context.attempt)
@@ -212,7 +212,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp handle_task_result(task, context) do
-    case Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill) do
+    case Task.yield(task, 15_000) || Task.shutdown(task, :brutal_kill) do
       {:ok, {:ok, _message}} ->
         handle_success(context.start_time, context.rally_id, context.attempt)
 
@@ -237,7 +237,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :api
     )
 
-    Process.sleep(1000 * (context.attempt + 1))
+    Process.sleep(min(10_000, 1000 * :math.pow(2, context.attempt)))
 
     send_discord_message_with_retry(
       context.channel_id,
@@ -251,13 +251,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     elapsed = System.monotonic_time(:millisecond) - context.start_time
 
     Logger.warning(
-      "[RALLY_TIMING] Discord API call timed out after 5 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
+      "[RALLY_TIMING] Discord API call timed out after 15 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
       channel_id: context.channel_id,
       rally_id: context.rally_id,
       category: :api
     )
 
-    Process.sleep(1000 * (context.attempt + 1))
+    Process.sleep(min(10_000, 1000 * :math.pow(2, context.attempt)))
 
     send_discord_message_with_retry(
       context.channel_id,
