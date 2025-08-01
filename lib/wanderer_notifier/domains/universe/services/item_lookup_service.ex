@@ -385,7 +385,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   defp fetch_type_from_esi(type_id) do
     url = "https://esi.evetech.net/latest/universe/types/#{type_id}/"
 
-    case Http.request(:get, url, [], nil, service: :esi) do
+    case Http.request(:get, url, nil, [], service: :esi) do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 

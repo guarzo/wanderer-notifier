@@ -582,7 +582,13 @@ defmodule WandererNotifier.Testing.NotificationTester do
     if pid do
       # Get initial state
       initial_state = :sys.get_state(pid)
-      initial_memory = Process.info(pid, :memory)
+      initial_memory_info = Process.info(pid, :memory)
+
+      initial_memory =
+        case initial_memory_info do
+          {:memory, bytes} -> bytes
+          nil -> 0
+        end
 
       Logger.info("[TEST] Initial memory: #{initial_memory} bytes")
       Logger.info("[TEST] Monitoring started - make some kills now...")
@@ -592,7 +598,13 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
       # Check final state
       final_state = :sys.get_state(pid)
-      final_memory = Process.info(pid, :memory)
+      final_memory_info = Process.info(pid, :memory)
+
+      final_memory =
+        case final_memory_info do
+          {:memory, bytes} -> bytes
+          nil -> 0
+        end
 
       Logger.info(
         "[TEST] Final memory: #{final_memory} bytes (change: #{final_memory - initial_memory})"
