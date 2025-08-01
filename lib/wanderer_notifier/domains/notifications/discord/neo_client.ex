@@ -314,31 +314,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     :ok
   end
 
-  defp handle_rate_limit(response, channel_id_int, start_time, rally_id) do
+  defp handle_rate_limit(response, _channel_id_int, start_time, rally_id) do
     elapsed = System.monotonic_time(:millisecond) - start_time
     Logger.warning("[RALLY_TIMING] Discord rate limited after #{elapsed}ms",
       rally_id: rally_id,
       category: :api
     )
-    handle_discord_error(response, channel_id_int)
-  end
-
-  # Handle different types of Discord API errors
-  defp handle_discord_error(%{status_code: 429, response: response}, _channel_id) do
-    retry_after = get_retry_after(response)
+    
+    retry_after = get_retry_after(Map.get(response, :response))
     Logger.error("Discord rate limit hit via Nostrum", retry_after: retry_after, category: :api)
     {:error, {:rate_limited, retry_after}}
-  end
-
-  defp handle_discord_error(%{status_code: status_code, response: response}, channel_id) do
-    Logger.error("Discord API error",
-      status_code: status_code,
-      response: inspect(response),
-      channel_id: channel_id,
-      category: :api
-    )
-
-    {:error, {:api_error, status_code, response}}
   end
 
   # Handle exceptions during message sending
