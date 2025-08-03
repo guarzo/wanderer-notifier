@@ -242,6 +242,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       |> :math.pow(context.attempt)
       |> Kernel.*(1000)
       |> min(10_000)
+      |> round()
 
     Process.sleep(delay)
 
@@ -268,6 +269,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       |> :math.pow(context.attempt)
       |> Kernel.*(1000)
       |> min(10_000)
+      |> round()
 
     Process.sleep(delay)
 

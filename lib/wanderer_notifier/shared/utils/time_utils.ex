@@ -4,8 +4,6 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   Provides consistent time handling across the application.
   """
 
-  require Logger
-
   @doc """
   Gets the current UTC time as DateTime.
   """
@@ -61,20 +59,7 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   """
   @spec to_iso8601(DateTime.t()) :: String.t()
   def to_iso8601(%DateTime{} = datetime) do
-    Logger.info("[DEBUG] TimeUtils.to_iso8601 called with valid DateTime: #{inspect(datetime)}")
     DateTime.to_iso8601(datetime)
-  end
-
-  # Catch invalid calls and log them for debugging
-  def to_iso8601(invalid_input) do
-    stack = Process.info(self(), :current_stacktrace) |> elem(1)
-
-    Logger.error(
-      "[DEBUG] TimeUtils.to_iso8601 called with invalid input: #{inspect(invalid_input)}"
-    )
-
-    Logger.error("[DEBUG] Stacktrace: #{Exception.format_stacktrace(stack)}")
-    raise FunctionClauseError, module: __MODULE__, function: :to_iso8601, arity: 1
   end
 
   @doc """
