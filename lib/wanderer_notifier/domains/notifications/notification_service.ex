@@ -121,32 +121,42 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
     has_tracked_character = Determiner.has_tracked_character?(killmail)
 
     Logger.debug(
-      "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}"
+      "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}",
+      category: :notification
     )
 
-    channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
+    # Validate that at least one entity is tracked using pattern matching
+    case {has_tracked_character, has_tracked_system} do
+      {false, false} ->
+        Logger.error(
+          "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}",
+          category: :notification
+        )
 
-    Logger.debug(
-      "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}"
-    )
+        {:error, :no_tracked_entities}
 
-    {:ok, channel_id || Config.discord_channel_id()}
+      {tracked_char, tracked_sys} ->
+        channel_id = select_channel_by_priority(tracked_char, tracked_sys)
+
+        Logger.debug(
+          "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}",
+          category: :notification
+        )
+
+        {:ok, channel_id || Config.discord_channel_id()}
+    end
   end
 
   defp select_channel_by_priority(has_tracked_character, has_tracked_system) do
     Logger.debug(
-      "[Channel Priority Debug] has_tracked_character: #{has_tracked_character}, has_tracked_system: #{has_tracked_system}, char_enabled: #{Config.character_notifications_enabled?()}, sys_enabled: #{Config.system_notifications_enabled?()}, char_channel: #{Config.discord_character_kill_channel_id()}, sys_channel: #{Config.discord_system_kill_channel_id()}, default: #{Config.discord_channel_id()}"
+      "[Channel Priority Debug] has_tracked_character: #{has_tracked_character}, has_tracked_system: #{has_tracked_system}, char_channel: #{Config.discord_character_kill_channel_id()}, sys_channel: #{Config.discord_system_kill_channel_id()}",
+      category: :notification
     )
 
-    cond do
-      has_tracked_character and Config.character_notifications_enabled?() ->
-        Config.discord_character_kill_channel_id()
-
-      has_tracked_system and Config.system_notifications_enabled?() ->
-        Config.discord_system_kill_channel_id()
-
-      true ->
-        Config.discord_channel_id()
+    # Priority: Character kills take precedence over system kills
+    case {has_tracked_character, has_tracked_system} do
+      {true, _} -> Config.discord_character_kill_channel_id()
+      {false, true} -> Config.discord_system_kill_channel_id()
     end
   end
 
@@ -204,14 +214,16 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
         case system_data do
           %System{} = system ->
             Logger.debug(
-              "[NotificationService] Using existing System struct - type: #{system.system_type}, statics: #{inspect(system.statics)}"
+              "[NotificationService] Using existing System struct - type: #{system.system_type}, statics: #{inspect(system.statics)}",
+              category: :notification
             )
 
             system
 
           _ ->
             Logger.debug(
-              "[NotificationService] Converting map to System struct from data: #{inspect(Map.keys(system_data))}"
+              "[NotificationService] Converting map to System struct from data: #{inspect(Map.keys(system_data))}",
+              category: :notification
             )
 
             System.from_api_data(system_data)
