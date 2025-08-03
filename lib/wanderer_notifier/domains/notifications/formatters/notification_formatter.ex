@@ -908,7 +908,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         text: "Rally Point Notification",
         icon_url: nil
       },
-      timestamp: TimeUtils.to_iso8601(Map.get(rally_point, :created_at) || DateTime.utc_now())
+      timestamp: get_rally_timestamp(rally_point)
     }
 
     Logger.info(
@@ -1006,6 +1006,26 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     )
 
     rally_point.system_name || "Unknown System"
+  end
+
+  # Helper function to safely get timestamp for rally point notifications
+  defp get_rally_timestamp(rally_point) do
+    case Map.get(rally_point, :created_at) do
+      nil ->
+        TimeUtils.to_iso8601(DateTime.utc_now())
+
+      %DateTime{} = datetime ->
+        TimeUtils.to_iso8601(datetime)
+
+      created_at_string when is_binary(created_at_string) ->
+        case TimeUtils.parse_iso8601(created_at_string) do
+          {:ok, datetime} -> TimeUtils.to_iso8601(datetime)
+          {:error, _} -> TimeUtils.to_iso8601(DateTime.utc_now())
+        end
+
+      _ ->
+        TimeUtils.to_iso8601(DateTime.utc_now())
+    end
   end
 
   defp handle_system_found(system_data, rally_id, start_time) do
