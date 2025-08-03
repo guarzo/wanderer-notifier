@@ -4,8 +4,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Status do
   Provides rich formatting for service status and startup events.
   """
 
-  alias WandererNotifier.Shared.Utils.TimeUtils
-
   @info_color 0x3498DB
 
   @doc """
@@ -104,7 +102,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Status do
       title: data.title,
       description: "#{data.description}\n\n**System Status Overview:**",
       color: @info_color,
-      timestamp: TimeUtils.log_timestamp(),
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
       thumbnail: %{
         url: "https://images.evetech.net/corporations/1_000_001/logo?size=128"
       },

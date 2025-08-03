@@ -61,6 +61,7 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   """
   @spec to_iso8601(DateTime.t()) :: String.t()
   def to_iso8601(%DateTime{} = datetime) do
+    Logger.info("[DEBUG] TimeUtils.to_iso8601 called with valid DateTime: #{inspect(datetime)}")
     DateTime.to_iso8601(datetime)
   end
 
