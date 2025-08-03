@@ -3,7 +3,7 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   Centralized time and date utilities for WandererNotifier.
   Provides consistent time handling across the application.
   """
-  
+
   require Logger
 
   @doc """
@@ -63,11 +63,15 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   def to_iso8601(%DateTime{} = datetime) do
     DateTime.to_iso8601(datetime)
   end
-  
+
   # Catch invalid calls and log them for debugging
   def to_iso8601(invalid_input) do
     stack = Process.info(self(), :current_stacktrace) |> elem(1)
-    Logger.error("[DEBUG] TimeUtils.to_iso8601 called with invalid input: #{inspect(invalid_input)}")
+
+    Logger.error(
+      "[DEBUG] TimeUtils.to_iso8601 called with invalid input: #{inspect(invalid_input)}"
+    )
+
     Logger.error("[DEBUG] Stacktrace: #{Exception.format_stacktrace(stack)}")
     raise FunctionClauseError, module: __MODULE__, function: :to_iso8601, arity: 1
   end
