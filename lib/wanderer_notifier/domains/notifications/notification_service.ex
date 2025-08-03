@@ -124,29 +124,34 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
       "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}"
     )
 
-    channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
+    # Validate that at least one entity is tracked
+    if not has_tracked_character and not has_tracked_system do
+      Logger.error(
+        "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}"
+      )
+      {:error, :no_tracked_entities}
+    else
+      channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
 
-    Logger.debug(
-      "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}"
-    )
+      Logger.debug(
+        "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}"
+      )
 
-    {:ok, channel_id || Config.discord_channel_id()}
+      {:ok, channel_id || Config.discord_channel_id()}
+    end
   end
 
   defp select_channel_by_priority(has_tracked_character, has_tracked_system) do
     Logger.debug(
-      "[Channel Priority Debug] has_tracked_character: #{has_tracked_character}, has_tracked_system: #{has_tracked_system}, char_enabled: #{Config.character_notifications_enabled?()}, sys_enabled: #{Config.system_notifications_enabled?()}, char_channel: #{Config.discord_character_kill_channel_id()}, sys_channel: #{Config.discord_system_kill_channel_id()}, default: #{Config.discord_channel_id()}"
+      "[Channel Priority Debug] has_tracked_character: #{has_tracked_character}, has_tracked_system: #{has_tracked_system}, char_channel: #{Config.discord_character_kill_channel_id()}, sys_channel: #{Config.discord_system_kill_channel_id()}"
     )
 
-    cond do
-      has_tracked_character and Config.character_notifications_enabled?() ->
-        Config.discord_character_kill_channel_id()
-
-      has_tracked_system and Config.system_notifications_enabled?() ->
-        Config.discord_system_kill_channel_id()
-
-      true ->
-        Config.discord_channel_id()
+    # Priority: Character kills take precedence over system kills
+    if has_tracked_character do
+      Config.discord_character_kill_channel_id()
+    else
+      # has_tracked_system must be true if we got here
+      Config.discord_system_kill_channel_id()
     end
   end
 
