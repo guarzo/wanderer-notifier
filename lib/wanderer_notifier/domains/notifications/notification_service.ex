@@ -125,22 +125,25 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
       category: :notification
     )
 
-    # Validate that at least one entity is tracked
-    if not has_tracked_character and not has_tracked_system do
-      Logger.error(
-        "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}"
-      )
+    # Validate that at least one entity is tracked using pattern matching
+    case {has_tracked_character, has_tracked_system} do
+      {false, false} ->
+        Logger.error(
+          "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}",
+          category: :notification
+        )
 
-      {:error, :no_tracked_entities}
-    else
-      channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
+        {:error, :no_tracked_entities}
 
-      Logger.debug(
-        "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}",
-        category: :notification
-      )
+      {tracked_char, tracked_sys} ->
+        channel_id = select_channel_by_priority(tracked_char, tracked_sys)
 
-      {:ok, channel_id || Config.discord_channel_id()}
+        Logger.debug(
+          "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{Config.discord_channel_id()}",
+          category: :notification
+        )
+
+        {:ok, channel_id || Config.discord_channel_id()}
     end
   end
 
