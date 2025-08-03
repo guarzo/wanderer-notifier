@@ -907,8 +907,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       footer: %{
         text: "Rally Point Notification",
         icon_url: nil
-      },
-      timestamp: get_rally_timestamp(rally_point)
+      }
     }
 
     Logger.info(
@@ -1009,24 +1008,63 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   # Helper function to safely get timestamp for rally point notifications
-  # Returns DateTime.t() for Discord embed compatibility
+  # Returns ISO8601 string for Discord embed compatibility
   defp get_rally_timestamp(rally_point) do
-    case Map.get(rally_point, :created_at) do
+    created_at_value = Map.get(rally_point, :created_at)
+    Logger.info("[RALLY_TIMING] get_rally_timestamp input: #{inspect(created_at_value)}", 
+      rally_id: rally_point[:id],
+      category: :formatter
+    )
+    
+    result = case created_at_value do
       nil ->
-        DateTime.utc_now()
+        Logger.info("[RALLY_TIMING] created_at is nil, using current time", 
+          rally_id: rally_point[:id],
+          category: :formatter
+        )
+        DateTime.utc_now() |> DateTime.to_iso8601()
 
       %DateTime{} = datetime ->
-        datetime
+        Logger.info("[RALLY_TIMING] created_at is DateTime struct", 
+          rally_id: rally_point[:id],
+          category: :formatter
+        )
+        DateTime.to_iso8601(datetime)
 
       created_at_string when is_binary(created_at_string) ->
+        Logger.info("[RALLY_TIMING] created_at is string: #{created_at_string}", 
+          rally_id: rally_point[:id],
+          category: :formatter
+        )
         case TimeUtils.parse_iso8601(created_at_string) do
-          {:ok, datetime} -> datetime
-          {:error, _} -> DateTime.utc_now()
+          {:ok, datetime} -> 
+            Logger.info("[RALLY_TIMING] Successfully parsed string to DateTime", 
+              rally_id: rally_point[:id],
+              category: :formatter
+            )
+            DateTime.to_iso8601(datetime)
+          {:error, reason} -> 
+            Logger.warning("[RALLY_TIMING] Failed to parse string: #{inspect(reason)}, using current time", 
+              rally_id: rally_point[:id],
+              category: :formatter
+            )
+            DateTime.utc_now() |> DateTime.to_iso8601()
         end
 
-      _ ->
-        DateTime.utc_now()
+      other ->
+        Logger.warning("[RALLY_TIMING] created_at has unexpected type: #{inspect(other)}, using current time", 
+          rally_id: rally_point[:id],
+          category: :formatter
+        )
+        DateTime.utc_now() |> DateTime.to_iso8601()
     end
+    
+    Logger.info("[RALLY_TIMING] get_rally_timestamp returning: #{inspect(result)}", 
+      rally_id: rally_point[:id],
+      category: :formatter
+    )
+    
+    result
   end
 
   defp handle_system_found(system_data, rally_id, start_time) do
