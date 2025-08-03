@@ -129,6 +129,7 @@ defmodule WandererNotifier.Domains.Notifications.NotificationService do
       Logger.error(
         "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}"
       )
+
       {:error, :no_tracked_entities}
     else
       channel_id = select_channel_by_priority(has_tracked_character, has_tracked_system)
