@@ -323,11 +323,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp call_discord_api(channel_id_int, discord_embed, content) do
-    if content do
+    # Add debugging for Discord API calls
+    Logger.info("Discord API call starting - Channel: #{channel_id_int}, Content: #{not is_nil(content)}")
+    
+    result = if content do
       Message.create(channel_id_int, content: content, embeds: [discord_embed])
     else
       Message.create(channel_id_int, embeds: [discord_embed])
     end
+    
+    Logger.info("Discord API call result: #{inspect(elem(result, 0))}")
+    result
   end
 
   defp handle_success(start_time, rally_id, attempt) do

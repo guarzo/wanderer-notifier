@@ -185,12 +185,20 @@ defmodule WandererNotifier.Infrastructure.Http do
   defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
     # Use Req directly to avoid circular dependency
     req_opts = build_req_opts(opts, headers, body)
+    
+    # Log request start for timeout debugging
+    start_time = System.monotonic_time(:millisecond)
+    Logger.info("Starting HTTP request: #{method} #{url}")
 
     case Req.request([method: method, url: url] ++ req_opts) do
       {:ok, %Req.Response{status: status, body: response_body, headers: response_headers}} ->
+        duration = System.monotonic_time(:millisecond) - start_time
+        Logger.info("HTTP request completed in #{duration}ms: #{method} #{url}")
         {:ok, %{status_code: status, body: response_body, headers: response_headers}}
 
       {:error, reason} ->
+        duration = System.monotonic_time(:millisecond) - start_time
+        Logger.warning("HTTP request failed after #{duration}ms: #{method} #{url} - #{inspect(reason)}")
         {:error, reason}
     end
   end
