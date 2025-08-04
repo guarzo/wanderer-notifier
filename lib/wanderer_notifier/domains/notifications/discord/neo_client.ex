@@ -212,7 +212,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp handle_task_result(task, context) do
-    case Task.yield(task, 15_000) || Task.shutdown(task, :brutal_kill) do
+    case Task.yield(task, 30_000) || Task.shutdown(task, :brutal_kill) do
       {:ok, {:ok, _message}} ->
         handle_success(context.start_time, context.rally_id, context.attempt)
 
@@ -258,7 +258,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     elapsed = System.monotonic_time(:millisecond) - context.start_time
 
     Logger.warning(
-      "[RALLY_TIMING] Discord API call timed out after 15 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
+      "[RALLY_TIMING] Discord API call timed out after 30 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
       channel_id: context.channel_id,
       rally_id: context.rally_id,
       category: :api
@@ -328,24 +328,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       "Discord API call starting - Channel: #{channel_id_int}, Content: #{not is_nil(content)}"
     )
 
-    # Wrap Nostrum call with explicit timeout to prevent indefinite hanging
-    task = Task.async(fn ->
-      if content do
-        Message.create(channel_id_int, content: content, embeds: [discord_embed])
-      else
-        Message.create(channel_id_int, embeds: [discord_embed])
-      end
-    end)
-
-    result = case Task.yield(task, 10_000) || Task.shutdown(task, :brutal_kill) do
-      {:ok, nostrum_result} -> 
-        Logger.info("Discord API call result: #{inspect(elem(nostrum_result, 0))}")
-        nostrum_result
-      nil -> 
-        Logger.warning("Discord API call timed out internally after 10s")
-        {:error, :internal_timeout}
+    result = if content do
+      Message.create(channel_id_int, content: content, embeds: [discord_embed])
+    else
+      Message.create(channel_id_int, embeds: [discord_embed])
     end
 
+    Logger.info("Discord API call result: #{inspect(elem(result, 0))}")
     result
   end
 
