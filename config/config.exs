@@ -113,7 +113,10 @@ config :nostrum,
   cache_channels: false,
   caches: [],
   # Disable ffmpeg warnings since we're not using voice features
-  ffmpeg: false
+  ffmpeg: false,
+  # HTTP timeout configuration
+  gun_timeout: 10_000,
+  gun_connect_timeout: 5_000
 
 # Add backoff configuration to help with rate limiting
 config :nostrum, :gateway,

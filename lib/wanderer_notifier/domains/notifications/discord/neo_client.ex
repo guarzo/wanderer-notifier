@@ -328,14 +328,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       "Discord API call starting - Channel: #{channel_id_int}, Content: #{not is_nil(content)}"
     )
 
-    result =
+    # Wrap Nostrum call with explicit timeout to prevent indefinite hanging
+    task = Task.async(fn ->
       if content do
         Message.create(channel_id_int, content: content, embeds: [discord_embed])
       else
         Message.create(channel_id_int, embeds: [discord_embed])
       end
+    end)
 
-    Logger.info("Discord API call result: #{inspect(elem(result, 0))}")
+    result = case Task.yield(task, 10_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, nostrum_result} -> 
+        Logger.info("Discord API call result: #{inspect(elem(nostrum_result, 0))}")
+        nostrum_result
+      nil -> 
+        Logger.warning("Discord API call timed out internally after 10s")
+        {:error, :internal_timeout}
+    end
+
     result
   end
 
