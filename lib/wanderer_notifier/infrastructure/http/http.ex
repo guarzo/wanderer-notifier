@@ -301,38 +301,41 @@ defmodule WandererNotifier.Infrastructure.Http do
   # Service configurations map
   @service_configs %{
     esi: [
-      timeout: 30_000,
+      # ESI typically responds in 80-240ms, 3s timeout is plenty
+      timeout: 3_000,
       retry_count: 3,
-      retry_delay: 1_000,
+      retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [requests_per_second: 20, burst_capacity: 40, per_host: true],
       middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
     wanderer_kills: [
-      timeout: 15_000,
+      # WandererKills is fast, 5s timeout is generous
+      timeout: 5_000,
       retry_count: 2,
-      retry_delay: 1_000,
+      retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [requests_per_second: 10, burst_capacity: 20, per_host: true],
       middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
     license: [
-      timeout: 10_000,
-      retry_count: 1,
-      retry_delay: 2_000,
+      # License validation typically 300-400ms
+      timeout: 3_000,
+      retry_count: 2,
+      retry_delay: 1_000,
       # Don't retry auth failures
       retryable_status_codes: [500, 502, 503, 504],
       rate_limit: [requests_per_second: 1, burst_capacity: 2, per_host: true],
-      # No retry for license validation
-      middlewares: [RateLimiter],
+      middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
     janice: [
-      timeout: 20_000,
-      retry_count: 2,
-      retry_delay: 1_000,
+      # Janice usually responds in 500ms, but can be slow
+      timeout: 5_000,
+      retry_count: 3,
+      retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
       middlewares: [Retry, RateLimiter],

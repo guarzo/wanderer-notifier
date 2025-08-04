@@ -18,10 +18,10 @@ config :wanderer_notifier,
 # Configure HTTP client
 config :wanderer_notifier,
   http_client: WandererNotifier.HTTP,
-  default_timeout: 15_000,
-  default_recv_timeout: 15_000,
-  default_connect_timeout: 5_000,
-  default_pool_timeout: 5_000
+  default_timeout: 5_000,
+  default_recv_timeout: 5_000,
+  default_connect_timeout: 3_000,
+  default_pool_timeout: 3_000
 
 # Configure MIME types
 config :mime, :types, %{
@@ -121,6 +121,22 @@ config :nostrum, :gateway,
     initial: 5000,
     max: 300_000
   ]
+
+# Configure Gun HTTP client used by Nostrum for better connection handling
+config :gun,
+  # Connection pool configuration
+  http_opts: %{
+    connect_timeout: 10_000,
+    timeout: 30_000,
+    retry: 3,
+    retry_timeout: 5_000
+  },
+  # Connection handling
+  conn_opts: %{
+    keepalive: :infinity,
+    retry: 3,
+    supervise: false
+  }
 
 # Configure cache
 config :wanderer_notifier,
