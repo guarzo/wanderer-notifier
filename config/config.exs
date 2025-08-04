@@ -24,17 +24,18 @@ config :wanderer_notifier,
   default_pool_timeout: 3_000
 
 # Configure Finch to use IPv4 only to avoid production IPv6 timeout issues
-config :finch, :default_pool_config, [
+config :finch, :default_pool_config,
   pool_size: 25,
   max_idle_time: 30_000,
   conn_opts: [
     timeout: 10_000,
     transport_opts: [
-      inet6: false,  # Disable IPv6
-      inet: true     # Force IPv4
+      # Disable IPv6
+      inet6: false,
+      # Force IPv4
+      inet: true
     ]
   ]
-]
 
 # Configure MIME types
 config :mime, :types, %{
@@ -153,8 +154,10 @@ config :gun,
     retry: 3,
     supervise: false,
     transport_opts: [
-      inet6: false,  # Disable IPv6
-      inet: true     # Force IPv4
+      # Disable IPv6
+      inet6: false,
+      # Force IPv4
+      inet: true
     ]
   }
 
