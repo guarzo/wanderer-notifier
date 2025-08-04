@@ -100,7 +100,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
   """
   @spec process_notification(map(), keyword()) :: service_result()
   def process_notification(notification, opts \\ []) do
-    GenServer.call(__MODULE__, {:process_notification, notification, opts}, 30_000)
+    GenServer.cast(__MODULE__, {:process_notification, notification, opts})
+    {:ok, :queued}
   end
 
   @doc """
@@ -176,7 +177,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
   end
 
   @impl true
-  def handle_call({:process_notification, notification, opts}, _from, state) do
+  def handle_cast({:process_notification, notification, opts}, state) do
     start_time = System.monotonic_time(:millisecond)
 
     Logger.debug("Processing notification",
@@ -195,8 +196,8 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     )
 
     case result do
-      {:ok, _result, new_state} -> {:reply, {:ok, :queued}, new_state}
-      {:error, reason, new_state} -> {:reply, {:error, reason}, new_state}
+      {:ok, _result, new_state} -> {:noreply, new_state}
+      {:error, _reason, new_state} -> {:noreply, new_state}
     end
   end
 

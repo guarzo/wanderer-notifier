@@ -302,33 +302,32 @@ defmodule WandererNotifier.Contexts.NotificationContext do
         system_id: rally_point.system_id
       }
 
-      # Process through ApplicationService asynchronously to avoid blocking GenServer
-      Task.start(fn ->
-        case ApplicationService.process_notification(notification) do
-          {:ok, _result} ->
-            Logger.info("Rally point notification sent",
-              system: rally_point.system_name,
-              category: :notification
-            )
+      # Process through ApplicationService
+      case ApplicationService.process_notification(notification) do
+        {:ok, result} ->
+          Logger.info("Rally point notification sent",
+            system: rally_point.system_name,
+            category: :notification
+          )
 
-            # Track metrics
-            :telemetry.execute(
-              [:wanderer_notifier, :notification, :rally_point],
-              %{count: 1},
-              %{system: rally_point.system_name}
-            )
+          # Track metrics
+          :telemetry.execute(
+            [:wanderer_notifier, :notification, :rally_point],
+            %{count: 1},
+            %{system: rally_point.system_name}
+          )
 
-          {:error, reason} ->
-            Logger.error("Failed to send rally point notification: #{inspect(reason)}",
-              rally_point: inspect(rally_point),
-              notification: inspect(notification),
-              category: :notification
-            )
-        end
-      end)
+          {:ok, result}
 
-      # Return success immediately since we're processing asynchronously
-      {:ok, :async_processing}
+        {:error, reason} = error ->
+          Logger.error("Failed to send rally point notification: #{inspect(reason)}",
+            rally_point: inspect(rally_point),
+            notification: inspect(notification),
+            category: :notification
+          )
+
+          error
+      end
     else
       {:error, :notifications_disabled}
     end
