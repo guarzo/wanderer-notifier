@@ -328,13 +328,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       "Discord API call starting - Channel: #{channel_id_int}, Content: #{not is_nil(content)}"
     )
 
+    # Log timestamp before call for precise timing
+    start_time = System.monotonic_time(:millisecond)
+    
     result = if content do
       Message.create(channel_id_int, content: content, embeds: [discord_embed])
     else
       Message.create(channel_id_int, embeds: [discord_embed])
     end
 
-    Logger.info("Discord API call result: #{inspect(elem(result, 0))}")
+    duration = System.monotonic_time(:millisecond) - start_time
+    Logger.info("Discord API call completed in #{duration}ms - Result: #{inspect(elem(result, 0))}")
     result
   end
 
