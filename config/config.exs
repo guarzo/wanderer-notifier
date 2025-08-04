@@ -139,20 +139,15 @@ config :nostrum, :gateway,
     max: 300_000
   ]
 
-# Configure Gun HTTP client used by Nostrum for better connection handling
+# Configure Gun HTTP client used by Nostrum - keep it simple
 config :gun,
-  # Connection pool configuration
+  # Basic connection configuration
   http_opts: %{
     connect_timeout: 10_000,
-    timeout: 30_000,
-    retry: 3,
-    retry_timeout: 5_000
+    timeout: 30_000
   },
-  # Connection handling - force IPv4 to avoid IPv6 timeout issues
+  # Connection handling - use defaults, just force IPv4
   conn_opts: %{
-    keepalive: :infinity,
-    retry: 3,
-    supervise: false,
     transport_opts: [
       # Disable IPv6
       inet6: false,
