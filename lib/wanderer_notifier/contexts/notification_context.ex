@@ -60,15 +60,6 @@ defmodule WandererNotifier.Contexts.NotificationContext do
         )
 
         {:ok, result}
-
-      {:error, reason} = error ->
-        Logger.warning("Failed to process notification",
-          reason: inspect(reason),
-          notification_keys: Map.keys(notification),
-          category: :notification
-        )
-
-        error
     end
   end
 
@@ -100,14 +91,14 @@ defmodule WandererNotifier.Contexts.NotificationContext do
           ApplicationService.increment_metric(:notification_sent)
           {:ok, result}
 
-        {:error, reason} = error ->
+        {:error, reason} ->
           Logger.warning("Kill notification failed",
             reason: inspect(reason),
             killmail_id: Map.get(killmail_data, :killmail_id),
             category: :notification
           )
 
-          error
+          {:error, reason}
       end
     end
   end
@@ -173,16 +164,10 @@ defmodule WandererNotifier.Contexts.NotificationContext do
 
     Logger.debug("System data keys: #{inspect(Map.keys(system_data))}")
 
-    case send_notification(system_data, opts) do
-      {:ok, result} ->
-        ApplicationService.increment_metric(:notification_sent)
-        {:ok, result}
-
-      {:error, reason} = error ->
-        Logger.warning("System notification failed: #{inspect(reason)}")
-        Logger.warning("System name: #{Map.get(system_data, :name, "Unknown")}")
-        error
-    end
+    # send_notification always returns {:ok, :queued}
+    result = send_notification(system_data, opts)
+    ApplicationService.increment_metric(:notification_sent)
+    result
   end
 
   @doc """
@@ -201,20 +186,10 @@ defmodule WandererNotifier.Contexts.NotificationContext do
       category: :notification
     )
 
-    case send_notification(character_data, opts) do
-      {:ok, result} ->
-        ApplicationService.increment_metric(:notification_sent)
-        {:ok, result}
-
-      {:error, reason} = error ->
-        Logger.warning("Character notification failed",
-          reason: inspect(reason),
-          character_id: character_id,
-          category: :notification
-        )
-
-        error
-    end
+    # send_notification always returns {:ok, :queued}
+    result = send_notification(character_data, opts)
+    ApplicationService.increment_metric(:notification_sent)
+    result
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -318,15 +293,6 @@ defmodule WandererNotifier.Contexts.NotificationContext do
           )
 
           {:ok, result}
-
-        {:error, reason} = error ->
-          Logger.error("Failed to send rally point notification: #{inspect(reason)}",
-            rally_point: inspect(rally_point),
-            notification: inspect(notification),
-            category: :notification
-          )
-
-          error
       end
     else
       {:error, :notifications_disabled}

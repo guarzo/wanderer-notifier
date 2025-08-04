@@ -163,17 +163,27 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     {:reply, stats, state}
   end
 
-  @impl true
   def handle_call({:first_notification, type}, _from, state) do
     result = MetricsTracker.first_notification?(state, type)
     {:reply, result, state}
   end
 
-  @impl true
   def handle_call({:get_dependency, name, default}, _from, state) do
     # Delegate to the dependency registry
     dependency = WandererNotifier.Application.Services.DependencyRegistry.resolve(name, default)
     {:reply, dependency, state}
+  end
+
+  def handle_call({:notify_kill, notification}, _from, state) do
+    case NotificationCoordinator.notify_kill(state, notification) do
+      {:ok, result, new_state} -> {:reply, {:ok, result}, new_state}
+      {:error, reason, new_state} -> {:reply, {:error, reason}, new_state}
+    end
+  end
+
+  def handle_call(:health_status, _from, state) do
+    health = build_health_status(state)
+    {:reply, health, state}
   end
 
   @impl true
@@ -201,27 +211,11 @@ defmodule WandererNotifier.Application.Services.ApplicationService do
     end
   end
 
-  @impl true
-  def handle_call({:notify_kill, notification}, _from, state) do
-    case NotificationCoordinator.notify_kill(state, notification) do
-      {:ok, result, new_state} -> {:reply, {:ok, result}, new_state}
-      {:error, reason, new_state} -> {:reply, {:error, reason}, new_state}
-    end
-  end
-
-  @impl true
-  def handle_call(:health_status, _from, state) do
-    health = build_health_status(state)
-    {:reply, health, state}
-  end
-
-  @impl true
   def handle_cast({:increment_metric, type}, state) do
     {:ok, new_state} = MetricsTracker.increment_metric(state, type)
     {:noreply, new_state}
   end
 
-  @impl true
   def handle_cast({:mark_notification_sent, type}, state) do
     {:ok, new_state} = MetricsTracker.mark_notification_sent(state, type)
     {:noreply, new_state}

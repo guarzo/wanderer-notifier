@@ -240,6 +240,7 @@ defmodule WandererNotifier.Map.EventProcessor do
     }
 
     # Trigger notification through the notification context
+    # send_rally_point_notification returns {:ok, :queued} or {:error, :notifications_disabled}
     case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
       {:ok, _} ->
         Logger.info("Rally point notification sent successfully")
@@ -248,10 +249,6 @@ defmodule WandererNotifier.Map.EventProcessor do
       {:error, :notifications_disabled} ->
         Logger.info("Rally point notifications disabled")
         :ignored
-
-      {:error, reason} ->
-        Logger.error("Rally point notification failed: #{inspect(reason)}")
-        {:error, reason}
     end
   end
 

@@ -330,8 +330,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
     case WandererNotifier.Contexts.NotificationContext.send_character_notification(map_character) do
       {:ok, _} -> :ok
-      {:error, :notifications_disabled} -> :ok
-      {:error, _reason} = error -> error
     end
   end
 
