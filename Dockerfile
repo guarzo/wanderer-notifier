@@ -95,6 +95,7 @@ RUN apt-get update \
       libgcc-s1 \
       # Health check and monitoring tools
       curl \
+      wget \
       procps \
       dumb-init \
       # Locale support

@@ -1,6 +1,5 @@
 defmodule NotificationBench do
   use Benchfella
-  alias WandererNotifier.Domains.Notifications.NotificationService
 
   @test_killmail %{
     "killmail_id" => 123456,

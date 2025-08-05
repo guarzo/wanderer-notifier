@@ -195,33 +195,27 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   defp send_rally_notification(state, rally_point, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Calling Discord.Notifier.send_rally_point_notification",
+    Logger.info("[RALLY_TIMING] Queueing Discord.Notifier.send_rally_point_notification async",
       rally_id: rally_id,
       elapsed_ms: System.monotonic_time(:millisecond) - start_time,
       category: :notification
     )
 
-    case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(
-           rally_point
-         ) do
-      {:ok, :sent} ->
-        handle_rally_success(state, rally_id, start_time)
-
-      {:error, reason} ->
-        handle_rally_error(state, reason, rally_id, start_time)
-    end
+    # Send asynchronously to prevent blocking the ApplicationService GenServer
+    send_rally_notification_async(rally_point, rally_id, start_time)
+    handle_rally_success(state, rally_id, start_time)
   end
 
   defp handle_rally_success(state, rally_id, start_time) do
     Logger.info(
-      "[RALLY_TIMING] Discord notifier returned success after #{System.monotonic_time(:millisecond) - start_time}ms",
+      "[RALLY_TIMING] Rally point notification queued for async processing after #{System.monotonic_time(:millisecond) - start_time}ms",
       rally_id: rally_id,
       category: :notification
     )
 
     {:ok, new_state} = increment_notification_count(state, :rally_points)
-    Logger.debug("Rally point notification sent successfully", category: :notification)
-    {:ok, :sent, new_state}
+    Logger.debug("Rally point notification queued successfully", category: :notification)
+    {:ok, :queued, new_state}
   end
 
   defp handle_rally_error(state, reason, rally_id, start_time) do
@@ -338,6 +332,134 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     WandererNotifier.Shared.Config.discord_channel_id()
   end
 
+  # Determine the appropriate channel for kill notifications with tracking validation
+  defp determine_kill_channel(killmail) do
+    case check_testing_override() do
+      {:ok, nil} ->
+        determine_normal_channel(killmail)
+
+      {:ok, override_type} ->
+        handle_testing_override(override_type)
+    end
+  end
+
+  defp handle_testing_override(:character) do
+    Logger.info("[TEST] Kill override: routing to character channel")
+    channel_id = WandererNotifier.Shared.Config.discord_character_kill_channel_id() || WandererNotifier.Shared.Config.discord_channel_id()
+    {:ok, channel_id}
+  end
+
+  defp handle_testing_override(:system) do
+    Logger.info("[TEST] Kill override: routing to system channel")
+    channel_id = WandererNotifier.Shared.Config.discord_system_kill_channel_id() || WandererNotifier.Shared.Config.discord_channel_id()
+    {:ok, channel_id}
+  end
+
+  defp determine_normal_channel(killmail) do
+    system_id = Map.get(killmail, :system_id)
+    has_tracked_system = WandererNotifier.Domains.Notifications.Determiner.tracked_system_for_killmail?(system_id)
+    has_tracked_character = WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail)
+
+    Logger.debug(
+      "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}",
+      category: :notification
+    )
+
+    # Validate that at least one entity is tracked using pattern matching
+    case {has_tracked_character, has_tracked_system} do
+      {false, false} ->
+        Logger.error(
+          "[Kill Channel Error] Killmail has no tracked entities but reached notification service - system_id: #{system_id}, killmail_id: #{Map.get(killmail, :killmail_id)}",
+          category: :notification
+        )
+
+        {:error, :no_tracked_entities}
+
+      {tracked_char, tracked_sys} ->
+        channel_id = select_channel_by_priority(tracked_char, tracked_sys)
+
+        Logger.debug(
+          "[Kill Channel Debug] Selected channel: #{channel_id}, fallback: #{WandererNotifier.Shared.Config.discord_channel_id()}",
+          category: :notification
+        )
+
+        {:ok, channel_id || WandererNotifier.Shared.Config.discord_channel_id()}
+    end
+  end
+
+  defp select_channel_by_priority(has_tracked_character, has_tracked_system) do
+    char_channel = WandererNotifier.Shared.Config.discord_character_kill_channel_id()
+    sys_channel = WandererNotifier.Shared.Config.discord_system_kill_channel_id()
+    default_channel = WandererNotifier.Shared.Config.discord_channel_id()
+    
+    Logger.info(
+      "[Channel Selection] tracked_char: #{has_tracked_character}, tracked_sys: #{has_tracked_system}, char_channel: #{char_channel}, sys_channel: #{sys_channel}, default: #{default_channel}"
+    )
+
+    # Priority: Character kills take precedence over system kills
+    case {has_tracked_character, has_tracked_system} do
+      {true, _} -> char_channel
+      {false, true} -> sys_channel
+    end
+  end
+
+  defp check_testing_override do
+    # Check for testing override environment variables
+    case System.get_env("KILL_CHANNEL_OVERRIDE") do
+      "character" -> {:ok, :character}
+      "system" -> {:ok, :system}
+      _ -> {:ok, nil}
+    end
+  end
+
+  # Determine the appropriate channel for system notifications
+  defp determine_system_channel do
+    # Priority order for channel selection:
+    # 1. System-specific channel
+    # 2. General channel
+    system_channel = WandererNotifier.Shared.Config.discord_system_channel_id()
+    general_channel = WandererNotifier.Shared.Config.discord_channel_id()
+    
+    Logger.debug("[NotificationCoordinator] Determining system channel",
+      system_channel: system_channel,
+      general_channel: general_channel,
+      category: :notification
+    )
+    
+    # Use system channel if configured, otherwise fall back to general channel
+    channel = system_channel || general_channel
+    
+    Logger.info("[NotificationCoordinator] Selected channel for system notification: #{inspect(channel)}",
+      category: :notification
+    )
+    
+    channel
+  end
+
+  # Determine the appropriate channel for character notifications
+  defp determine_character_channel do
+    # Priority order for channel selection:
+    # 1. Character-specific channel
+    # 2. General channel
+    character_channel = WandererNotifier.Shared.Config.discord_character_channel_id()
+    general_channel = WandererNotifier.Shared.Config.discord_channel_id()
+    
+    Logger.debug("[NotificationCoordinator] Determining character channel",
+      character_channel: character_channel,
+      general_channel: general_channel,
+      category: :notification
+    )
+    
+    # Use character channel if configured, otherwise fall back to general channel
+    channel = character_channel || general_channel
+    
+    Logger.info("[NotificationCoordinator] Selected channel for character notification: #{inspect(channel)}",
+      category: :notification
+    )
+    
+    channel
+  end
+
   # Feature flags
   defp notifications_enabled? do
     WandererNotifier.Shared.Config.get(:notifications_enabled, true)
@@ -406,12 +528,24 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   # Async notification helpers to reduce nesting
   defp send_kill_notification_async(formatted) do
     Task.start(fn ->
-      case send_to_discord(formatted) do
-        :ok ->
-          Logger.debug("Kill notification sent successfully", category: :notification)
+      # Extract killmail from formatted notification for channel determination
+      killmail = extract_killmail_from_formatted(formatted)
+      
+      case determine_kill_channel(killmail) do
+        {:ok, channel_id} ->
+          case send_to_discord(formatted, channel_id: channel_id) do
+            :ok ->
+              Logger.debug("Kill notification sent successfully", category: :notification)
 
+            {:error, reason} ->
+              Logger.warning("Failed to send kill notification to Discord",
+                category: :notification,
+                error: inspect(reason)
+              )
+          end
+          
         {:error, reason} ->
-          Logger.warning("Failed to send kill notification to Discord",
+          Logger.error("Failed to determine kill channel",
             category: :notification,
             error: inspect(reason)
           )
@@ -419,8 +553,28 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     end)
   end
 
+  defp extract_killmail_from_formatted(formatted) do
+    # Try to extract killmail data from the formatted notification
+    # This is a fallback - ideally we'd pass the original killmail data
+    case formatted do
+      %{killmail: killmail} -> killmail
+      %{"killmail" => killmail} -> killmail
+      %{data: %{killmail: killmail}} -> killmail
+      _ -> %{} # Fallback to empty map if no killmail found
+    end
+  end
+
   defp send_system_notification_async(formatted, opts) do
     Task.start(fn ->
+      # Determine the appropriate channel for system notifications if not provided
+      opts = 
+        if Keyword.has_key?(opts, :channel_id) do
+          opts
+        else
+          channel_id = determine_system_channel()
+          Keyword.put(opts, :channel_id, channel_id)
+        end
+      
       case send_to_discord(formatted, opts) do
         :ok ->
           Logger.debug("System notification sent successfully", category: :notification)
@@ -436,12 +590,50 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp send_character_notification_async(formatted, opts) do
     Task.start(fn ->
+      # Determine the appropriate channel for character notifications if not provided
+      opts = 
+        if Keyword.has_key?(opts, :channel_id) do
+          opts
+        else
+          channel_id = determine_character_channel()
+          Keyword.put(opts, :channel_id, channel_id)
+        end
+      
       case send_to_discord(formatted, opts) do
         :ok ->
           Logger.debug("Character notification sent successfully", category: :notification)
 
         {:error, reason} ->
           Logger.warning("Failed to send character notification to Discord",
+            category: :notification,
+            error: inspect(reason)
+          )
+      end
+    end)
+  end
+
+  defp send_rally_notification_async(rally_point, rally_id, start_time) do
+    Task.start(fn ->
+      Logger.info("[RALLY_TIMING] Starting async rally point notification task",
+        rally_id: rally_id,
+        elapsed_ms: System.monotonic_time(:millisecond) - start_time,
+        category: :notification
+      )
+
+      case WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_rally_point_notification(
+             rally_point
+           ) do
+        {:ok, :sent} ->
+          Logger.info("[RALLY_TIMING] Async rally point notification sent successfully",
+            rally_id: rally_id,
+            elapsed_ms: System.monotonic_time(:millisecond) - start_time,
+            category: :notification
+          )
+
+        {:error, reason} ->
+          Logger.warning("[RALLY_TIMING] Async rally point notification failed",
+            rally_id: rally_id,
+            elapsed_ms: System.monotonic_time(:millisecond) - start_time,
             category: :notification,
             error: inspect(reason)
           )
