@@ -10,11 +10,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.ItemProcessor
-  alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Domains.Notifications.Deduplication
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -49,7 +49,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
   defp process_killmail_pipeline(killmail_data, kill_id) do
-    with {:ok, :new} <- check_deduplication(kill_id),
+    # Check for duplicates first (in addition to WebSocket client deduplication)
+    with {:ok, :new} <- check_duplicate(kill_id),
          {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
          {:ok, true} <- should_notify?(killmail) do
       send_notification(killmail)
@@ -117,15 +118,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     end
   end
 
-  @spec check_deduplication(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
-  defp check_deduplication(kill_id) do
-    case Deduplication.check(:kill, kill_id) do
-      {:ok, :new} -> {:ok, :new}
-      {:ok, :duplicate} -> {:ok, :duplicate}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   @spec build_killmail(killmail_data()) :: {:ok, Killmail.t()} | {:error, term()}
   defp build_killmail(data) do
     # Data from WebSocket is pre-enriched, so we can build directly
@@ -151,8 +143,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       true ->
         killmail = Killmail.from_websocket_data(kill_id, system_id, data)
 
+        attacker_count = length(killmail.attackers || [])
+
         Logger.debug(
-          "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{length(killmail.attackers || [])}"
+          "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{attacker_count}"
         )
 
         {:ok, killmail}
@@ -184,6 +178,26 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp parse_system_id(_), do: nil
 
+  @spec check_duplicate(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
+  defp check_duplicate(kill_id) do
+    case Deduplication.check(:kill, kill_id) do
+      {:ok, :new} ->
+        {:ok, :new}
+
+      {:ok, :duplicate} ->
+        {:ok, :duplicate}
+
+      {:error, reason} ->
+        # Log the error but don't fail the pipeline - treat as new to be safe
+        Logger.warning("Deduplication check failed, treating as new",
+          killmail_id: kill_id,
+          error: reason
+        )
+
+        {:ok, :new}
+    end
+  end
+
   @spec should_notify?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
   defp should_notify?(%Killmail{} = killmail) do
     # Check global notification settings first
@@ -202,9 +216,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      _victim_name = killmail.victim_character_name || "Unknown"
-      _system_name = killmail.system_name || "Unknown System"
-
       is_tracked = system_tracked or character_tracked
       log_tracking_status(killmail.killmail_id, system_tracked, character_tracked, is_tracked)
 
@@ -215,7 +226,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp log_tracking_status(killmail_id, system_tracked, character_tracked, is_tracked) do
     if is_tracked do
       tracking_reason = get_tracking_reason(system_tracked, character_tracked)
-      Logger.info("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
+      Logger.debug("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
     else
       Logger.debug("[Pipeline] Killmail #{killmail_id} not tracked")
     end
@@ -251,8 +262,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp character_tracked?(%Killmail{} = killmail) do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
-
-    _victim_name = killmail.victim_character_name || "Unknown"
 
     if victim_tracked or attacker_tracked do
       Logger.debug(
@@ -334,19 +343,16 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    case WandererNotifier.Contexts.NotificationContext.send_kill_notification(killmail) do
-      {:ok, _} ->
-        Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
-        Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-        Logger.debug("Killmail #{killmail.killmail_id} notified", category: :killmail)
-        {:ok, killmail.killmail_id}
+    # Send kill notification using supervised task for better fault tolerance
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      WandererNotifier.DiscordNotifier.send_kill_async(killmail)
+    end)
 
-      {:error, :notifications_disabled} ->
-        handle_skipped(killmail.killmail_id, :notifications_disabled)
-
-      {:error, reason} ->
-        handle_error(killmail.killmail_id, reason)
-    end
+    # Always return success since we're using fire-and-forget async processing
+    Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
+    Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
+    Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
+    {:ok, killmail.killmail_id}
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -359,7 +365,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     Telemetry.processing_skipped(kill_id, reason)
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
-    Logger.info("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
+    Logger.debug("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
 
     {:ok, :skipped}
   end
@@ -372,9 +378,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
 
     victim_name = killmail.victim_character_name || "Unknown"
-    system_name = killmail.system_name || "Unknown System"
+    system_name = killmail.system_name
 
-    Logger.info("Killmail #{kill_id} skipped: #{reason_text}",
+    Logger.debug("Killmail #{kill_id} skipped: #{reason_text}",
       category: :killmail,
       system_id: killmail.system_id,
       system_name: system_name,
@@ -407,8 +413,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec maybe_process_items(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
   defp maybe_process_items(%Killmail{} = killmail) do
-    enabled = Config.get(:notable_items_enabled, false)
-    token_present = Config.get(:janice_api_token) != nil
+    enabled = Config.notable_items_enabled?()
+    token_present = Config.janice_api_token() != nil
 
     Logger.debug("Item processing status",
       killmail_id: killmail.killmail_id,

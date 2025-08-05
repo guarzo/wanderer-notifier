@@ -105,9 +105,6 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Task supervisor must be first for async initialization
       {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
 
-      # Dependency injection registry
-      {WandererNotifier.Application.Services.DependencyRegistry, []},
-
       # Registry for process naming
       {Registry, keys: :unique, name: WandererNotifier.Registry},
 
@@ -115,7 +112,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       create_cache_child_spec(),
 
       # Rate limiting for external services
-      {WandererNotifier.RateLimiter, []},
+      {WandererNotifier.Infrastructure.RateLimiter, []},
 
       # Phoenix PubSub for internal communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub}
@@ -133,8 +130,11 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Validation and monitoring
       {WandererNotifier.Shared.Utils.ValidationManager, []},
 
-      # Core application service
-      {WandererNotifier.Application.Services.ApplicationService, []},
+      # Metrics tracking
+      {WandererNotifier.Shared.Metrics, []},
+
+      # Core application service (simplified)
+      {WandererNotifier.Application.Services.SimpleApplicationService, []},
 
       # Universe item and ship lookup service
       {WandererNotifier.Domains.Universe.Services.ItemLookupService, []},
@@ -159,7 +159,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     if Application.get_env(:wanderer_notifier, :env) != :test do
       base_integrations ++
         [
-          {WandererNotifier.Infrastructure.ConnectionHealthService, []}
+          {WandererNotifier.Infrastructure.Messaging.ConnectionMonitor, []}
         ]
     else
       base_integrations
@@ -206,7 +206,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
 
   defp wait_for_service_readiness do
     critical_services = [
-      WandererNotifier.Application.Services.ApplicationService,
+      WandererNotifier.Application.Services.SimpleApplicationService,
       WandererNotifier.Map.SSESupervisor
     ]
 
@@ -258,7 +258,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
 
     try do
       WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
-      Logger.info("SSE clients initialized successfully", category: :startup)
+      Logger.debug("SSE clients initialized successfully", category: :startup)
     rescue
       error ->
         Logger.error("Failed to initialize SSE clients",

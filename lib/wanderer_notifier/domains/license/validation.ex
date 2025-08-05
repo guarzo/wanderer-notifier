@@ -5,9 +5,9 @@ defmodule WandererNotifier.Domains.License.Validation do
   """
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Config.Utils
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
+  alias WandererNotifier.Shared.Utils.StringUtils
 
   @doc """
   Normalizes license API response to a consistent format.
@@ -68,7 +68,7 @@ defmodule WandererNotifier.Domains.License.Validation do
   @spec api_token_valid?() :: boolean()
   def api_token_valid? do
     token = Config.notifier_api_token()
-    !Utils.nil_or_empty?(token)
+    StringUtils.present?(token)
   end
 
   @doc """

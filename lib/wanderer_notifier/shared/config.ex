@@ -1,273 +1,284 @@
 defmodule WandererNotifier.Shared.Config do
   @moduledoc """
-  Simplified configuration module that replaces the complex macro-based system.
+  Application configuration interface using environment variables and application config.
 
-  This module provides direct access to application configuration without the overhead
-  of schemas, validators, or macro-generated functions. All configuration is accessed
-  through simple functions that call Application.get_env/3 directly.
+  Provides a clean, direct interface for configuration without the overhead
+  of complex validation, schemas, or configuration managers.
   """
 
-  @behaviour WandererNotifier.Shared.Config.ConfigBehaviour
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Discord Configuration
+  # ──────────────────────────────────────────────────────────────────────────────
 
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Core Configuration Access
-  # ══════════════════════════════════════════════════════════════════════════════
+  @doc "Get Discord bot token (required)"
+  def discord_bot_token, do: get_required_env("DISCORD_BOT_TOKEN")
 
-  @doc """
-  Gets a configuration value with an optional default.
-  """
-  def get(key, default \\ nil) do
-    Application.get_env(:wanderer_notifier, key, default)
+  @doc "Get Discord channel ID (required)"
+  def discord_channel_id, do: get_required_env("DISCORD_CHANNEL_ID")
+
+  @doc "Get Discord application ID (optional)"
+  def discord_application_id do
+    case Application.get_env(:wanderer_notifier, :discord_application_id) do
+      nil -> get_env_private("DISCORD_APPLICATION_ID")
+      value -> value
+    end
   end
 
-  @doc "Legacy alias for get/2"
-  def get_env(key, default \\ nil), do: get(key, default)
+  @doc "Get Discord guild ID (optional)"
+  def discord_guild_id, do: get_env_private("DISCORD_GUILD_ID")
 
-  @doc "Required by behavior - returns this config module"
-  @impl true
-  def config_module, do: __MODULE__
+  @doc "Get Discord rally channel ID (optional)"
+  def discord_rally_channel_id, do: get_env_private("DISCORD_RALLY_CHANNEL_ID")
 
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Feature Flags (Most commonly used)
-  # ══════════════════════════════════════════════════════════════════════════════
+  @doc "Get Discord system channel ID (optional)"
+  def discord_system_channel_id, do: get_env_private("DISCORD_SYSTEM_CHANNEL_ID")
 
-  @impl true
-  def notifications_enabled?, do: get(:notifications_enabled, true)
+  @doc "Get Discord character channel ID (optional)"
+  def discord_character_channel_id, do: get_env_private("DISCORD_CHARACTER_CHANNEL_ID")
 
-  @impl true
-  def kill_notifications_enabled?, do: get(:kill_notifications_enabled, true)
+  @doc "Get Discord character kill channel ID (optional)"
+  def discord_character_kill_channel_id, do: get_env_private("DISCORD_CHARACTER_KILL_CHANNEL_ID")
 
-  @impl true
-  def system_notifications_enabled?, do: get(:system_notifications_enabled, true)
+  @doc "Get Discord system kill channel ID (optional)"
+  def discord_system_kill_channel_id, do: get_env_private("DISCORD_SYSTEM_KILL_CHANNEL_ID")
 
-  @impl true
-  def character_notifications_enabled?, do: get(:character_notifications_enabled, true)
+  @doc "Get Discord rally group ID (optional)"
+  def discord_rally_group_id, do: get_env_private("DISCORD_RALLY_GROUP_ID")
 
-  def rally_notifications_enabled?, do: get(:rally_notifications_enabled, true)
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Feature Flags
+  # ──────────────────────────────────────────────────────────────────────────────
 
-  def status_messages_enabled?, do: get(:status_messages_enabled, false)
+  @doc "Check if notifications are enabled globally"
+  def notifications_enabled?, do: get_boolean("NOTIFICATIONS_ENABLED", true)
 
+  @doc "Check if kill notifications are enabled"
+  def kill_notifications_enabled?, do: get_boolean("KILL_NOTIFICATIONS_ENABLED", true)
+
+  @doc "Check if system notifications are enabled"
+  def system_notifications_enabled?, do: get_boolean("SYSTEM_NOTIFICATIONS_ENABLED", true)
+
+  @doc "Check if character notifications are enabled"
+  def character_notifications_enabled?, do: get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true)
+
+  @doc "Check if rally notifications are enabled"
+  def rally_notifications_enabled?, do: get_boolean("RALLY_NOTIFICATIONS_ENABLED", true)
+
+  @doc "Check if status messages are enabled"
+  def enable_status_messages?, do: get_boolean("ENABLE_STATUS_MESSAGES", false)
+
+  @doc "Check if K-space tracking is enabled"
+  def track_kspace_enabled?, do: get_boolean("TRACK_KSPACE_ENABLED", true)
+
+  @doc "Check if only priority systems should be notified"
+  def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Notable Items Configuration
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get notable items ISK threshold (default: 50M ISK)"
+  def notable_items_threshold_isk, do: get_integer("NOTABLE_ITEMS_THRESHOLD_ISK", 50_000_000)
+
+  @doc "Get notable items limit (default: 5 items)"
+  def notable_items_limit, do: get_integer("NOTABLE_ITEMS_LIMIT", 5)
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Service URLs
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get WebSocket URL for killmail streaming"
+  def websocket_url, do: get_env_private("WEBSOCKET_URL", "ws://host.docker.internal:4004")
+
+  @doc "Get WandererKills API URL"
+  def wanderer_kills_url,
+    do: get_env_private("WANDERER_KILLS_URL", "http://host.docker.internal:4004")
+
+  @doc "Get map API URL (required)"
+  def map_url, do: get_required_env("MAP_URL")
+
+  @doc "Get map name (required)"
+  def map_name, do: get_required_env("MAP_NAME")
+
+  @doc "Get map API key (required)"
+  def map_api_key, do: get_required_env("MAP_API_KEY")
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # License Configuration
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get license key (required)"
+  def license_key, do: get_required_env("LICENSE_KEY")
+
+  @doc "Get license validation URL"
+  def license_validation_url,
+    do: get_env_private("LICENSE_VALIDATION_URL", "https://lm.wanderer.ltd/validate_bot")
+
+  @doc "Get license manager API key (required)"
+  def license_manager_api_key, do: get_required_env("LICENSE_MANAGER_API_KEY")
+
+  @doc "Get license manager API URL"
+  def license_manager_api_url,
+    do: get_env_private("LICENSE_MANAGER_API_URL", "https://lm.wanderer.ltd")
+
+  @doc "Get notifier API token (required)"
+  def notifier_api_token, do: get_required_env("NOTIFIER_API_TOKEN")
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Application Settings
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get application environment"
+  def environment, do: Application.get_env(:wanderer_notifier, :env, :prod)
+
+  @doc "Check if running in production"
+  def production?, do: environment() == :prod
+
+  @doc "Check if running in test"
+  def test?, do: environment() == :test
+
+  @doc "Get application version"
+  def version, do: Application.spec(:wanderer_notifier, :vsn) |> to_string()
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Notification Settings
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get startup suppression duration in seconds"
+  def startup_suppression_seconds, do: get_integer("STARTUP_SUPPRESSION_SECONDS", 30)
+
+  @doc "Get deduplication TTL in seconds"
+  def deduplication_ttl_seconds, do: get_integer("DEDUPLICATION_TTL_SECONDS", 1800)
+
+  @doc "Check if notable items are enabled"
+  def notable_items_enabled?, do: get_boolean("NOTABLE_ITEMS_ENABLED", false)
+
+  @doc "Get Janice API token for item pricing"
+  def janice_api_token, do: get_env_private("JANICE_API_TOKEN")
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Additional Configuration Methods
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get map API token"
+  def map_token, do: map_api_key()
+
+  @doc "Get API token for general use"
+  def api_token, do: get_env_private("API_TOKEN")
+
+  @doc "Get telemetry logging enabled flag"
+  def telemetry_logging_enabled?, do: get_boolean("TELEMETRY_LOGGING_ENABLED", false)
+
+  @doc "Get status messages enabled flag"
+  def status_messages_enabled?, do: enable_status_messages?()
+
+  @doc "Get schedulers enabled flag"
+  def schedulers_enabled?, do: get_boolean("SCHEDULERS_ENABLED", true)
+
+  @doc "Get host configuration"
+  def host, do: get_env_private("HOST", "0.0.0.0")
+
+  @doc "Get port configuration"
+  def port, do: get_integer("PORT", 4000)
+
+  @doc "Get voice participant notifications enabled flag"
   def voice_participant_notifications_enabled?,
-    do: get(:voice_participant_notifications_enabled, true)
+    do: get_boolean("VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED", false)
 
-  def fallback_to_here_enabled?, do: get(:fallback_to_here_enabled, false)
-  def test_mode_enabled?, do: get(:test_mode_enabled, false)
-  def priority_systems_only?, do: get(:priority_systems_only, false)
-  def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
-  def schedulers_enabled?, do: get(:schedulers_enabled, false)
-  def dev_mode?, do: get(:dev_mode, false)
-  def telemetry_logging_enabled?, do: get(:telemetry_logging_enabled, false)
-  def character_tracking_enabled?, do: get(:character_tracking_enabled, true)
-  def system_tracking_enabled?, do: get(:system_tracking_enabled, true)
+  @doc "Get license refresh interval in milliseconds"
+  def license_refresh_interval, do: get_integer("LICENSE_REFRESH_INTERVAL", 3_600_000)
 
-  def feature_enabled?(flag), do: get(flag, false)
+  @doc "Get discord kill channel ID (fallback method)"
+  def discord_kill_channel_id, do: discord_channel_id()
 
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Discord Configuration (Heavily used)
-  # ══════════════════════════════════════════════════════════════════════════════
+  @doc "Check if feature is enabled"
+  def feature_enabled?(feature) when is_atom(feature) do
+    feature_key = feature |> Atom.to_string() |> String.upcase()
+    get_boolean(feature_key, false)
+  end
 
-  def discord_bot_token, do: get(:discord_bot_token)
-  def discord_application_id, do: get(:discord_application_id)
-  def discord_guild_id, do: get(:discord_guild_id)
-  def discord_webhook_url, do: get(:discord_webhook_url)
-  def discord_channel_id, do: get(:discord_channel_id)
-
-  # Channel specific functions
-  def discord_system_channel_id, do: get(:discord_system_channel_id) || discord_channel_id()
-  def discord_character_channel_id, do: get(:discord_character_channel_id) || discord_channel_id()
-
-  def discord_system_kill_channel_id,
-    do: get(:discord_system_kill_channel_id) || discord_channel_id()
-
-  def discord_character_kill_channel_id,
-    do: get(:discord_character_kill_channel_id) || discord_channel_id()
-
-  def discord_charts_channel_id, do: get(:discord_charts_channel_id) || discord_channel_id()
-  def discord_kill_channel_id, do: get(:discord_kill_channel_id) || discord_channel_id()
-  def discord_rally_channel_id, do: get(:discord_rally_channel_id) || discord_channel_id()
-  def discord_rally_group_id, do: get(:discord_rally_group_id)
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Map/Wanderer Configuration
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def map_token, do: get(:map_token)
-  def map_csrf_token, do: get(:map_csrf_token)
-  def map_api_key, do: get(:map_api_key)
-  def map_url, do: get(:map_url)
-  def map_name, do: get(:map_name)
-  # Alias
-  def map_slug, do: map_name()
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # API Configuration
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def api_token, do: get(:api_token)
-  def api_key, do: get(:api_key)
-  # Alias
-  def notifier_api_token, do: api_token()
-  def license_key, do: get(:license_key)
-  def license_manager_api_key, do: get(:license_manager_api_key)
-  def license_manager_api_url, do: get(:license_manager_api_url, "https://lm.wanderer.ltd")
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Server Configuration
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def port, do: get(:port, 4000)
-  def host, do: get(:host, "localhost")
-  def scheme, do: get(:scheme, "http")
-  def api_base_url, do: get(:api_base_url, "http://localhost:4000/api")
-  def public_url, do: get(:public_url)
-  def notification_service_base_url, do: get(:notification_service_base_url)
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Timing and Intervals
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def deduplication_ttl, do: get(:deduplication_ttl, 1800)
-  def min_kill_value, do: get(:min_kill_value, 0)
-  def max_notifications_per_minute, do: get(:max_notifications_per_minute, 10)
-  def static_info_ttl, do: get(:static_info_ttl, 3600)
-  def character_update_scheduler_interval, do: get(:character_update_scheduler_interval, 30_000)
-  def system_update_scheduler_interval, do: get(:system_update_scheduler_interval, 30_000)
-  def license_refresh_interval, do: get(:license_refresh_interval, 1_200_000)
-  def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
-  def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
-  def systems_cache_ttl, do: get(:systems_cache_ttl, 3600)
-
-  # Service intervals
-  def service_status_interval, do: get(:service_status_interval, 3_600_000)
-  def killmail_retention_interval, do: get(:killmail_retention_interval, 600_000)
-  def cache_check_interval, do: get(:cache_check_interval, 120_000)
-  def cache_sync_interval, do: get(:cache_sync_interval, 180_000)
-  def cache_cleanup_interval, do: get(:cache_cleanup_interval, 600_000)
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Cache Configuration
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def cache_dir, do: get(:cache_dir, "/app/data/cache")
-  def cache_name, do: get(:cache_name, :wanderer_notifier_cache)
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # External Service URLs
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def wanderer_kills_url, do: get(:wanderer_kills_url, "http://host.docker.internal:4004")
-  def websocket_url, do: get(:websocket_url, "ws://host.docker.internal:4004")
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # System State
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def service_up?, do: get(:service_up, true)
-  def telemetry_logging?, do: get(:telemetry_logging, false)
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Utility Functions
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  def version, do: get(:version, "unknown")
-
+  @doc "Get features map"
   def features do
     %{
-      notifications_enabled: notifications_enabled?(),
-      kill_notifications_enabled: kill_notifications_enabled?(),
-      system_notifications_enabled: system_notifications_enabled?(),
-      character_notifications_enabled: character_notifications_enabled?(),
-      rally_notifications_enabled: rally_notifications_enabled?(),
-      status_messages_enabled: status_messages_enabled?(),
-      debug_logging_enabled: debug_logging_enabled?()
+      discord_components: feature_enabled?(:discord_components),
+      rich_embeds: feature_enabled?(:rich_embeds),
+      system_tracking: feature_enabled?(:system_tracking_enabled),
+      voice_notifications: voice_participant_notifications_enabled?()
     }
   end
 
-  def notification_features, do: features()
-  def notification_feature_enabled?(flag), do: feature_enabled?(flag)
+  @doc "Get environment variable (legacy compatibility)"
+  def get_env(key) when is_atom(key), do: get_env(Atom.to_string(key))
+  def get_env(key) when is_binary(key), do: System.get_env(key)
 
-  # Environment variable helpers for complex lookups
-  def notification_dedup_ttl_env do
-    case System.get_env("NOTIFICATION_DEDUP_TTL") do
-      nil -> deduplication_ttl()
-      "" -> deduplication_ttl()
-      value -> String.to_integer(value)
-    end
-  rescue
-    _ -> deduplication_ttl()
-  end
+  @doc "Get configuration with default (legacy compatibility)"
+  def get(key, default) when is_atom(key) do
+    case key do
+      :map_url ->
+        map_url()
 
-  # Debug controls
-  def enable_debug_logging do
-    Application.put_env(:wanderer_notifier, :debug_logging_enabled, true)
-  end
+      :map_name ->
+        map_name()
 
-  def disable_debug_logging do
-    Application.put_env(:wanderer_notifier, :debug_logging_enabled, false)
-  end
+      :map_api_key ->
+        map_api_key()
 
-  def set_debug_logging(state) do
-    Application.put_env(:wanderer_notifier, :debug_logging_enabled, state)
-  end
+      :janice_api_token ->
+        janice_api_token()
 
-  # ══════════════════════════════════════════════════════════════════════════════
-  # ConfigBehaviour Implementation (Required by behavior)
-  # ══════════════════════════════════════════════════════════════════════════════
+      :discord_debug_logging ->
+        get_boolean("DISCORD_DEBUG_LOGGING", default)
 
-  @impl true
-  def get_notification_setting(type, key) do
-    case {type, key} do
-      {:kill, :enabled} -> {:ok, kill_notifications_enabled?()}
-      {:system, :enabled} -> {:ok, system_notifications_enabled?()}
-      {:character, :enabled} -> {:ok, character_notifications_enabled?()}
-      _ -> {:error, :unknown_setting}
+      :feature_flags ->
+        get_boolean("FEATURE_FLAGS_ENABLED", default)
+
+      _ ->
+        key
+        |> Atom.to_string()
+        |> String.upcase()
+        |> System.get_env(default)
     end
   end
 
-  @impl true
-  def get_config do
-    %{
-      notifications: %{
-        enabled: notifications_enabled?(),
-        kill: %{enabled: kill_notifications_enabled?(), min_value: min_kill_value()},
-        system: %{enabled: system_notifications_enabled?()},
-        character: %{enabled: character_notifications_enabled?()}
-      },
-      features: features()
-    }
+  def get(key) when is_atom(key), do: get(key, nil)
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Helper Functions (private implementations)
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp get_env_private(key, default \\ nil) do
+    System.get_env(key, default)
   end
 
-  # Module configuration for dependency injection
-  @impl true
-  def deduplication_module do
-    get(:deduplication_module, WandererNotifier.Domains.Notifications.CacheImpl)
+  defp get_required_env(key) do
+    case System.get_env(key) do
+      nil -> raise "Missing required environment variable: #{key}"
+      "" -> raise "Empty required environment variable: #{key}"
+      value -> value
+    end
   end
 
-  @impl true
-  def system_track_module do
-    get(:system_track_module, WandererNotifier.Domains.Tracking.Entities.System)
+  defp get_boolean(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "true" -> true
+      "false" -> false
+      "1" -> true
+      "0" -> false
+      _ -> default
+    end
   end
 
-  @impl true
-  def character_track_module do
-    get(:character_track_module, WandererNotifier.Domains.Tracking.Entities.Character)
-  end
+  defp get_integer(key, default) do
+    case System.get_env(key) do
+      nil ->
+        default
 
-  @impl true
-  def notification_determiner_module do
-    get(:notification_determiner_module, WandererNotifier.Domains.Notifications.Determiner)
-  end
-
-  @impl true
-  def killmail_enrichment_module do
-    get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
-  end
-
-  @impl true
-  def killmail_notification_module do
-    get(
-      :killmail_notification_module,
-      WandererNotifier.Domains.Notifications.KillmailNotification
-    )
+      value ->
+        case Integer.parse(value) do
+          {int, ""} -> int
+          _ -> default
+        end
+    end
   end
 end

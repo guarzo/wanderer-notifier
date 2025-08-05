@@ -33,7 +33,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
   @impl true
   def handle_info({:websocket_killmail, killmail}, state) do
     log_killmail_received(killmail)
-    WandererNotifier.Application.Services.ApplicationService.increment_metric(:killmail_received)
+    WandererNotifier.Shared.Metrics.increment(:killmail_received)
 
     _task = spawn_killmail_processing_task(killmail, state)
 
@@ -58,7 +58,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
     victim_info = extract_victim_info(killmail)
     system_info = extract_system_info(killmail)
 
-    Logger.info("Received WebSocket killmail",
+    Logger.debug("Received WebSocket killmail",
       killmail_id: get_killmail_value(killmail, "killmail_id"),
       system_id: get_killmail_value(killmail, "system_id"),
       system_name: system_info.name,

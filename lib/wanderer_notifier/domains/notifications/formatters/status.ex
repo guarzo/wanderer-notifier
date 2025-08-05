@@ -150,7 +150,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.Status do
   defp get_icon_by_connection_state(_), do: "❓"
 
   defp get_app_version do
-    WandererNotifier.Shared.Config.Version.version()
+    Application.spec(:wanderer_notifier, :vsn) |> to_string()
   end
 end
 
@@ -160,7 +160,6 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
   """
   alias WandererNotifier.Domains.Notifications.Formatters.Status, as: StatusFormatter
   alias WandererNotifier.Domains.Notifications.Formatters.Common, as: CommonFormatter
-  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.License.LicenseService
 
@@ -168,7 +167,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
   Gathers all relevant state and sends a status message to the main notification channel.
   """
   def send_status_message(title, description) do
-    stats = ApplicationService.get_stats()
+    stats = WandererNotifier.Shared.Metrics.get_stats()
     features_status = Config.features()
 
     # Convert features_status (always a list) to a map for the formatter
@@ -197,12 +196,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
 
     # Try to send the notification - if it fails, log but don't crash
     try do
-      notification = %WandererNotifier.Domains.Notifications.Notification{
-        type: :status_notification,
-        data: embed
-      }
-
-      WandererNotifier.Contexts.NotificationContext.send_discord_embed(notification)
+      WandererNotifier.DiscordNotifier.send_embed_async(embed)
     rescue
       e ->
         # Log but don't crash the process

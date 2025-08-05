@@ -23,7 +23,7 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
 
   # Configuration mock
-  defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.ConfigBehaviour)
+  defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.Behaviour)
 
   # Infrastructure mocks
   defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)

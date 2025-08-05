@@ -8,23 +8,32 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiterTest do
   alias WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
 
   setup do
-    # Reset rate limiter state between tests if table exists
+    # Generate unique test identifier to avoid cross-test pollution
+    test_id = :erlang.unique_integer([:positive])
+
+    # Reset rate limiter state between tests
     # Hammer creates an ETS table with the module name
-    if :ets.whereis(WandererNotifier.RateLimiter) != :undefined do
-      :ets.delete_all_objects(WandererNotifier.RateLimiter)
+    table_name = WandererNotifier.Infrastructure.RateLimiter
+
+    # Clear existing entries from ETS table (more reliable than deleting/recreating)
+    if :ets.whereis(table_name) != :undefined do
+      :ets.delete_all_objects(table_name)
     else
-      # Create the ETS table if it doesn't exist (for testing)
-      :ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
+      # Create fresh ETS table for testing with same configuration as Hammer
+      :ets.new(table_name, [:set, :public, :named_table])
     end
 
-    :ok
+    # Wait for any pending rate limit windows to expire
+    Process.sleep(100)
+
+    {:ok, test_id: test_id}
   end
 
   describe "call/2" do
-    test "allows requests within rate limit" do
+    test "allows requests within rate limit", %{test_id: test_id} do
       request = %{
         method: :get,
-        url: "https://api.example.com/test",
+        url: "https://api#{test_id}.example.com/test",
         headers: [],
         body: "",
         options: [

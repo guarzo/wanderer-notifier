@@ -17,8 +17,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
 
   @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
 
-  # HTTPoison is used in pattern matching for error classification
-  alias HTTPoison.Error, as: HTTPoisonError
+  # Error classification for various HTTP client errors
 
   @doc """
   Executes telemetry middleware to track HTTP request metrics.
@@ -95,13 +94,13 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Telemetry do
     :unknown
   end
 
-  # Simple error classification
-  defp classify_error(%HTTPoisonError{reason: reason}) do
+  # Simple error classification for Req errors
+  defp classify_error(%Req.TransportError{reason: reason}) do
     case reason do
       :timeout -> :timeout
       :nxdomain -> :dns
       :econnrefused -> :connection
-      _ -> :http_error
+      _ -> :transport_error
     end
   end
 

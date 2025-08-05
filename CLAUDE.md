@@ -148,7 +148,7 @@ The reorganized codebase follows DDD patterns for better maintainability:
 - **Shared Kernel**: Common utilities and types in `shared/` directory
 - **Consistent Structure**: All domains follow the same organizational pattern
 
-### Key Infrastructure Components (Post-Sprint 4+ Consolidation)
+### Key Infrastructure Components (Post-Simplification)
 - **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
   - Service-specific configurations (ESI, WandererKills, License, Map, Streaming)
   - Built-in authentication (Bearer, API Key, Basic)
@@ -156,16 +156,13 @@ The reorganized codebase follows DDD patterns for better maintainability:
   - Automatic JSON encoding/decoding
 - **Simplified Cache System**: Consolidated to single module:
   - `infrastructure/cache.ex`: Direct Cachex wrapper with domain-specific helpers and consistent key generation
-- **Application Service** (`lib/wanderer_notifier/application/services/application_service/`): Consolidated service handling:
-  - Dependency injection via `DependencyManager`
-  - Application metrics via `MetricsTracker`
-  - Notification coordination via `NotificationCoordinator`
-  - State management via `State` module
+- **Simple Dependency Resolution** (`lib/wanderer_notifier/shared/dependencies.ex`): Lightweight function-based dependency injection replacing complex GenServer registry
+- **Lightweight Application Service** (`lib/wanderer_notifier/application/services/simple_application_service.ex`): Minimal coordinator with focused responsibilities
+- **Modular Metrics & Health** (`lib/wanderer_notifier/shared/metrics.ex`, `lib/wanderer_notifier/shared/health.ex`): Agent-based metrics and process-based health checks
 - **Multi-Phase Initialization** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Sophisticated startup process with infrastructure, foundation, integration, and processing phases
-- **Context Layer** (`lib/wanderer_notifier/contexts/`): Cross-domain coordination for API, notification, and processing concerns
 - **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers and processing pipeline
 - **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
-- **Configuration Management** (`lib/wanderer_notifier/shared/config/`): Comprehensive configuration with validation and feature flags
+- **Simplified Configuration** (`lib/wanderer_notifier/shared/config.ex`): Direct Application.get_env access without complex schemas or macro generation
 - **Unified Utilities** (`lib/wanderer_notifier/shared/utils/`): Consolidated error handling, time utilities, and validation
 - **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic updates with registry-based management
 
@@ -245,7 +242,7 @@ iex> GenServer.call(WandererNotifier.Map.SSEClient, :status)
 ```
 
 ### Architecture Evolution Status
-The codebase has completed the major reorganization phases and evolved beyond the original 8-sprint plan:
+The codebase has completed major reorganization phases and architecture simplification:
 
 ### Completed Major Phases ✅
 - **Sprint 1-3**: Foundation, shared utilities, and infrastructure consolidation ✅
@@ -255,15 +252,25 @@ The codebase has completed the major reorganization phases and evolved beyond th
 - **Context Layer**: Cross-domain coordination added ✅
 - **Event Sourcing**: Event-driven architecture foundation ✅
 - **Real-Time Integration**: Advanced SSE client with monitoring ✅
+- **Architecture Simplification (2024-08)**: Removed over-engineered abstractions and simplified core systems ✅
+
+### Recent Simplification Improvements ✅
+- **Dependency System**: Replaced 3 complex DI systems with single function-based resolver
+- **Context Layer Removal**: Eliminated unnecessary abstraction layer (ProcessingContext, ApiContext)
+- **Application Service**: Simplified from complex 340+ line GenServer to focused coordinator
+- **Configuration**: Removed macro-based system for direct Application.get_env access
+- **Directory Cleanup**: Removed 10+ empty domain directories and unused abstractions
+- **Quality**: All tests passing (348 tests), credo clean, full compilation success
 
 ### Current Architecture State
 The application now represents a mature, production-ready architecture with:
-- Consolidated `ApplicationService` handling dependency injection, metrics, and coordination
+- Simplified `SimpleApplicationService` with focused responsibilities
 - Multi-phase initialization system for reliable startup
-- Context layer for cross-domain operations
+- Function-based dependency injection without GenServer overhead
 - Event sourcing capabilities for future extensibility
 - Advanced real-time data integration via SSE
 - Unified infrastructure with simplified HTTP and cache systems
+- Clean, maintainable codebase with reduced complexity
 
 ## Important Patterns
 

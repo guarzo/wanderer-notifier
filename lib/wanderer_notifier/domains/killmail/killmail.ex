@@ -44,7 +44,7 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   @type t :: %__MODULE__{
           killmail_id: String.t(),
           system_id: integer() | nil,
-          system_name: String.t() | nil,
+          system_name: String.t(),
           kill_time: String.t() | nil,
           victim_character_id: integer() | nil,
           victim_character_name: String.t() | nil,

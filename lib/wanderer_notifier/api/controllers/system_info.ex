@@ -15,9 +15,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     web_server_status = check_server_status()
     memory_info = :erlang.memory()
 
-    # Get uptime from stats which tracks startup time
-    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
-    uptime_seconds = stats[:uptime_seconds] || 0
+    # Get uptime from metrics
+    uptime_seconds = WandererNotifier.Shared.Metrics.get_uptime_seconds()
 
     %{
       status: "OK",
@@ -41,7 +40,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   """
   def collect_extended_status do
     base_status = collect_detailed_status()
-    stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+    stats = WandererNotifier.Shared.Metrics.get_stats()
 
     extended_data = %{
       tracking: extract_tracking_stats(stats),
@@ -157,7 +156,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       if websocket_pid do
         try do
           # Get connection start time from WebSocket client state
-          stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+          stats = WandererNotifier.Shared.Metrics.get_stats()
           websocket_stats = stats[:websocket] || %{}
           connection_start = websocket_stats[:connection_start]
 

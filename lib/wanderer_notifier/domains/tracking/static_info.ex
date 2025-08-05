@@ -194,14 +194,14 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   defp valid_system_id?(%System{solar_system_id: id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%System{solar_system_id: id}) when is_binary(id) do
-    parsed_id = WandererNotifier.Shared.Config.Utils.parse_int(id, 0)
+    parsed_id = parse_int(id, 0)
     parsed_id > 0
   end
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%{"solar_system_id" => id}) when is_binary(id) do
-    parsed_id = WandererNotifier.Shared.Config.Utils.parse_int(id, 0)
+    parsed_id = parse_int(id, 0)
     parsed_id > 0
   end
 
@@ -387,4 +387,12 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   defp get_system_id(%System{solar_system_id: id}), do: id
   defp get_system_id(%{"solar_system_id" => id}), do: id
   defp get_system_id(system), do: Map.get(system, :solar_system_id)
+
+  # Simple parse_int helper to replace Config.Utils
+  defp parse_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> default
+    end
+  end
 end

@@ -273,32 +273,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     Logger.debug("send_system_notification called with type: #{inspect(system.__struct__)}")
     Logger.debug("System keys: #{inspect(Map.keys(system))}")
 
-    case WandererNotifier.Contexts.NotificationContext.send_system_notification(system) do
-      {:ok, :skipped} ->
-        Logger.debug("System notification skipped",
-          system_name: system.name,
-          category: :api
-        )
+    # Send system notification directly - always returns :ok immediately
+    WandererNotifier.DiscordNotifier.send_system_async(system)
 
-        :ok
+    Logger.debug("System notification queued",
+      system_name: system.name,
+      category: :api
+    )
 
-      {:ok, _} ->
-        Logger.debug("System notification sent",
-          system_name: system.name,
-          system_id: system.solar_system_id,
-          category: :api
-        )
-
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to send system notification",
-          system_name: system.name,
-          error: inspect(reason),
-          category: :api
-        )
-
-        {:error, {:notification_failed, reason}}
-    end
+    :ok
   end
 end

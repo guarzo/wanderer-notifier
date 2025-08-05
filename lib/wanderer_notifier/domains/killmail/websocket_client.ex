@@ -9,7 +9,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   use WebSockex
   require Logger
 
-  alias WandererNotifier.Contexts.ApiContext
+  alias WandererNotifier.Domains.Tracking.MapTrackingClient
+  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -62,37 +64,22 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       "WebSocket connected successfully to #{state.url}. Starting heartbeat (#{@heartbeat_interval}ms) and subscription updates (#{@subscription_update_interval}ms)."
     )
 
-    # Register connection with monitoring system (skip if Integration not running)
+    # Generate connection ID for tracking
     connection_id =
       "websocket_killmail_#{System.system_time(:millisecond)}_#{:rand.uniform(1_000_000)}"
-
-    if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
-      WandererNotifier.Infrastructure.ConnectionHealthService.register_websocket_connection(
-        connection_id,
-        %{
-          url: state.url,
-          pid: self()
-        }
-      )
-
-      # Update connection status
-      WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
-        connection_id,
-        :connected
-      )
-    end
 
     # Notify fallback handler that WebSocket is connected
     if Process.whereis(WandererNotifier.Domains.Killmail.FallbackHandler) do
       WandererNotifier.Domains.Killmail.FallbackHandler.websocket_connected()
     end
 
-    # Update stats with connection time
-    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{
-      connection_start: System.system_time(:second),
-      connected_at: connected_at,
-      url: state.url
+    # Register with ConnectionMonitor
+    ConnectionMonitor.register_connection(connection_id, :websocket, %{
+      url: state.url,
+      pid: self()
     })
+
+    ConnectionMonitor.update_connection_status(connection_id, :connected)
 
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
@@ -123,14 +110,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     cancel_timer(state.heartbeat_ref)
     cancel_timer(state.subscription_update_ref)
 
-    # Update connection status in monitoring system (skip if ConnectionHealthService not running)
-    if Map.has_key?(state, :connection_id) &&
-         Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
-      WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
-        state.connection_id,
-        :disconnected,
-        %{reason: reason}
-      )
+    # Update ConnectionMonitor status
+    if state.connection_id do
+      ConnectionMonitor.update_connection_status(state.connection_id, :disconnected)
     end
 
     # Notify fallback handler that WebSocket is down
@@ -139,7 +121,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Clear websocket stats on disconnect
-    WandererNotifier.Application.Services.ApplicationService.update_health(:websocket, %{})
+    # Health is now tracked by simple process checks %{})
 
     # Calculate exponential backoff with jitter
     delay = calculate_backoff(state.reconnect_attempts)
@@ -333,9 +315,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp calculate_connection_uptime(_), do: 0
 
-  defp record_heartbeat_in_monitoring(_state) do
-    # Heartbeat recording removed - ConnectionHealthService doesn't need explicit heartbeats
-    # Connection status is updated on connect/disconnect events only
+  defp record_heartbeat_in_monitoring(state) do
+    if state.connection_id do
+      ConnectionMonitor.record_heartbeat(state.connection_id)
+    end
+
     :ok
   end
 
@@ -732,27 +716,47 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
   end
 
-  # Get tracked systems from ExternalAdapters
+  # Get tracked systems from MapTrackingClient directly
   defp get_tracked_systems do
-    case ApiContext.get_tracked_systems() do
-      {:ok, systems} ->
-        systems
-        |> Enum.map(&extract_system_id/1)
-        |> Enum.filter(&valid_system_id?/1)
-        |> Enum.uniq()
-
-      {:error, reason} ->
-        Logger.error("Failed to get tracked systems: #{inspect(reason)}")
+    try do
+      systems = get_systems_from_cache_or_api()
+      process_systems_list(systems)
+    rescue
+      error ->
+        Logger.error(
+          "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
+        )
 
         []
     end
-  rescue
-    error ->
-      Logger.error(
-        "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
-      )
+  end
 
-      []
+  defp get_systems_from_cache_or_api do
+    case Cache.get("map:systems") do
+      {:ok, systems} when is_list(systems) ->
+        systems
+
+      _ ->
+        fetch_systems_from_api()
+    end
+  end
+
+  defp fetch_systems_from_api do
+    case MapTrackingClient.fetch_and_cache_systems() do
+      {:ok, systems} ->
+        systems
+
+      {:error, reason} ->
+        Logger.error("Failed to get tracked systems: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp process_systems_list(systems) do
+    systems
+    |> Enum.map(&extract_system_id/1)
+    |> Enum.filter(&valid_system_id?/1)
+    |> Enum.uniq()
   end
 
   defp extract_system_id(system) when is_struct(system) do
@@ -772,19 +776,29 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
   end
 
-  # Get tracked characters from ExternalAdapters
+  # Get tracked characters from MapTrackingClient directly
   defp get_tracked_characters do
-    Logger.debug("Fetching tracked characters from ExternalAdapters")
+    Logger.debug("Fetching tracked characters from MapTrackingClient")
 
-    case ApiContext.get_tracked_characters() do
-      {:ok, characters} ->
-        Logger.debug("ExternalAdapters returned #{length(characters)} characters")
+    # Try cache first
+    case Cache.get("map:character_list") do
+      {:ok, characters} when is_list(characters) ->
+        Logger.debug("Retrieved #{length(characters)} tracked characters from cache")
         log_raw_characters(characters)
         process_character_list(characters)
 
-      {:error, reason} ->
-        Logger.error("Failed to get tracked characters: #{inspect(reason)}")
-        []
+      _ ->
+        # Fall back to fetching from API
+        case MapTrackingClient.fetch_and_cache_characters() do
+          {:ok, characters} ->
+            Logger.debug("MapTrackingClient returned #{length(characters)} characters")
+            log_raw_characters(characters)
+            process_character_list(characters)
+
+          {:error, reason} ->
+            Logger.error("Failed to get tracked characters: #{inspect(reason)}")
+            []
+        end
     end
   rescue
     error ->

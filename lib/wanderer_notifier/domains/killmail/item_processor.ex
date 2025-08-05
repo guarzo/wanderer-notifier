@@ -412,7 +412,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
   defp notable_item?(item) do
     name = Map.get(item, "name", "")
     total_value = Map.get(item, "total_value", 0)
-    threshold = Config.get(:notable_item_threshold, 50_000_000)
+    threshold = Config.notable_items_threshold_isk()
 
     # Check if item contains "abyssal" (case insensitive)
     is_abyssal = String.downcase(name) |> String.contains?("abyssal")

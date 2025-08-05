@@ -7,10 +7,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
-  alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Domains.Notifications.Discord.ChannelResolver
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
-  alias WandererNotifier.Shared.Config.Utils
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -23,54 +22,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   Returns the normalized channel ID or nil if not set or invalid.
   """
   def channel_id do
-    try do
-      raw_id = Config.discord_channel_id()
-      Logger.debug("Fetching Discord channel ID")
-
-      # First try to normalize the channel ID
-      normalized_id = normalize_channel_id(raw_id)
-
-      # If we couldn't normalize it, try some fallbacks
-      if is_nil(normalized_id) do
-        Logger.warning("Could not normalize Discord channel ID, trying fallbacks", category: :api)
-
-        # Try other channel IDs as fallbacks
-        cond do
-          fallback = normalize_channel_id(Config.discord_system_channel_id()) ->
-            Logger.info("Using system channel ID as fallback", fallback: fallback, category: :api)
-            fallback
-
-          fallback = normalize_channel_id(Config.discord_kill_channel_id()) ->
-            Logger.info("Using kill channel ID as fallback", fallback: fallback, category: :api)
-            fallback
-
-          fallback = normalize_channel_id(Config.discord_character_channel_id()) ->
-            Logger.info("Using character channel ID as fallback",
-              fallback: fallback,
-              category: :api
-            )
-
-            fallback
-
-          true ->
-            Logger.error("No valid Discord channel ID available, notifications may fail",
-              category: :api
-            )
-
-            nil
-        end
-      else
-        normalized_id
-      end
-    rescue
-      e ->
-        Logger.error("Error getting Discord channel ID",
-          error: Exception.message(e),
-          category: :api
-        )
-
-        nil
-    end
+    ChannelResolver.get_primary_channel_id()
   end
 
   # -- MESSAGING API --
@@ -110,7 +62,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     if is_nil(override_channel_id) do
       channel_id()
     else
-      normalize_channel_id(override_channel_id)
+      ChannelResolver.resolve_channel(:default, override_channel_id)
     end
   end
 
@@ -128,24 +80,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
         {:error, :nil_channel_id}
 
-      channel_id when is_binary(channel_id) and channel_id != "" ->
-        # Channel ID is already a non-empty string
-        send_embed_to_valid_channel(embed, channel_id)
-
       channel_id when is_integer(channel_id) ->
         # Convert integer channel ID to string
         send_embed_to_valid_channel(embed, to_string(channel_id))
-
-      _ ->
-        Logger.error("Failed to send embed: invalid channel ID",
-          channel_id: target_channel,
-          embed_type: typeof(embed),
-          embed_title:
-            if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown"),
-          category: :api
-        )
-
-        {:error, :invalid_channel_id}
     end
   end
 
@@ -657,74 +594,6 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # -- HELPERS --
 
-  defp normalize_channel_id(channel_id) do
-    try do
-      Logger.debug("Normalizing channel ID",
-        raw_channel_id: "#{inspect(channel_id)}",
-        category: :api
-      )
-
-      # First clean up the ID
-      clean_id = clean_channel_id(channel_id)
-
-      # Then process the cleaned ID
-      process_cleaned_channel_id(clean_id)
-    rescue
-      e ->
-        Logger.error("Error normalizing channel ID", error: Exception.message(e), category: :api)
-
-        nil
-    end
-  end
-
-  # Clean up the channel ID
-  defp clean_channel_id(channel_id) when is_binary(channel_id) do
-    channel_id
-    |> String.trim()
-    |> String.trim("\"")
-  end
-
-  defp clean_channel_id(channel_id), do: channel_id
-
-  # Process the cleaned channel ID
-  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id != "" do
-    parse_string_channel_id(channel_id)
-  end
-
-  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id == "" do
-    Logger.warning("Empty channel ID string", category: :api)
-    nil
-  end
-
-  defp process_cleaned_channel_id(channel_id) when is_integer(channel_id) do
-    Logger.debug("Channel ID is already an integer", channel_id: channel_id, category: :api)
-    channel_id
-  end
-
-  defp process_cleaned_channel_id(nil) do
-    Logger.warning("Channel ID is nil", category: :api)
-    nil
-  end
-
-  # Validate string channel ID without parsing to integer (avoids overflow)
-  defp parse_string_channel_id(channel_id) do
-    # Discord IDs are snowflakes (64-bit integers), validate as numeric string
-    # without parsing to avoid overflow on large IDs
-    if Regex.match?(~r/^\d+$/, channel_id) do
-      Logger.debug("Valid numeric channel ID", channel_id: channel_id, category: :api)
-
-      # Keep as string to avoid integer overflow
-      channel_id
-    else
-      Logger.warning("Invalid channel ID format, not numeric",
-        channel_id: channel_id,
-        category: :api
-      )
-
-      nil
-    end
-  end
-
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
   defp typeof(term) when is_integer(term), do: "integer"
@@ -895,7 +764,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   # Validate URL is not empty
   defp extract_valid_url(url) when is_binary(url) do
     trimmed = String.trim(url)
-    if Utils.nil_or_empty?(trimmed), do: nil, else: trimmed
+    if trimmed == "", do: nil, else: trimmed
   end
 
   defp extract_valid_url(_), do: nil

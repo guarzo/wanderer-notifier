@@ -82,7 +82,11 @@ defmodule WandererNotifier.Shared.Config.Behaviour do
   @callback kill_notifications_enabled?() :: boolean()
   @callback system_notifications_enabled?() :: boolean()
   @callback character_notifications_enabled?() :: boolean()
-  @callback get_notification_setting(atom(), atom()) :: boolean()
+  @callback get_notification_setting(atom(), atom()) ::
+              {:ok, boolean()} | {:error, :unknown_setting}
+  @callback deduplication_module() :: module()
+  @callback system_track_module() :: module()
+  @callback character_track_module() :: module()
 end
 
 defmodule WandererNotifier.Dispatcher.Behaviour do

@@ -1,0 +1,115 @@
+defmodule WandererNotifier.Shared.Metrics do
+  @moduledoc """
+  Simple metrics tracking without GenServer overhead.
+
+  Uses Agent for lightweight state management and provides
+  a clean interface for metric collection throughout the application.
+  """
+
+  use Agent
+  require Logger
+
+  @type metric_type :: atom()
+  @type notification_type :: :kill | :character | :system
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Public API
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc """
+  Starts the metrics agent.
+  """
+  def start_link(_opts) do
+    Agent.start_link(fn -> initial_state() end, name: __MODULE__)
+  end
+
+  @doc """
+  Increments a metric counter.
+  """
+  @spec increment(metric_type()) :: :ok
+  def increment(type) do
+    Agent.update(__MODULE__, fn state ->
+      update_in(state, [:counters, type], &((&1 || 0) + 1))
+    end)
+  end
+
+  @doc """
+  Gets all metrics statistics.
+  """
+  @spec get_stats() :: map()
+  def get_stats do
+    Agent.get(__MODULE__, & &1)
+  end
+
+  @doc """
+  Gets a specific counter value.
+  """
+  @spec get_counter(metric_type()) :: non_neg_integer()
+  def get_counter(type) do
+    Agent.get(__MODULE__, fn state ->
+      get_in(state, [:counters, type]) || 0
+    end)
+  end
+
+  @doc """
+  Checks if this is the first notification of a specific type.
+  """
+  @spec first_notification?(notification_type()) :: boolean()
+  def first_notification?(type) when type in [:kill, :character, :system] do
+    Agent.get(__MODULE__, fn state ->
+      not get_in(state, [:notifications_sent, type])
+    end)
+  end
+
+  @doc """
+  Marks that a notification of the given type has been sent.
+  """
+  @spec mark_notification_sent(notification_type()) :: :ok
+  def mark_notification_sent(type) when type in [:kill, :character, :system] do
+    Agent.update(__MODULE__, fn state ->
+      put_in(state, [:notifications_sent, type], true)
+    end)
+  end
+
+  @doc """
+  Sets the tracked count for systems or characters.
+  """
+  @spec set_tracked_count(:systems | :characters, non_neg_integer()) :: :ok
+  def set_tracked_count(type, count) when type in [:systems, :characters] and is_integer(count) do
+    key = String.to_atom("#{type}_count")
+
+    Agent.update(__MODULE__, fn state ->
+      Map.put(state, key, count)
+    end)
+  end
+
+  @doc """
+  Gets uptime in seconds since startup.
+  """
+  @spec get_uptime_seconds() :: non_neg_integer()
+  def get_uptime_seconds do
+    Agent.get(__MODULE__, fn state ->
+      case state.startup_time do
+        nil ->
+          0
+
+        startup_time ->
+          DateTime.diff(DateTime.utc_now(), startup_time, :second)
+      end
+    end)
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Private Functions
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp initial_state do
+    %{
+      counters: %{},
+      startup_time: DateTime.utc_now(),
+      notifications_sent: %{kill: false, character: false, system: false},
+      systems_count: 0,
+      characters_count: 0
+    }
+  end
+end

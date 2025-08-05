@@ -46,16 +46,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
             Logger.info("Invalid Discord guild ID format", guild_id: guild_id)
             []
         end
-
-      guild_id when is_integer(guild_id) ->
-        get_active_voice_mentions(guild_id)
-
-      _ ->
-        Logger.info("Invalid Discord guild ID type",
-          guild_id: inspect(Config.discord_guild_id())
-        )
-
-        []
     end
   end
 

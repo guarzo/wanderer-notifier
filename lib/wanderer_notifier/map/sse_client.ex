@@ -12,6 +12,7 @@ defmodule WandererNotifier.Map.SSEClient do
   alias WandererNotifier.Map.EventProcessor
   alias WandererNotifier.Map.SSEParser
   alias WandererNotifier.Map.SSEConnection
+  alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
 
   @type state :: %{
           map_slug: String.t(),
@@ -115,7 +116,7 @@ defmodule WandererNotifier.Map.SSEClient do
       connection_id: nil
     }
 
-    Logger.info("SSE client initialized with events: #{inspect(state.events_filter)}",
+    Logger.debug("SSE client initialized with events: #{inspect(state.events_filter)}",
       map_slug: map_slug,
       category: :api
     )
@@ -131,22 +132,14 @@ defmodule WandererNotifier.Map.SSEClient do
 
     case do_connect(state) do
       {:ok, connection} ->
-        # Register and update connection status (skip if ConnectionHealthService not running)
-        if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
-          WandererNotifier.Infrastructure.ConnectionHealthService.register_sse_connection(
-            connection_id,
-            %{
-              map_slug: state.map_slug,
-              events_filter: state.events_filter,
-              pid: self()
-            }
-          )
+        # Register with ConnectionMonitor
+        ConnectionMonitor.register_connection(connection_id, :sse, %{
+          map_slug: state.map_slug,
+          events_filter: state.events_filter,
+          pid: self()
+        })
 
-          WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
-            connection_id,
-            :connected
-          )
-        end
+        ConnectionMonitor.update_connection_status(connection_id, :connected)
 
         new_state = %{
           state
@@ -156,7 +149,7 @@ defmodule WandererNotifier.Map.SSEClient do
             connection_id: connection_id
         }
 
-        Logger.info("[SSE] Connected: #{state.map_slug}")
+        Logger.debug("[SSE] Connected: #{state.map_slug}")
         {:noreply, new_state}
 
       {:error, reason} ->
@@ -165,25 +158,14 @@ defmodule WandererNotifier.Map.SSEClient do
           error: inspect(reason)
         )
 
-        # Update connection status (skip if ConnectionHealthService not running)
-        if Process.whereis(WandererNotifier.Infrastructure.ConnectionHealthService) do
-          WandererNotifier.Infrastructure.ConnectionHealthService.register_sse_connection(
-            connection_id,
-            %{
-              map_slug: state.map_slug,
-              events_filter: state.events_filter,
-              pid: self()
-            }
-          )
+        # Register failed connection with ConnectionMonitor
+        ConnectionMonitor.register_connection(connection_id, :sse, %{
+          map_slug: state.map_slug,
+          events_filter: state.events_filter,
+          pid: self()
+        })
 
-          WandererNotifier.Infrastructure.ConnectionHealthService.update_connection_health(
-            connection_id,
-            :failed,
-            %{
-              reason: reason
-            }
-          )
-        end
+        ConnectionMonitor.update_connection_status(connection_id, :failed)
 
         new_state = schedule_reconnect(%{state | connection_id: connection_id})
         {:noreply, new_state}
@@ -243,7 +225,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_closed}, state) do
-    Logger.info("SSE connection closed", map_slug: state.map_slug, category: :api)
+    Logger.debug("SSE connection closed", map_slug: state.map_slug, category: :api)
 
     new_state = %{state | connection: nil}
     new_state = schedule_reconnect(new_state)
@@ -253,6 +235,11 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(:reconnect_timer, state) do
+    # Update connection status to reconnecting
+    if state.connection_id do
+      ConnectionMonitor.update_connection_status(state.connection_id, :reconnecting)
+    end
+
     new_state = %{state | reconnect_timer: nil, status: :reconnecting}
     {:noreply, new_state, {:continue, :connect}}
   end
@@ -442,6 +429,11 @@ defmodule WandererNotifier.Map.SSEClient do
   defp schedule_reconnect(state) do
     # Ensure we don't stack multiple timers
     if state.reconnect_timer, do: Process.cancel_timer(state.reconnect_timer)
+
+    # Update connection status to disconnected if we have a connection_id
+    if state.connection_id do
+      ConnectionMonitor.update_connection_status(state.connection_id, :disconnected)
+    end
 
     # Calculate delay with exponential backoff
     delay =

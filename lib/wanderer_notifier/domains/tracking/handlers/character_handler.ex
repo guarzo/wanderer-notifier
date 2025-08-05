@@ -328,9 +328,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     # Create a MapCharacter struct for the notification
     map_character = Character.from_api_data(character)
 
-    case WandererNotifier.Contexts.NotificationContext.send_character_notification(map_character) do
-      {:ok, _} -> :ok
-    end
+    # Send character notification directly - always returns :ok immediately
+    WandererNotifier.DiscordNotifier.send_character_async(map_character)
+    :ok
   end
 
   defp send_character_removed_notification(character) do

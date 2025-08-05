@@ -1,4 +1,5 @@
 defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
+  @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
   require Logger
 
   @moduledoc """
@@ -34,11 +35,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       RateLimiter.fixed_interval(fn -> poll_api() end, 5000)
   """
 
-  @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
-
   alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Shared.Types.Constants
-  alias WandererNotifier.Shared.Config.Utils, as: ConfigUtils
 
   @type rate_limit_options :: [
           requests_per_second: pos_integer(),
@@ -138,8 +136,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
     bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global
 
-    # Use Hammer to check rate limit
-    case WandererNotifier.RateLimiter.check_rate(
+    # Use our RateLimiter module to hit the rate limit bucket
+    case WandererNotifier.Infrastructure.RateLimiter.hit(
            bucket_id,
            @default_scale_ms,
            limit
@@ -275,7 +273,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   @doc """
   Handles HTTP rate limit responses (429) with retry-after header.
   """
-  @spec handle_http_rate_limit(HTTPoison.Response.t(), rate_limit_opts()) ::
+  @spec handle_http_rate_limit(map(), rate_limit_opts()) ::
           rate_limit_result(term())
   def handle_http_rate_limit(%{status_code: 429, headers: headers}, opts \\ []) do
     retry_after = get_retry_after_from_headers(headers)
@@ -450,7 +448,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   defp get_retry_after_from_headers(headers) do
     case Enum.find(headers, fn {key, _} -> String.downcase(key) == "retry-after" end) do
-      {_, value} -> ConfigUtils.parse_int(value, 0) * 1000
+      {_, value} -> parse_int(value, 0) * 1000
       nil -> Constants.base_backoff()
     end
   end
@@ -463,4 +461,17 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       delay_ms: delay
     )
   end
+
+  # Simple parse_int helper to replace Config.Utils
+  defp parse_int(nil, default), do: default
+  defp parse_int(value, _default) when is_integer(value), do: value
+
+  defp parse_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> default
+    end
+  end
+
+  defp parse_int(_, default), do: default
 end
