@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Adapters.ESI
+  alias WandererNotifier.Shared.Config
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Value and timestamp
     value_time_line =
       if killmail.value && killmail.value > 0 do
-        "Value: #{Utils.format_isk(killmail.value)} • #{format_timestamp(killmail)}"
+        "Value: #{FormatterUtils.format_isk(killmail.value)} • #{format_timestamp(killmail)}"
       else
         format_timestamp(killmail)
       end
@@ -268,14 +269,15 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp filter_notable_items(items) do
+    threshold = Config.notable_items_threshold_isk()
+    limit = Config.notable_items_limit()
+
     items
     |> Enum.filter(fn item ->
       value = Map.get(item, "value", 0)
-      # 50M ISK threshold
-      value > 50_000_000
+      value > threshold
     end)
-    # Limit to top 5 items
-    |> Enum.take(5)
+    |> Enum.take(limit)
   end
 
   defp build_notable_items_list(items) do

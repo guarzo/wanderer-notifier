@@ -8,6 +8,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Shared.Utils.StringUtils
   alias WandererNotifier.Domains.License.Validation
   require Logger
 
@@ -166,7 +167,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     )
 
     # Basic validation - ensure token exists and is a non-empty string
-    is_valid = !nil_or_empty?(token)
+    is_valid = !StringUtils.nil_or_empty?(token)
 
     if !is_valid do
       Logger.warning("License validation warning: Invalid notifier API token", category: :config)
@@ -848,9 +849,4 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   defp typeof(data) when is_integer(data), do: "integer"
   defp typeof(data) when is_float(data), do: "float"
   defp typeof(_), do: "unknown"
-
-  # Simple helper to replace Config.Utils
-  defp nil_or_empty?(nil), do: true
-  defp nil_or_empty?(""), do: true
-  defp nil_or_empty?(value) when is_binary(value), do: String.trim(value) == ""
 end

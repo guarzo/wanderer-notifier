@@ -8,19 +8,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
 
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  # alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils  # Not used yet
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Public API
   # ══════════════════════════════════════════════════════════════════════════════
-
-  @doc """
-  Formats a system notification for Discord.
-  """
-  def format(%System{} = system, opts \\ []) do
-    format_system_notification(system, opts)
-  end
 
   @doc """
   Formats a system embed for Discord.
@@ -37,7 +29,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
     is_wormhole = System.wormhole?(system)
 
     # Log system data for debugging
-    Logger.info("[Formatter] Formatting system notification",
+    Logger.debug("[Formatter] Formatting system notification",
       system_name: system.name,
       system_type: system.system_type,
       is_wormhole: is_wormhole,
@@ -180,10 +172,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
 
     if is_wormhole && system.statics && length(system.statics) > 0 do
       statics_text = format_statics(system.statics)
-      Logger.info("[Formatter] Adding statics field with text: #{statics_text}")
       [Utils.build_field("Static Wormholes", statics_text, true) | fields]
     else
-      Logger.info("[Formatter] Not adding statics field - conditions not met")
       fields
     end
   end
@@ -220,7 +210,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
         fields
     end
   rescue
-    _ -> fields
+    error ->
+      Logger.warning(
+        "Failed to get recent kills for system #{system.solar_system_id}: #{inspect(error)}"
+      )
+
+      fields
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

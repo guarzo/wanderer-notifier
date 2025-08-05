@@ -16,13 +16,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
   # ══════════════════════════════════════════════════════════════════════════════
 
   @doc """
-  Formats a character notification for Discord.
-  """
-  def format(%Character{} = character, opts \\ []) do
-    format_character_notification(character, opts)
-  end
-
-  @doc """
   Formats a character embed for Discord.
   """
   def format_embed(%Character{} = character, opts \\ []) do

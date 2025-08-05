@@ -37,7 +37,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   def format_notification(%Character{} = character) do
-    CharacterFormatter.format(character)
+    CharacterFormatter.format_embed(character)
   end
 
   # Handle character notifications that have been converted to maps (e.g., from cache)
@@ -45,7 +45,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       when is_map_key(character_map, :character_name) and is_map_key(character_map, :tracked) do
     Logger.debug("NotificationFormatter received character as map, converting to struct")
     character = struct(Character, character_map)
-    CharacterFormatter.format(character)
+    CharacterFormatter.format_embed(character)
   end
 
   def format_notification(%System{} = system) do
@@ -53,7 +53,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       "NotificationFormatter received System struct with keys: #{inspect(Map.keys(system))}"
     )
 
-    SystemFormatter.format(system)
+    SystemFormatter.format_embed(system)
   end
 
   # Handle system notifications that have been converted to maps (e.g., from cache)
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       when is_map_key(system_map, :name) and is_map_key(system_map, :tracked) do
     Logger.debug("NotificationFormatter received system as map, converting to struct")
     system = struct(System, system_map)
-    SystemFormatter.format(system)
+    SystemFormatter.format_embed(system)
   end
 
   def format_notification(notification) do
@@ -84,14 +84,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   Format a character notification (legacy API).
   """
   def format_character_notification(%Character{} = character) do
-    CharacterFormatter.format(character)
+    CharacterFormatter.format_embed(character)
   end
 
   @doc """
   Format a system notification (legacy API).
   """
   def format_system_notification(%System{} = system) do
-    SystemFormatter.format(system)
+    SystemFormatter.format_embed(system)
   end
 
   @doc """

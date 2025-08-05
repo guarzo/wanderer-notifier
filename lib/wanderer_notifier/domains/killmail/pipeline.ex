@@ -143,11 +143,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       true ->
         killmail = Killmail.from_websocket_data(kill_id, system_id, data)
 
-        attacker_count =
-          case killmail.attackers do
-            nil -> 0
-            attackers -> length(attackers)
-          end
+        attacker_count = length(killmail.attackers || [])
 
         Logger.debug(
           "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{attacker_count}"
@@ -347,8 +343,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    # Send kill notification directly - always returns :ok immediately
-    WandererNotifier.DiscordNotifier.send_kill_async(killmail)
+    # Send kill notification using supervised task for better fault tolerance
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      WandererNotifier.DiscordNotifier.send_kill_async(killmail)
+    end)
 
     # Always return success since we're using fire-and-forget async processing
     Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
@@ -390,11 +388,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       victim_name: victim_name,
       victim_corp: killmail.victim_corporation_name,
       victim_alliance: killmail.victim_alliance_name,
-      attacker_count:
-        case killmail.attackers do
-          nil -> 0
-          attackers -> length(attackers)
-        end
+      attacker_count: length(killmail.attackers || [])
     )
 
     {:ok, :skipped}

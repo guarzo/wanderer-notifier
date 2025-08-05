@@ -44,7 +44,15 @@ defmodule WandererNotifier.Infrastructure.Http do
   @type response ::
           {:ok, %{status_code: integer(), body: term(), headers: list()}} | {:error, term()}
   @type service ::
-          :esi | :wanderer_kills | :license | :janice | :map | :streaming | :fuzzworks | nil
+          :esi
+          | :wanderer_kills
+          | :license
+          | :janice
+          | :map
+          | :discord
+          | :streaming
+          | :fuzzworks
+          | nil
   @type middleware :: module()
   @type request :: %{
           method: method(),
@@ -79,7 +87,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `opts` - Request options (see below)
 
   ## Options
-  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :streaming, :fuzzworks)
+  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :discord, :streaming, :fuzzworks)
   - `:timeout` - Request timeout in milliseconds
   - `:retry_count` - Number of retries
   - `:decode_json` - Automatically decode JSON responses (default: true)
@@ -351,6 +359,16 @@ defmodule WandererNotifier.Infrastructure.Http do
       retryable_status_codes: [500, 502, 503, 504],
       # Internal service, no rate limiting
       disable_middleware: true,
+      decode_json: true
+    ],
+    discord: [
+      # Discord API typically responds in 200-500ms
+      timeout: 10_000,
+      retry_count: 3,
+      retry_delay: 1_000,
+      retryable_status_codes: [429, 500, 502, 503, 504],
+      rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
+      middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
     streaming: [

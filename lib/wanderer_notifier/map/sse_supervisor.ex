@@ -177,9 +177,15 @@ defmodule WandererNotifier.Map.SSESupervisor do
         send(pid, :map_initialization_complete)
     end
 
-    {:ok, map_config} = get_map_configuration()
-    Logger.info("Starting SSE client after successful map data initialization")
-    start_sse_client_from_config(map_config)
+    case get_map_configuration() do
+      {:ok, map_config} ->
+        Logger.info("Starting SSE client after successful map data initialization")
+        start_sse_client_from_config(map_config)
+
+      {:error, reason} ->
+        Logger.error("Failed to get map configuration: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   defp initialize_map_data_safely do
@@ -200,18 +206,23 @@ defmodule WandererNotifier.Map.SSESupervisor do
   # Private helper functions
 
   defp get_map_configuration() do
-    map_url = Config.map_url()
-    map_name = Config.map_name()
-    api_token = Config.map_api_key()
+    try do
+      map_url = Config.map_url()
+      map_name = Config.map_name()
+      api_token = Config.map_api_key()
 
-    # Extract map slug from URL or use map_name
-    map_slug = extract_map_slug(map_url, map_name)
+      # Extract map slug from URL or use map_name
+      map_slug = extract_map_slug(map_url, map_name)
 
-    {:ok,
-     %{
-       map_slug: map_slug,
-       api_token: api_token
-     }}
+      {:ok,
+       %{
+         map_slug: map_slug,
+         api_token: api_token
+       }}
+    rescue
+      e ->
+        {:error, {:config_error, Exception.message(e)}}
+    end
   end
 
   defp extract_map_slug(map_url, map_name) do

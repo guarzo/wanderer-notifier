@@ -30,10 +30,7 @@ defmodule WandererNotifier.Application.Services.SimpleApplicationService do
         {:error, :not_running}
 
       pid when is_pid(pid) ->
-        case Process.alive?(pid) do
-          true -> :ok
-          false -> {:error, :not_alive}
-        end
+        if Process.alive?(pid), do: :ok, else: {:error, :not_alive}
     end
   end
 

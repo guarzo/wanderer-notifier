@@ -74,6 +74,16 @@ defmodule WandererNotifier.Shared.Config do
   def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
 
   # ──────────────────────────────────────────────────────────────────────────────
+  # Notable Items Configuration
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get notable items ISK threshold (default: 50M ISK)"
+  def notable_items_threshold_isk, do: get_integer("NOTABLE_ITEMS_THRESHOLD_ISK", 50_000_000)
+
+  @doc "Get notable items limit (default: 5 items)"
+  def notable_items_limit, do: get_integer("NOTABLE_ITEMS_LIMIT", 5)
+
+  # ──────────────────────────────────────────────────────────────────────────────
   # Service URLs
   # ──────────────────────────────────────────────────────────────────────────────
 
@@ -96,9 +106,6 @@ defmodule WandererNotifier.Shared.Config do
   # ──────────────────────────────────────────────────────────────────────────────
   # License Configuration
   # ──────────────────────────────────────────────────────────────────────────────
-
-  @doc "Get license API token (required)"
-  def license_api_token, do: get_required_env("LICENSE_API_TOKEN")
 
   @doc "Get license key (required)"
   def license_key, do: get_required_env("LICENSE_KEY")
@@ -148,12 +155,6 @@ defmodule WandererNotifier.Shared.Config do
 
   @doc "Get Janice API token for item pricing"
   def janice_api_token, do: get_env_private("JANICE_API_TOKEN")
-
-  @doc "Get notable items threshold in ISK"
-  def notable_items_threshold_isk, do: get_integer("NOTABLE_ITEMS_THRESHOLD_ISK", 50_000_000)
-
-  @doc "Get notable items limit"
-  def notable_items_limit, do: get_integer("NOTABLE_ITEMS_LIMIT", 5)
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Additional Configuration Methods

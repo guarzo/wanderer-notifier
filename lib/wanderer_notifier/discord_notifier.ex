@@ -256,7 +256,7 @@ defmodule WandererNotifier.DiscordNotifier do
     body = build_discord_message_body(embed)
 
     # Make request with Infrastructure.Http (includes built-in retries and timeout handling)
-    case Http.request(:post, url, body, headers, service: :streaming, timeout: 10_000) do
+    case Http.request(:post, url, body, headers, service: :discord) do
       {:ok, %{status_code: status_code}} when status_code in 200..299 ->
         Logger.debug("Discord API call successful", status: status_code)
         :ok

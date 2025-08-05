@@ -9,6 +9,7 @@ defmodule WandererNotifier.Domains.License.License do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Shared.Utils.StringUtils
   require Logger
 
   @validation_url "https://lm.wanderer.ltd/validate_bot"
@@ -116,16 +117,39 @@ defmodule WandererNotifier.Domains.License.License do
       license_key = Config.license_key()
       api_token = Config.license_manager_api_key()
 
-      {:ok,
-       %{
-         license_key: license_key,
-         api_token: api_token,
-         validation_url: Config.license_manager_api_url() || @validation_url
-       }}
+      # Validate required configuration values
+      cond do
+        StringUtils.nil_or_empty?(license_key) ->
+          {:error, {:config_error, :missing_license_key}}
+
+        StringUtils.nil_or_empty?(api_token) ->
+          {:error, {:config_error, :missing_api_token}}
+
+        true ->
+          {:ok,
+           %{
+             license_key: license_key,
+             api_token: api_token,
+             validation_url: build_validation_url()
+           }}
+      end
     rescue
       e ->
         Logger.error("Error getting license configuration", error: Exception.message(e))
         {:error, :config_error}
+    end
+  end
+
+  defp build_validation_url do
+    base_url = Config.license_manager_api_url() || @validation_url
+
+    # If the base URL already includes the validation path, use it as-is
+    if String.ends_with?(base_url, "/validate_bot") do
+      base_url
+    else
+      # Remove trailing slash if present and append the validation endpoint
+      base_url = String.trim_trailing(base_url, "/")
+      "#{base_url}/validate_bot"
     end
   end
 
@@ -191,11 +215,26 @@ defmodule WandererNotifier.Domains.License.License do
 
   defp format_error_message(reason) do
     case reason do
-      :config_error -> "Configuration error"
-      {:http_error, status_code, _body} -> "HTTP error: #{status_code}"
-      {:request_failed, reason} -> "Request failed: #{inspect(reason)}"
-      :invalid_response_format -> "Invalid response format from license server"
-      :json_decode_error -> "Failed to decode license server response"
+      :config_error ->
+        "Configuration error"
+
+      {:config_error, :missing_license_key} ->
+        "Configuration error: LICENSE_KEY is missing or empty"
+
+      {:config_error, :missing_api_token} ->
+        "Configuration error: LICENSE_MANAGER_API_KEY is missing or empty"
+
+      {:http_error, status_code, _body} ->
+        "HTTP error: #{status_code}"
+
+      {:request_failed, reason} ->
+        "Request failed: #{inspect(reason)}"
+
+      :invalid_response_format ->
+        "Invalid response format from license server"
+
+      :json_decode_error ->
+        "Failed to decode license server response"
     end
   end
 end

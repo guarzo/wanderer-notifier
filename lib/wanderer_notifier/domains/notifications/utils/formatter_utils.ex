@@ -50,6 +50,7 @@ defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
     |> String.graphemes()
     |> Enum.reverse()
     |> Enum.chunk_every(3)
+    |> Enum.map(&Enum.reverse/1)
     |> Enum.join(",")
     |> String.reverse()
   end
@@ -217,7 +218,5 @@ defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
   # Format time in 12-hour format
   defp format_12_hour_time(datetime) do
     Calendar.strftime(datetime, "%I:%M %p")
-    # Remove leading zero from hour
-    |> String.replace(~r/^0/, "")
   end
 end
