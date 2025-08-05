@@ -182,27 +182,28 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
 
   defp validate_notification_context do
     try do
-      # Test that NotificationContext has required notification functions
-      functions = WandererNotifier.Contexts.NotificationContext.__info__(:functions)
+      # Test that DiscordNotifier has required notification functions
+      functions = WandererNotifier.DiscordNotifier.__info__(:functions)
 
       required_functions = [
-        :send_kill_notification,
-        :send_system_notification,
-        :send_character_notification
+        :send_kill_async,
+        :send_system_async,
+        :send_character_async,
+        :send_rally_point_async
       ]
 
       missing = required_functions -- Keyword.keys(functions)
 
       case missing do
         [] ->
-          {:ok, "Notification Context integration complete"}
+          {:ok, "Discord Notifier integration complete"}
 
         missing_functions ->
-          {:error, "Notification Context missing functions", missing_functions}
+          {:error, "Discord Notifier missing functions", missing_functions}
       end
     rescue
       error ->
-        {:error, "Notification Context validation failed", error}
+        {:error, "Discord Notifier validation failed", error}
     end
   end
 

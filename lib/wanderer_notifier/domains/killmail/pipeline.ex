@@ -334,19 +334,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    case WandererNotifier.Contexts.NotificationContext.send_kill_notification(killmail) do
-      {:ok, _} ->
-        Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
-        Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-        Logger.debug("Killmail #{killmail.killmail_id} notified", category: :killmail)
-        {:ok, killmail.killmail_id}
-
-      {:error, :notifications_disabled} ->
-        handle_skipped(killmail.killmail_id, :notifications_disabled)
-
-      {:error, reason} ->
-        handle_error(killmail.killmail_id, reason)
-    end
+    # Send kill notification directly - always returns :ok immediately
+    WandererNotifier.DiscordNotifier.send_kill_async(killmail)
+    
+    # Always return success since we're using fire-and-forget async processing
+    Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
+    Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
+    Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
+    {:ok, killmail.killmail_id}
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

@@ -436,36 +436,59 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   defp format_timestamp(%Killmail{kill_time: kill_time}) when is_binary(kill_time) do
-    # Format timestamp as "Today at 5:12 PM" style
-    # For now, just return a simple format
-    "Today at #{format_time_from_iso(kill_time)}"
+    case WandererNotifier.Shared.Utils.TimeUtils.parse_iso8601(kill_time) do
+      {:ok, datetime} ->
+        format_datetime_with_context(datetime)
+      {:error, _reason} ->
+        "Recently"
+    end
   end
 
   defp format_timestamp(_), do: "Recently"
 
-  defp format_time_from_iso(iso_time) do
-    with [_date, time_part] <- String.split(iso_time, "T"),
-         [hour_str, minute_str | _] <- String.split(time_part, ":") do
-      format_12_hour_time(hour_str, minute_str)
-    else
-      _ -> "Unknown time"
+  # Format datetime with EVE context and relative time
+  defp format_datetime_with_context(datetime) do
+    relative_time = WandererNotifier.Shared.Utils.TimeUtils.format_relative_time(datetime)
+    
+    # For very recent kills (< 1 hour), show relative time
+    # For older kills, show absolute time with EVE context
+    cond do
+      relative_time == "just now" ->
+        relative_time
+      String.contains?(relative_time, "seconds ago") or String.contains?(relative_time, "minutes ago") ->
+        relative_time
+      String.contains?(relative_time, "hour") ->
+        "#{relative_time} (#{format_eve_time(datetime)})"
+      true ->
+        format_absolute_eve_time(datetime)
     end
   end
 
-  defp format_12_hour_time(hour_str, minute_str) do
-    hour = String.to_integer(hour_str)
-    {display_hour, period} = convert_to_12_hour(hour)
-    "#{display_hour}:#{minute_str} #{period}"
+  # Format time with EVE context for recent kills
+  defp format_eve_time(datetime) do
+    "#{Calendar.strftime(datetime, "%H:%M")} EVE"
   end
 
-  defp convert_to_12_hour(hour) when hour >= 12 do
-    display_hour = if hour > 12, do: hour - 12, else: hour
-    {display_hour, "PM"}
+  # Format absolute time for older kills
+  defp format_absolute_eve_time(datetime) do
+    now = WandererNotifier.Shared.Utils.TimeUtils.now()
+    
+    if same_date?(datetime, now) do
+      "#{format_12_hour_time(datetime)} EVE today"
+    else
+      "#{Calendar.strftime(datetime, "%b %d")} at #{format_12_hour_time(datetime)} EVE"
+    end
   end
 
-  defp convert_to_12_hour(hour) do
-    display_hour = if hour == 0, do: 12, else: hour
-    {display_hour, "AM"}
+  # Check if two DateTime structs are on the same calendar day
+  defp same_date?(%DateTime{} = dt1, %DateTime{} = dt2) do
+    Calendar.strftime(dt1, "%Y-%m-%d") == Calendar.strftime(dt2, "%Y-%m-%d")
+  end
+
+  # Format time in 12-hour format
+  defp format_12_hour_time(datetime) do
+    Calendar.strftime(datetime, "%I:%M %p")
+    |> String.replace(~r/^0/, "") # Remove leading zero from hour
   end
 
   defp get_final_blow_attacker(nil), do: nil

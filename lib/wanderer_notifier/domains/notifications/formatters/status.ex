@@ -197,12 +197,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.StatusNotifier do
 
     # Try to send the notification - if it fails, log but don't crash
     try do
-      notification = %WandererNotifier.Domains.Notifications.Notification{
-        type: :status_notification,
-        data: embed
-      }
-
-      WandererNotifier.Contexts.NotificationContext.send_discord_embed(notification)
+      WandererNotifier.DiscordNotifier.send_embed_async(embed)
     rescue
       e ->
         # Log but don't crash the process

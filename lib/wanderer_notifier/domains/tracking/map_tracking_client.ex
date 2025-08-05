@@ -12,7 +12,6 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Notifications.Determiner
-  alias WandererNotifier.Contexts.NotificationContext
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Tracking.StaticInfo
 
@@ -371,7 +370,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
       character_id = character["eve_id"]
 
       if character_id && Determiner.should_notify?(:character, character_id, character) do
-        NotificationContext.send_character_notification(character)
+        WandererNotifier.DiscordNotifier.send_character_async(character)
       end
 
       :ok
@@ -395,7 +394,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
         # enrich_system always returns {:ok, system}, even on failure
         {:ok, enriched_system} = StaticInfo.enrich_system(system_struct)
-        NotificationContext.send_system_notification(enriched_system)
+        WandererNotifier.DiscordNotifier.send_system_async(enriched_system)
       end
 
       :ok

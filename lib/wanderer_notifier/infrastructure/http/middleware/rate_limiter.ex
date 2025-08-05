@@ -275,7 +275,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   @doc """
   Handles HTTP rate limit responses (429) with retry-after header.
   """
-  @spec handle_http_rate_limit(HTTPoison.Response.t(), rate_limit_opts()) ::
+  @spec handle_http_rate_limit(map(), rate_limit_opts()) ::
           rate_limit_result(term())
   def handle_http_rate_limit(%{status_code: 429, headers: headers}, opts \\ []) do
     retry_after = get_retry_after_from_headers(headers)

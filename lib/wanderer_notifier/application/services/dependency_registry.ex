@@ -214,8 +214,8 @@ defmodule WandererNotifier.Application.Services.DependencyRegistry do
 
       # Business Logic
       {:api_context, WandererNotifier.Contexts.ApiContext, "External API integration context"},
-      {:notification_context, WandererNotifier.Contexts.NotificationContext,
-       "Notification handling context"},
+      {:discord_notifier, WandererNotifier.DiscordNotifier,
+       "Simplified Discord notification handler"},
       {:processing_context, WandererNotifier.Contexts.ProcessingContext,
        "Data processing context"},
 

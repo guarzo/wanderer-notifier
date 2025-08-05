@@ -239,17 +239,10 @@ defmodule WandererNotifier.Map.EventProcessor do
       created_at: Map.get(payload, "created_at")
     }
 
-    # Trigger notification through the notification context
-    # send_rally_point_notification returns {:ok, :queued} or {:error, :notifications_disabled}
-    case WandererNotifier.Contexts.NotificationContext.send_rally_point_notification(rally_point) do
-      {:ok, _} ->
-        Logger.info("Rally point notification sent successfully")
-        :ok
-
-      {:error, :notifications_disabled} ->
-        Logger.info("Rally point notifications disabled")
-        :ignored
-    end
+    # Send rally point notification directly - always returns :ok immediately
+    WandererNotifier.DiscordNotifier.send_rally_point_async(rally_point)
+    Logger.info("Rally point notification queued successfully")
+    :ok
   end
 
   defp handle_rally_event("rally_point_removed", _event, _map_slug) do
