@@ -94,7 +94,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
           {:error, :formatting_failed, state}
 
         _ ->
-          send_kill_notification_async(formatted)
+          send_kill_notification_async(formatted, notification)
           {:ok, new_state} = increment_notification_count(state, :kills)
           {:ok, :queued, new_state}
       end
@@ -218,17 +218,6 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     {:ok, :queued, new_state}
   end
 
-  defp handle_rally_error(state, reason, rally_id, start_time) do
-    Logger.warning(
-      "[RALLY_TIMING] Discord notifier returned error after #{System.monotonic_time(:millisecond) - start_time}ms",
-      rally_id: rally_id,
-      category: :notification,
-      error: inspect(reason)
-    )
-
-    {:error, {:discord_send_failed, reason}, state}
-  end
-
   defp handle_rally_notification_error(error, state, start_time) do
     Logger.error(
       "[RALLY_TIMING] Exception in rally point notification after #{System.monotonic_time(:millisecond) - start_time}ms",
@@ -319,7 +308,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     |> then(&{:ok, &1})
   end
 
-  defp send_to_discord(formatted_notification, opts \\ []) do
+  defp send_to_discord(formatted_notification, opts) do
     channel_id = Keyword.get(opts, :channel_id, get_default_channel_id())
 
     WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient.send_embed(
@@ -540,42 +529,35 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   end
 
   # Async notification helpers to reduce nesting
-  defp send_kill_notification_async(formatted) do
+  defp send_kill_notification_async(formatted, original_notification) do
     Task.start(fn ->
-      # Extract killmail from formatted notification for channel determination
-      killmail = extract_killmail_from_formatted(formatted)
-
-      case determine_kill_channel(killmail) do
-        {:ok, channel_id} ->
-          case send_to_discord(formatted, channel_id: channel_id) do
-            :ok ->
-              Logger.debug("Kill notification sent successfully", category: :notification)
-
-            {:error, reason} ->
-              Logger.warning("Failed to send kill notification to Discord",
-                category: :notification,
-                error: inspect(reason)
-              )
-          end
-
-        {:error, reason} ->
-          Logger.error("Failed to determine kill channel",
-            category: :notification,
-            error: inspect(reason)
-          )
-      end
+      perform_kill_notification_send(formatted, original_notification)
     end)
   end
 
-  defp extract_killmail_from_formatted(formatted) do
-    # Try to extract killmail data from the formatted notification
-    # This is a fallback - ideally we'd pass the original killmail data
-    case formatted do
-      %{killmail: killmail} -> killmail
-      %{"killmail" => killmail} -> killmail
-      %{data: %{killmail: killmail}} -> killmail
-      # Fallback to empty map if no killmail found
-      _ -> %{}
+  defp perform_kill_notification_send(formatted, original_notification) do
+    case determine_kill_channel(original_notification) do
+      {:ok, channel_id} ->
+        handle_kill_notification_send(formatted, channel_id)
+
+      {:error, reason} ->
+        Logger.error("Failed to determine kill channel",
+          category: :notification,
+          error: inspect(reason)
+        )
+    end
+  end
+
+  defp handle_kill_notification_send(formatted, channel_id) do
+    case send_to_discord(formatted, channel_id: channel_id) do
+      :ok ->
+        Logger.debug("Kill notification sent successfully", category: :notification)
+
+      {:error, reason} ->
+        Logger.warning("Failed to send kill notification to Discord",
+          category: :notification,
+          error: inspect(reason)
+        )
     end
   end
 
