@@ -345,20 +345,32 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
 
   defp handle_testing_override(:character) do
     Logger.info("[TEST] Kill override: routing to character channel")
-    channel_id = WandererNotifier.Shared.Config.discord_character_kill_channel_id() || WandererNotifier.Shared.Config.discord_channel_id()
+
+    channel_id =
+      WandererNotifier.Shared.Config.discord_character_kill_channel_id() ||
+        WandererNotifier.Shared.Config.discord_channel_id()
+
     {:ok, channel_id}
   end
 
   defp handle_testing_override(:system) do
     Logger.info("[TEST] Kill override: routing to system channel")
-    channel_id = WandererNotifier.Shared.Config.discord_system_kill_channel_id() || WandererNotifier.Shared.Config.discord_channel_id()
+
+    channel_id =
+      WandererNotifier.Shared.Config.discord_system_kill_channel_id() ||
+        WandererNotifier.Shared.Config.discord_channel_id()
+
     {:ok, channel_id}
   end
 
   defp determine_normal_channel(killmail) do
     system_id = Map.get(killmail, :system_id)
-    has_tracked_system = WandererNotifier.Domains.Notifications.Determiner.tracked_system_for_killmail?(system_id)
-    has_tracked_character = WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail)
+
+    has_tracked_system =
+      WandererNotifier.Domains.Notifications.Determiner.tracked_system_for_killmail?(system_id)
+
+    has_tracked_character =
+      WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail)
 
     Logger.debug(
       "[Kill Channel Debug] Determining channel for killmail - system_id: #{system_id}, has_tracked_system: #{has_tracked_system}, has_tracked_character: #{has_tracked_character}",
@@ -391,7 +403,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     char_channel = WandererNotifier.Shared.Config.discord_character_kill_channel_id()
     sys_channel = WandererNotifier.Shared.Config.discord_system_kill_channel_id()
     default_channel = WandererNotifier.Shared.Config.discord_channel_id()
-    
+
     Logger.info(
       "[Channel Selection] tracked_char: #{has_tracked_character}, tracked_sys: #{has_tracked_system}, char_channel: #{char_channel}, sys_channel: #{sys_channel}, default: #{default_channel}"
     )
@@ -419,20 +431,21 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     # 2. General channel
     system_channel = WandererNotifier.Shared.Config.discord_system_channel_id()
     general_channel = WandererNotifier.Shared.Config.discord_channel_id()
-    
+
     Logger.debug("[NotificationCoordinator] Determining system channel",
       system_channel: system_channel,
       general_channel: general_channel,
       category: :notification
     )
-    
+
     # Use system channel if configured, otherwise fall back to general channel
     channel = system_channel || general_channel
-    
-    Logger.info("[NotificationCoordinator] Selected channel for system notification: #{inspect(channel)}",
+
+    Logger.info(
+      "[NotificationCoordinator] Selected channel for system notification: #{inspect(channel)}",
       category: :notification
     )
-    
+
     channel
   end
 
@@ -443,20 +456,21 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     # 2. General channel
     character_channel = WandererNotifier.Shared.Config.discord_character_channel_id()
     general_channel = WandererNotifier.Shared.Config.discord_channel_id()
-    
+
     Logger.debug("[NotificationCoordinator] Determining character channel",
       character_channel: character_channel,
       general_channel: general_channel,
       category: :notification
     )
-    
+
     # Use character channel if configured, otherwise fall back to general channel
     channel = character_channel || general_channel
-    
-    Logger.info("[NotificationCoordinator] Selected channel for character notification: #{inspect(channel)}",
+
+    Logger.info(
+      "[NotificationCoordinator] Selected channel for character notification: #{inspect(channel)}",
       category: :notification
     )
-    
+
     channel
   end
 
@@ -530,7 +544,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
     Task.start(fn ->
       # Extract killmail from formatted notification for channel determination
       killmail = extract_killmail_from_formatted(formatted)
-      
+
       case determine_kill_channel(killmail) do
         {:ok, channel_id} ->
           case send_to_discord(formatted, channel_id: channel_id) do
@@ -543,7 +557,7 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
                 error: inspect(reason)
               )
           end
-          
+
         {:error, reason} ->
           Logger.error("Failed to determine kill channel",
             category: :notification,
@@ -560,21 +574,22 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
       %{killmail: killmail} -> killmail
       %{"killmail" => killmail} -> killmail
       %{data: %{killmail: killmail}} -> killmail
-      _ -> %{} # Fallback to empty map if no killmail found
+      # Fallback to empty map if no killmail found
+      _ -> %{}
     end
   end
 
   defp send_system_notification_async(formatted, opts) do
     Task.start(fn ->
       # Determine the appropriate channel for system notifications if not provided
-      opts = 
+      opts =
         if Keyword.has_key?(opts, :channel_id) do
           opts
         else
           channel_id = determine_system_channel()
           Keyword.put(opts, :channel_id, channel_id)
         end
-      
+
       case send_to_discord(formatted, opts) do
         :ok ->
           Logger.debug("System notification sent successfully", category: :notification)
@@ -591,14 +606,14 @@ defmodule WandererNotifier.Application.Services.ApplicationService.NotificationC
   defp send_character_notification_async(formatted, opts) do
     Task.start(fn ->
       # Determine the appropriate channel for character notifications if not provided
-      opts = 
+      opts =
         if Keyword.has_key?(opts, :channel_id) do
           opts
         else
           channel_id = determine_character_channel()
           Keyword.put(opts, :channel_id, channel_id)
         end
-      
+
       case send_to_discord(formatted, opts) do
         :ok ->
           Logger.debug("Character notification sent successfully", category: :notification)
