@@ -87,17 +87,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
   defp get_tracking_action(%System{tracked: true}), do: "added to tracking"
   defp get_tracking_action(%System{tracked: false}), do: "removed from tracking"
 
-  defp get_system_type_description(%System{class_title: class_title}, true) when class_title != nil do
+  defp get_system_type_description(%System{class_title: class_title}, true)
+       when class_title != nil do
     "wormhole system (#{class_title})"
   end
 
-  defp get_system_type_description(%System{type_description: type_desc}, true) when type_desc != nil do
+  defp get_system_type_description(%System{type_description: type_desc}, true)
+       when type_desc != nil do
     "#{type_desc} wormhole system"
   end
 
   defp get_system_type_description(_, true), do: "wormhole system"
 
-  defp get_system_type_description(%System{type_description: type_desc}, false) when type_desc != nil do
+  defp get_system_type_description(%System{type_description: type_desc}, false)
+       when type_desc != nil do
     "#{type_desc} system"
   end
 

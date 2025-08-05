@@ -112,7 +112,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       create_cache_child_spec(),
 
       # Rate limiting for external services
-      {WandererNotifier.RateLimiter, []},
+      {WandererNotifier.Infrastructure.RateLimiter, []},
 
       # Phoenix PubSub for internal communication
       {Phoenix.PubSub, name: WandererNotifier.PubSub}
@@ -159,7 +159,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     if Application.get_env(:wanderer_notifier, :env) != :test do
       base_integrations ++
         [
-          {WandererNotifier.Infrastructure.ConnectionHealthService, []}
+          {WandererNotifier.Infrastructure.Messaging.ConnectionMonitor, []}
         ]
     else
       base_integrations

@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   alias WandererNotifier.Domains.Tracking.MapTrackingClient
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -72,8 +73,13 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       WandererNotifier.Domains.Killmail.FallbackHandler.websocket_connected()
     end
 
-    # Update stats with connection time
-    # Health is now tracked by simple process checks
+    # Register with ConnectionMonitor
+    ConnectionMonitor.register_connection(connection_id, :websocket, %{
+      url: state.url,
+      pid: self()
+    })
+
+    ConnectionMonitor.update_connection_status(connection_id, :connected)
 
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
@@ -104,7 +110,10 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     cancel_timer(state.heartbeat_ref)
     cancel_timer(state.subscription_update_ref)
 
-    # Connection tracking removed - health is now tracked by simple process checks
+    # Update ConnectionMonitor status
+    if state.connection_id do
+      ConnectionMonitor.update_connection_status(state.connection_id, :disconnected)
+    end
 
     # Notify fallback handler that WebSocket is down
     if Process.whereis(WandererNotifier.Domains.Killmail.FallbackHandler) do
@@ -306,9 +315,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp calculate_connection_uptime(_), do: 0
 
-  defp record_heartbeat_in_monitoring(_state) do
-    # Heartbeat recording removed - ConnectionHealthService doesn't need explicit heartbeats
-    # Connection status is updated on connect/disconnect events only
+  defp record_heartbeat_in_monitoring(state) do
+    if state.connection_id do
+      ConnectionMonitor.record_heartbeat(state.connection_id)
+    end
+
     :ok
   end
 
@@ -715,6 +726,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         Logger.error(
           "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
         )
+
         []
     end
   end

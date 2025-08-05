@@ -137,8 +137,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
     bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global
 
-    # Use Hammer to check rate limit
-    case WandererNotifier.RateLimiter.check_rate(
+    # Use our RateLimiter module to check rate limit
+    case WandererNotifier.Infrastructure.RateLimiter.hit(
            bucket_id,
            @default_scale_ms,
            limit

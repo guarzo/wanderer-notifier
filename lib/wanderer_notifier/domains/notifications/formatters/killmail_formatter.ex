@@ -10,6 +10,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
   alias WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Adapters.ESI
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -306,59 +307,67 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     do: "[#{ticker}](https://zkillboard.com/corporation/#{id}/)"
 
   defp get_corp_ticker_from_killmail(%Killmail{} = killmail, "victim") do
-    # Try to get from cache first
-    case Cache.get("corporation:#{killmail.victim_corporation_id}") do
+    get_corporation_ticker(killmail.victim_corporation_id)
+  end
+
+  defp get_corporation_ticker(corp_id) when is_integer(corp_id) do
+    case Cache.get("corporation:#{corp_id}") do
       {:ok, corp_data} when is_map(corp_data) ->
-        Map.get(corp_data, "ticker", "????")
+        Map.get(corp_data, "ticker", fetch_and_cache_corporation(corp_id))
 
       _ ->
-        # Fallback to extracting from killmail data if available
-        killmail.victim_corporation_name || "????"
+        fetch_and_cache_corporation(corp_id)
+    end
+  end
+
+  defp get_corporation_ticker(_), do: "????"
+
+  defp fetch_and_cache_corporation(corp_id) do
+    case ESI.Service.get_corporation_info(corp_id) do
+      {:ok, corp_data} ->
+        Cache.put("corporation:#{corp_id}", corp_data, :timer.hours(24))
+        Map.get(corp_data, "ticker", "????")
+
+      {:error, _} ->
+        "????"
     end
   end
 
   defp get_attacker_corp_ticker(attacker) do
     corp_id = Map.get(attacker, "corporation_id")
-
-    if corp_id do
-      case Cache.get("corporation:#{corp_id}") do
-        {:ok, corp_data} when is_map(corp_data) ->
-          Map.get(corp_data, "ticker", "????")
-
-        _ ->
-          Map.get(attacker, "corporation_ticker", "????")
-      end
-    else
-      "????"
-    end
+    get_corporation_ticker(corp_id)
   end
 
   defp get_ship_name_from_killmail(%Killmail{} = killmail, :victim) do
-    # Try to get from cache first
-    case Cache.get("ship_type:#{killmail.victim_ship_type_id}") do
+    get_ship_type_name(killmail.victim_ship_type_id)
+  end
+
+  defp get_ship_type_name(ship_type_id) when is_integer(ship_type_id) do
+    case Cache.get("ship_type:#{ship_type_id}") do
       {:ok, ship_data} when is_map(ship_data) ->
-        Map.get(ship_data, "name", "Unknown Ship")
+        Map.get(ship_data, "name", fetch_and_cache_ship_type(ship_type_id))
 
       _ ->
-        # Fallback to killmail data
-        killmail.victim_ship_name || "Unknown Ship"
+        fetch_and_cache_ship_type(ship_type_id)
+    end
+  end
+
+  defp get_ship_type_name(_), do: "Unknown Ship"
+
+  defp fetch_and_cache_ship_type(ship_type_id) do
+    case ESI.Service.get_type(ship_type_id) do
+      {:ok, type_data} ->
+        Cache.put("ship_type:#{ship_type_id}", type_data, :timer.hours(24))
+        Map.get(type_data, "name", "Unknown Ship")
+
+      {:error, _} ->
+        "Unknown Ship"
     end
   end
 
   defp get_attacker_ship_name(attacker) do
     ship_type_id = Map.get(attacker, "ship_type_id")
-
-    if ship_type_id do
-      case Cache.get("ship_type:#{ship_type_id}") do
-        {:ok, ship_data} when is_map(ship_data) ->
-          Map.get(ship_data, "name", "Unknown Ship")
-
-        _ ->
-          Map.get(attacker, "ship_type_name", "Unknown Ship")
-      end
-    else
-      "Unknown Ship"
-    end
+    get_ship_type_name(ship_type_id)
   end
 
   defp get_final_blow_attacker(nil), do: nil

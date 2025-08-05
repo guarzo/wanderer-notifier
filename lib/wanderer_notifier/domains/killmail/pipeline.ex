@@ -10,7 +10,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.ItemProcessor
-  alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
@@ -49,14 +48,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
   defp process_killmail_pipeline(killmail_data, kill_id) do
-    with {:ok, :new} <- check_deduplication(kill_id),
-         {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
+    # Deduplication already happens in WebSocket client
+    with {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
          {:ok, true} <- should_notify?(killmail) do
       send_notification(killmail)
     else
-      {:ok, :duplicate} ->
-        handle_skipped(kill_id, :duplicate)
-
       {:ok, false} ->
         # Get killmail for logging details even though we're not notifying
         case build_killmail(killmail_data) do
@@ -114,15 +110,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       id when is_integer(id) -> Integer.to_string(id)
       id when is_binary(id) and id != "" -> id
       _ -> nil
-    end
-  end
-
-  @spec check_deduplication(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
-  defp check_deduplication(kill_id) do
-    case Deduplication.check(:kill, kill_id) do
-      {:ok, :new} -> {:ok, :new}
-      {:ok, :duplicate} -> {:ok, :duplicate}
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -366,12 +353,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
 
-    victim_name = 
+    victim_name =
       case killmail.victim_character_name do
         nil -> "Unknown"
         name -> name
       end
-    
+
     system_name = killmail.system_name || "Unknown System"
 
     Logger.info("Killmail #{kill_id} skipped: #{reason_text}",

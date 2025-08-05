@@ -78,8 +78,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers do
   """
   def capitalize_first(text) when is_binary(text) do
     case String.length(text) do
-      0 -> text
-      1 -> String.upcase(text)
+      0 ->
+        text
+
+      1 ->
+        String.upcase(text)
+
       _ ->
         text
         |> String.at(0)

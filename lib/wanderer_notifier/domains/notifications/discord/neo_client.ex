@@ -806,5 +806,4 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp get_retry_after(_) do
     5000
   end
-
 end
