@@ -275,6 +275,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
     # Send system notification directly - always returns :ok immediately
     WandererNotifier.DiscordNotifier.send_system_async(system)
+
     Logger.debug("System notification queued",
       system_name: system.name,
       category: :api

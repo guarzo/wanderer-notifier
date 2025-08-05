@@ -173,9 +173,9 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp update_tracked_entities(state) do
-    alias WandererNotifier.Contexts.ApiContext
-    {:ok, systems} = ApiContext.get_tracked_systems()
-    {:ok, characters} = ApiContext.get_tracked_characters()
+    alias WandererNotifier.Domains.Tracking.MapTrackingClient
+    {:ok, systems} = MapTrackingClient.fetch_and_cache_systems()
+    {:ok, characters} = MapTrackingClient.fetch_and_cache_characters()
 
     tracked_systems =
       systems

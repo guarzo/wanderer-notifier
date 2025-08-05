@@ -38,7 +38,6 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Shared.Types.Constants
-  alias WandererNotifier.Shared.Config.Utils, as: ConfigUtils
 
   @type rate_limit_options :: [
           requests_per_second: pos_integer(),
@@ -450,7 +449,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   defp get_retry_after_from_headers(headers) do
     case Enum.find(headers, fn {key, _} -> String.downcase(key) == "retry-after" end) do
-      {_, value} -> ConfigUtils.parse_int(value, 0) * 1000
+      {_, value} -> parse_int(value, 0) * 1000
       nil -> Constants.base_backoff()
     end
   end
@@ -463,4 +462,17 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       delay_ms: delay
     )
   end
+
+  # Simple parse_int helper to replace Config.Utils
+  defp parse_int(nil, default), do: default
+  defp parse_int(value, _default) when is_integer(value), do: value
+
+  defp parse_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> default
+    end
+  end
+
+  defp parse_int(_, default), do: default
 end

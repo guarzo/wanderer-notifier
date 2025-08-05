@@ -336,7 +336,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp handle_notification_response(%Killmail{} = killmail) do
     # Send kill notification directly - always returns :ok immediately
     WandererNotifier.DiscordNotifier.send_kill_async(killmail)
-    
+
     # Always return success since we're using fire-and-forget async processing
     Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
     Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
@@ -366,7 +366,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
 
-    victim_name = killmail.victim_character_name || "Unknown"
+    victim_name = 
+      case killmail.victim_character_name do
+        nil -> "Unknown"
+        name -> name
+      end
+    
     system_name = killmail.system_name || "Unknown System"
 
     Logger.info("Killmail #{kill_id} skipped: #{reason_text}",

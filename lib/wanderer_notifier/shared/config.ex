@@ -7,8 +7,6 @@ defmodule WandererNotifier.Shared.Config do
   through simple functions that call Application.get_env/3 directly.
   """
 
-  @behaviour WandererNotifier.Shared.Config.ConfigBehaviour
-
   # ══════════════════════════════════════════════════════════════════════════════
   # Core Configuration Access
   # ══════════════════════════════════════════════════════════════════════════════
@@ -23,24 +21,19 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Legacy alias for get/2"
   def get_env(key, default \\ nil), do: get(key, default)
 
-  @doc "Required by behavior - returns this config module"
-  @impl true
+  @doc "Returns this config module"
   def config_module, do: __MODULE__
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Feature Flags (Most commonly used)
   # ══════════════════════════════════════════════════════════════════════════════
 
-  @impl true
   def notifications_enabled?, do: get(:notifications_enabled, true)
 
-  @impl true
   def kill_notifications_enabled?, do: get(:kill_notifications_enabled, true)
 
-  @impl true
   def system_notifications_enabled?, do: get(:system_notifications_enabled, true)
 
-  @impl true
   def character_notifications_enabled?, do: get(:character_notifications_enabled, true)
 
   def rally_notifications_enabled?, do: get(:rally_notifications_enabled, true)
@@ -214,7 +207,6 @@ defmodule WandererNotifier.Shared.Config do
   # ConfigBehaviour Implementation (Required by behavior)
   # ══════════════════════════════════════════════════════════════════════════════
 
-  @impl true
   def get_notification_setting(type, key) do
     case {type, key} do
       {:kill, :enabled} -> {:ok, kill_notifications_enabled?()}
@@ -224,46 +216,40 @@ defmodule WandererNotifier.Shared.Config do
     end
   end
 
-  @impl true
   def get_config do
-    %{
-      notifications: %{
-        enabled: notifications_enabled?(),
-        kill: %{enabled: kill_notifications_enabled?(), min_value: min_kill_value()},
-        system: %{enabled: system_notifications_enabled?()},
-        character: %{enabled: character_notifications_enabled?()}
-      },
-      features: features()
-    }
+    {:ok,
+     %{
+       notifications: %{
+         enabled: notifications_enabled?(),
+         kill: %{enabled: kill_notifications_enabled?(), min_value: min_kill_value()},
+         system: %{enabled: system_notifications_enabled?()},
+         character: %{enabled: character_notifications_enabled?()}
+       },
+       features: features()
+     }}
   end
 
   # Module configuration for dependency injection
-  @impl true
   def deduplication_module do
     get(:deduplication_module, WandererNotifier.Domains.Notifications.CacheImpl)
   end
 
-  @impl true
   def system_track_module do
     get(:system_track_module, WandererNotifier.Domains.Tracking.Entities.System)
   end
 
-  @impl true
   def character_track_module do
     get(:character_track_module, WandererNotifier.Domains.Tracking.Entities.Character)
   end
 
-  @impl true
   def notification_determiner_module do
     get(:notification_determiner_module, WandererNotifier.Domains.Notifications.Determiner)
   end
 
-  @impl true
   def killmail_enrichment_module do
     get(:killmail_enrichment_module, WandererNotifier.Domains.Killmail.Enrichment)
   end
 
-  @impl true
   def killmail_notification_module do
     get(
       :killmail_notification_module,

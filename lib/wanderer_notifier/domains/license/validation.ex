@@ -5,7 +5,6 @@ defmodule WandererNotifier.Domains.License.Validation do
   """
 
   alias WandererNotifier.Shared.Config
-  alias WandererNotifier.Shared.Config.Utils
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
 
@@ -68,7 +67,7 @@ defmodule WandererNotifier.Domains.License.Validation do
   @spec api_token_valid?() :: boolean()
   def api_token_valid? do
     token = Config.notifier_api_token()
-    !Utils.nil_or_empty?(token)
+    !nil_or_empty?(token)
   end
 
   @doc """
@@ -169,4 +168,10 @@ defmodule WandererNotifier.Domains.License.Validation do
       category: :config
     )
   end
+
+  # Simple helper to replace Config.Utils
+  defp nil_or_empty?(nil), do: true
+  defp nil_or_empty?(""), do: true
+  defp nil_or_empty?(value) when is_binary(value), do: String.trim(value) == ""
+  defp nil_or_empty?(_), do: false
 end

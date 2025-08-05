@@ -1,10 +1,10 @@
 defmodule WandererNotifier.DiscordNotifier do
   @moduledoc """
   Simplified Discord notification system.
-  
+
   Handles all Discord notifications (kills, rally points, system/character tracking)
   using a single, unified approach with proper async handling and simplified HTTP client usage.
-  
+
   Key design principles:
   - Fire-and-forget: All public functions return immediately
   - Single HTTP client: Uses Req for all Discord API calls
@@ -66,7 +66,9 @@ defmodule WandererNotifier.DiscordNotifier do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp send_kill_notification(killmail) do
-    Logger.debug("Processing kill notification async", killmail_id: Map.get(killmail, :killmail_id))
+    Logger.debug("Processing kill notification async",
+      killmail_id: Map.get(killmail, :killmail_id)
+    )
 
     try do
       # Check if notifications are enabled
@@ -107,11 +109,11 @@ defmodule WandererNotifier.DiscordNotifier do
 
           formatted_notification ->
             channel_id = Config.discord_rally_channel_id() || Config.discord_channel_id()
-            
+
             # Add @group mention if configured
             content = build_rally_content()
             formatted_with_content = Map.put(formatted_notification, :content, content)
-            
+
             send_to_discord(formatted_with_content, channel_id)
             Logger.debug("Rally point notification sent successfully")
             :sent
@@ -128,7 +130,9 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_system_notification(system) do
-    Logger.debug("Processing system notification async", system_id: Map.get(system, :solar_system_id))
+    Logger.debug("Processing system notification async",
+      system_id: Map.get(system, :solar_system_id)
+    )
 
     try do
       if notifications_enabled?() and system_notifications_enabled?() do
@@ -155,7 +159,9 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_character_notification(character) do
-    Logger.debug("Processing character notification async", character_id: Map.get(character, :character_id))
+    Logger.debug("Processing character notification async",
+      character_id: Map.get(character, :character_id)
+    )
 
     try do
       if notifications_enabled?() and character_notifications_enabled?() do
@@ -188,7 +194,7 @@ defmodule WandererNotifier.DiscordNotifier do
       if notifications_enabled?() do
         # Extract channel from opts or use default
         channel_id = Keyword.get(opts, :channel_id, Config.discord_channel_id())
-        
+
         send_to_discord(embed, channel_id)
         Logger.debug("Generic embed sent successfully")
         :sent
@@ -218,7 +224,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp post_embed_to_discord(embed, channel_id) do
     url = "https://discord.com/api/v10/channels/#{channel_id}/messages"
-    
+
     headers = [
       {"Authorization", "Bot #{Config.discord_bot_token()}"},
       {"Content-Type", "application/json"},
@@ -229,15 +235,15 @@ defmodule WandererNotifier.DiscordNotifier do
     body = build_discord_message_body(embed)
 
     # Make request with Req (includes built-in retries and timeout handling)
-    case Req.post(url, 
-      headers: headers,
-      json: body,
-      retry: :transient,
-      max_retries: 3,
-      retry_delay: fn attempt -> :timer.seconds(2 ** (attempt - 1)) end,
-      receive_timeout: 10_000,
-      connect_options: [timeout: 5_000]
-    ) do
+    case Req.post(url,
+           headers: headers,
+           json: body,
+           retry: :transient,
+           max_retries: 3,
+           retry_delay: fn attempt -> :timer.seconds(2 ** (attempt - 1)) end,
+           receive_timeout: 10_000,
+           connect_options: [timeout: 5_000]
+         ) do
       {:ok, %{status: status}} when status in 200..299 ->
         Logger.debug("Discord API call successful", status: status)
         :ok
@@ -260,7 +266,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp build_discord_message_body(embed) do
     body = %{embeds: [embed]}
-    
+
     # Add content if present
     case Map.get(embed, :content) do
       nil -> body
@@ -296,13 +302,13 @@ defmodule WandererNotifier.DiscordNotifier do
     has_tracked_character = tracked_character?(killmail)
 
     cond do
-      has_tracked_character -> 
+      has_tracked_character ->
         Config.discord_character_kill_channel_id() || Config.discord_channel_id()
-      
-      has_tracked_system -> 
+
+      has_tracked_system ->
         Config.discord_system_kill_channel_id() || Config.discord_channel_id()
-      
-      true -> 
+
+      true ->
         Config.discord_channel_id()
     end
   end

@@ -467,7 +467,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
   end
 
   defp check_tracked_systems do
-    case WandererNotifier.Contexts.ApiContext.get_tracked_systems() do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems() do
       {:ok, systems} -> log_tracked_systems(systems)
       {:error, reason} -> Logger.error("[TEST] Failed to get tracked systems: #{inspect(reason)}")
     end
@@ -486,7 +486,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
   end
 
   defp check_tracked_characters do
-    case WandererNotifier.Contexts.ApiContext.get_tracked_characters() do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters() do
       {:ok, characters} ->
         log_tracked_characters(characters)
 
@@ -510,7 +510,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
 
   defp check_startup_suppression do
     try do
-      stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+      stats = WandererNotifier.Shared.Metrics.get_stats()
       startup_suppression = Map.get(stats, :startup_suppression_active, false)
       Logger.info("[TEST] Startup suppression active: #{startup_suppression}")
     rescue

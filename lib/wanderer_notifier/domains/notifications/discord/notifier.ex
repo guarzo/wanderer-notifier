@@ -4,7 +4,6 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   """
 
   require Logger
-  alias WandererNotifier.Application.Services.ApplicationService
   alias WandererNotifier.Domains.Killmail.{Killmail, Enrichment}
 
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.{
@@ -13,7 +12,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     NeoClient
   }
 
-  alias WandererNotifier.Domains.Notifications.Formatters.{NotificationFormatter, PlainText}
+  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Notifications.LicenseLimiter
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Shared.Config
@@ -163,11 +162,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       NeoClient.send_embed(notification, channel_id)
       LicenseLimiter.increment(:character)
     else
-      message = PlainText.format_plain_text(character)
+      message = NotificationFormatter.format_plain_text(character)
       NeoClient.send_message(message)
     end
 
-    ApplicationService.increment_metric(:characters)
+    WandererNotifier.Shared.Metrics.increment(:characters)
 
     Logger.info("Character #{character.name} (#{character.character_id}) notified",
       category: :processor
@@ -199,11 +198,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       NeoClient.send_embed(notification, channel_id)
       LicenseLimiter.increment(:system)
     else
-      message = PlainText.format_plain_text(system)
+      message = NotificationFormatter.format_plain_text(system)
       NeoClient.send_message(message)
     end
 
-    ApplicationService.increment_metric(:systems)
+    WandererNotifier.Shared.Metrics.increment(:systems)
 
     Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
       category: :processor
@@ -425,7 +424,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp send_simple_kill_notification(kill_data, channel_id) do
-    message = PlainText.format_plain_text(kill_data)
+    message = NotificationFormatter.format_plain_text(kill_data)
     NeoClient.send_message(message, channel_id)
   end
 

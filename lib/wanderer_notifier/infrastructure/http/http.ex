@@ -232,7 +232,7 @@ defmodule WandererNotifier.Infrastructure.Http do
     req_opts =
       if Keyword.has_key?(opts, :connect_timeout) do
         connect_timeout = Keyword.get(opts, :connect_timeout)
-        Keyword.put(req_opts, :connect_options, [timeout: connect_timeout])
+        Keyword.put(req_opts, :connect_options, timeout: connect_timeout)
       else
         req_opts
       end

@@ -48,7 +48,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   @spec validate_service_interfaces() :: validation_result()
   def validate_service_interfaces do
     services_to_check = [
-      WandererNotifier.Application.Services.ApplicationService
+      WandererNotifier.Application.Services.SimpleApplicationService
     ]
 
     case check_service_interfaces(services_to_check) do
@@ -66,25 +66,17 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   @spec validate_dependency_registry() :: validation_result()
   def validate_dependency_registry do
     try do
-      # Check if registry is running
-      case Process.whereis(WandererNotifier.Application.Services.DependencyRegistry) do
-        nil ->
-          {:error, "Dependency registry not running", :not_started}
+      # Test basic dependency resolution with new simple approach
+      cache_impl = WandererNotifier.Shared.Dependencies.cache()
 
-        _pid ->
-          # Test basic dependency resolution
-          cache_impl = WandererNotifier.Application.Services.DependencyRegistry.resolve(:cache)
-
-          if cache_impl do
-            deps = WandererNotifier.Application.Services.DependencyRegistry.list_dependencies()
-            {:ok, "Dependency registry operational with #{length(deps)} dependencies"}
-          else
-            {:error, "Dependency resolution failed", :resolution_failed}
-          end
+      if cache_impl do
+        {:ok, "Dependency resolution operational using simplified approach"}
+      else
+        {:error, "Dependency resolution failed", :resolution_failed}
       end
     rescue
       error ->
-        {:error, "Dependency registry validation failed", error}
+        {:error, "Dependency validation failed", error}
     end
   end
 
@@ -99,10 +91,10 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
       {"Dependency Registry", &validate_dependency_registry/0},
       {"Configuration Management", &validate_configuration_management/0},
 
-      # Context Layers
-      {"API Context Integration", &validate_api_context/0},
-      {"Notification Context Integration", &validate_notification_context/0},
-      {"Processing Context Integration", &validate_processing_context/0},
+      # Direct Service Integration
+      {"Map Tracking Integration", &validate_api_context/0},
+      {"Discord Notification Integration", &validate_notification_context/0},
+      {"Killmail Processing Integration", &validate_processing_context/0},
 
       # Service Architecture
       {"Application Service Health", &validate_application_service/0},
@@ -129,8 +121,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   defp validate_service_initialization do
     # Check that key services are running
     critical_services = [
-      WandererNotifier.Application.Services.ApplicationService,
-      WandererNotifier.Application.Services.DependencyRegistry,
+      WandererNotifier.Application.Services.SimpleApplicationService,
       WandererNotifier.Infrastructure.Cache
     ]
 
@@ -145,38 +136,34 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
 
   defp validate_configuration_management do
     try do
-      # Test configuration loading for a service
-      case WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(:notifications) do
-        {:ok, config} when is_map(config) ->
-          {:ok, "Configuration management operational"}
-
-        {:error, reason} ->
-          {:error, "Configuration loading failed", reason}
-      end
+      # Test that configuration is accessible
+      _ = WandererNotifier.Shared.SimpleConfig.notifications_enabled?()
+      _ = WandererNotifier.Shared.SimpleConfig.discord_channel_id()
+      {:ok, "Configuration access operational"}
     rescue
       error ->
-        {:error, "Configuration management validation failed", error}
+        {:error, "Configuration validation failed", error}
     end
   end
 
   defp validate_api_context do
     try do
-      # Test that ApiContext module exists and has expected functions
-      functions = WandererNotifier.Contexts.ApiContext.__info__(:functions)
-      required_functions = [:get_tracked_systems, :get_tracked_characters]
+      # Test that MapTrackingClient has expected functions
+      functions = WandererNotifier.Domains.Tracking.MapTrackingClient.__info__(:functions)
+      required_functions = [:fetch_and_cache_systems, :fetch_and_cache_characters]
 
       missing = required_functions -- Keyword.keys(functions)
 
       case missing do
         [] ->
-          {:ok, "API Context integration complete"}
+          {:ok, "Map tracking integration complete"}
 
         missing_functions ->
-          {:error, "API Context missing functions", missing_functions}
+          {:error, "Map tracking missing functions", missing_functions}
       end
     rescue
       error ->
-        {:error, "API Context validation failed", error}
+        {:error, "Map tracking validation failed", error}
     end
   end
 
@@ -209,34 +196,34 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
 
   defp validate_processing_context do
     try do
-      # Test that ProcessingContext exists and has required functions
-      functions = WandererNotifier.Contexts.ProcessingContext.__info__(:functions)
+      # Test that Pipeline has required functions
+      functions = WandererNotifier.Domains.Killmail.Pipeline.__info__(:functions)
       required_functions = [:process_killmail]
 
       missing = required_functions -- Keyword.keys(functions)
 
       case missing do
         [] ->
-          {:ok, "Processing Context integration complete"}
+          {:ok, "Killmail processing pipeline integration complete"}
 
         missing_functions ->
-          {:error, "Processing Context missing functions", missing_functions}
+          {:error, "Pipeline missing functions", missing_functions}
       end
     rescue
       error ->
-        {:error, "Processing Context validation failed", error}
+        {:error, "Pipeline validation failed", error}
     end
   end
 
   defp validate_application_service do
     try do
-      case Process.whereis(WandererNotifier.Application.Services.ApplicationService) do
+      case Process.whereis(WandererNotifier.Application.Services.SimpleApplicationService) do
         nil ->
           {:error, "Application Service not running", :not_started}
 
         _pid ->
           # Test basic functionality - verify the service responds with proper structure
-          stats = WandererNotifier.Application.Services.ApplicationService.get_stats()
+          stats = WandererNotifier.Shared.Metrics.get_stats()
 
           # Validate stats structure
           if validate_stats_structure(stats) do
@@ -257,14 +244,14 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
       # This simulates the flow: Configuration -> Dependency -> Context -> Service
 
       # 1. Configuration loading
-      {:ok, _config} =
-        WandererNotifier.Shared.Config.ConfigurationManager.get_service_config(:notifications)
+      _notifications_enabled = WandererNotifier.Shared.SimpleConfig.notifications_enabled?()
 
       # 2. Dependency resolution
-      notification_impl =
-        WandererNotifier.Application.Services.DependencyRegistry.resolve(:notification_context)
+      # Since we're simplifying dependencies, just check core dependencies work
+      cache_impl = WandererNotifier.Shared.Dependencies.cache()
+      esi_impl = WandererNotifier.Shared.Dependencies.esi()
 
-      if notification_impl do
+      if cache_impl && esi_impl do
         {:ok, "End-to-end workflow validation passed"}
       else
         {:error, "End-to-end workflow failed", :dependency_resolution}
