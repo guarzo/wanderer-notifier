@@ -135,15 +135,22 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   end
 
   defp validate_configuration_management do
-    try do
-      # Test that configuration is accessible
-      _ = WandererNotifier.Shared.SimpleConfig.notifications_enabled?()
-      _ = WandererNotifier.Shared.SimpleConfig.discord_channel_id()
-      {:ok, "Configuration access operational"}
-    rescue
-      error ->
-        {:error, "Configuration validation failed", error}
-    end
+    config_checks = [
+      {"notifications_enabled",
+       fn -> WandererNotifier.Shared.Config.notifications_enabled?() end},
+      {"discord_channel_id", fn -> WandererNotifier.Shared.Config.discord_channel_id() end}
+    ]
+
+    Enum.reduce_while(config_checks, {:ok, "Configuration access operational"}, fn {key, check_fn},
+                                                                                   _acc ->
+      try do
+        _ = check_fn.()
+        {:cont, {:ok, "Configuration access operational"}}
+      rescue
+        error ->
+          {:halt, {:error, "Configuration validation failed for #{key}", error}}
+      end
+    end)
   end
 
   defp validate_api_context do
@@ -244,7 +251,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
       # This simulates the flow: Configuration -> Dependency -> Context -> Service
 
       # 1. Configuration loading
-      _notifications_enabled = WandererNotifier.Shared.SimpleConfig.notifications_enabled?()
+      _notifications_enabled = WandererNotifier.Shared.Config.notifications_enabled?()
 
       # 2. Dependency resolution
       # Since we're simplifying dependencies, just check core dependencies work

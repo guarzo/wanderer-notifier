@@ -116,21 +116,12 @@ defmodule WandererNotifier.Domains.License.License do
       license_key = Config.license_key()
       api_token = Config.license_manager_api_key()
 
-      cond do
-        is_nil(license_key) or license_key == "" ->
-          {:error, :missing_license_key}
-
-        is_nil(api_token) or api_token == "" ->
-          {:error, :missing_api_token}
-
-        true ->
-          {:ok,
-           %{
-             license_key: license_key,
-             api_token: api_token,
-             validation_url: Config.license_manager_api_url() || @validation_url
-           }}
-      end
+      {:ok,
+       %{
+         license_key: license_key,
+         api_token: api_token,
+         validation_url: Config.license_manager_api_url() || @validation_url
+       }}
     rescue
       e ->
         Logger.error("Error getting license configuration", error: Exception.message(e))
@@ -150,7 +141,7 @@ defmodule WandererNotifier.Domains.License.License do
         "product" => "wanderer_notifier"
       })
 
-    url = "#{config.validation_url}/validate_bot"
+    url = config.validation_url
 
     case Http.request(:post, url, body, headers, service: :license) do
       {:ok, %{status_code: 200, body: response_body}} ->
@@ -200,8 +191,6 @@ defmodule WandererNotifier.Domains.License.License do
 
   defp format_error_message(reason) do
     case reason do
-      :missing_license_key -> "License key not configured"
-      :missing_api_token -> "API token not configured"
       :config_error -> "Configuration error"
       {:http_error, status_code, _body} -> "HTTP error: #{status_code}"
       {:request_failed, reason} -> "Request failed: #{inspect(reason)}"

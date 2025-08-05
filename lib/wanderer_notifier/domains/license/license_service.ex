@@ -242,19 +242,13 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     # Perform initial license validation at startup
     Logger.debug("License Service performing initial validation", category: :config)
 
-    license_key = Config.license_key()
+    _license_key = Config.license_key()
 
-    Logger.debug("License key presence",
-      present: is_binary(license_key) && String.length(license_key) > 0,
-      category: :config
-    )
+    Logger.debug("License key loaded", category: :config)
 
-    notifier_api_token = Config.api_token()
+    _notifier_api_token = Config.notifier_api_token()
 
-    Logger.debug("API token presence",
-      present: is_binary(notifier_api_token) && String.length(notifier_api_token) > 0,
-      category: :config
-    )
+    Logger.debug("API token loaded", category: :config)
 
     license_manager_url = Config.license_manager_api_url()
     Logger.debug("License manager URL", url: license_manager_url, category: :config)
@@ -372,7 +366,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @impl true
   def handle_call(:validate, _from, state) do
-    notifier_api_token = Config.api_token()
+    notifier_api_token = Config.notifier_api_token()
     license_key = Config.license_key()
 
     # Use supervised task for license validation
@@ -499,7 +493,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   defp do_validate(state) do
     license_key = Config.license_key()
-    notifier_api_token = Config.api_token()
+    notifier_api_token = Config.notifier_api_token()
     license_manager_url = Config.license_manager_api_url()
 
     # Log detailed debugging information
@@ -512,10 +506,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     end
   end
 
-  defp log_validation_parameters(license_key, notifier_api_token, license_manager_url) do
+  defp log_validation_parameters(_license_key, _notifier_api_token, license_manager_url) do
     Logger.debug("License validation parameters",
-      license_key_present: is_binary(license_key) && license_key != "",
-      api_token_present: is_binary(notifier_api_token) && notifier_api_token != "",
       license_url: license_manager_url,
       env: Application.get_env(:wanderer_notifier, :environment),
       category: :config
@@ -861,5 +853,4 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   defp nil_or_empty?(nil), do: true
   defp nil_or_empty?(""), do: true
   defp nil_or_empty?(value) when is_binary(value), do: String.trim(value) == ""
-  defp nil_or_empty?(_), do: false
 end

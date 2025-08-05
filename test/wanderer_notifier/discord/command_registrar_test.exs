@@ -17,10 +17,17 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.CommandRegistrarTest 
     end
 
     test "returns error when DISCORD_APPLICATION_ID is not set", _context do
-      # Clear the application ID
+      # Clear both application config and environment variable
       Application.put_env(:wanderer_notifier, :discord_application_id, nil)
+      original_env = System.get_env("DISCORD_APPLICATION_ID")
+      System.delete_env("DISCORD_APPLICATION_ID")
 
-      assert {:error, :missing_application_id} = CommandRegistrar.register()
+      result = CommandRegistrar.register()
+
+      # Restore original environment variable if it existed
+      if original_env, do: System.put_env("DISCORD_APPLICATION_ID", original_env)
+
+      assert {:error, :missing_application_id} = result
     end
   end
 

@@ -14,6 +14,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Domains.Notifications.Deduplication
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -48,11 +49,15 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
   defp process_killmail_pipeline(killmail_data, kill_id) do
-    # Deduplication already happens in WebSocket client
-    with {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
+    # Check for duplicates first (in addition to WebSocket client deduplication)
+    with {:ok, :new} <- check_duplicate(kill_id),
+         {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
          {:ok, true} <- should_notify?(killmail) do
       send_notification(killmail)
     else
+      {:ok, :duplicate} ->
+        handle_skipped(kill_id, :duplicate)
+
       {:ok, false} ->
         # Get killmail for logging details even though we're not notifying
         case build_killmail(killmail_data) do
@@ -176,6 +181,26 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp parse_system_id(_), do: nil
+
+  @spec check_duplicate(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
+  defp check_duplicate(kill_id) do
+    case Deduplication.check(:kill, kill_id) do
+      {:ok, :new} ->
+        {:ok, :new}
+
+      {:ok, :duplicate} ->
+        {:ok, :duplicate}
+
+      {:error, reason} ->
+        # Log the error but don't fail the pipeline - treat as new to be safe
+        Logger.warning("Deduplication check failed, treating as new",
+          killmail_id: kill_id,
+          error: reason
+        )
+
+        {:ok, :new}
+    end
+  end
 
   @spec should_notify?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
   defp should_notify?(%Killmail{} = killmail) do
@@ -354,7 +379,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
 
-    victim_name = killmail.victim_character_name
+    victim_name = killmail.victim_character_name || "Unknown"
     system_name = killmail.system_name
 
     Logger.debug("Killmail #{kill_id} skipped: #{reason_text}",
@@ -394,8 +419,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec maybe_process_items(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
   defp maybe_process_items(%Killmail{} = killmail) do
-    enabled = Config.get(:notable_items_enabled, false)
-    token_present = Config.get(:janice_api_token) != nil
+    enabled = Config.notable_items_enabled?()
+    token_present = Config.janice_api_token() != nil
 
     Logger.debug("Item processing status",
       killmail_id: killmail.killmail_id,

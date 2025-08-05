@@ -24,7 +24,43 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketHeartbeat do
   Timer reference for the scheduled heartbeat.
   """
   def schedule_heartbeat(interval_ms \\ @default_heartbeat_interval) do
-    Process.send_after(self(), :heartbeat, interval_ms)
+    validated_interval = validate_interval(interval_ms)
+    Process.send_after(self(), :heartbeat, validated_interval)
+  end
+
+  @min_interval 100
+  @max_interval 300_000
+
+  defp validate_interval(interval_ms)
+       when is_integer(interval_ms) and interval_ms >= @min_interval and
+              interval_ms <= @max_interval do
+    interval_ms
+  end
+
+  defp validate_interval(interval_ms)
+       when is_integer(interval_ms) and interval_ms < @min_interval do
+    Logger.warning(
+      "Heartbeat interval too small (#{interval_ms}ms), using minimum #{@min_interval}ms"
+    )
+
+    @min_interval
+  end
+
+  defp validate_interval(interval_ms)
+       when is_integer(interval_ms) and interval_ms > @max_interval do
+    Logger.warning(
+      "Heartbeat interval too large (#{interval_ms}ms), using maximum #{@max_interval}ms"
+    )
+
+    @max_interval
+  end
+
+  defp validate_interval(interval_ms) do
+    Logger.error(
+      "Invalid heartbeat interval: #{inspect(interval_ms)}, using default #{@default_heartbeat_interval}ms"
+    )
+
+    @default_heartbeat_interval
   end
 
   @doc """
@@ -144,7 +180,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketHeartbeat do
       {:ok, json} ->
         {:reply, {:text, json}, schedule_next_heartbeat(state, interval_ms)}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error("Failed to encode heartbeat message",
+          error: inspect(reason),
+          message: inspect(heartbeat_message)
+        )
+
         {:ok, schedule_next_heartbeat(state, interval_ms)}
     end
   end

@@ -30,7 +30,10 @@ defmodule WandererNotifier.Application.Services.SimpleApplicationService do
         {:error, :not_running}
 
       pid when is_pid(pid) ->
-        if Process.alive?(pid), do: :ok, else: {:error, :not_alive}
+        case Process.alive?(pid) do
+          true -> :ok
+          false -> {:error, :not_alive}
+        end
     end
   end
 
@@ -42,11 +45,6 @@ defmodule WandererNotifier.Application.Services.SimpleApplicationService do
   def init(_opts) do
     Logger.info("SimpleApplicationService initialized successfully", category: :startup)
     {:ok, %{started_at: DateTime.utc_now()}}
-  end
-
-  @impl true
-  def handle_call(:ping, _from, state) do
-    {:reply, :pong, state}
   end
 
   @impl true

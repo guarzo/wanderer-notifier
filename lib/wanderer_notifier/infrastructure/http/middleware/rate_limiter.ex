@@ -1,4 +1,5 @@
 defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
+  @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
   require Logger
 
   @moduledoc """
@@ -33,8 +34,6 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       # Fixed interval operations
       RateLimiter.fixed_interval(fn -> poll_api() end, 5000)
   """
-
-  @behaviour WandererNotifier.Infrastructure.Http.Middleware.MiddlewareBehaviour
 
   alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Shared.Types.Constants
@@ -137,7 +136,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
     bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global
 
-    # Use our RateLimiter module to check rate limit
+    # Use our RateLimiter module to hit the rate limit bucket
     case WandererNotifier.Infrastructure.RateLimiter.hit(
            bucket_id,
            @default_scale_ms,

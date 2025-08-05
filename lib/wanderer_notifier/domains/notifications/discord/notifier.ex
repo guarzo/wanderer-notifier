@@ -416,16 +416,27 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
     channel_id = Config.discord_channel_id()
 
-    if FeatureFlags.components_enabled?() and Map.has_key?(notification, :components) do
-      NeoClient.send_message_with_components(notification, notification.components, channel_id)
-    else
-      NeoClient.send_embed(notification, channel_id)
+    result =
+      if FeatureFlags.components_enabled?() and Map.has_key?(notification, :components) do
+        NeoClient.send_message_with_components(notification, notification.components, channel_id)
+      else
+        NeoClient.send_embed(notification, channel_id)
+      end
+
+    case result do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
   defp send_simple_kill_notification(kill_data, channel_id) do
     message = NotificationFormatter.format_plain_text(kill_data)
-    NeoClient.send_message(message, channel_id)
+    result = NeoClient.send_message(message, channel_id)
+
+    case result do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp enrich_with_system_name(%Killmail{} = killmail) do

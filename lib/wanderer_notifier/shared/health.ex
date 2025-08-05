@@ -8,6 +8,8 @@ defmodule WandererNotifier.Shared.Health do
 
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
+  alias WandererNotifier.Shared.Dependencies
+  alias WandererNotifier.Shared.Config
 
   @doc """
   Checks the health of all critical services.
@@ -49,7 +51,9 @@ defmodule WandererNotifier.Shared.Health do
   # ──────────────────────────────────────────────────────────────────────────────
 
   defp check_cache do
-    case Process.whereis(:wanderer_cache) do
+    cache_name = Dependencies.cache_name()
+
+    case Process.whereis(cache_name) do
       nil ->
         :unhealthy
 
@@ -95,16 +99,20 @@ defmodule WandererNotifier.Shared.Health do
   end
 
   defp check_map_tracking do
-    # Check if SSE client is running
-    case Process.whereis(WandererNotifier.Map.SSEClient) do
-      nil ->
-        :degraded
+    # Check if SSE client is running using Registry lookup
+    try do
+      map_slug = Config.map_name()
 
-      pid when is_pid(pid) ->
-        if Process.alive?(pid), do: :healthy, else: :degraded
+      case Registry.lookup(WandererNotifier.Registry, {:sse_client, map_slug}) do
+        [] ->
+          :degraded
+
+        [{pid, _}] when is_pid(pid) ->
+          if Process.alive?(pid), do: :healthy, else: :degraded
+      end
+    rescue
+      _ -> :unknown
     end
-  rescue
-    _ -> :unknown
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

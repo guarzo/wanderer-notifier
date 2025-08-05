@@ -310,31 +310,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   defp has_tracked_system_or_character?(system_id, victim_character_id) do
-    # Check for testing override first
-    case check_testing_override() do
-      {:ok, :character} ->
-        Logger.info("[TEST] Kill override: forcing character kill")
-        # Force character kill by returning true
-        true
-
-      {:ok, :system} ->
-        Logger.info("[TEST] Kill override: forcing system kill")
-        # Force system kill by returning true
-        true
-
-      _ ->
-        # Normal logic
-        tracked_system_for_killmail?(system_id) or tracked_character?(victim_character_id)
-    end
-  end
-
-  defp check_testing_override do
-    try do
-      WandererNotifier.Testing.NotificationTester.check_kill_override()
-    rescue
-      _e ->
-        {:ok, nil}
-    end
+    tracked_system_for_killmail?(system_id) or tracked_character?(victim_character_id)
   end
 
   defp check_deduplication(killmail_id) do
@@ -350,8 +326,4 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
         {:ok, %{should_notify: true, reason: :deduplication_failed}}
     end
   end
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Legacy Compatibility Functions
-  # ══════════════════════════════════════════════════════════════════════════════
 end

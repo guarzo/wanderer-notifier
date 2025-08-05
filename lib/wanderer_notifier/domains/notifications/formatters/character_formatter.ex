@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
 
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  alias WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers
+  alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -41,7 +41,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
       type: :character_notification,
       title: build_character_title(character),
       description: build_character_description(character),
-      color: FormatterHelpers.get_character_color(:added),
+      color: FormatterUtils.get_character_color(:added),
       url: character_id_int && "https://zkillboard.com/character/#{character_id_int}/",
       thumbnail:
         character_id_int &&
@@ -85,8 +85,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
     |> add_character_field(character)
     |> add_corporation_field(character)
     |> add_alliance_field(character)
-    # Location field removed - not available in Character struct
-    # |> add_location_field(character)
     |> add_status_field(character)
     |> Enum.reverse()
   end
@@ -131,7 +129,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp normalize_character_id(id) when is_integer(id), do: id
-  defp normalize_character_id(id) when is_binary(id), do: String.to_integer(id)
+
+  defp normalize_character_id(id) when is_binary(id) do
+    try do
+      String.to_integer(id)
+    rescue
+      ArgumentError ->
+        Logger.warning("Failed to convert character ID to integer", invalid_id: id)
+        nil
+    end
+  end
+
   defp normalize_character_id(_), do: nil
 
   # Helper functions to get corporation and alliance names from character data

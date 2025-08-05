@@ -15,13 +15,34 @@ defmodule WandererNotifier.DiscordNotifier do
   require Logger
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
+  alias WandererNotifier.Infrastructure.Http
 
   @doc """
   Send a kill notification asynchronously.
   Returns immediately, actual sending happens in background Task.
   """
   def send_kill_async(killmail) do
-    Task.start(fn -> send_kill_notification(killmail) end)
+    Task.start(fn ->
+      try do
+        send_kill_notification(killmail)
+        Logger.debug("Kill notification sent successfully", killmail_id: killmail.killmail_id)
+      rescue
+        error ->
+          Logger.error("Kill notification failed",
+            killmail_id: killmail.killmail_id,
+            error: inspect(error),
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          )
+
+          # Emit telemetry for notification failures
+          :telemetry.execute([:wanderer_notifier, :notification, :failed], %{count: 1}, %{
+            type: :kill,
+            killmail_id: killmail.killmail_id,
+            reason: inspect(error)
+          })
+      end
+    end)
+
     :ok
   end
 
@@ -234,29 +255,21 @@ defmodule WandererNotifier.DiscordNotifier do
     # Build request body
     body = build_discord_message_body(embed)
 
-    # Make request with Req (includes built-in retries and timeout handling)
-    case Req.post(url,
-           headers: headers,
-           json: body,
-           retry: :transient,
-           max_retries: 3,
-           retry_delay: fn attempt -> :timer.seconds(2 ** (attempt - 1)) end,
-           receive_timeout: 10_000,
-           connect_options: [timeout: 5_000]
-         ) do
-      {:ok, %{status: status}} when status in 200..299 ->
-        Logger.debug("Discord API call successful", status: status)
+    # Make request with Infrastructure.Http (includes built-in retries and timeout handling)
+    case Http.request(:post, url, body, headers, service: :streaming, timeout: 10_000) do
+      {:ok, %{status_code: status_code}} when status_code in 200..299 ->
+        Logger.debug("Discord API call successful", status: status_code)
         :ok
 
-      {:ok, %{status: 429, body: body}} ->
+      {:ok, %{status_code: 429, body: body}} ->
         # Rate limited - log and continue (Req will retry automatically)
         retry_after = get_retry_after_from_body(body)
         Logger.warning("Discord rate limited", retry_after: retry_after)
         {:error, :rate_limited}
 
-      {:ok, %{status: status, body: body}} ->
-        Logger.error("Discord API error", status: status, body: inspect(body))
-        {:error, {:http_error, status}}
+      {:ok, %{status_code: status_code, body: body}} ->
+        Logger.error("Discord API error", status: status_code, body: inspect(body))
+        {:error, {:http_error, status_code}}
 
       {:error, reason} ->
         Logger.error("Discord API request failed", reason: inspect(reason))
@@ -330,9 +343,9 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   # Feature flags
-  defp notifications_enabled?, do: Config.get(:notifications_enabled, true)
-  defp kill_notifications_enabled?, do: Config.get(:kill_notifications_enabled, true)
-  defp rally_notifications_enabled?, do: Config.get(:rally_notifications_enabled, true)
-  defp system_notifications_enabled?, do: Config.get(:system_notifications_enabled, true)
-  defp character_notifications_enabled?, do: Config.get(:character_notifications_enabled, true)
+  defp notifications_enabled?, do: Config.notifications_enabled?()
+  defp kill_notifications_enabled?, do: Config.kill_notifications_enabled?()
+  defp rally_notifications_enabled?, do: Config.rally_notifications_enabled?()
+  defp system_notifications_enabled?, do: Config.system_notifications_enabled?()
+  defp character_notifications_enabled?, do: Config.character_notifications_enabled?()
 end

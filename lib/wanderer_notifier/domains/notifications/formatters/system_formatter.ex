@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
 
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  # alias WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers  # Not used yet
+  # alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils  # Not used yet
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  alias WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers
+  alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Adapters.ESI
   require Logger
@@ -36,7 +36,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp format_killmail_notification(%Killmail{} = killmail, _opts) do
-    embed_color = FormatterHelpers.get_isk_color(killmail.value || 0)
+    embed_color = FormatterUtils.get_isk_color(killmail.value || 0)
     full_description = build_full_kill_description(killmail)
 
     %{
@@ -286,9 +286,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       quantity = Map.get(item, "quantity", 1)
 
       if quantity > 1 do
-        "• #{name} x#{quantity} (~#{FormatterHelpers.format_isk(value)})"
+        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)})"
       else
-        "• #{name} (~#{FormatterHelpers.format_isk(value)})"
+        "• #{name} (~#{FormatterUtils.format_isk(value)})"
       end
     end)
     |> Enum.join("\n")
@@ -447,7 +447,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp format_timestamp(%Killmail{kill_time: kill_time}) when is_binary(kill_time) do
-    FormatterHelpers.format_timestamp_with_context(kill_time)
+    FormatterUtils.format_timestamp_with_context(kill_time)
   end
 
   defp format_timestamp(_), do: "Recently"

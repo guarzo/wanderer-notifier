@@ -295,21 +295,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
     api_key = Config.map_api_key()
 
-    case api_key do
-      nil ->
-        Logger.warning("No MAP_API_KEY configured - requests will be unauthenticated",
-          category: :api
-        )
-
-        headers
-
-      "" ->
-        Logger.warning("MAP_API_KEY is empty - requests will be unauthenticated", category: :api)
-        headers
-
-      api_key ->
-        [{"Authorization", "Bearer #{api_key}"} | headers]
-    end
+    [{"Authorization", "Bearer #{api_key}"} | headers]
   end
 
   @spec parse_response(entity_type(), term()) :: {:ok, list()} | {:error, term()}

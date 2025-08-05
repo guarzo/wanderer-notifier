@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Domains.Notifications.Formatters.FormatterHelpers do
+defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
   @moduledoc """
   Shared formatting utilities for notification formatters.
 
