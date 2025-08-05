@@ -138,8 +138,14 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       true ->
         killmail = Killmail.from_websocket_data(kill_id, system_id, data)
 
+        attacker_count =
+          case killmail.attackers do
+            nil -> 0
+            attackers -> length(attackers)
+          end
+
         Logger.debug(
-          "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{length(killmail.attackers || [])}"
+          "[Pipeline] Built killmail - Victim ID: #{inspect(killmail.victim_character_id)}, Attackers: #{attacker_count}"
         )
 
         {:ok, killmail}
@@ -189,9 +195,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     # Check if this killmail involves tracked entities
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
-      _victim_name = killmail.victim_character_name || "Unknown"
-      _system_name = killmail.system_name || "Unknown System"
-
       is_tracked = system_tracked or character_tracked
       log_tracking_status(killmail.killmail_id, system_tracked, character_tracked, is_tracked)
 
@@ -202,7 +205,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp log_tracking_status(killmail_id, system_tracked, character_tracked, is_tracked) do
     if is_tracked do
       tracking_reason = get_tracking_reason(system_tracked, character_tracked)
-      Logger.info("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
+      Logger.debug("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
     else
       Logger.debug("[Pipeline] Killmail #{killmail_id} not tracked")
     end
@@ -238,8 +241,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp character_tracked?(%Killmail{} = killmail) do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
     attacker_tracked = any_attacker_tracked?(killmail.attackers)
-
-    _victim_name = killmail.victim_character_name || "Unknown"
 
     if victim_tracked or attacker_tracked do
       Logger.debug(
@@ -341,7 +342,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     Telemetry.processing_skipped(kill_id, reason)
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
-    Logger.info("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
+    Logger.debug("Killmail #{kill_id} skipped: #{reason_text}", category: :killmail)
 
     {:ok, :skipped}
   end
@@ -353,15 +354,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     reason_text = reason |> Atom.to_string() |> String.replace("_", " ")
 
-    victim_name =
-      case killmail.victim_character_name do
-        nil -> "Unknown"
-        name -> name
-      end
+    victim_name = killmail.victim_character_name
+    system_name = killmail.system_name
 
-    system_name = killmail.system_name || "Unknown System"
-
-    Logger.info("Killmail #{kill_id} skipped: #{reason_text}",
+    Logger.debug("Killmail #{kill_id} skipped: #{reason_text}",
       category: :killmail,
       system_id: killmail.system_id,
       system_name: system_name,
@@ -369,7 +365,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       victim_name: victim_name,
       victim_corp: killmail.victim_corporation_name,
       victim_alliance: killmail.victim_alliance_name,
-      attacker_count: length(killmail.attackers || [])
+      attacker_count:
+        case killmail.attackers do
+          nil -> 0
+          attackers -> length(attackers)
+        end
     )
 
     {:ok, :skipped}

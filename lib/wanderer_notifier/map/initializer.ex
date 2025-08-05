@@ -118,14 +118,14 @@ defmodule WandererNotifier.Map.Initializer do
   # Dialyzer warns this pattern is unreachable in test environment
   @dialyzer {:nowarn_function, execute_timed_fetch: 2}
   defp execute_timed_fetch(fetch_function, label) do
-    Logger.info("Starting #{label} fetch", category: :api)
+    Logger.debug("Starting #{label} fetch", category: :api)
     start_time = System.monotonic_time(:millisecond)
 
     case fetch_function.() do
       {:ok, items} ->
         elapsed = System.monotonic_time(:millisecond) - start_time
 
-        Logger.info("#{String.capitalize(label)} fetch completed",
+        Logger.debug("#{String.capitalize(label)} fetch completed",
           count: length(items),
           elapsed_ms: elapsed,
           category: :api

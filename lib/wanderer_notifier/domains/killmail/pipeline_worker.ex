@@ -58,7 +58,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineWorker do
     victim_info = extract_victim_info(killmail)
     system_info = extract_system_info(killmail)
 
-    Logger.info("Received WebSocket killmail",
+    Logger.debug("Received WebSocket killmail",
       killmail_id: get_killmail_value(killmail, "killmail_id"),
       system_id: get_killmail_value(killmail, "system_id"),
       system_name: system_info.name,

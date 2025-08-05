@@ -258,7 +258,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
 
     try do
       WandererNotifier.Map.SSESupervisor.initialize_sse_clients()
-      Logger.info("SSE clients initialized successfully", category: :startup)
+      Logger.debug("SSE clients initialized successfully", category: :startup)
     rescue
       error ->
         Logger.error("Failed to initialize SSE clients",

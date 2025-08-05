@@ -14,7 +14,7 @@ defmodule WandererNotifier.Testing.NotificationTester do
       iex> NT.test_system("30000142")
 
       # Process killmail by ID as new notification
-      iex> NT.test_killmail_id("128914153")
+      iex> NT.test_killmail_id("129019511")
 
       # Test WandererKills service connectivity
       iex> NT.test_wanderer_kills_connection()

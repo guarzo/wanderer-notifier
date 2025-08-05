@@ -48,7 +48,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec fetch_and_cache_characters() :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_characters do
-    Logger.info("MapTrackingClient.fetch_and_cache_characters called")
+    Logger.debug("MapTrackingClient.fetch_and_cache_characters called")
     fetch_and_cache_entities(:characters)
   end
 
@@ -58,7 +58,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec fetch_and_cache_characters(boolean()) :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_characters(skip_notifications) do
-    Logger.info("MapTrackingClient.fetch_and_cache_characters called",
+    Logger.debug("MapTrackingClient.fetch_and_cache_characters called",
       skip_notifications: skip_notifications
     )
 
@@ -79,7 +79,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec fetch_and_cache_systems(boolean()) :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_systems(skip_notifications) do
-    Logger.info("MapTrackingClient.fetch_and_cache_systems called",
+    Logger.debug("MapTrackingClient.fetch_and_cache_systems called",
       skip_notifications: skip_notifications
     )
 
@@ -164,7 +164,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     result = to_string(id) == to_string(character_id)
 
     if result do
-      Logger.info("[MapTrackingClient] Found exact match! eve_id: #{id}")
+      Logger.debug("[MapTrackingClient] Found exact match! eve_id: #{id}")
     end
 
     result
@@ -202,12 +202,12 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     tracked = Enum.any?(systems, &system_matches?(system_id, &1))
 
     if not tracked do
-      Logger.info(
+      Logger.debug(
         "[MapTrackingClient] System #{system_id} not found in tracked list of #{length(systems)} systems"
       )
 
       sample_ids = extract_sample_system_ids(systems)
-      Logger.info("[MapTrackingClient] Sample tracked system IDs: #{inspect(sample_ids)}")
+      Logger.debug("[MapTrackingClient] Sample tracked system IDs: #{inspect(sample_ids)}")
     end
 
     {:ok, tracked}
@@ -245,7 +245,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     url = build_url(entity_type, config)
     headers = build_headers()
 
-    Logger.info("Fetching #{entity_type} from API",
+    Logger.debug("Fetching #{entity_type} from API",
       url: url,
       has_auth: Enum.any?(headers, fn {k, _} -> k == "Authorization" end),
       category: :api
@@ -314,7 +314,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec parse_response(entity_type(), term()) :: {:ok, list()} | {:error, term()}
   defp parse_response(:characters, %{"data" => characters}) when is_list(characters) do
-    Logger.info("MapTrackingClient parsed #{length(characters)} characters from API response")
+    Logger.debug("MapTrackingClient parsed #{length(characters)} characters from API response")
 
     {:ok, characters}
   end
@@ -341,7 +341,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp cache_entities(entity_type, entities, config) do
     Cache.put(config.cache_key, entities, :timer.hours(1))
 
-    Logger.info("Cached #{length(entities)} #{entity_type}",
+    Logger.debug("Cached #{length(entities)} #{entity_type}",
       category: :cache,
       cache_key: config.cache_key,
       sample_entity: inspect(Enum.at(entities, 0))

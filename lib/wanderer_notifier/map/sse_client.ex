@@ -116,7 +116,7 @@ defmodule WandererNotifier.Map.SSEClient do
       connection_id: nil
     }
 
-    Logger.info("SSE client initialized with events: #{inspect(state.events_filter)}",
+    Logger.debug("SSE client initialized with events: #{inspect(state.events_filter)}",
       map_slug: map_slug,
       category: :api
     )
@@ -149,7 +149,7 @@ defmodule WandererNotifier.Map.SSEClient do
             connection_id: connection_id
         }
 
-        Logger.info("[SSE] Connected: #{state.map_slug}")
+        Logger.debug("[SSE] Connected: #{state.map_slug}")
         {:noreply, new_state}
 
       {:error, reason} ->
@@ -225,7 +225,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_closed}, state) do
-    Logger.info("SSE connection closed", map_slug: state.map_slug, category: :api)
+    Logger.debug("SSE connection closed", map_slug: state.map_slug, category: :api)
 
     new_state = %{state | connection: nil}
     new_state = schedule_reconnect(new_state)
