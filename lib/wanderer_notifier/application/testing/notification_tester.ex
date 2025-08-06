@@ -56,8 +56,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
 
     case Cache.get("map:character_list") do
       {:ok, character_list} when is_list(character_list) ->
-        character_id_int = String.to_integer(character_id)
-        handle_character_list(character_list, character_id_int, character_id)
+        handle_character_list(character_list, character_id, character_id)
 
       {:ok, non_list_data} ->
         Logger.info(

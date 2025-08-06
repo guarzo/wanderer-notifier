@@ -173,21 +173,26 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
     case Cachex.keys(cache_name) do
       {:ok, keys} ->
-        evict_count = max(1, trunc(length(keys) * percentage))
-        Logger.info("Evicting #{evict_count} oldest cache entries")
-
-        # Simple LRU-like eviction - remove random entries
-        keys
-        |> Enum.take_random(evict_count)
-        |> Enum.each(fn key ->
-          unless key == @namespace_index_key do
-            Cachex.del(cache_name, key)
-            remove_from_namespace_index(key)
-          end
-        end)
+        perform_eviction(cache_name, keys, percentage)
 
       _ ->
         :ok
+    end
+  end
+
+  defp perform_eviction(cache_name, keys, percentage) do
+    evict_count = max(1, trunc(length(keys) * percentage))
+    Logger.info("Evicting #{evict_count} oldest cache entries")
+
+    keys
+    |> Enum.take_random(evict_count)
+    |> Enum.each(&evict_single_key(cache_name, &1))
+  end
+
+  defp evict_single_key(cache_name, key) do
+    unless key == @namespace_index_key do
+      Cachex.del(cache_name, key)
+      remove_from_namespace_index(key)
     end
   end
 
@@ -241,35 +246,42 @@ defmodule WandererNotifier.Infrastructure.Cache do
     start_time = System.monotonic_time()
     cache_name = cache_name()
 
-    result =
-      case ttl do
-        nil ->
-          Cachex.put(cache_name, key, value)
+    result = put_value_with_ttl(cache_name, key, value, ttl)
+    final_result = handle_put_result(result, key)
 
-        ttl_value when is_integer(ttl_value) or ttl_value == :infinity ->
-          Cachex.put(cache_name, key, value, ttl: ttl_value)
-      end
+    emit_put_telemetry(start_time, key, final_result)
+    final_result
+  end
 
-    final_result =
-      case result do
-        {:ok, true} ->
-          # Update namespace index on successful put
-          update_namespace_index(key)
-          :ok
+  defp put_value_with_ttl(cache_name, key, value, ttl) do
+    case ttl do
+      nil ->
+        Cachex.put(cache_name, key, value)
 
-        {:ok, false} ->
-          {:error, :not_stored}
+      ttl_value when is_integer(ttl_value) or ttl_value == :infinity ->
+        Cachex.put(cache_name, key, value, ttl: ttl_value)
+    end
+  end
 
-        error ->
-          error
-      end
+  defp handle_put_result(result, key) do
+    case result do
+      {:ok, true} ->
+        update_namespace_index(key)
+        :ok
 
-    # Emit telemetry for cache operations
+      {:ok, false} ->
+        {:error, :not_stored}
+
+      error ->
+        error
+    end
+  end
+
+  defp emit_put_telemetry(start_time, key, final_result) do
     result_type =
       case final_result do
         :ok -> :ok
         {:error, _} -> :error
-        _ -> :unknown
       end
 
     :telemetry.execute(
@@ -277,8 +289,6 @@ defmodule WandererNotifier.Infrastructure.Cache do
       %{duration: System.monotonic_time() - start_time},
       %{key: key, result: result_type}
     )
-
-    final_result
   end
 
   @doc """
@@ -329,23 +339,30 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
     case Cachex.incr(cache_name, key, delta) do
       {:ok, new_value} ->
-        # If TTL is provided, set it after the increment
-        if ttl do
-          case Cachex.expire(cache_name, key, ttl) do
-            {:ok, true} ->
-              update_namespace_index(key)
-              {:ok, new_value}
+        handle_counter_increment_success(cache_name, key, new_value, ttl)
 
-            {:ok, false} ->
-              {:error, :key_not_found}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
-            {:error, reason} ->
-              {:error, reason}
-          end
-        else
-          update_namespace_index(key)
-          {:ok, new_value}
-        end
+  defp handle_counter_increment_success(cache_name, key, new_value, ttl) do
+    if ttl do
+      handle_counter_with_ttl(cache_name, key, new_value, ttl)
+    else
+      update_namespace_index(key)
+      {:ok, new_value}
+    end
+  end
+
+  defp handle_counter_with_ttl(cache_name, key, new_value, ttl) do
+    case Cachex.expire(cache_name, key, ttl) do
+      {:ok, true} ->
+        update_namespace_index(key)
+        {:ok, new_value}
+
+      {:ok, false} ->
+        {:error, :key_not_found}
 
       {:error, reason} ->
         {:error, reason}
@@ -373,51 +390,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
     # Use Cachex.transaction for atomic read-modify-write operation
     case Cachex.transaction(cache_name, [key], fn ->
-           case Cachex.get(cache_name, key) do
-             {:ok, nil} ->
-               # Key doesn't exist, create new window
-               new_value = %{requests: 1, window_start: current_time}
-               put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
-
-               case put_result do
-                 {:ok, true} -> {:ok, new_value}
-                 error -> error
-               end
-
-             {:ok, %{requests: requests, window_start: window_start}} ->
-               if current_time - window_start < window_ms do
-                 # Same window, increment requests
-                 updated_value = %{requests: requests + 1, window_start: window_start}
-                 put_result = Cachex.put(cache_name, key, updated_value, ttl: ttl)
-
-                 case put_result do
-                   {:ok, true} -> {:ok, updated_value}
-                   error -> error
-                 end
-               else
-                 # New window, reset
-                 new_value = %{requests: 1, window_start: current_time}
-                 put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
-
-                 case put_result do
-                   {:ok, true} -> {:ok, new_value}
-                   error -> error
-                 end
-               end
-
-             {:error, reason} ->
-               {:error, reason}
-
-             _ ->
-               # Fallback case - corrupted data, reset
-               new_value = %{requests: 1, window_start: current_time}
-               put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
-
-               case put_result do
-                 {:ok, true} -> {:ok, new_value}
-                 error -> error
-               end
-           end
+           handle_windowed_counter_transaction(cache_name, key, window_ms, current_time, ttl)
          end) do
       {:ok, result} ->
         update_namespace_index(key)
@@ -425,6 +398,68 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp handle_windowed_counter_transaction(cache_name, key, window_ms, current_time, ttl) do
+    case Cachex.get(cache_name, key) do
+      {:ok, nil} ->
+        create_new_window_counter(cache_name, key, current_time, ttl)
+
+      {:ok, %{requests: requests, window_start: window_start}} ->
+        update_existing_window_counter(
+          cache_name,
+          key,
+          requests,
+          window_start,
+          window_ms,
+          current_time,
+          ttl
+        )
+
+      {:error, reason} ->
+        {:error, reason}
+
+      _ ->
+        # Fallback case - corrupted data, reset
+        create_new_window_counter(cache_name, key, current_time, ttl)
+    end
+  end
+
+  defp create_new_window_counter(cache_name, key, current_time, ttl) do
+    new_value = %{requests: 1, window_start: current_time}
+    put_windowed_counter_value(cache_name, key, new_value, ttl)
+  end
+
+  defp update_existing_window_counter(
+         cache_name,
+         key,
+         requests,
+         window_start,
+         window_ms,
+         current_time,
+         ttl
+       ) do
+    if window_still_valid?(window_start, current_time, window_ms) do
+      increment_window_counter(cache_name, key, requests, window_start, ttl)
+    else
+      create_new_window_counter(cache_name, key, current_time, ttl)
+    end
+  end
+
+  defp window_still_valid?(window_start, current_time, window_ms) do
+    current_time - window_start < window_ms
+  end
+
+  defp increment_window_counter(cache_name, key, requests, window_start, ttl) do
+    updated_value = %{requests: requests + 1, window_start: window_start}
+    put_windowed_counter_value(cache_name, key, updated_value, ttl)
+  end
+
+  defp put_windowed_counter_value(cache_name, key, value, ttl) do
+    case Cachex.put(cache_name, key, value, ttl: ttl) do
+      {:ok, true} -> {:ok, value}
+      error -> error
     end
   end
 
@@ -1017,22 +1052,27 @@ defmodule WandererNotifier.Infrastructure.Cache do
     keys
     |> Enum.chunk_every(batch_size)
     |> Enum.reduce(0, fn batch, acc ->
-      # Use Cachex.execute for batch operations to reduce process overhead
-      Cachex.execute(cache_name, fn cache ->
-        Enum.each(batch, fn key ->
-          Cachex.del!(cache, key)
-          # Remove from namespace index
-          remove_from_namespace_index(key)
-        end)
-      end)
-
-      # Small delay between batches to prevent overwhelming the cache
-      if length(batch) == batch_size do
-        :timer.sleep(5)
-      end
-
+      delete_batch_keys(cache_name, batch)
+      maybe_add_batch_delay(batch, batch_size)
       acc + length(batch)
     end)
+  end
+
+  defp delete_batch_keys(cache_name, batch) do
+    Cachex.execute(cache_name, fn cache ->
+      Enum.each(batch, &delete_single_key(cache, &1))
+    end)
+  end
+
+  defp delete_single_key(cache, key) do
+    Cachex.del!(cache, key)
+    remove_from_namespace_index(key)
+  end
+
+  defp maybe_add_batch_delay(batch, batch_size) do
+    if length(batch) == batch_size do
+      :timer.sleep(5)
+    end
   end
 
   @doc """
@@ -1239,34 +1279,38 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   defp get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor \\ nil) do
-    # Extract namespace from prefix for direct index lookup
     namespace = extract_namespace(prefix)
 
-    case namespace do
-      nil ->
-        # Fallback to generic batch processing if no namespace
+    if namespace do
+      get_keys_with_namespace_index(namespace, prefix, accumulator, cache_name, cursor)
+    else
+      get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
+    end
+  end
+
+  defp get_keys_with_namespace_index(namespace, prefix, accumulator, cache_name, cursor) do
+    case get_namespace_index() do
+      {:ok, index} when is_map(index) ->
+        get_keys_from_namespace_index(index, namespace, prefix, accumulator)
+
+      {:error, :not_found} ->
+        handle_missing_namespace_index(cache_name, prefix, accumulator, cursor)
+
+      _ ->
         get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
+    end
+  end
 
-      namespace ->
-        # Use namespace index for efficient filtering
-        case get_namespace_index() do
-          {:ok, index} when is_map(index) ->
-            # Get keys directly from namespace index
-            namespace_keys = Map.get(index, namespace, [])
-            matching_keys = Enum.filter(namespace_keys, &String.starts_with?(&1, prefix))
-            accumulator ++ matching_keys
+  defp get_keys_from_namespace_index(index, namespace, prefix, accumulator) do
+    namespace_keys = Map.get(index, namespace, [])
+    matching_keys = Enum.filter(namespace_keys, &String.starts_with?(&1, prefix))
+    accumulator ++ matching_keys
+  end
 
-          {:error, :not_found} ->
-            # Rebuild index and retry
-            case rebuild_namespace_index() do
-              {:ok, _} -> get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor)
-              _ -> accumulator
-            end
-
-          _ ->
-            # Fallback to batch processing on error
-            get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
-        end
+  defp handle_missing_namespace_index(cache_name, prefix, accumulator, cursor) do
+    case rebuild_namespace_index() do
+      {:ok, _} -> get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor)
+      _ -> accumulator
     end
   end
 
