@@ -155,6 +155,11 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
     end
   end
 
+  defp parse_kills_response({:ok, %{status_code: 200, body: body}}) when is_map(body) do
+    # Body is already decoded (likely from test mocks or some middleware)
+    handle_decoded_response(body)
+  end
+
   defp parse_kills_response({:ok, %{status_code: status, body: body}}) do
     # Log at different levels based on status code
     cond do
@@ -290,6 +295,15 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
       {:ok, %{"data" => kill_data}} -> {:ok, kill_data}
       {:ok, decoded} -> {:ok, decoded}
       {:error, _} -> {:error, :invalid_json}
+    end
+  end
+
+  defp parse_killmail_response({:ok, %{status_code: 200, body: body}}, _killmail_id)
+       when is_map(body) do
+    # Body is already decoded (likely from test mocks or middleware)
+    case body do
+      %{"data" => kill_data} -> {:ok, kill_data}
+      decoded -> {:ok, decoded}
     end
   end
 

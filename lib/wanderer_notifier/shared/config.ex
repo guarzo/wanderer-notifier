@@ -151,7 +151,7 @@ defmodule WandererNotifier.Shared.Config do
     do: get_env_private("LICENSE_MANAGER_API_URL", "https://lm.wanderer.ltd")
 
   @doc "Get notifier API token (required)"
-  def notifier_api_token, do: get_required_env("NOTIFIER_API_TOKEN")
+  def notifier_api_token, do: Application.get_env(:wanderer_notifier, :api_token)
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Application Settings
