@@ -12,7 +12,7 @@ defmodule WandererNotifierWeb.Plugs.ConditionalLogger do
 
   def call(conn, _opts) do
     if should_log?(conn) do
-      Plug.Logger.call(conn, Plug.Logger.init(:info))
+      Plug.Logger.call(conn, Plug.Logger.init([]))
     else
       conn
     end
