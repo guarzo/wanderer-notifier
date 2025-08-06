@@ -100,6 +100,8 @@ RUN apt-get update \
       dumb-init \
       # Locale support
       locales \
+      # Compression tools for Fuzzworks CSV downloads
+      bzip2 \
       # Security updates
  && apt-get upgrade -y \
  && echo "C.UTF-8 UTF-8" > /etc/locale.gen \

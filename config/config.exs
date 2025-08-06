@@ -158,8 +158,8 @@ config :nostrum,
   caches: [],
   # Disable ffmpeg warnings since we're not using voice features
   ffmpeg: false,
-  # HTTP timeout configuration
-  gun_timeout: 10_000,
+  # HTTP timeout configuration - increased to match neo_client.ex Task.yield timeout
+  gun_timeout: 30_000,
   gun_connect_timeout: 5_000
 
 # Add backoff configuration to help with rate limiting
