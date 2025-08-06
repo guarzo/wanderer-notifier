@@ -43,7 +43,7 @@ defmodule WandererNotifierWeb.Endpoint do
 
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
-  plug(Plug.Logger, log: &__MODULE__.should_log_request?/1)
+  plug(WandererNotifierWeb.Plugs.ConditionalLogger)
 
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
@@ -72,13 +72,5 @@ defmodule WandererNotifierWeb.Endpoint do
       "CODE_RELOADER_ENABLED",
       false
     )
-  end
-
-  @doc """
-  Determines whether to log a request based on its path.
-  Returns false for health check endpoints to reduce log noise.
-  """
-  def should_log_request?(%Plug.Conn{request_path: path}) do
-    path not in ["/api/health", "/health", "/api/status"]
   end
 end
