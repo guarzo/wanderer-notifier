@@ -234,7 +234,6 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp get_error_type(%{type: type}), do: type
-  defp get_error_type({type, _details}) when is_atom(type), do: type
   defp get_error_type(error) when is_atom(error), do: error
   defp get_error_type(_), do: :unknown
 
