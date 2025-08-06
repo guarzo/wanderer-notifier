@@ -226,48 +226,39 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   """
   @spec parse_http_date(String.t()) :: {:ok, DateTime.t()} | {:error, atom()}
   def parse_http_date(date_string) when is_binary(date_string) do
-    with {:ok, date_parts} <- split_http_date(date_string),
-         {:ok, date_values} <- parse_date_parts(date_parts),
-         {:ok, time_values} <- parse_time_part(date_parts.time),
-         {:ok, datetime} <- build_datetime(date_values, time_values) do
+    # HTTP-date format: "Sun, 06 Nov 1994 08:49:37 GMT"
+    case String.split(date_string, [" ", ","]) |> Enum.filter(&(&1 != "")) do
+      [_day_name, day, month, year, time, "GMT"] ->
+        parse_http_date_parts(day, month, year, time)
+
+      _ ->
+        {:error, :invalid_http_date}
+    end
+  end
+
+  def parse_http_date(_), do: {:error, :invalid_input}
+
+  defp parse_http_date_parts(day, month, year, time) do
+    with {:ok, month_num} <- month_to_number(month),
+         {day_num, ""} <- Integer.parse(day),
+         {year_num, ""} <- Integer.parse(year),
+         {:ok, time_parts} <- parse_time_string(time),
+         {:ok, datetime} <- build_http_datetime(year_num, month_num, day_num, time_parts) do
       {:ok, datetime}
     else
       _ -> {:error, :invalid_http_date}
     end
   end
 
-  def parse_http_date(_), do: {:error, :invalid_input}
-
-  defp split_http_date(date_string) do
-    # HTTP-date format: "Sun, 06 Nov 1994 08:49:37 GMT"
-    case String.split(date_string, [" ", ","]) |> Enum.filter(&(&1 != "")) do
-      [_day_name, day, month, year, time, "GMT"] ->
-        {:ok, %{day: day, month: month, year: year, time: time}}
-
-      _ ->
-        {:error, :invalid_format}
-    end
-  end
-
-  defp parse_date_parts(%{day: day, month: month, year: year}) do
-    with {:ok, month_num} <- parse_month(month),
-         {day_num, ""} <- Integer.parse(day),
-         {year_num, ""} <- Integer.parse(year) do
-      {:ok, %{day: day_num, month: month_num, year: year_num}}
-    else
-      _ -> {:error, :invalid_date_parts}
-    end
-  end
-
-  defp parse_time_part(time_string) do
+  defp parse_time_string(time_string) do
     case String.split(time_string, ":") do
       [hour, minute, second] ->
-        with {hour_num, ""} <- Integer.parse(hour),
-             {minute_num, ""} <- Integer.parse(minute),
-             {second_num, ""} <- Integer.parse(second) do
-          {:ok, %{hour: hour_num, minute: minute_num, second: second_num}}
+        with {h, ""} <- Integer.parse(hour),
+             {m, ""} <- Integer.parse(minute),
+             {s, ""} <- Integer.parse(second) do
+          {:ok, {h, m, s}}
         else
-          _ -> {:error, :invalid_time_parts}
+          _ -> {:error, :invalid_time}
         end
 
       _ ->
@@ -275,28 +266,34 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
     end
   end
 
-  defp build_datetime(date_values, time_values) do
-    with {:ok, date} <- Date.new(date_values.year, date_values.month, date_values.day),
-         {:ok, time} <- Time.new(time_values.hour, time_values.minute, time_values.second),
+  defp build_http_datetime(year, month, day, {hour, minute, second}) do
+    with {:ok, date} <- Date.new(year, month, day),
+         {:ok, time} <- Time.new(hour, minute, second),
          {:ok, datetime} <- DateTime.new(date, time, "Etc/UTC") do
       {:ok, datetime}
     else
-      _ -> {:error, :invalid_datetime_construction}
+      _ -> {:error, :invalid_datetime}
     end
   end
 
-  # Helper function to parse month names
-  defp parse_month("Jan"), do: {:ok, 1}
-  defp parse_month("Feb"), do: {:ok, 2}
-  defp parse_month("Mar"), do: {:ok, 3}
-  defp parse_month("Apr"), do: {:ok, 4}
-  defp parse_month("May"), do: {:ok, 5}
-  defp parse_month("Jun"), do: {:ok, 6}
-  defp parse_month("Jul"), do: {:ok, 7}
-  defp parse_month("Aug"), do: {:ok, 8}
-  defp parse_month("Sep"), do: {:ok, 9}
-  defp parse_month("Oct"), do: {:ok, 10}
-  defp parse_month("Nov"), do: {:ok, 11}
-  defp parse_month("Dec"), do: {:ok, 12}
-  defp parse_month(_), do: {:error, :invalid_month}
+  @month_map %{
+    "Jan" => 1,
+    "Feb" => 2,
+    "Mar" => 3,
+    "Apr" => 4,
+    "May" => 5,
+    "Jun" => 6,
+    "Jul" => 7,
+    "Aug" => 8,
+    "Sep" => 9,
+    "Oct" => 10,
+    "Nov" => 11,
+    "Dec" => 12
+  }
+
+  defp month_to_number(month) when is_map_key(@month_map, month) do
+    {:ok, @month_map[month]}
+  end
+
+  defp month_to_number(_), do: {:error, :invalid_month}
 end

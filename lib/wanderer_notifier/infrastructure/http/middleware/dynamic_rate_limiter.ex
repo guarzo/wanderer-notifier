@@ -251,22 +251,17 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter do
 
   defp check_discord_webhook_limit(cache_key) do
     case Cache.get(cache_key) do
-      {:error, :not_found} ->
-        :ok
+      {:error, :not_found} -> :ok
+      {:ok, webhook_data} -> validate_webhook_window(webhook_data)
+    end
+  end
 
-      {:ok, %{requests: requests, window_start: window_start}} ->
-        current_time = System.system_time(:millisecond)
+  defp validate_webhook_window(%{requests: requests, window_start: window_start}) do
+    current_time = System.system_time(:millisecond)
 
-        # Check if we're still in the same 2-second window
-        if current_time - window_start < @discord_webhook_window do
-          check_webhook_request_limit(requests, current_time, window_start)
-        else
-          # New window, reset is implicit
-          :ok
-        end
-
-      _ ->
-        :ok
+    case current_time - window_start < @discord_webhook_window do
+      true -> check_webhook_request_limit(requests, current_time, window_start)
+      false -> :ok
     end
   end
 
@@ -334,49 +329,64 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter do
   end
 
   defp parse_discord_headers(headers) do
-    remaining = find_header(headers, @discord_ratelimit_remaining)
-    reset = find_header(headers, @discord_ratelimit_reset)
-    reset_after = find_header(headers, @discord_ratelimit_reset_after)
-    bucket = find_header(headers, @discord_ratelimit_bucket)
-    global = find_header(headers, @discord_ratelimit_global)
+    header_map = extract_discord_headers(headers)
 
-    if remaining != nil and (reset != nil or reset_after != nil) do
-      # Parse standard rate limit headers
-      with {:ok, remaining_val} <- parse_integer(remaining, 0),
-           {:ok, reset_at} <- parse_discord_reset(reset, reset_after) do
-        {:ok,
-         %{
-           remaining: remaining_val,
-           reset_at: reset_at,
-           bucket: bucket,
-           global_limit: global == "true"
-         }}
-      else
-        {:error, reason} -> {:error, "Failed to parse Discord headers: #{reason}"}
-      end
+    case validate_required_headers(header_map) do
+      :ok -> build_discord_response(header_map)
+      error -> error
+    end
+  end
+
+  defp extract_discord_headers(headers) do
+    %{
+      remaining: find_header(headers, @discord_ratelimit_remaining),
+      reset: find_header(headers, @discord_ratelimit_reset),
+      reset_after: find_header(headers, @discord_ratelimit_reset_after),
+      bucket: find_header(headers, @discord_ratelimit_bucket),
+      global: find_header(headers, @discord_ratelimit_global)
+    }
+  end
+
+  defp validate_required_headers(%{remaining: remaining, reset: reset, reset_after: reset_after}) do
+    case remaining != nil and (reset != nil or reset_after != nil) do
+      true -> :ok
+      false -> {:error, "Discord rate limit headers not found"}
+    end
+  end
+
+  defp build_discord_response(header_map) do
+    with {:ok, remaining_val} <- parse_integer(header_map.remaining, 0),
+         {:ok, reset_at} <- parse_discord_reset(header_map.reset, header_map.reset_after) do
+      {:ok,
+       %{
+         remaining: remaining_val,
+         reset_at: reset_at,
+         bucket: header_map.bucket,
+         global_limit: header_map.global == "true"
+       }}
     else
-      # No rate limit headers found
-      {:error, "Discord rate limit headers not found"}
+      {:error, reason} -> {:error, "Failed to parse Discord headers: #{reason}"}
     end
   end
 
   defp parse_discord_reset(reset_header, reset_after_header) do
-    cond do
-      reset_header != nil ->
-        # X-RateLimit-Reset is Unix timestamp in seconds
-        case parse_integer(reset_header, 0) do
-          {:ok, reset_seconds} -> {:ok, reset_seconds * 1000}
-        end
+    if reset_header != nil do
+      # X-RateLimit-Reset is Unix timestamp in seconds
+      case parse_integer(reset_header, 0) do
+        {:ok, reset_seconds} -> {:ok, reset_seconds * 1000}
+      end
+    else
+      parse_reset_after_header(reset_after_header)
+    end
+  end
 
-      reset_after_header != nil ->
-        # X-RateLimit-Reset-After is seconds from now
-        case parse_integer(reset_after_header, 0) do
-          {:ok, reset_after_seconds} ->
-            {:ok, System.system_time(:millisecond) + reset_after_seconds * 1000}
-        end
+  defp parse_reset_after_header(nil), do: {:error, "No reset header found"}
 
-      true ->
-        {:error, "No reset header found"}
+  defp parse_reset_after_header(reset_after_header) do
+    # X-RateLimit-Reset-After is seconds from now
+    case parse_integer(reset_after_header, 0) do
+      {:ok, reset_after_seconds} ->
+        {:ok, System.system_time(:millisecond) + reset_after_seconds * 1000}
     end
   end
 

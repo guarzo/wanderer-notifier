@@ -306,25 +306,21 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   defp parse_retry_after(value) when is_binary(value) do
     # Try to parse as integer first (seconds)
     case Integer.parse(value, 10) do
-      {seconds, ""} ->
-        # Convert seconds to milliseconds
-        seconds * 1000
-
-      _ ->
-        # Try to parse as HTTP-date
-        case TimeUtils.parse_http_date(value) do
-          {:ok, datetime} ->
-            calculate_delay_from_datetime(datetime)
-
-          {:error, _} ->
-            nil
-        end
+      {seconds, ""} -> seconds * 1000
+      _ -> parse_retry_after_as_date(value)
     end
   end
 
   defp parse_retry_after(value) when is_integer(value), do: value * 1000
 
   defp parse_retry_after(_), do: nil
+
+  defp parse_retry_after_as_date(value) do
+    case TimeUtils.parse_http_date(value) do
+      {:ok, datetime} -> calculate_delay_from_datetime(datetime)
+      {:error, _} -> nil
+    end
+  end
 
   defp calculate_delay_from_datetime(datetime) do
     # Calculate delay from current time in milliseconds

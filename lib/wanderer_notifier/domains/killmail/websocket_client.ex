@@ -522,17 +522,13 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp send_join_message(join_params, systems, characters, state) do
     channel_ref = generate_channel_ref()
-    join_message = build_join_message(join_params, channel_ref)
 
     log_subscription_details(systems, characters, join_params)
 
-    case Jason.encode(join_message) do
-      {:ok, json} ->
-        handle_successful_encoding(json, channel_ref, systems, characters, state)
-
-      {:error, reason} ->
-        handle_encoding_error(reason, state)
-    end
+    join_params
+    |> build_join_message(channel_ref)
+    |> Jason.encode()
+    |> handle_join_encoding_result(channel_ref, systems, characters, state)
   end
 
   defp generate_channel_ref do
@@ -560,7 +556,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     Logger.debug("Full join params", join_params: inspect(join_params, limit: :infinity))
   end
 
-  defp handle_successful_encoding(json, channel_ref, systems, characters, state) do
+  defp handle_join_encoding_result({:ok, json}, channel_ref, systems, characters, state) do
     log_join_success(systems, characters)
 
     new_state = %{
@@ -573,7 +569,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     {:reply, {:text, json}, new_state}
   end
 
-  defp handle_encoding_error(reason, state) do
+  defp handle_join_encoding_result({:error, reason}, _channel_ref, _systems, _characters, state) do
     Logger.error("Failed to encode join message", error: inspect(reason))
 
     retry_count = Map.get(state, :join_retry_count, 0)

@@ -499,12 +499,10 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
     # Use Cachex.execute to reduce overhead from multiple process jumps
     # This executes all get operations in the cache worker context
-    case Cachex.execute(cache_name, fn worker ->
-           Enum.map(keys, &transform_cache_result(&1, Cachex.get(worker, &1)))
-         end) do
+    case Cachex.execute(cache_name, &get_batch_results(&1, keys)) do
       {:ok, results} ->
         # Convert to map
-        Enum.into(results, %{})
+        results |> Enum.into(%{})
 
       {:error, reason} ->
         Logger.error("Batch get failed", error: inspect(reason))
@@ -513,6 +511,10 @@ defmodule WandererNotifier.Infrastructure.Cache do
         |> Enum.map(&{&1, {:error, reason}})
         |> Enum.into(%{})
     end
+  end
+
+  defp get_batch_results(worker, keys) do
+    Enum.map(keys, &transform_cache_result(&1, Cachex.get(worker, &1)))
   end
 
   @doc """
@@ -539,41 +541,27 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_batch_with_ttl([{cache_key(), cache_value(), ttl_value()}]) :: :ok | {:error, term()}
   def put_batch_with_ttl(entries) when is_list(entries) do
-    entries
-    |> group_entries_by_ttl()
-    |> process_ttl_groups()
-    |> check_batch_results()
-  end
-
-  # Helper function to group entries by TTL
-  defp group_entries_by_ttl(entries) do
-    Enum.group_by(entries, fn {_key, _value, ttl} -> ttl end)
-  end
-
-  # Helper function to process each TTL group
-  defp process_ttl_groups(grouped_entries) do
     cache_name = cache_name()
 
-    Enum.map(grouped_entries, fn
-      {nil, entries} ->
-        entries
-        |> extract_key_value_pairs()
-        |> then(&Cachex.put_many(cache_name, &1))
-
-      {ttl, entries} when is_integer(ttl) or ttl == :infinity ->
-        entries
-        |> extract_key_value_pairs()
-        |> then(&Cachex.put_many(cache_name, &1, ttl: ttl))
-    end)
+    entries
+    |> Enum.group_by(fn {_key, _value, ttl} -> ttl end)
+    |> Enum.map(&put_ttl_group(cache_name, &1))
+    |> validate_batch_results()
   end
 
-  # Helper function to extract key-value pairs
-  defp extract_key_value_pairs(entries) do
-    Enum.map(entries, fn {key, value, _ttl} -> {key, value} end)
+  defp put_ttl_group(cache_name, {ttl, entries}) do
+    key_values = Enum.map(entries, fn {key, value, _ttl} -> {key, value} end)
+
+    case ttl do
+      nil ->
+        Cachex.put_many(cache_name, key_values)
+
+      ttl when is_integer(ttl) or ttl == :infinity ->
+        Cachex.put_many(cache_name, key_values, ttl: ttl)
+    end
   end
 
-  # Helper function to check batch results
-  defp check_batch_results(results) do
+  defp validate_batch_results(results) do
     case Enum.find(results, &match?({:error, _}, &1)) do
       nil ->
         :ok
@@ -770,11 +758,13 @@ defmodule WandererNotifier.Infrastructure.Cache do
     batch_size = Keyword.get(opts, :batch_size, 100)
     callback = Keyword.get(opts, :callback)
 
-    if async do
-      start_async_clear_namespace(namespace, batch_size, callback)
-      {:ok, :async}
-    else
-      do_clear_namespace(namespace, batch_size)
+    case async do
+      true ->
+        start_async_clear_namespace(namespace, batch_size, callback)
+        {:ok, :async}
+
+      false ->
+        do_clear_namespace(namespace, batch_size)
     end
   end
 
@@ -876,12 +866,9 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec list_namespaces(keyword()) :: [String.t()]
   def list_namespaces(opts \\ []) do
-    use_index = Keyword.get(opts, :use_index, true)
-
-    if use_index do
-      list_namespaces_with_index()
-    else
-      list_namespaces_traditional()
+    case Keyword.get(opts, :use_index, true) do
+      true -> list_namespaces_with_index()
+      false -> list_namespaces_traditional()
     end
   end
 
@@ -991,10 +978,9 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   defp remove_from_namespace_index(key) do
-    namespace = extract_namespace(key)
-
-    if namespace do
-      update_namespace_index_for_removal(namespace, key)
+    case extract_namespace(key) do
+      nil -> :ok
+      namespace -> update_namespace_index_for_removal(namespace, key)
     end
   end
 
