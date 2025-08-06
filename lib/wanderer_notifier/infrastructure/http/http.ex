@@ -199,44 +199,59 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
-    # Use Req directly to avoid circular dependency
     req_opts = build_req_opts(opts, headers, body)
-
-    # Log request start for timeout debugging
     start_time = System.monotonic_time(:millisecond)
 
-    # Enhanced logging for license requests
+    log_license_request_if_needed(url, method, headers, body, opts)
+    Logger.debug("Starting HTTP request: #{method} #{url}")
+
+    case Req.request([method: method, url: url] ++ req_opts) do
+      {:ok, response} ->
+        handle_successful_response(response, start_time, method, url)
+
+      {:error, reason} ->
+        handle_failed_response(reason, start_time, method, url)
+    end
+  end
+
+  defp log_license_request_if_needed(url, method, headers, body, opts) do
     if String.contains?(url, "validate_bot") do
       Logger.info("License HTTP request details",
         method: method,
         url: url,
-        headers:
-          Enum.map(headers, fn {k, v} ->
-            if k == "authorization", do: {k, "[REDACTED]"}, else: {k, v}
-          end),
+        headers: sanitize_headers(headers),
         body_keys: if(is_map(body), do: Map.keys(body), else: "not_a_map"),
         service: Keyword.get(opts, :service),
         category: :api
       )
     end
+  end
 
-    Logger.debug("Starting HTTP request: #{method} #{url}")
+  defp sanitize_headers(headers) do
+    Enum.map(headers, fn {k, v} ->
+      if k == "authorization", do: {k, "[REDACTED]"}, else: {k, v}
+    end)
+  end
 
-    case Req.request([method: method, url: url] ++ req_opts) do
-      {:ok, %Req.Response{status: status, body: response_body, headers: response_headers}} ->
-        duration = System.monotonic_time(:millisecond) - start_time
-        Logger.debug("HTTP request completed in #{duration}ms: #{method} #{url}")
-        {:ok, %{status_code: status, body: response_body, headers: response_headers}}
+  defp handle_successful_response(
+         %Req.Response{status: status, body: response_body, headers: response_headers},
+         start_time,
+         method,
+         url
+       ) do
+    duration = System.monotonic_time(:millisecond) - start_time
+    Logger.debug("HTTP request completed in #{duration}ms: #{method} #{url}")
+    {:ok, %{status_code: status, body: response_body, headers: response_headers}}
+  end
 
-      {:error, reason} ->
-        duration = System.monotonic_time(:millisecond) - start_time
+  defp handle_failed_response(reason, start_time, method, url) do
+    duration = System.monotonic_time(:millisecond) - start_time
 
-        Logger.warning(
-          "HTTP request failed after #{duration}ms: #{method} #{url} - #{inspect(reason)}"
-        )
+    Logger.warning(
+      "HTTP request failed after #{duration}ms: #{method} #{url} - #{inspect(reason)}"
+    )
 
-        {:error, reason}
-    end
+    {:error, reason}
   end
 
   defp build_req_opts(opts, headers, body) do

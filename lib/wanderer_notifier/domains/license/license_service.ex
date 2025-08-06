@@ -779,43 +779,58 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     url = build_url("validate_bot")
     body = %{"license_key" => license_key}
 
-    Logger.info("License validation HTTP request",
-      url: url,
-      has_token: notifier_api_token != nil && notifier_api_token != "",
-      has_license_key: license_key != nil && license_key != "",
-      token_prefix:
-        if(is_binary(notifier_api_token) && String.length(notifier_api_token) > 8,
-          do: String.slice(notifier_api_token, 0, 8) <> "...",
-          else: "invalid"
-        ),
-      category: :api
-    )
+    log_validation_request(url, notifier_api_token, license_key)
 
-    # Use simplified license API helper
     case Http.license_post(url, body, notifier_api_token) do
       {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
         process_successful_validation(response_body)
 
       {:ok, %{status_code: status, body: body}} ->
-        Logger.error("License validation HTTP error response",
-          status_code: status,
-          body: inspect(body),
-          category: :api
-        )
-
-        error = ErrorHandler.http_error_to_tuple(status)
-        ErrorHandler.enrich_error(error, %{body: body})
+        handle_error_response(status, body)
 
       {:error, reason} ->
-        Logger.error("License validation request error",
-          reason: inspect(reason),
-          category: :api
-        )
-
-        normalized = ErrorHandler.normalize_error({:error, reason})
-        ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
-        normalized
+        handle_request_error(reason)
     end
+  end
+
+  defp log_validation_request(url, notifier_api_token, license_key) do
+    Logger.info("License validation HTTP request",
+      url: url,
+      has_token: notifier_api_token != nil && notifier_api_token != "",
+      has_license_key: license_key != nil && license_key != "",
+      token_prefix: format_token_prefix(notifier_api_token),
+      category: :api
+    )
+  end
+
+  defp format_token_prefix(notifier_api_token) do
+    if is_binary(notifier_api_token) && String.length(notifier_api_token) > 8 do
+      String.slice(notifier_api_token, 0, 8) <> "..."
+    else
+      "invalid"
+    end
+  end
+
+  defp handle_error_response(status, body) do
+    Logger.error("License validation HTTP error response",
+      status_code: status,
+      body: inspect(body),
+      category: :api
+    )
+
+    error = ErrorHandler.http_error_to_tuple(status)
+    ErrorHandler.enrich_error(error, %{body: body})
+  end
+
+  defp handle_request_error(reason) do
+    Logger.error("License validation request error",
+      reason: inspect(reason),
+      category: :api
+    )
+
+    normalized = ErrorHandler.normalize_error({:error, reason})
+    ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
+    normalized
   end
 
   @doc """
