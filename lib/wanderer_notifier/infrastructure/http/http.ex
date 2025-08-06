@@ -204,6 +204,22 @@ defmodule WandererNotifier.Infrastructure.Http do
 
     # Log request start for timeout debugging
     start_time = System.monotonic_time(:millisecond)
+
+    # Enhanced logging for license requests
+    if String.contains?(url, "validate_bot") do
+      Logger.info("License HTTP request details",
+        method: method,
+        url: url,
+        headers:
+          Enum.map(headers, fn {k, v} ->
+            if k == "authorization", do: {k, "[REDACTED]"}, else: {k, v}
+          end),
+        body_keys: if(is_map(body), do: Map.keys(body), else: "not_a_map"),
+        service: Keyword.get(opts, :service),
+        category: :api
+      )
+    end
+
     Logger.debug("Starting HTTP request: #{method} #{url}")
 
     case Req.request([method: method, url: url] ++ req_opts) do

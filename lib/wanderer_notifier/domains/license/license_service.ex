@@ -779,8 +779,15 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     url = build_url("validate_bot")
     body = %{"license_key" => license_key}
 
-    Logger.debug("Sending HTTP request for bot validation",
-      endpoint: "validate_bot",
+    Logger.info("License validation HTTP request",
+      url: url,
+      has_token: notifier_api_token != nil && notifier_api_token != "",
+      has_license_key: license_key != nil && license_key != "",
+      token_prefix:
+        if(is_binary(notifier_api_token) && String.length(notifier_api_token) > 8,
+          do: String.slice(notifier_api_token, 0, 8) <> "...",
+          else: "invalid"
+        ),
       category: :api
     )
 
@@ -790,10 +797,21 @@ defmodule WandererNotifier.Domains.License.LicenseService do
         process_successful_validation(response_body)
 
       {:ok, %{status_code: status, body: body}} ->
+        Logger.error("License validation HTTP error response",
+          status_code: status,
+          body: inspect(body),
+          category: :api
+        )
+
         error = ErrorHandler.http_error_to_tuple(status)
         ErrorHandler.enrich_error(error, %{body: body})
 
       {:error, reason} ->
+        Logger.error("License validation request error",
+          reason: inspect(reason),
+          category: :api
+        )
+
         normalized = ErrorHandler.normalize_error({:error, reason})
         ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
         normalized
@@ -853,7 +871,16 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   defp build_url(endpoint) do
     base_url = Config.license_manager_api_url()
-    "#{base_url}/#{endpoint}"
+    full_url = "#{base_url}/#{endpoint}"
+
+    Logger.info("License URL construction",
+      base_url: base_url,
+      endpoint: endpoint,
+      full_url: full_url,
+      category: :api
+    )
+
+    full_url
   end
 
   defp process_successful_validation(decoded) when is_map(decoded) do
