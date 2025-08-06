@@ -26,7 +26,7 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   defmock(WandererNotifier.MockConfig, for: WandererNotifier.Shared.Config.Behaviour)
 
   # Infrastructure mocks
-  defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.HttpBehaviour)
+  defmock(WandererNotifier.HTTPMock, for: WandererNotifier.Infrastructure.Http.Behaviour)
   # Cache mock with proper behavior
   defmock(WandererNotifier.MockCache, for: WandererNotifier.Infrastructure.Cache.Behaviour)
 
@@ -133,10 +133,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   def setup_http_mocks do
     stub(WandererNotifier.HTTPMock, :request, fn method, url, _body, _headers, opts ->
       handle_http_request(method, url, opts)
-    end)
-
-    stub(WandererNotifier.HTTPMock, :get_killmail, fn _id, _hash ->
-      {:ok, %{status_code: 200, body: "{}"}}
     end)
   end
 

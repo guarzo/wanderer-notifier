@@ -6,6 +6,8 @@ defmodule WandererNotifier.Shared.Config do
   of complex validation, schemas, or configuration managers.
   """
 
+  alias WandererNotifier.Shared.Env
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Discord Configuration
   # ──────────────────────────────────────────────────────────────────────────────
@@ -45,6 +47,18 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Get Discord rally group ID (optional)"
   def discord_rally_group_id, do: get_env_private("DISCORD_RALLY_GROUP_ID")
 
+  @doc "Get all Discord channel configuration in a single call"
+  def discord_channels do
+    %{
+      primary: discord_channel_id(),
+      rally: discord_rally_channel_id(),
+      system: discord_system_channel_id(),
+      character: discord_character_channel_id(),
+      character_kill: discord_character_kill_channel_id(),
+      system_kill: discord_system_kill_channel_id()
+    }
+  end
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Feature Flags
   # ──────────────────────────────────────────────────────────────────────────────
@@ -72,6 +86,21 @@ defmodule WandererNotifier.Shared.Config do
 
   @doc "Check if only priority systems should be notified"
   def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
+
+  @doc "Check if kill notifications are fully enabled (both global and kill-specific flags)"
+  def kill_notifications_fully_enabled? do
+    notifications_enabled?() and kill_notifications_enabled?()
+  end
+
+  @doc "Check if system notifications are fully enabled (both global and system-specific flags)"
+  def system_notifications_fully_enabled? do
+    notifications_enabled?() and system_notifications_enabled?()
+  end
+
+  @doc "Check if character notifications are fully enabled (both global and character-specific flags)"
+  def character_notifications_fully_enabled? do
+    notifications_enabled?() and character_notifications_enabled?()
+  end
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Notable Items Configuration
@@ -169,9 +198,6 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Get telemetry logging enabled flag"
   def telemetry_logging_enabled?, do: get_boolean("TELEMETRY_LOGGING_ENABLED", false)
 
-  @doc "Get status messages enabled flag"
-  def status_messages_enabled?, do: enable_status_messages?()
-
   @doc "Get schedulers enabled flag"
   def schedulers_enabled?, do: get_boolean("SCHEDULERS_ENABLED", true)
 
@@ -187,9 +213,6 @@ defmodule WandererNotifier.Shared.Config do
 
   @doc "Get license refresh interval in milliseconds"
   def license_refresh_interval, do: get_integer("LICENSE_REFRESH_INTERVAL", 3_600_000)
-
-  @doc "Get discord kill channel ID (fallback method)"
-  def discord_kill_channel_id, do: discord_channel_id()
 
   @doc "Check if feature is enabled"
   def feature_enabled?(feature) when is_atom(feature) do
@@ -207,78 +230,12 @@ defmodule WandererNotifier.Shared.Config do
     }
   end
 
-  @doc "Get environment variable (legacy compatibility)"
-  def get_env(key) when is_atom(key), do: get_env(Atom.to_string(key))
-  def get_env(key) when is_binary(key), do: System.get_env(key)
-
-  @doc "Get configuration with default (legacy compatibility)"
-  def get(key, default) when is_atom(key) do
-    case key do
-      :map_url ->
-        map_url()
-
-      :map_name ->
-        map_name()
-
-      :map_api_key ->
-        map_api_key()
-
-      :janice_api_token ->
-        janice_api_token()
-
-      :discord_debug_logging ->
-        get_boolean("DISCORD_DEBUG_LOGGING", default)
-
-      :feature_flags ->
-        get_boolean("FEATURE_FLAGS_ENABLED", default)
-
-      _ ->
-        key
-        |> Atom.to_string()
-        |> String.upcase()
-        |> System.get_env(default)
-    end
-  end
-
-  def get(key) when is_atom(key), do: get(key, nil)
-
   # ──────────────────────────────────────────────────────────────────────────────
   # Helper Functions (private implementations)
   # ──────────────────────────────────────────────────────────────────────────────
 
-  defp get_env_private(key, default \\ nil) do
-    System.get_env(key, default)
-  end
-
-  defp get_required_env(key) do
-    case System.get_env(key) do
-      nil -> raise "Missing required environment variable: #{key}"
-      "" -> raise "Empty required environment variable: #{key}"
-      value -> value
-    end
-  end
-
-  defp get_boolean(key, default) do
-    case System.get_env(key) do
-      nil -> default
-      "true" -> true
-      "false" -> false
-      "1" -> true
-      "0" -> false
-      _ -> default
-    end
-  end
-
-  defp get_integer(key, default) do
-    case System.get_env(key) do
-      nil ->
-        default
-
-      value ->
-        case Integer.parse(value) do
-          {int, ""} -> int
-          _ -> default
-        end
-    end
-  end
+  defp get_env_private(key, default \\ nil), do: Env.get(key, default)
+  defp get_required_env(key), do: Env.get_required(key)
+  defp get_boolean(key, default), do: Env.get_boolean(key, default)
+  defp get_integer(key, default), do: Env.get_integer(key, default)
 end

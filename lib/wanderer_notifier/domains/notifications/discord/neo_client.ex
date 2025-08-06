@@ -10,6 +10,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   alias WandererNotifier.Domains.Notifications.Discord.ChannelResolver
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
+  alias WandererNotifier.Shared.Utils.Retry
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -111,110 +112,109 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Send message to Discord and handle the response
   defp send_discord_message(channel_id_int, discord_embed) do
-    send_discord_message_with_retry(channel_id_int, discord_embed, nil, 0)
+    send_discord_message_with_retry(channel_id_int, discord_embed, nil)
   end
 
   # Send message with content to Discord and handle the response
   defp send_discord_message(channel_id_int, discord_embed, content)
        when is_binary(content) and content != "" do
-    send_discord_message_with_retry(channel_id_int, discord_embed, content, 0)
+    send_discord_message_with_retry(channel_id_int, discord_embed, content)
   end
 
-  defp send_discord_message_with_retry(channel_id_int, discord_embed, content, attempt)
-       when attempt < 5 do
-    context = build_retry_context(channel_id_int, discord_embed, content, attempt)
+  defp send_discord_message_with_retry(channel_id_int, discord_embed, content) do
+    rally_id = extract_rally_id(discord_embed)
+    has_content = content != nil
+    start_time = System.monotonic_time(:millisecond)
 
-    log_api_attempt(context.channel_id, context.has_content, context.rally_id, context.attempt)
+    retry_opts = build_retry_options(start_time, rally_id, channel_id_int)
 
-    task = create_discord_api_task(context.channel_id, discord_embed, content, context.rally_id)
+    retry_fn =
+      create_retry_function(
+        channel_id_int,
+        discord_embed,
+        content,
+        rally_id,
+        has_content,
+        start_time
+      )
 
-    handle_task_result(task, context)
+    result = Retry.http_retry(retry_fn, retry_opts)
+    handle_discord_result(result, start_time, rally_id)
   end
 
-  defp send_discord_message_with_retry(_channel_id_int, _discord_embed, _content, attempt) do
-    Logger.error("Discord API call failed after #{attempt} attempts", category: :api)
-    {:error, :discord_timeout}
+  defp build_retry_options(start_time, rally_id, channel_id_int) do
+    [
+      max_attempts: 5,
+      base_backoff: 2_000,
+      max_backoff: 10_000,
+      jitter: false,
+      context: "Discord API call",
+      on_retry: fn attempt, error, delay ->
+        elapsed = System.monotonic_time(:millisecond) - start_time
+        log_retry_attempt(attempt, error, delay, elapsed, rally_id, channel_id_int)
+      end
+    ]
   end
 
-  defp build_retry_context(channel_id, discord_embed, content, attempt) do
-    %{
-      channel_id: channel_id,
-      discord_embed: discord_embed,
-      content: content,
-      attempt: attempt,
-      start_time: System.monotonic_time(:millisecond),
-      rally_id: extract_rally_id(discord_embed),
-      has_content: content != nil
-    }
-  end
-
-  defp handle_task_result(task, context) do
-    case Task.yield(task, 30_000) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, _message}} ->
-        handle_success(context.start_time, context.rally_id, context.attempt)
-
-      {:ok, {:error, %{status_code: 429} = response}} ->
-        handle_rate_limit(response, context.channel_id, context.start_time, context.rally_id)
-
-      {:ok, {:error, response}} ->
-        do_retry(response, context)
-
-      nil ->
-        do_timeout_retry(context)
+  defp create_retry_function(
+         channel_id_int,
+         discord_embed,
+         content,
+         rally_id,
+         has_content,
+         start_time
+       ) do
+    fn ->
+      log_api_attempt(channel_id_int, has_content, rally_id, 0)
+      task = create_discord_api_task(channel_id_int, discord_embed, content, rally_id)
+      handle_task_result(task, channel_id_int, start_time, rally_id)
     end
   end
 
-  defp do_retry(response, context) do
-    elapsed = System.monotonic_time(:millisecond) - context.start_time
+  defp handle_task_result(task, channel_id_int, start_time, rally_id) do
+    case Task.yield(task, 30_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, _message} = success} ->
+        success
 
-    Logger.warning(
-      "[RALLY_TIMING] Discord API error on attempt #{context.attempt + 1} after #{elapsed}ms, retrying...",
-      error: inspect(response),
-      rally_id: context.rally_id,
-      category: :api
-    )
+      {:ok, {:error, %{status_code: 429} = response}} ->
+        handle_rate_limit(response, channel_id_int, start_time, rally_id)
+        {:error, {:rate_limited, get_retry_after(response)}}
 
-    delay =
-      2
-      |> :math.pow(context.attempt)
-      |> Kernel.*(1000)
-      |> min(10_000)
-      |> round()
+      {:ok, {:error, response}} ->
+        {:error, response}
 
-    Process.sleep(delay)
-
-    send_discord_message_with_retry(
-      context.channel_id,
-      context.discord_embed,
-      context.content,
-      context.attempt + 1
-    )
+      nil ->
+        {:error, :timeout}
+    end
   end
 
-  defp do_timeout_retry(context) do
-    elapsed = System.monotonic_time(:millisecond) - context.start_time
+  defp handle_discord_result({:ok, response}, start_time, rally_id) do
+    handle_success(start_time, rally_id, 0)
+    response
+  end
 
-    Logger.warning(
-      "[RALLY_TIMING] Discord API call timed out after 30 seconds on attempt #{context.attempt + 1} (#{elapsed}ms total)",
-      channel_id: context.channel_id,
-      rally_id: context.rally_id,
+  defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
+    Logger.error("Discord API call failed after all attempts",
+      reason: inspect(reason),
       category: :api
     )
 
-    delay =
-      2
-      |> :math.pow(context.attempt)
-      |> Kernel.*(1000)
-      |> min(10_000)
-      |> round()
+    {:error, :discord_timeout}
+  end
 
-    Process.sleep(delay)
+  defp log_retry_attempt(attempt, error, delay, elapsed, rally_id, channel_id) do
+    error_msg =
+      case error do
+        :timeout -> "timed out after 30 seconds"
+        {:rate_limited, _} -> "rate limited"
+        other -> inspect(other)
+      end
 
-    send_discord_message_with_retry(
-      context.channel_id,
-      context.discord_embed,
-      context.content,
-      context.attempt + 1
+    Logger.warning(
+      "[RALLY_TIMING] Discord API #{error_msg} on attempt #{attempt + 1} after #{elapsed}ms, retrying in #{delay}ms...",
+      rally_id: rally_id,
+      channel_id: channel_id,
+      category: :api
     )
   end
 

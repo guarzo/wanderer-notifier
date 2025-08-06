@@ -256,7 +256,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.CommandRegistrar do
           nil
 
         id when is_binary(id) ->
-          case Integer.parse(id) do
+          case Integer.parse(id, 10) do
             {int_id, ""} -> int_id
             _ -> nil
           end

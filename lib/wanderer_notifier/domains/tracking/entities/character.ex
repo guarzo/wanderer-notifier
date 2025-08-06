@@ -105,7 +105,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
   defp parse_integer(id) when is_integer(id), do: id
 
   defp parse_integer(id) when is_binary(id) do
-    case Integer.parse(id) do
+    case Integer.parse(id, 10) do
       {int_id, ""} -> int_id
       _ -> nil
     end
@@ -145,7 +145,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
 
   @impl true
   def is_tracked?(character_id) when is_binary(character_id) do
-    case Cache.get("map:character_list") do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, characters} when is_list(characters) ->
         tracked = Enum.any?(characters, &(&1["eve_id"] == character_id))
         {:ok, tracked}
@@ -191,7 +191,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
   """
   @spec get_character(String.t()) :: {:ok, t()} | {:error, term()}
   def get_character(character_id) when is_binary(character_id) do
-    case Cache.get("map:character_list") do
+    case Cache.get(Cache.Keys.map_characters()) do
       {:ok, characters} when is_list(characters) ->
         case Enum.find(characters, &(&1["eve_id"] == character_id)) do
           nil -> {:error, :not_found}
@@ -227,7 +227,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.Character do
         value
 
       value when is_binary(value) ->
-        case Integer.parse(value) do
+        case Integer.parse(value, 10) do
           {int, ""} -> int
           _ -> nil
         end

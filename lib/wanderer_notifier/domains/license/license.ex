@@ -12,11 +12,6 @@ defmodule WandererNotifier.Domains.License.License do
   alias WandererNotifier.Shared.Utils.StringUtils
   require Logger
 
-  @validation_url "https://lm.wanderer.ltd/validate_bot"
-  @cache_key "license_validation_result"
-  # 20 minutes cache
-  @cache_ttl :timer.minutes(20)
-
   # ══════════════════════════════════════════════════════════════════════════════
   # Public API
   # ══════════════════════════════════════════════════════════════════════════════
@@ -85,7 +80,7 @@ defmodule WandererNotifier.Domains.License.License do
   Clears the cached license validation result.
   """
   def clear_cache do
-    Cache.delete(@cache_key)
+    Cache.delete(Cache.Keys.license_validation())
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -97,7 +92,7 @@ defmodule WandererNotifier.Domains.License.License do
          {:ok, response} <- make_validation_request(config),
          {:ok, result} <- parse_validation_response(response) do
       # Cache the successful result
-      Cache.put(@cache_key, result, @cache_ttl)
+      Cache.put(Cache.Keys.license_validation(), result, Cache.ttl(:license))
 
       Logger.info("License validation successful",
         valid: result.valid,
@@ -141,7 +136,7 @@ defmodule WandererNotifier.Domains.License.License do
   end
 
   defp build_validation_url do
-    base_url = Config.license_manager_api_url() || @validation_url
+    base_url = Config.license_manager_api_url()
 
     # If the base URL already includes the validation path, use it as-is
     if String.ends_with?(base_url, "/validate_bot") do
@@ -210,7 +205,7 @@ defmodule WandererNotifier.Domains.License.License do
   end
 
   defp get_cached_result do
-    Cache.get(@cache_key)
+    Cache.get(Cache.Keys.license_validation())
   end
 
   defp format_error_message(reason) do

@@ -9,7 +9,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Infrastructure.{Http, Cache}
-  alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Shared.Utils.{ErrorHandler, FormattingUtils}
   require Logger
 
   @doc """
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
 
   def get_system_name(system_id) when is_integer(system_id) do
     # Use the simplified cache directly
-    cache_key = "esi:system_name:#{system_id}"
+    cache_key = Cache.Keys.system_name(system_id)
 
     case Cache.get(cache_key) do
       {:ok, name} when is_binary(name) ->
@@ -73,7 +73,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
         case esi_service().get_system(system_id, []) do
           {:ok, %{"name" => name}} when is_binary(name) ->
             # Cache the name with 1 hour TTL
-            Cache.put(cache_key, name, :timer.hours(1))
+            Cache.put(cache_key, name, Cache.ttl(:system))
             name
 
           _ ->
@@ -83,7 +83,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   end
 
   def get_system_name(system_id) when is_binary(system_id) do
-    case Integer.parse(system_id) do
+    case Integer.parse(system_id, 10) do
       {id, ""} -> get_system_name(id)
       _ -> "System #{system_id}"
     end
@@ -117,28 +117,34 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   end
 
   defp fetch_with_fallback(url) do
-    case Req.get(url, retry: false, connect_options: [timeout: 10_000]) do
-      {:ok, %Req.Response{status: status, body: body}} ->
-        json_body = safely_encode_json(body)
-        log_request_result(status, body, url)
-        {:ok, %{status_code: status, body: json_body}}
+    case Http.wanderer_kills_get(url) do
+      {:ok, response} ->
+        log_request_result(response.status_code, response.body, url)
+        {:ok, response}
 
       {:error, reason} ->
-        Logger.error("[Enrichment] Direct Req failed", reason: inspect(reason), url: url)
-        Logger.warning("[Enrichment] Falling back to Http client")
-        Http.request(:get, url, nil, [], service: :wanderer_kills)
+        Logger.error("[Enrichment] HTTP request failed - reason: #{inspect(reason)}, url: #{url}")
+        {:error, reason}
     end
   end
 
-  defp log_request_result(200, _body, _url) do
-    Logger.debug("[Enrichment] Direct Req success - status: 200")
+  defp log_request_result(200, _body, url) do
+    Logger.debug("[Enrichment] Direct Req success - status: 200, url: #{url}")
   end
 
   defp log_request_result(status, body, url) do
+    # Extract system ID from URL for better debugging
+    system_id =
+      case Regex.run(~r/system\/(\d+)/, url) do
+        [_, id] -> id
+        _ -> "unknown"
+      end
+
     body_preview = inspect(body) |> String.slice(0, 200)
 
-    Logger.info(
-      "[Enrichment] Direct Req non-200 status - status: #{status}, url: #{url}, body: #{body_preview}"
+    # Use warning level for better visibility
+    Logger.warning(
+      "[Enrichment] Direct Req non-200 status - status: #{status}, system_id: #{system_id}, url: #{url}, body: #{body_preview}"
     )
   end
 
@@ -150,7 +156,29 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   end
 
   defp parse_kills_response({:ok, %{status_code: status, body: body}}) do
-    Logger.error("[Enrichment] HTTP error", status: status, body: inspect(body))
+    # Log at different levels based on status code
+    cond do
+      status == 404 ->
+        # 404 is expected when no kills found - don't log
+        :ok
+
+      status in [500, 502, 503, 504] ->
+        # Server errors - log as warning since service might be temporarily down
+        body_preview = inspect(body) |> String.slice(0, 200)
+
+        Logger.warning(
+          "[Enrichment] WandererKills service error - status: #{status}, body: #{body_preview}"
+        )
+
+      true ->
+        # Other errors - log as error
+        body_preview = inspect(body) |> String.slice(0, 200)
+
+        Logger.error(
+          "[Enrichment] HTTP error during killmail enrichment - status: #{status}, body: #{body_preview}"
+        )
+    end
+
     {:error, {:http_error, status}}
   end
 
@@ -242,10 +270,9 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   end
 
   defp fetch_killmail_data(url, killmail_id) do
-    case Req.get(url, retry: false, connect_options: [timeout: 10_000]) do
-      {:ok, %Req.Response{status: status, body: body}} ->
-        json_body = safely_encode_json(body)
-        {:ok, %{status_code: status, body: json_body}}
+    case Http.wanderer_kills_get(url) do
+      {:ok, response} ->
+        {:ok, response}
 
       {:error, reason} ->
         Logger.debug("Failed to fetch detailed killmail",
@@ -255,24 +282,6 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
 
         {:error, reason}
     end
-  end
-
-  defp safely_encode_json(body) when is_map(body) do
-    case Jason.encode(body) do
-      {:ok, json} ->
-        json
-
-      {:error, _} ->
-        Logger.warning("[Enrichment] Failed to encode response body to JSON")
-        "{}"
-    end
-  end
-
-  defp safely_encode_json(body) when is_binary(body), do: body
-
-  defp safely_encode_json(_body) do
-    Logger.warning("[Enrichment] Unexpected body type, using empty JSON")
-    "{}"
   end
 
   defp parse_killmail_response({:ok, %{status_code: 200, body: body}}, _killmail_id)
@@ -371,22 +380,14 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   defp format_time_diff(sec) when sec < 86_400, do: "(#{div(sec, 3_600)}h ago)"
   defp format_time_diff(sec), do: "(#{div(sec, 86_400)}d ago)"
 
-  defp format_isk_value(v) when is_number(v) do
-    cond do
-      v >= 1_000_000_000 -> "#{Float.round(v / 1_000_000_000, 1)}B ISK"
-      v >= 1_000_000 -> "#{Float.round(v / 1_000_000, 1)}M ISK"
-      v >= 1_000 -> "#{Float.round(v / 1_000, 1)}K ISK"
-      true -> "#{trunc(v)} ISK"
-    end
-  end
-
-  defp format_isk_value(_), do: "0 ISK"
+  # Use centralized ISK formatting
+  defp format_isk_value(value), do: FormattingUtils.format_isk(value)
 
   # Get corporation ticker from corporation ID via ESI API
   defp get_corporation_ticker(nil), do: "UNKN"
 
   defp get_corporation_ticker(corporation_id) when is_integer(corporation_id) do
-    cache_key = "esi:corporation:#{corporation_id}"
+    cache_key = Cache.Keys.corporation(corporation_id)
 
     case Cache.get(cache_key) do
       {:ok, %{"ticker" => ticker}} when is_binary(ticker) ->
@@ -397,7 +398,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
         case esi_service().get_corporation_info(corporation_id, []) do
           {:ok, %{"ticker" => ticker}} when is_binary(ticker) ->
             # Cache corporation data for 24 hours
-            Cache.put(cache_key, %{"ticker" => ticker}, :timer.hours(24))
+            Cache.put(cache_key, %{"ticker" => ticker}, Cache.ttl(:corporation))
             ticker
 
           _ ->

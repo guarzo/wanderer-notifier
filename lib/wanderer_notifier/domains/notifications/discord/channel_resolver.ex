@@ -62,7 +62,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ChannelResolver do
   end
 
   def resolve_channel(:kill, nil) do
-    Config.discord_kill_channel_id()
+    Config.discord_channel_id()
     |> normalize_channel_id()
     |> fallback_to_primary()
   end
@@ -104,30 +104,33 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ChannelResolver do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp try_fallback_channels do
-    # Try other channel IDs as fallbacks
-    cond do
-      fallback = normalize_channel_id(Config.discord_system_channel_id()) ->
-        Logger.info("Using system channel ID as fallback", fallback: fallback, category: :api)
-        fallback
+    # Try channel IDs in priority order as fallbacks
+    fallback_channels = [
+      {:system, Config.discord_system_channel_id()},
+      {:kill, Config.discord_channel_id()},
+      {:character, Config.discord_character_channel_id()}
+    ]
 
-      fallback = normalize_channel_id(Config.discord_kill_channel_id()) ->
-        Logger.info("Using kill channel ID as fallback", fallback: fallback, category: :api)
-        fallback
+    case find_valid_fallback_channel(fallback_channels) do
+      {type, channel_id} ->
+        Logger.info("Using #{type} channel ID as fallback", fallback: channel_id, category: :api)
+        channel_id
 
-      fallback = normalize_channel_id(Config.discord_character_channel_id()) ->
-        Logger.info("Using character channel ID as fallback",
-          fallback: fallback,
-          category: :api
-        )
-
-        fallback
-
-      true ->
+      nil ->
         Logger.error("No valid Discord channel ID available, notifications may fail",
           category: :api
         )
 
         nil
+    end
+  end
+
+  defp find_valid_fallback_channel([]), do: nil
+
+  defp find_valid_fallback_channel([{type, channel_id} | rest]) do
+    case normalize_channel_id(channel_id) do
+      nil -> find_valid_fallback_channel(rest)
+      valid_id -> {type, valid_id}
     end
   end
 
@@ -139,9 +142,13 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ChannelResolver do
   defp normalize_channel_id(id) when is_integer(id), do: id
 
   defp normalize_channel_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, ""} -> parsed_id
-      _ -> nil
+    if String.trim(id) == "" do
+      nil
+    else
+      case Integer.parse(id, 10) do
+        {parsed_id, ""} -> parsed_id
+        _ -> nil
+      end
     end
   rescue
     _ -> nil

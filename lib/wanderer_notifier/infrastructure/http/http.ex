@@ -1,4 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http do
+  @behaviour WandererNotifier.Infrastructure.Http.Behaviour
+
   @moduledoc """
   Unified HTTP client module that handles all HTTP operations for the application.
   Provides a single interface for making HTTP requests with built-in retry logic,
@@ -29,7 +31,6 @@ defmodule WandererNotifier.Infrastructure.Http do
       # POST with authentication
       Http.request(:post, url, body, [], service: :license, auth: [type: :bearer, token: token])
   """
-  @behaviour WandererNotifier.Infrastructure.Http.HttpBehaviour
 
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
   alias WandererNotifier.Infrastructure.Http.Middleware.{Telemetry, Retry, RateLimiter}
@@ -104,8 +105,8 @@ defmodule WandererNotifier.Infrastructure.Http do
       # POST with authentication
       request(:post, url, %{data: "value"}, [], service: :license, auth: [type: :bearer, token: token])
   """
-  @spec request(method(), url(), body(), headers(), opts()) :: response()
   @impl true
+  @spec request(method(), url(), body(), headers(), opts()) :: response()
   def request(method, url, body \\ nil, headers \\ [], opts \\ []) do
     case http_client() do
       WandererNotifier.HTTPMock ->
@@ -317,7 +318,7 @@ defmodule WandererNotifier.Infrastructure.Http do
       retry_count: 3,
       retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],
-      rate_limit: [requests_per_second: 20, burst_capacity: 40, per_host: true],
+      rate_limit: [requests_per_second: 50, burst_capacity: 150, per_host: true],
       middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
@@ -367,7 +368,7 @@ defmodule WandererNotifier.Infrastructure.Http do
       retry_count: 3,
       retry_delay: 1_000,
       retryable_status_codes: [429, 500, 502, 503, 504],
-      rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
+      rate_limit: [requests_per_second: 20, burst_capacity: 50, per_host: true],
       middlewares: [Retry, RateLimiter],
       decode_json: true
     ],
@@ -490,7 +491,6 @@ defmodule WandererNotifier.Infrastructure.Http do
     - {:error, reason} on failure
   """
   @spec get_killmail(integer(), String.t()) :: response()
-  @impl true
   def get_killmail(killmail_id, hash) do
     url = build_url(killmail_id, hash)
     request(:get, url, nil, [], [])
@@ -499,5 +499,106 @@ defmodule WandererNotifier.Infrastructure.Http do
   @spec build_url(integer(), String.t()) :: String.t()
   defp build_url(killmail_id, hash) do
     "https://zkillboard.com/api/killID/#{killmail_id}/#{hash}/"
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Service-Specific Convenience Methods
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Makes a GET request to the ESI API.
+
+  ## Parameters
+    - url: The ESI endpoint URL
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec esi_get(url(), headers(), opts()) :: response()
+  def esi_get(url, headers \\ [], opts \\ []) do
+    request(:get, url, nil, headers, Keyword.put(opts, :service, :esi))
+  end
+
+  @doc """
+  Makes a GET request to WandererKills API with default headers.
+
+  ## Parameters
+    - url: The WandererKills endpoint URL
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec wanderer_kills_get(url(), headers(), opts()) :: response()
+  def wanderer_kills_get(url, headers \\ [], opts \\ []) do
+    request(:get, url, nil, headers, Keyword.put(opts, :service, :wanderer_kills))
+  end
+
+  @doc """
+  Makes a POST request to WandererKills API with JSON body.
+
+  ## Parameters
+    - url: The WandererKills endpoint URL
+    - body: Request body (will be JSON encoded if map)
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec wanderer_kills_post(url(), body(), headers(), opts()) :: response()
+  def wanderer_kills_post(url, body, headers \\ [], opts \\ []) do
+    request(:post, url, body, headers, Keyword.put(opts, :service, :wanderer_kills))
+  end
+
+  @doc """
+  Makes a GET request to the Map API.
+
+  ## Parameters
+    - url: The Map API endpoint URL
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec map_get(url(), headers(), opts()) :: response()
+  def map_get(url, headers \\ [], opts \\ []) do
+    request(:get, url, nil, headers, Keyword.put(opts, :service, :map))
+  end
+
+  @doc """
+  Makes a POST request to the License API with authentication.
+
+  ## Parameters
+    - url: The License API endpoint URL
+    - body: Request body
+    - token: Bearer token for authentication
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec license_post(url(), body(), String.t(), headers(), opts()) :: response()
+  def license_post(url, body, token, headers \\ [], opts \\ []) do
+    auth_opts = [service: :license, auth: [type: :bearer, token: token]]
+    final_opts = Keyword.merge(opts, auth_opts)
+    request(:post, url, body, headers, final_opts)
+  end
+
+  @doc """
+  Makes a POST request to Discord API.
+
+  ## Parameters
+    - url: The Discord API endpoint URL
+    - body: Request body
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec discord_post(url(), body(), headers(), opts()) :: response()
+  def discord_post(url, body, headers \\ [], opts \\ []) do
+    request(:post, url, body, headers, Keyword.put(opts, :service, :discord))
+  end
+
+  @doc """
+  Makes a GET request to Fuzzworks API with extended timeout.
+
+  ## Parameters
+    - url: The Fuzzworks endpoint URL
+    - headers: Optional headers (defaults to [])
+    - opts: Additional options
+  """
+  @spec fuzzworks_get(url(), headers(), opts()) :: response()
+  def fuzzworks_get(url, headers \\ [], opts \\ []) do
+    request(:get, url, nil, headers, Keyword.put(opts, :service, :fuzzworks))
   end
 end

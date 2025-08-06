@@ -12,6 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   alias WandererNotifier.Domains.Tracking.MapTrackingClient
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
+  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry}
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -24,16 +25,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
     name = Keyword.get(opts, :name, __MODULE__)
 
-    Logger.debug("Starting WebSocket client",
-      url: websocket_url
-    )
+    Logger.debug("Starting WebSocket client - url: #{websocket_url}")
 
     # Build the WebSocket URL with Phoenix socket path
     socket_url = build_socket_url(websocket_url)
 
-    Logger.debug("Attempting WebSocket connection",
-      socket_url: socket_url
-    )
+    Logger.debug("Attempting WebSocket connection - socket_url: #{socket_url}")
 
     state = %{
       url: socket_url,
@@ -123,7 +120,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     # Clear websocket stats on disconnect
     # Health is now tracked by simple process checks %{})
 
-    # Calculate exponential backoff with jitter
+    # Calculate exponential backoff with jitter using unified retry logic
     delay = calculate_backoff(state.reconnect_attempts)
 
     Logger.debug(
@@ -184,12 +181,18 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp cancel_timer(ref), do: Process.cancel_timer(ref)
 
   defp calculate_backoff(attempts) do
-    base = @initial_reconnect_delay
-    # Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s max
-    calculated = base * :math.pow(2, attempts)
-    # Add 20-40% jitter to prevent thundering herd
-    jittered = calculated * (0.8 + :rand.uniform() * 0.4)
-    min(trunc(jittered), @max_reconnect_delay)
+    # Use the unified Retry module's backoff calculation
+    state = %{
+      mode: :exponential,
+      base_backoff: @initial_reconnect_delay,
+      max_backoff: @max_reconnect_delay,
+      # Approximate 20-40% jitter range
+      jitter: 0.3,
+      # Retry module uses 1-based attempts
+      attempt: attempts + 1
+    }
+
+    Retry.calculate_backoff(state)
   end
 
   def handle_frame({:text, message}, state) do
@@ -212,9 +215,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp log_frame_received(message_size) do
     # Only log detailed info for debug level, reduce memory impact
-    Logger.debug("WebSocket text frame received",
-      message_size: message_size
-    )
+    Logger.debug("WebSocket text frame received - message_size: #{message_size}")
   end
 
   defp handle_decoded_message(data, state) do
@@ -223,10 +224,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_decoded_message(data) do
-    Logger.debug("Decoded WebSocket message",
-      event: data["event"],
-      topic: data["topic"],
-      payload_keys: extract_payload_keys(data["payload"])
+    Logger.debug(
+      "Decoded WebSocket message - event: #{data["event"]}, topic: #{data["topic"]}, payload_keys: #{inspect(extract_payload_keys(data["payload"]))}"
     )
   end
 
@@ -236,10 +235,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp handle_decode_error(message, message_size, reason, state) do
     message_preview = truncate_message(message, message_size)
 
-    Logger.error("Failed to decode WebSocket message",
-      error: inspect(reason),
-      message_size: message_size,
-      message_preview: message_preview
+    Logger.error(
+      "Failed to decode WebSocket message - error: #{inspect(reason)}, message_size: #{message_size}, message_preview: #{message_preview}"
     )
 
     {:ok, state}
@@ -270,7 +267,12 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       check_and_update_subscriptions(state)
     rescue
       error ->
-        handle_subscription_error(error, state)
+        Logger.error("Subscription update check failed: #{ErrorHandler.format_error(error)}")
+        # Schedule next subscription update anyway to prevent hanging
+        subscription_update_ref =
+          Process.send_after(self(), :subscription_update, @subscription_update_interval)
+
+        {:ok, %{state | subscription_update_ref: subscription_update_ref}}
     end
   end
 
@@ -285,10 +287,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       result
     rescue
       error ->
-        Logger.error("Error during channel join",
-          error: Exception.message(error),
-          stacktrace: __STACKTRACE__
-        )
+        Logger.error("Error during channel join: #{ErrorHandler.format_error(error)}")
 
         # Retry with exponential backoff
         retry_count = Map.get(state, :join_retry_count, 0)
@@ -383,7 +382,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       trigger_rejoin(systems_changed, characters_changed)
     end
 
-    schedule_next_update(state)
+    # Schedule next update and return proper WebSockex format
+    subscription_update_ref =
+      Process.send_after(self(), :subscription_update, @subscription_update_interval)
+
+    {:ok, %{state | subscription_update_ref: subscription_update_ref}}
   end
 
   defp get_current_tracking_data do
@@ -405,15 +408,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          current_characters,
          state
        ) do
-    Logger.debug("Subscription update check completed",
-      systems_changed: systems_changed,
-      characters_changed: characters_changed,
-      current_systems_count: MapSet.size(current_systems),
-      current_characters_count: MapSet.size(current_characters),
-      subscribed_systems_count: MapSet.size(state.subscribed_systems),
-      subscribed_characters_count: MapSet.size(state.subscribed_characters),
-      current_systems_sample: Enum.take(MapSet.to_list(current_systems), 5),
-      current_characters_sample: Enum.take(MapSet.to_list(current_characters), 5)
+    Logger.debug(
+      "Subscription update check completed - systems_changed: #{systems_changed}, characters_changed: #{characters_changed}, current_systems: #{MapSet.size(current_systems)}, current_characters: #{MapSet.size(current_characters)}, subscribed_systems: #{MapSet.size(state.subscribed_systems)}, subscribed_characters: #{MapSet.size(state.subscribed_characters)}"
     )
   end
 
@@ -425,22 +421,6 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     )
 
     send(self(), :join_channel)
-  end
-
-  defp schedule_next_update(state) do
-    subscription_update_ref =
-      Process.send_after(self(), :subscription_update, @subscription_update_interval)
-
-    {:ok, %{state | subscription_update_ref: subscription_update_ref}}
-  end
-
-  defp handle_subscription_error(error, state) do
-    Logger.error("Subscription update check failed",
-      error: Exception.message(error)
-    )
-
-    # Schedule next subscription update anyway to prevent hanging
-    schedule_next_update(state)
   end
 
   defp prepare_subscription_data do
@@ -465,13 +445,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_subscription_data(all_systems, all_characters, limited_systems, limited_characters) do
-    Logger.debug("WebSocket channel join data preparation",
-      total_systems_count: length(all_systems),
-      total_characters_count: length(all_characters),
-      limited_systems_count: length(limited_systems),
-      limited_characters_count: length(limited_characters),
-      sample_systems: Enum.take(limited_systems, 5),
-      sample_characters: Enum.take(limited_characters, 5)
+    Logger.debug(
+      "WebSocket channel join data preparation - total_systems: #{length(all_systems)}, total_characters: #{length(all_characters)}, limited_systems: #{length(limited_systems)}, limited_characters: #{length(limited_characters)}"
     )
   end
 
@@ -534,9 +509,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         {:reply, {:text, json}, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to encode join message",
-          error: inspect(reason)
-        )
+        Logger.error("Failed to encode join message - error: #{inspect(reason)}")
 
         retry_count = Map.get(state, :join_retry_count, 0)
         delay = calculate_backoff(retry_count)
@@ -546,9 +519,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp log_join_success(systems, characters) do
-    Logger.debug("Joining killmails channel",
-      systems_count: length(systems),
-      characters_count: length(characters)
+    Logger.debug(
+      "Joining killmails channel - systems_count: #{length(systems)}, characters_count: #{length(characters)}"
     )
   end
 
@@ -567,9 +539,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
          %{"event" => "phx_reply", "payload" => %{"status" => "error", "response" => response}},
          state
        ) do
-    Logger.error("Failed to join channel",
-      error: inspect(response)
-    )
+    Logger.error("Failed to join channel - error: #{inspect(response)}")
 
     retry_count = Map.get(state, :join_retry_count, 0)
     delay = calculate_backoff(retry_count)
@@ -582,10 +552,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     system_id = payload["system_id"]
     is_preload = payload["preload"] || false
 
-    Logger.debug("Received killmail update",
-      system_id: system_id,
-      killmails_count: length(killmails),
-      preload: is_preload
+    Logger.debug(
+      "Received killmail update - system_id: #{system_id}, killmails_count: #{length(killmails)}, preload: #{is_preload}"
     )
 
     # Transform and send each killmail to the pipeline with deduplication
@@ -607,10 +575,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     system_id = payload["system_id"]
     count = payload["count"]
 
-    Logger.debug("Kill count update",
-      system_id: system_id,
-      count: count
-    )
+    Logger.debug("Kill count update - system_id: #{system_id}, count: #{count}")
 
     {:ok, state}
   end
@@ -619,9 +584,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     total_kills = payload["total_kills"]
     systems_processed = payload["systems_processed"]
 
-    Logger.info("Preload complete",
-      total_kills: total_kills,
-      systems_processed: systems_processed
+    Logger.info(
+      "Preload complete - total_kills: #{total_kills}, systems_processed: #{systems_processed}"
     )
 
     {:ok, state}
@@ -633,9 +597,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   end
 
   defp handle_phoenix_message(msg, state) do
-    Logger.debug("Unhandled Phoenix message",
-      message: inspect(msg)
-    )
+    Logger.debug("Unhandled Phoenix message - message: #{inspect(msg)}")
 
     {:ok, state}
   end
@@ -718,21 +680,20 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # Get tracked systems from MapTrackingClient directly
   defp get_tracked_systems do
-    try do
-      systems = get_systems_from_cache_or_api()
-      process_systems_list(systems)
-    rescue
-      error ->
-        Logger.error(
-          "Exception in get_tracked_systems: #{Exception.message(error)} (#{inspect(error.__struct__)})"
-        )
-
-        []
+    case ErrorHandler.safe_execute(
+           fn ->
+             systems = get_systems_from_cache_or_api()
+             process_systems_list(systems)
+           end,
+           context: %{operation: :get_tracked_systems}
+         ) do
+      {:ok, result} when is_list(result) -> result
+      {:error, _reason} -> []
     end
   end
 
   defp get_systems_from_cache_or_api do
-    case Cache.get("map:systems") do
+    case Cache.get(Cache.Keys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         systems
 
@@ -759,60 +720,52 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     |> Enum.uniq()
   end
 
-  defp extract_system_id(system) when is_struct(system) do
-    # Struct format (MapSystem) - access using dot notation
-    system.solar_system_id || system.id
-  end
+  defp extract_system_id(system), do: EntityUtils.extract_system_id(system)
 
-  defp extract_system_id(system) when is_map(system) do
-    # Plain map format
-    system["solar_system_id"] || system[:solar_system_id] ||
-      system["system_id"] || system[:system_id]
-  end
-
-  defp extract_system_id(_), do: nil
-
-  defp valid_system_id?(system_id) do
-    is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-  end
+  defp valid_system_id?(system_id), do: EntityUtils.valid_system_id?(system_id)
 
   # Get tracked characters from MapTrackingClient directly
   defp get_tracked_characters do
-    Logger.debug("Fetching tracked characters from MapTrackingClient")
+    try do
+      Logger.debug("Fetching tracked characters from MapTrackingClient")
 
-    # Try cache first
-    case Cache.get("map:character_list") do
-      {:ok, characters} when is_list(characters) ->
-        Logger.debug("Retrieved #{length(characters)} tracked characters from cache")
+      # Try cache first
+      case Cache.get(Cache.Keys.map_characters()) do
+        {:ok, characters} when is_list(characters) ->
+          get_characters_from_cache(characters)
+
+        _ ->
+          get_characters_from_api()
+      end
+    rescue
+      error ->
+        Logger.error("Failed to get tracked characters: #{ErrorHandler.format_error(error)}")
+        []
+    end
+  end
+
+  defp get_characters_from_cache(characters) do
+    Logger.debug("Retrieved #{length(characters)} tracked characters from cache")
+    log_raw_characters(characters)
+    process_character_list(characters)
+  end
+
+  defp get_characters_from_api do
+    case MapTrackingClient.fetch_and_cache_characters() do
+      {:ok, characters} ->
+        Logger.debug("MapTrackingClient returned #{length(characters)} characters")
         log_raw_characters(characters)
         process_character_list(characters)
 
-      _ ->
-        # Fall back to fetching from API
-        case MapTrackingClient.fetch_and_cache_characters() do
-          {:ok, characters} ->
-            Logger.debug("MapTrackingClient returned #{length(characters)} characters")
-            log_raw_characters(characters)
-            process_character_list(characters)
-
-          {:error, reason} ->
-            Logger.error("Failed to get tracked characters: #{inspect(reason)}")
-            []
-        end
+      {:error, reason} ->
+        Logger.error("Failed to get tracked characters: #{inspect(reason)}")
+        []
     end
-  rescue
-    error ->
-      Logger.error(
-        "Exception in get_tracked_characters: #{Exception.message(error)} (#{inspect(error.__struct__)})"
-      )
-
-      []
   end
 
   defp log_raw_characters(characters) do
-    Logger.debug("Raw character data from ExternalAdapters",
-      count: length(characters),
-      sample: Enum.take(characters, 3) |> Enum.map(&inspect/1)
+    Logger.debug(
+      "Raw character data from ExternalAdapters - count: #{length(characters)}, sample: #{inspect(Enum.take(characters, 3))}"
     )
   end
 
@@ -828,25 +781,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     processed
   end
 
-  defp extract_character_id(char) do
-    # Extract from nested character structure
-    char_id = char["character"]["eve_id"]
-
-    normalized = normalize_character_id(char_id)
-
-    normalized
-  end
-
-  defp normalize_character_id(id) when is_integer(id), do: id
-
-  defp normalize_character_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_id, ""} -> int_id
-      _ -> nil
-    end
-  end
-
-  defp normalize_character_id(_), do: nil
+  defp extract_character_id(char), do: EntityUtils.extract_character_id(char)
 
   defp valid_character_id?(char_id) do
     is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000
@@ -854,17 +789,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   # WebSocket-level deduplication to prevent immediate duplicates
   defp should_process_killmail?(killmail_id) do
-    cache_key = "websocket_dedup:#{killmail_id}"
+    alias WandererNotifier.Infrastructure.Cache.Deduplication
 
-    case WandererNotifier.Infrastructure.Cache.get(cache_key) do
-      {:ok, _} ->
-        # Already processed recently, skip
-        false
-
-      {:error, :not_found} ->
-        # Not seen recently, mark as processing and allow
-        WandererNotifier.Infrastructure.Cache.put(cache_key, true, :timer.minutes(5))
-        true
+    case Deduplication.check_and_mark(:websocket, to_string(killmail_id)) do
+      :new -> true
+      :duplicate -> false
     end
   end
 

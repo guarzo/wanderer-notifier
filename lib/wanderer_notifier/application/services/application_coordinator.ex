@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Application.Services.SimpleApplicationService do
+defmodule WandererNotifier.Application.Services.ApplicationCoordinator do
   @moduledoc """
   Simplified application service that acts as a startup coordinator.
 
@@ -17,7 +17,7 @@ defmodule WandererNotifier.Application.Services.SimpleApplicationService do
   Starts the simplified application service.
   """
   def start_link(opts \\ []) do
-    Logger.debug("Starting SimpleApplicationService...", category: :startup)
+    Logger.debug("Starting ApplicationCoordinator...", category: :startup)
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -40,13 +40,13 @@ defmodule WandererNotifier.Application.Services.SimpleApplicationService do
 
   @impl true
   def init(_opts) do
-    Logger.info("SimpleApplicationService initialized successfully", category: :startup)
+    Logger.info("ApplicationCoordinator initialized successfully", category: :startup)
     {:ok, %{started_at: DateTime.utc_now()}}
   end
 
   @impl true
   def handle_info(msg, state) do
-    Logger.debug("SimpleApplicationService received unexpected message: #{inspect(msg)}")
+    Logger.debug("ApplicationCoordinator received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 end

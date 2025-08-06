@@ -5,10 +5,27 @@ defmodule WandererNotifier.Domains.License.LicenseServiceTest do
   alias WandererNotifier.Domains.License.LicenseService, as: Service
 
   setup :verify_on_exit!
+  setup :set_mox_global
 
   setup do
     # Set up HTTP client mock
     Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
+
+    # Stub the validation HTTP request for all tests
+    WandererNotifier.HTTPMock
+    |> stub(:request, fn :post, _url, _headers, _body, _opts ->
+      {:ok,
+       %HTTPoison.Response{
+         status_code: 200,
+         body:
+           Jason.encode!(%{
+             "success" => true,
+             "status" => "active",
+             "bot_assigned" => true,
+             "discord_bot_status" => "active"
+           })
+       }}
+    end)
 
     # Start the License Service if not already running
     case Process.whereis(WandererNotifier.Domains.License.LicenseService) do
@@ -31,7 +48,23 @@ defmodule WandererNotifier.Domains.License.LicenseServiceTest do
 
   describe "validate/0" do
     test "returns validation results" do
-      # The validate function doesn't make HTTP calls directly - it just returns state
+      # The validate function triggers another validation via GenServer
+      # Mock the validation request that will be made
+      WandererNotifier.HTTPMock
+      |> expect(:request, fn :post, _url, _headers, _body, _opts ->
+        {:ok,
+         %HTTPoison.Response{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "success" => true,
+               "status" => "active",
+               "bot_assigned" => true,
+               "discord_bot_status" => "active"
+             })
+         }}
+      end)
+
       result = Service.validate()
       assert is_map(result)
     end

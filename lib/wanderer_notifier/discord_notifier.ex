@@ -256,7 +256,7 @@ defmodule WandererNotifier.DiscordNotifier do
     body = build_discord_message_body(embed)
 
     # Make request with Infrastructure.Http (includes built-in retries and timeout handling)
-    case Http.request(:post, url, body, headers, service: :discord) do
+    case Http.discord_post(url, body, headers) do
       {:ok, %{status_code: status_code}} when status_code in 200..299 ->
         Logger.debug("Discord API call successful", status: status_code)
         :ok
@@ -264,15 +264,25 @@ defmodule WandererNotifier.DiscordNotifier do
       {:ok, %{status_code: 429, body: body}} ->
         # Rate limited - log and continue (Req will retry automatically)
         retry_after = get_retry_after_from_body(body)
-        Logger.warning("Discord rate limited", retry_after: retry_after)
+
+        Logger.warning(
+          "Discord rate limited: POST #{url} (channel: #{channel_id}, retry_after: #{retry_after})"
+        )
+
         {:error, :rate_limited}
 
       {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error("Discord API error", status: status_code, body: inspect(body))
+        Logger.error(
+          "Discord API error: POST #{url} returned #{status_code} (channel: #{channel_id}) - #{inspect(body)}"
+        )
+
         {:error, {:http_error, status_code}}
 
       {:error, reason} ->
-        Logger.error("Discord API request failed", reason: inspect(reason))
+        Logger.error(
+          "Discord API request failed: POST #{url} (channel: #{channel_id}) - #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end

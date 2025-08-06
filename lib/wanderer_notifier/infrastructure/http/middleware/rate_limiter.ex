@@ -147,11 +147,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
       {:deny, _limit} ->
         # Rate limit exceeded
-        Logger.error("Rate limit denied",
-          host: host,
-          bucket_id: bucket_id,
-          limit: limit,
-          category: :api
+        Logger.error(
+          "Rate limit denied - host: #{host}, bucket_id: #{bucket_id}, limit: #{limit}"
         )
 
         log_rate_limit_hit(host, bucket_id)
@@ -183,37 +180,93 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   end
 
   defp extract_retry_after(headers) do
-    case Enum.find(headers, fn {key, _} ->
-           String.downcase(key) == "retry-after"
-         end) do
+    case find_retry_after_header(headers) do
+      {_, value} when is_binary(value) ->
+        parse_binary_retry_after(value)
+
       {_, value} ->
-        case Integer.parse(value) do
-          # Convert to milliseconds
-          {seconds, _} -> seconds * 1000
-          :error -> 0
-        end
+        parse_non_binary_retry_after(value)
 
       nil ->
         0
     end
   end
 
+  defp find_retry_after_header(headers) do
+    Enum.find(headers, fn {key, _} ->
+      String.downcase(key) == "retry-after"
+    end)
+  end
+
+  defp parse_binary_retry_after(value) do
+    case Integer.parse(value, 10) do
+      {seconds, _} -> seconds * 1000
+      :error -> 0
+    end
+  end
+
+  defp parse_non_binary_retry_after(value) do
+    log_non_binary_header(value)
+
+    cond do
+      is_integer(value) ->
+        value * 1000
+
+      is_list(value) and length(value) > 0 ->
+        parse_list_retry_after(value)
+
+      is_atom(value) and not is_nil(value) ->
+        5000
+
+      true ->
+        5000
+    end
+  end
+
+  defp parse_list_retry_after(value) do
+    case List.first(value) do
+      val when is_binary(val) ->
+        parse_list_binary_value(val)
+
+      val when is_integer(val) ->
+        val * 1000
+
+      _ ->
+        5000
+    end
+  end
+
+  defp parse_list_binary_value(val) do
+    case Integer.parse(val, 10) do
+      {int, ""} -> int * 1000
+      _ -> 5000
+    end
+  end
+
+  defp log_non_binary_header(value) do
+    value_type = determine_value_type(value)
+
+    Logger.warning("Non-binary retry-after header value: #{inspect(value)} (type: #{value_type})")
+  end
+
+  defp determine_value_type(value) do
+    cond do
+      is_list(value) -> :list
+      is_integer(value) -> :integer
+      is_atom(value) -> :atom
+      is_map(value) -> :map
+      true -> :unknown
+    end
+  end
+
   defp log_rate_limit_hit(host, bucket_id) do
-    Logger.warning("Rate limit exceeded",
-      host: host,
-      bucket_key: bucket_id,
-      middleware: "RateLimiter",
-      category: :api
+    Logger.warning(
+      "Rate limit exceeded - host: #{host}, bucket_key: #{bucket_id}, middleware: RateLimiter"
     )
   end
 
   defp log_server_rate_limit(host, retry_after) do
-    Logger.warning("Server rate limit hit",
-      host: host,
-      retry_after_ms: retry_after,
-      middleware: "RateLimiter",
-      category: :api
-    )
+    Logger.warning("Server rate limit hit - host: #{host}, retry_after_ms: #{retry_after}")
   end
 
   defp build_context(host) do
@@ -279,11 +332,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
     retry_after = get_retry_after_from_headers(headers)
     context = Keyword.get(opts, :context, "HTTP request")
 
-    Logger.error("Rate limit hit",
-      category: :api,
-      context: context,
-      retry_after: retry_after
-    )
+    Logger.error("Rate limit hit - context: #{context}, retry_after: #{retry_after}")
 
     {:error, {:rate_limited, retry_after}}
   end
@@ -311,9 +360,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       {:ok, result}
     rescue
       e ->
-        Logger.error("Fixed interval operation failed: #{Exception.message(e)}",
-          category: :api,
-          context: context
+        Logger.error(
+          "Fixed interval operation failed: #{Exception.message(e)} - context: #{context}"
         )
 
         {:error, e}
@@ -345,10 +393,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       {:ok, result}
     rescue
       e ->
-        Logger.error("Burst operation failed: #{Exception.message(e)}",
-          category: :api,
-          context: context
-        )
+        Logger.error("Burst operation failed: #{Exception.message(e)} - context: #{context}")
 
         {:error, e}
     end
@@ -448,17 +493,15 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
   defp get_retry_after_from_headers(headers) do
     case Enum.find(headers, fn {key, _} -> String.downcase(key) == "retry-after" end) do
-      {_, value} -> parse_int(value, 0) * 1000
+      # Default to 5 seconds if parse fails
+      {_, value} -> parse_int(value, 5) * 1000
       nil -> Constants.base_backoff()
     end
   end
 
   defp default_retry_callback(attempt, error, delay) do
-    Logger.info("Rate limit retry",
-      category: :api,
-      attempt: attempt,
-      error: inspect(error),
-      delay_ms: delay
+    Logger.info(
+      "Rate limit retry - attempt: #{attempt}, error: #{inspect(error)}, delay_ms: #{delay}"
     )
   end
 
@@ -467,8 +510,17 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   defp parse_int(value, _default) when is_integer(value), do: value
 
   defp parse_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
+    case Integer.parse(value, 10) do
       {int, ""} -> int
+      _ -> default
+    end
+  end
+
+  defp parse_int(value, default) when is_list(value) and length(value) > 0 do
+    # Handle list case - parse first element
+    case List.first(value) do
+      val when is_binary(val) -> parse_int(val, default)
+      val when is_integer(val) -> val
       _ -> default
     end
   end

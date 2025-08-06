@@ -229,7 +229,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:error, :not_found} = Cache.get(key)
 
       # Mark as processed
-      :ok = Cache.put(key, true, Cache.killmail_ttl())
+      :ok = Cache.put(key, true, Cache.ttl(:killmail))
 
       # Should be marked as processed
       assert {:ok, true} = Cache.get(key)
@@ -252,17 +252,17 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
   describe "TTL configuration functions" do
     test "provides correct TTL values" do
-      assert Cache.character_ttl() == :timer.hours(24)
-      assert Cache.corporation_ttl() == :timer.hours(24)
-      assert Cache.alliance_ttl() == :timer.hours(24)
-      assert Cache.system_ttl() == :timer.hours(1)
-      assert Cache.killmail_ttl() == :timer.minutes(30)
-      assert Cache.map_ttl() == :timer.hours(1)
+      assert Cache.ttl(:character) == :timer.hours(24)
+      assert Cache.ttl(:corporation) == :timer.hours(24)
+      assert Cache.ttl(:alliance) == :timer.hours(24)
+      assert Cache.ttl(:system) == :timer.hours(1)
+      assert Cache.ttl(:killmail) == :timer.minutes(30)
+      assert Cache.ttl(:map_data) == :timer.hours(1)
     end
 
-    test "ttl_for/1 returns appropriate TTL" do
-      assert Cache.ttl_for(:map_data) == :timer.hours(1)
-      assert Cache.ttl_for(:anything_else) == :timer.hours(24)
+    test "ttl/1 returns appropriate TTL" do
+      assert Cache.ttl(:map_data) == :timer.hours(1)
+      assert Cache.ttl(:anything_else) == :timer.hours(24)
     end
   end
 

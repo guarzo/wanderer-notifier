@@ -8,6 +8,22 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
 
   setup :verify_on_exit!
 
+  setup do
+    # Set up HTTP client mock
+    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
+
+    # Start the ItemLookupService if not already running
+    case Process.whereis(ItemLookupService) do
+      nil ->
+        {:ok, _pid} = ItemLookupService.start_link([])
+
+      _pid ->
+        :ok
+    end
+
+    :ok
+  end
+
   describe "ItemLookupService basic functionality" do
     test "can start and get status" do
       # Since the service is started by the application,

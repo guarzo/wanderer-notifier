@@ -8,6 +8,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   require Logger
 
   alias WandererNotifier.Shared.Types.Constants
+  alias WandererNotifier.Infrastructure.Cache
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -35,14 +36,17 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl GenServer
       def init(opts) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        primed? = Cachex.get(cache_name, primed_key()) == {:ok, true}
+        primed? =
+          __MODULE__
+          |> Cache.Keys.scheduler_primed()
+          |> Cache.get()
+          |> Kernel.==({:ok, true})
 
         # Get the configured interval for this scheduler type
         interval = get_scheduler_interval(opts)
 
         # Get cached data, defaulting to empty list if not found
-        cached_data = get_cached_data(cache_name)
+        cached_data = get_cached_data()
 
         state = %{
           interval: interval,
@@ -75,8 +79,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       end
 
       # Get cached data with error handling
-      defp get_cached_data(cache_name) do
-        case Cachex.get(cache_name, cache_key()) do
+      defp get_cached_data do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.get()
+        |> case do
           {:ok, data} when is_list(data) ->
             data
 
@@ -85,7 +92,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
           {:ok, data} ->
             Logger.error("Invalid cached data format",
-              key: cache_key(),
+              key: Cache.Keys.scheduler_data(__MODULE__),
               data: inspect(data)
             )
 
@@ -93,7 +100,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
           {:error, reason} ->
             Logger.error("Failed to get cached data",
-              key: cache_key(),
+              key: Cache.Keys.scheduler_data(__MODULE__),
               error: inspect(reason)
             )
 
@@ -164,11 +171,9 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl GenServer
       def handle_info(:update, state) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
         case update_data(state.cached_data) do
           {:ok, new_data} ->
-            handle_update_success(new_data, state, cache_name)
+            handle_update_success(new_data, state)
 
           {:error, reason} ->
             handle_update_error(reason, state)
@@ -176,9 +181,15 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       end
 
       # Handle successful data update
-      defp handle_update_success(new_data, state, cache_name) do
-        Cachex.put(cache_name, primed_key(), true)
-        Cachex.put(cache_name, cache_key(), new_data)
+      defp handle_update_success(new_data, state) do
+        __MODULE__
+        |> Cache.Keys.scheduler_primed()
+        |> Cache.put(true)
+
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.put(new_data)
+
         log_update(__MODULE__, new_data, state.cached_data)
 
         # Update Stats module with the tracked count
@@ -223,12 +234,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       Runs an update cycle.
       """
       def run do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        cached_data = get_cached_data_for_run(cache_name)
+        cached_data = get_cached_data_for_run()
 
         case update_data(cached_data) do
           {:ok, new_data} ->
-            handle_successful_run(new_data, cache_name)
+            handle_successful_run(new_data)
 
           {:error, reason} ->
             handle_failed_run(reason)
@@ -236,8 +246,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       end
 
       # Get cached data for manual run operation
-      defp get_cached_data_for_run(cache_name) do
-        case Cachex.get(cache_name, cache_key()) do
+      defp get_cached_data_for_run do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.get()
+        |> case do
           {:ok, data} when is_list(data) ->
             data
 
@@ -262,8 +275,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       end
 
       # Handle successful manual run
-      defp handle_successful_run(new_data, cache_name) do
-        Cachex.put(cache_name, cache_key(), new_data)
+      defp handle_successful_run(new_data) do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.put(new_data)
+
         {:ok, new_data}
       end
 

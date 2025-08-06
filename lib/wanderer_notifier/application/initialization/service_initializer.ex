@@ -15,6 +15,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   """
 
   require Logger
+  alias WandererNotifier.Shared.Utils.Retry
 
   @type initialization_phase ::
           :infrastructure | :foundation | :integration | :processing | :finalization
@@ -134,7 +135,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       {WandererNotifier.Shared.Metrics, []},
 
       # Core application service (simplified)
-      {WandererNotifier.Application.Services.SimpleApplicationService, []},
+      {WandererNotifier.Application.Services.ApplicationCoordinator, []},
 
       # Universe item and ship lookup service
       {WandererNotifier.Domains.Universe.Services.ItemLookupService, []},
@@ -196,6 +197,11 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       initialize_sse_clients()
     end
 
+    # Warm essential cache data if not in test mode
+    if Application.get_env(:wanderer_notifier, :env) != :test do
+      initialize_cache_warming()
+    end
+
     duration = System.monotonic_time(:millisecond) - start_time
     Logger.info("Finalization phase completed in #{duration}ms", category: :startup)
   end
@@ -206,7 +212,7 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
 
   defp wait_for_service_readiness do
     critical_services = [
-      WandererNotifier.Application.Services.SimpleApplicationService,
+      WandererNotifier.Application.Services.ApplicationCoordinator,
       WandererNotifier.Map.SSESupervisor
     ]
 
@@ -215,32 +221,30 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
 
   # Maximum wait time is approximately 50 seconds based on max_attempts (50) and backoff duration
   # Backoff starts at 10ms and exponentially increases up to 1000ms per attempt
-  defp wait_for_service(service_module, attempts \\ 0, max_attempts \\ 50) do
-    if attempts >= max_attempts do
-      raise "Service #{service_module} failed to start after #{max_attempts} attempts"
-    end
+  defp wait_for_service(service_module) do
+    result =
+      Retry.run(
+        fn ->
+          case Process.whereis(service_module) do
+            nil -> {:error, :service_not_started}
+            pid when is_pid(pid) -> {:ok, pid}
+          end
+        end,
+        max_attempts: 50,
+        base_backoff: 10,
+        max_backoff: 1_000,
+        jitter: false,
+        context: "Waiting for #{inspect(service_module)}",
+        retryable_errors: [:service_not_started]
+      )
 
-    case Process.whereis(service_module) do
-      nil ->
-        attempts
-        |> calculate_backoff_ms()
-        |> Process.sleep()
-
-        wait_for_service(service_module, attempts + 1, max_attempts)
-
-      pid when is_pid(pid) ->
-        # Service is running
+    case result do
+      {:ok, _pid} ->
         :ok
+
+      {:error, :service_not_started} ->
+        raise "Service #{service_module} failed to start after 50 attempts"
     end
-  end
-
-  defp calculate_backoff_ms(attempt) do
-    # Exponential backoff: 10ms, 20ms, 40ms, ..., max 1000ms
-    base_ms = 10
-    max_ms = 1000
-
-    backoff = base_ms * :math.pow(2, attempt)
-    min(trunc(backoff), max_ms)
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -262,6 +266,22 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     rescue
       error ->
         Logger.error("Failed to initialize SSE clients",
+          error: Exception.message(error),
+          category: :startup
+        )
+    end
+  end
+
+  defp initialize_cache_warming do
+    Logger.debug("Initializing cache warming", category: :startup)
+
+    try do
+      # Skip cache warming to prevent rate limiting on startup
+      # Cache will warm naturally as data is requested
+      Logger.debug("Cache warming disabled to prevent rate limiting", category: :startup)
+    rescue
+      error ->
+        Logger.error("Failed to initialize cache warming",
           error: Exception.message(error),
           category: :startup
         )

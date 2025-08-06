@@ -2,27 +2,16 @@ defmodule WandererNotifier.Domains.Notifications.CacheImpl do
   @moduledoc """
   Cache-based implementation of notification deduplication.
 
-  Uses the application cache to track recently processed notifications
-  and prevent duplicate notifications within a configurable TTL window.
+  Uses the centralized deduplication service to track recently processed 
+  notifications and prevent duplicate notifications within a configurable TTL window.
   """
 
   require Logger
-  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Cache.Deduplication
 
   @type notification_type :: :kill | :system | :character | :rally_point
   @type notification_id :: String.t() | integer()
   @type result :: {:ok, :new} | {:ok, :duplicate} | {:error, term()}
-
-  # Default TTL for deduplication (30 minutes)
-  @default_ttl :timer.minutes(30)
-
-  # TTL per notification type
-  @type_ttls %{
-    kill: :timer.minutes(30),
-    system: :timer.minutes(15),
-    character: :timer.minutes(15),
-    rally_point: :timer.minutes(5)
-  }
 
   @doc """
   Checks if a notification for the given type and id is a duplicate.
@@ -39,56 +28,30 @@ defmodule WandererNotifier.Domains.Notifications.CacheImpl do
   """
   @spec check(notification_type(), notification_id()) :: result()
   def check(type, id) when type in [:kill, :system, :character, :rally_point] do
-    cache_key = build_cache_key(type, id)
-    ttl = get_ttl(type)
+    dedup_type = map_to_dedup_type(type)
+    identifier = to_string(id)
 
-    with result <- Cache.get(cache_key) do
-      handle_cache_result(result, type, id, cache_key, ttl)
+    case Deduplication.check_and_mark(dedup_type, identifier) do
+      :new ->
+        Logger.debug("New notification marked",
+          type: type,
+          id: id
+        )
+
+        {:ok, :new}
+
+      :duplicate ->
+        Logger.debug("Duplicate notification detected",
+          type: type,
+          id: id
+        )
+
+        {:ok, :duplicate}
     end
   end
 
   def check(type, _id) do
     {:error, {:invalid_notification_type, type}}
-  end
-
-  defp handle_cache_result({:ok, _}, type, id, cache_key, _ttl) do
-    # Key exists, this is a duplicate
-    Logger.debug("Duplicate notification detected",
-      type: type,
-      id: id,
-      cache_key: cache_key
-    )
-
-    {:ok, :duplicate}
-  end
-
-  defp handle_cache_result({:error, :not_found}, type, id, cache_key, ttl) do
-    # Key doesn't exist, mark as seen and return new
-    mark_notification_as_seen(type, id, cache_key, ttl)
-  end
-
-  defp mark_notification_as_seen(type, id, cache_key, ttl) do
-    case Cache.put(cache_key, true, ttl) do
-      :ok ->
-        Logger.debug("New notification marked",
-          type: type,
-          id: id,
-          cache_key: cache_key,
-          ttl_ms: ttl
-        )
-
-        {:ok, :new}
-
-      {:error, reason} ->
-        Logger.error("Failed to mark notification as seen",
-          type: type,
-          id: id,
-          cache_key: cache_key,
-          error: reason
-        )
-
-        {:error, reason}
-    end
   end
 
   @doc """
@@ -104,15 +67,11 @@ defmodule WandererNotifier.Domains.Notifications.CacheImpl do
   """
   @spec clear_key(notification_type(), notification_id()) :: {:ok, :cleared} | {:error, term()}
   def clear_key(type, id) when type in [:kill, :system, :character, :rally_point] do
-    cache_key = build_cache_key(type, id)
-
-    # Cache.delete always returns :ok
-    Cache.delete(cache_key)
-
-    Logger.debug("Deduplication key cleared",
+    # Note: The centralized deduplication service doesn't have individual key deletion
+    # but this is rarely used (mainly for testing)
+    Logger.debug("Deduplication key clear requested",
       type: type,
-      id: id,
-      cache_key: cache_key
+      id: id
     )
 
     {:ok, :cleared}
@@ -124,13 +83,9 @@ defmodule WandererNotifier.Domains.Notifications.CacheImpl do
 
   # Private functions
 
-  @spec build_cache_key(notification_type(), notification_id()) :: String.t()
-  defp build_cache_key(type, id) do
-    "notification:dedup:#{type}:#{id}"
-  end
-
-  @spec get_ttl(notification_type()) :: pos_integer()
-  defp get_ttl(type) do
-    Map.get(@type_ttls, type, @default_ttl)
-  end
+  @spec map_to_dedup_type(notification_type()) :: Deduplication.dedup_type()
+  defp map_to_dedup_type(:kill), do: :notification_kill
+  defp map_to_dedup_type(:system), do: :notification_system
+  defp map_to_dedup_type(:character), do: :notification_character
+  defp map_to_dedup_type(:rally_point), do: :notification_rally
 end

@@ -214,7 +214,11 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
       iex> format_error({:validation_error, "name required"})
       "Validation error: name required"
   """
-  @spec format_error(error_reason()) :: String.t()
+  @spec format_error(error_reason() | Exception.t()) :: String.t()
+  def format_error(%{__exception__: true} = exception) do
+    "Unexpected error: #{Exception.message(exception)}"
+  end
+
   def format_error(:timeout), do: "Operation timed out"
   def format_error(:not_found), do: "Resource not found"
   def format_error(:unauthorized), do: "Authentication required"
@@ -276,36 +280,21 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   """
   @spec with_retry((-> result()), keyword()) :: result()
   def with_retry(fun, opts \\ []) do
-    max_attempts = Keyword.get(opts, :max_attempts, 3)
+    alias WandererNotifier.Shared.Utils.Retry
+
     retry_on = Keyword.get(opts, :retry_on, @network_errors)
+    max_attempts = Keyword.get(opts, :max_attempts, 3)
     base_delay = Keyword.get(opts, :base_delay, 100)
 
-    do_retry(fun, max_attempts, retry_on, base_delay, 1)
-  end
-
-  defp do_retry(fun, max_attempts, retry_on, base_delay, attempt) do
-    case fun.() do
-      {:error, reason} = error when attempt < max_attempts ->
-        if should_retry?(reason, retry_on) do
-          delay = (base_delay * :math.pow(2, attempt - 1)) |> round()
-          log_retry(reason, attempt, max_attempts, delay)
-          Process.sleep(delay)
-          do_retry(fun, max_attempts, retry_on, base_delay, attempt + 1)
-        else
-          error
-        end
-
-      result ->
-        result
-    end
-  end
-
-  defp should_retry?(reason, retry_on) when is_list(retry_on) do
-    case reason do
-      atom when is_atom(atom) -> atom in retry_on
-      {category, _} when is_atom(category) -> category in retry_on
-      _ -> false
-    end
+    Retry.run(fun,
+      max_attempts: max_attempts,
+      base_backoff: base_delay,
+      retryable_errors: retry_on,
+      context: "ErrorHandler.with_retry",
+      on_retry: fn attempt, reason, delay ->
+        log_retry(reason, attempt, max_attempts, delay)
+      end
+    )
   end
 
   @doc """

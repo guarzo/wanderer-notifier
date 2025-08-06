@@ -1,9 +1,17 @@
 defmodule WandererNotifier.Domains.License.Validation do
   @moduledoc """
-  Shared validation logic for license checking.
-  Centralizes common validation patterns used by both License.Service and License.Client.
+  Legacy license validation module - DEPRECATED.
+
+  This module has been consolidated into WandererNotifier.Shared.Validation.
+  Use the new unified validation module instead:
+
+  - `Validation.validate_license_response/1` instead of `normalize_response/1`
+  - `Validation.validate_config_present/1` instead of individual validation functions
+
+  This module will be removed in a future release.
   """
 
+  alias WandererNotifier.Shared.Validation
   alias WandererNotifier.Shared.Config
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
@@ -14,40 +22,15 @@ defmodule WandererNotifier.Domains.License.Validation do
   Handles both 'license_valid' and 'valid' response formats.
   """
   @spec normalize_response(map()) :: {:ok, map()} | {:error, :invalid_response}
-  def normalize_response(%{"license_valid" => license_valid} = response) do
-    normalized = %{
-      valid: license_valid,
-      bot_assigned: response["bot_associated"] || response["bot_assigned"] || false,
-      message: response["message"],
-      raw_response: response
-    }
-
-    {:ok, normalized}
-  end
-
-  def normalize_response(%{"valid" => valid} = response) do
-    normalized = %{
-      valid: valid,
-      bot_assigned: response["bot_associated"] || response["bot_assigned"] || false,
-      message: response["message"],
-      raw_response: response
-    }
-
-    {:ok, normalized}
-  end
-
-  def normalize_response(_), do: {:error, :invalid_response}
+  def normalize_response(response), do: Validation.validate_license_response(response)
 
   @doc """
   Validates if a bot token is assigned.
   """
   @spec bot_token_assigned?() :: boolean()
   def bot_token_assigned? do
-    case Config.get_env(:bot_token) do
-      nil -> false
-      "" -> false
-      _ -> true
-    end
+    token = Config.discord_bot_token()
+    StringUtils.present?(token)
   end
 
   @doc """
@@ -55,11 +38,8 @@ defmodule WandererNotifier.Domains.License.Validation do
   """
   @spec license_key_present?() :: boolean()
   def license_key_present? do
-    case Config.get_env(:license_key) do
-      nil -> false
-      "" -> false
-      _ -> true
-    end
+    key = Config.license_key()
+    StringUtils.present?(key)
   end
 
   @doc """

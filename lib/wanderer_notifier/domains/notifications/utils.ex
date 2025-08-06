@@ -3,6 +3,8 @@ defmodule WandererNotifier.Domains.Notifications.Utils do
   Utility functions for notification formatting and data extraction.
   """
 
+  alias WandererNotifier.Shared.Utils.EntityUtils
+
   @doc """
   Adds a field to an embed map if the value is available.
 
@@ -82,10 +84,9 @@ defmodule WandererNotifier.Domains.Notifications.Utils do
   end
 
   @doc """
-  Extracts a character ID from a Character struct.
+  Extracts a character ID from a Character struct or map.
   """
-  def extract_character_id(%{character_id: id}), do: id
-  def extract_character_id(_), do: nil
+  def extract_character_id(data), do: EntityUtils.extract_character_id(data)
 
   @doc """
   Extracts a character name from a Character struct.

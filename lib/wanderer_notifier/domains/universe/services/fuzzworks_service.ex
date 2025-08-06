@@ -162,7 +162,7 @@ defmodule WandererNotifier.Domains.Universe.Services.FuzzworksService do
   end
 
   defp fetch_compressed_file(url) do
-    case Http.request(:get, url, nil, [], service: :fuzzworks, timeout: @download_timeout) do
+    case Http.fuzzworks_get(url, [], timeout: @download_timeout) do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 

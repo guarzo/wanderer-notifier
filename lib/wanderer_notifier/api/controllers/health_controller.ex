@@ -9,11 +9,13 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   - Liveness check for container health
   """
   use WandererNotifier.Api.ApiPipeline
-  use WandererNotifier.Api.Controllers.ControllerHelpers
+  import Plug.Conn
+  import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Api.Controllers.SystemInfo
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.ErrorHandler
 
   # Basic health check endpoint - optimized for load balancers
   get "/" do
@@ -64,7 +66,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
 
   # Performance metrics endpoint for monitoring
   get "/metrics" do
-    case Config.get(:enable_test_endpoints, false) do
+    case Config.feature_enabled?(:enable_test_endpoints) do
       true ->
         metrics = collect_performance_metrics()
         send_success(conn, metrics)
@@ -81,77 +83,92 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   # Private health check functions
 
   defp perform_basic_health_check do
-    try do
-      status = %{
-        status: "OK",
-        timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
-        version: Config.version(),
-        uptime: get_uptime_seconds()
-      }
+    ErrorHandler.safe_execute(
+      fn ->
+        status = %{
+          status: "OK",
+          timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
+          version: Config.version(),
+          uptime: get_uptime_seconds()
+        }
 
-      {:ok, status}
-    rescue
-      error ->
-        {:error, "Basic health check failed: #{Exception.message(error)}"}
-    end
+        {:ok, status}
+      end,
+      context: %{operation: :basic_health_check, category: :health}
+    )
   end
 
   defp perform_readiness_check do
-    try do
-      checks = [
-        {"configuration", check_configuration()},
-        {"cache", check_cache_availability()},
-        {"external_services", check_external_services()}
-      ]
+    ErrorHandler.safe_execute(
+      fn ->
+        checks = perform_health_checks()
+        process_readiness_results(checks)
+      end,
+      context: %{operation: :readiness_check, category: :health}
+    )
+  end
 
-      failed_checks = checks |> Enum.filter(fn {_name, result} -> result != :ok end)
+  defp perform_health_checks do
+    [
+      {"configuration", check_configuration()},
+      {"cache", check_cache_availability()},
+      {"external_services", check_external_services()}
+    ]
+  end
 
-      case failed_checks do
-        [] ->
-          {:ok,
-           %{
-             status: "ready",
-             timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
-             checks: checks |> Enum.map(fn {name, _} -> {name, "ok"} end) |> Map.new()
-           }}
+  defp process_readiness_results(checks) do
+    failed_checks = checks |> Enum.filter(fn {_name, result} -> result != :ok end)
 
-        failed ->
-          failure_details =
-            failed |> Enum.map(fn {name, result} -> {name, inspect(result)} end) |> Map.new()
+    case failed_checks do
+      [] ->
+        create_success_response(checks)
 
-          {:error, "Readiness checks failed: #{inspect(failure_details)}"}
-      end
-    rescue
-      error ->
-        {:error, "Readiness check failed: #{Exception.message(error)}"}
+      failed ->
+        create_failure_response(failed)
     end
   end
 
+  defp create_success_response(checks) do
+    {:ok,
+     %{
+       status: "ready",
+       timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
+       checks: checks |> Enum.map(fn {name, _} -> {name, "ok"} end) |> Map.new()
+     }}
+  end
+
+  defp create_failure_response(failed) do
+    failure_details =
+      failed |> Enum.map(fn {name, result} -> {name, inspect(result)} end) |> Map.new()
+
+    {:error, "Readiness checks failed: #{inspect(failure_details)}"}
+  end
+
   defp perform_liveness_check do
-    try do
-      # Basic liveness checks - should be fast and lightweight
-      process_count = length(Process.list())
-      memory_usage = :erlang.memory(:total)
+    ErrorHandler.safe_execute(
+      fn ->
+        # Basic liveness checks - should be fast and lightweight
+        process_count = length(Process.list())
+        memory_usage = :erlang.memory(:total)
 
-      # Check if we have critical processes running
-      supervisor_alive = Process.whereis(WandererNotifier.Application) != nil
+        # Check if we have critical processes running
+        supervisor_alive = Process.whereis(WandererNotifier.Application) != nil
 
-      if supervisor_alive and process_count > 10 and memory_usage > 0 do
-        {:ok,
-         %{
-           status: "alive",
-           timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
-           process_count: process_count,
-           memory_bytes: memory_usage
-         }}
-      else
-        {:error,
-         "Liveness check failed: supervisor=#{supervisor_alive}, processes=#{process_count}"}
-      end
-    rescue
-      error ->
-        {:error, "Liveness check failed: #{Exception.message(error)}"}
-    end
+        if supervisor_alive and process_count > 10 and memory_usage > 0 do
+          {:ok,
+           %{
+             status: "alive",
+             timestamp: WandererNotifier.Shared.Utils.TimeUtils.log_timestamp(),
+             process_count: process_count,
+             memory_bytes: memory_usage
+           }}
+        else
+          {:error,
+           "Liveness check failed: supervisor=#{supervisor_alive}, processes=#{process_count}"}
+        end
+      end,
+      context: %{operation: :liveness_check, category: :health}
+    )
   end
 
   defp perform_detailed_health_check do
@@ -169,39 +186,63 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   end
 
   defp check_configuration do
-    try do
-      # Verify critical configuration is present
-      required_configs = [:map_url, :license_key, :discord_bot_token]
+    ErrorHandler.safe_execute(
+      fn ->
+        # Verify critical configuration is present
+        required_configs = [:map_url, :license_key, :discord_bot_token]
 
-      missing_configs =
-        required_configs
-        |> Enum.filter(fn key -> Config.get(key) in [nil, ""] end)
+        missing_configs =
+          required_configs
+          |> Enum.filter(&config_missing?/1)
 
-      case missing_configs do
-        [] -> :ok
-        missing -> {:error, "Missing configurations: #{inspect(missing)}"}
-      end
-    rescue
-      error -> {:error, "Configuration check failed: #{Exception.message(error)}"}
+        case missing_configs do
+          [] -> :ok
+          missing -> {:error, "Missing configurations: #{inspect(missing)}"}
+        end
+      end,
+      context: %{operation: :check_configuration, category: :health}
+    )
+    |> case do
+      {:ok, result} -> result
+      {:error, _} -> {:error, "Configuration check failed"}
     end
   end
 
   defp check_cache_availability do
+    ErrorHandler.safe_execute(
+      fn ->
+        # Test cache with a simple operation
+        test_key = "health_check_#{:rand.uniform(1000)}"
+        Cache.put_with_ttl(test_key, "test_value", Cache.ttl(:health_check))
+
+        case Cache.get(test_key) do
+          {:ok, "test_value"} ->
+            Cache.delete(test_key)
+            :ok
+
+          _ ->
+            {:error, "Cache read/write failed"}
+        end
+      end,
+      context: %{operation: :check_cache_availability, category: :health}
+    )
+    |> case do
+      {:ok, result} -> result
+      {:error, _} -> {:error, "Cache check failed"}
+    end
+  end
+
+  defp config_missing?(:map_url), do: config_value_missing?(&Config.map_url/0)
+  defp config_missing?(:license_key), do: config_value_missing?(&Config.license_key/0)
+  defp config_missing?(:discord_bot_token), do: config_value_missing?(&Config.discord_bot_token/0)
+  defp config_missing?(_), do: true
+
+  defp config_value_missing?(config_func) do
     try do
-      # Test cache with a simple operation
-      test_key = "health_check_#{:rand.uniform(1000)}"
-      Cache.put_with_ttl(test_key, "test_value", 1000)
-
-      case Cache.get(test_key) do
-        {:ok, "test_value"} ->
-          Cache.delete(test_key)
-          :ok
-
-        _ ->
-          {:error, "Cache read/write failed"}
-      end
+      config_func.()
+      false
     rescue
-      error -> {:error, "Cache check failed: #{Exception.message(error)}"}
+      _ -> true
     end
   end
 
@@ -223,16 +264,22 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   end
 
   defp get_cache_status do
-    try do
-      cache_stats = Cache.stats()
+    ErrorHandler.safe_execute(
+      fn ->
+        cache_stats = Cache.stats()
 
-      %{
-        enabled: true,
-        stats: cache_stats,
-        memory_usage: :erlang.memory(:ets)
-      }
-    rescue
-      _ -> %{enabled: false, error: "Cache status unavailable"}
+        %{
+          enabled: true,
+          stats: cache_stats,
+          memory_usage: :erlang.memory(:ets)
+        }
+      end,
+      fallback: fn _ -> %{enabled: false, error: "Cache status unavailable"} end,
+      context: %{operation: :get_cache_status, category: :health}
+    )
+    |> case do
+      {:ok, result} -> result
+      {:error, result} -> result
     end
   end
 
@@ -255,7 +302,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   end
 
   defp get_feature_status do
-    Config.get(:features, %{})
+    Config.features()
   end
 
   defp get_recent_errors do
@@ -284,10 +331,14 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   end
 
   defp get_cache_performance_metrics do
-    try do
-      Cache.stats()
-    rescue
-      _ -> %{error: "Cache metrics unavailable"}
+    ErrorHandler.safe_execute(
+      fn -> Cache.stats() end,
+      fallback: fn _ -> %{error: "Cache metrics unavailable"} end,
+      context: %{operation: :get_cache_performance_metrics, category: :health}
+    )
+    |> case do
+      {:ok, result} -> result
+      {:error, result} -> result
     end
   end
 

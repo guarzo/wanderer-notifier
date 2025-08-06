@@ -14,15 +14,14 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   @base_url "https://janice.e-351.com"
   @appraisal_endpoint "/api/rest/v2/appraisal"
 
-  # Cache TTL for item prices (6 hours)
-  @price_cache_ttl :timer.hours(6)
+  # Note: Cache TTL is now centralized in Cache module
 
   @doc """
   Check if Janice API is enabled (token is configured).
   """
   @spec enabled?() :: boolean()
   def enabled? do
-    Config.get(:janice_api_token) != nil
+    Config.janice_api_token() != nil
   end
 
   @doc """
@@ -110,7 +109,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   end
 
   defp determine_item_name(id, _item) when is_binary(id) do
-    case Integer.parse(id) do
+    case Integer.parse(id, 10) do
       {int_id, ""} ->
         case ItemLookupService.get_item_name(int_id) do
           "Unknown Item" -> int_id
@@ -156,9 +155,10 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   end
 
   defp get_cached_price(type_id) do
-    cache_key = "janice:item:#{type_id}"
-
-    case Cache.get(cache_key) do
+    type_id
+    |> Cache.Keys.item_price()
+    |> Cache.get()
+    |> case do
       {:ok, price_data} -> {:ok, price_data}
       _ -> :error
     end
@@ -166,8 +166,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
 
   defp cache_prices(prices) do
     Enum.each(prices, fn {type_id, price_data} ->
-      cache_key = "janice:item:#{type_id}"
-      Cache.put(cache_key, price_data, @price_cache_ttl)
+      Cache.put(Cache.Keys.item_price(type_id), price_data, Cache.ttl(:item_price))
     end)
   end
 
@@ -214,7 +213,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
   end
 
   defp build_request_headers do
-    api_token = Config.get(:janice_api_token)
+    api_token = Config.janice_api_token()
 
     [
       {"Content-Type", "text/plain"},

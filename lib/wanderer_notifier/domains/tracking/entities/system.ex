@@ -82,7 +82,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   defp normalize_system_id(id) when is_integer(id), do: id
 
   defp normalize_system_id(id) when is_binary(id) do
-    case Integer.parse(id) do
+    case Integer.parse(id, 10) do
       {int_id, ""} -> int_id
       _ -> nil
     end
@@ -180,7 +180,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
 
   @impl true
   def is_tracked?(system_id) when is_binary(system_id) do
-    case Cache.get("map:systems") do
+    case Cache.get(Cache.Keys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         tracked =
           Enum.any?(systems, fn
@@ -288,7 +288,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec get_system(String.t()) :: {:ok, t()} | {:error, term()}
   def get_system(system_id) when is_binary(system_id) do
-    with {:ok, cache_data} <- Cache.get("map:systems") do
+    with {:ok, cache_data} <- Cache.get(Cache.Keys.map_systems()) do
       find_system_by_id(cache_data, system_id)
     end
   end
@@ -302,7 +302,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   """
   @spec get_system_by_name(String.t()) :: {:ok, t()} | {:error, term()}
   def get_system_by_name(system_name) when is_binary(system_name) do
-    with {:ok, cache_data} <- Cache.get("map:systems") do
+    with {:ok, cache_data} <- Cache.get(Cache.Keys.map_systems()) do
       find_system_by_name(cache_data, system_name)
     end
   end

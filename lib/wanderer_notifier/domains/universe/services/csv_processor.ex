@@ -142,7 +142,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   end
 
   defp parse_group_row([group_id_str, _category_id_str, name | _rest]) do
-    case Integer.parse(group_id_str) do
+    case Integer.parse(group_id_str, 10) do
       {group_id, ""} ->
         %{group_id: group_id, name: String.trim(name)}
 
@@ -191,8 +191,8 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   defp parse_type_row(row, groups_map) do
     case row do
       [type_id_str, group_id_str, name, _description | rest] ->
-        with {type_id, ""} <- Integer.parse(type_id_str),
-             {group_id, ""} <- Integer.parse(group_id_str),
+        with {type_id, ""} <- Integer.parse(type_id_str, 10),
+             {group_id, ""} <- Integer.parse(group_id_str, 10),
              true <- valid_item?(name, type_id, group_id) do
           parse_full_type_data(type_id, group_id, name, rest, groups_map)
         else
@@ -273,7 +273,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   defp parse_integer(str) when is_binary(str) do
     str
     |> String.trim()
-    |> Integer.parse()
+    |> Integer.parse(10)
     |> case do
       {int, ""} -> int
       _ -> nil
