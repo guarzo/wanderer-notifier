@@ -48,7 +48,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
 
   Looks up character data from cache and sends a test notification.
   """
-  def test_character(character_id) when is_binary(character_id) do
+  def test_character(character_id) when is_integer(character_id) do
     Logger.debug("[TEST] Testing character notification for ID: #{character_id}")
 
     # Debug: check what cache keys exist
@@ -71,8 +71,8 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
     end
   end
 
-  def test_character(character_id) when is_integer(character_id) do
-    test_character(Integer.to_string(character_id))
+  def test_character(character_id) when is_binary(character_id) do
+    test_character(String.to_integer(character_id))
   end
 
   defp debug_cache_keys do
@@ -105,11 +105,11 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
     Logger.debug("[TEST] Found #{length(character_list)} characters in map:character_list")
     log_sample_character(character_list)
 
-    character_id_int = String.to_integer(character_id)
+    character_id_str = Integer.to_string(character_id)
 
-    case find_character_in_list(character_list, character_id, character_id_int) do
+    case find_character_in_list(character_list, character_id_str, character_id) do
       nil ->
-        handle_character_not_found(character_list, character_id, character_id_int)
+        handle_character_not_found(character_list, character_id_str, character_id)
 
       character_data ->
         Logger.debug("[TEST] Found character in map list: #{inspect(character_data)}")
@@ -147,9 +147,9 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
       to_string(char_id) == character_id_str
   end
 
-  defp handle_character_not_found(character_list, character_id, character_id_int) do
-    Logger.debug("[TEST] Character #{character_id} not found in map list")
-    Logger.debug("[TEST] Checking if character ID is in the list as integer...")
+  defp handle_character_not_found(character_list, character_id_str, character_id_int) do
+    Logger.debug("[TEST] Character #{character_id_int} not found in map list")
+    Logger.debug("[TEST] Checking if character ID is in the list...")
 
     all_eve_ids =
       Enum.map(character_list, fn char ->
@@ -163,11 +163,11 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
       Logger.info("[TEST] Character ID #{character_id_int} IS in the list!")
     end
 
-    if character_id in all_eve_ids do
-      Logger.info("[TEST] Character ID #{character_id} IS in the list as string!")
+    if character_id_str in all_eve_ids do
+      Logger.info("[TEST] Character ID #{character_id_str} IS in the list as string!")
     end
 
-    check_other_cache_locations(character_id)
+    check_other_cache_locations(character_id_int)
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -298,22 +298,39 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
       Process.exit(pid, :kill)
 
       # Wait and check multiple times
-      for i <- 1..10 do
-        Process.sleep(1000)
-        new_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
-        Logger.info("[TEST] After #{i}s - WebSocket PID: #{inspect(new_pid)}")
+      result =
+        Enum.reduce_while(1..10, nil, fn i, _acc ->
+          Process.sleep(1000)
+          new_pid = Process.whereis(WandererNotifier.Domains.Killmail.WebSocketClient)
+          Logger.info("[TEST] After #{i}s - WebSocket PID: #{inspect(new_pid)}")
 
-        if new_pid && new_pid != pid do
-          Logger.info("[TEST] SUCCESS: WebSocket restarted with new PID after #{i}s")
-          websocket_status()
-        end
+          check_websocket_restart(new_pid, pid, i)
+        end)
+
+      case result do
+        {:ok, :restarted} ->
+          result
+
+        _ ->
+          Logger.error(
+            "[TEST] FAILED: WebSocket was not restarted by supervisor after 10 seconds"
+          )
+
+          {:error, :not_restarted}
       end
-
-      Logger.error("[TEST] FAILED: WebSocket was not restarted by supervisor after 10 seconds")
-      {:error, :not_restarted}
     else
       Logger.error("[TEST] WebSocket not running")
       {:error, :not_running}
+    end
+  end
+
+  defp check_websocket_restart(new_pid, original_pid, seconds) do
+    if new_pid && new_pid != original_pid do
+      Logger.info("[TEST] SUCCESS: WebSocket restarted with new PID after #{seconds}s")
+      websocket_status()
+      {:halt, {:ok, :restarted}}
+    else
+      {:cont, nil}
     end
   end
 
@@ -860,9 +877,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
 
   defp check_other_cache_locations(character_id) do
     # Try as integer with get_character
-    character_id_int = String.to_integer(character_id)
-
-    case Cache.get_character(character_id_int) do
+    case Cache.get_character(character_id) do
       {:ok, character_data} ->
         Logger.info("[TEST] Found character in ESI cache: #{inspect(character_data)}")
         character = create_character_struct(character_data, character_id)
@@ -870,7 +885,9 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
 
       {:error, :not_found} ->
         # Try direct string key
-        case Cache.get("esi:character:#{character_id}") do
+        character_id_str = Integer.to_string(character_id)
+
+        case Cache.get("esi:character:#{character_id_str}") do
           {:ok, character_data} ->
             Logger.info("[TEST] Found character with string key: #{inspect(character_data)}")
             character = create_character_struct(character_data, character_id)
@@ -880,7 +897,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
             Logger.error("[TEST] Character #{character_id} not found in any cache location")
 
             Logger.info(
-              "[TEST] Tried: map:character_list, esi:character:#{character_id_int}, esi:character:#{character_id}"
+              "[TEST] Tried: map:character_list, esi:character:#{character_id}, esi:character:#{character_id_str}"
             )
 
             {:error, :not_found}
@@ -891,14 +908,14 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
   defp create_character_struct(character_data, character_id) do
     # Handle nested structure from map:character_list
     char_info = Map.get(character_data, "character", character_data)
-    _character_id_int = String.to_integer(character_id)
+    character_id_str = Integer.to_string(character_id)
 
     %Character{
-      character_id: character_id,
+      character_id: character_id_str,
       name: get_name(char_info),
       corporation_id: get_corp_id(char_info),
       alliance_id: get_alliance_id(char_info),
-      eve_id: character_id,
+      eve_id: character_id_str,
       corporation_ticker: Map.get(char_info, "corporation_ticker"),
       alliance_ticker: Map.get(char_info, "alliance_ticker"),
       tracked: true

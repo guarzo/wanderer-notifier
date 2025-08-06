@@ -10,18 +10,93 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
   alias WandererNotifier.Infrastructure.Cache
   require Logger
 
+  # Configurable thresholds - can be overridden via application environment
+  @default_hit_rate_threshold 0.85
+  @default_hit_rate_warning_threshold 0.90
+  @default_namespace_hit_rate_threshold 0.80
+  @default_namespace_percentage_threshold 50
+  @default_large_cache_threshold 10_000
+
   @type analytics_result :: %{
           hit_rate: float(),
           miss_rate: float(),
           size: non_neg_integer(),
           namespace_breakdown: map(),
-          top_keys: list({String.t(), integer()}),
           ttl_distribution: map(),
           recommendations: list(String.t())
         }
 
   @type export_format :: :json | :text | :csv
   @type time_range :: :last_hour | :last_day | :last_week | :all_time
+
+  # ============================================================================
+  # Configuration Functions
+  # ============================================================================
+
+  @doc """
+  Gets the configured hit rate threshold for analytics.
+  Defaults to #{@default_hit_rate_threshold} if not configured.
+  """
+  @spec hit_rate_threshold() :: float()
+  def hit_rate_threshold do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_hit_rate_threshold,
+      @default_hit_rate_threshold
+    )
+  end
+
+  @doc """
+  Gets the configured hit rate warning threshold.
+  Defaults to #{@default_hit_rate_warning_threshold} if not configured.
+  """
+  @spec hit_rate_warning_threshold() :: float()
+  def hit_rate_warning_threshold do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_hit_rate_warning_threshold,
+      @default_hit_rate_warning_threshold
+    )
+  end
+
+  @doc """
+  Gets the configured namespace hit rate threshold.
+  Defaults to #{@default_namespace_hit_rate_threshold} if not configured.
+  """
+  @spec namespace_hit_rate_threshold() :: float()
+  def namespace_hit_rate_threshold do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_namespace_hit_rate_threshold,
+      @default_namespace_hit_rate_threshold
+    )
+  end
+
+  @doc """
+  Gets the configured namespace percentage threshold.
+  Defaults to #{@default_namespace_percentage_threshold} if not configured.
+  """
+  @spec namespace_percentage_threshold() :: integer()
+  def namespace_percentage_threshold do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_namespace_percentage_threshold,
+      @default_namespace_percentage_threshold
+    )
+  end
+
+  @doc """
+  Gets the configured large cache threshold.
+  Defaults to #{@default_large_cache_threshold} if not configured.
+  """
+  @spec large_cache_threshold() :: integer()
+  def large_cache_threshold do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_large_cache_threshold,
+      @default_large_cache_threshold
+    )
+  end
 
   # ============================================================================
   # Public API
@@ -41,21 +116,20 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
           "tracking" => %{count: 400, percentage: 26.7},
           "notification" => %{count: 300, percentage: 20.0}
         },
-        top_keys: [
-          {"esi:character:123", 150},
-          {"esi:system:456", 120}
-        ],
         ttl_distribution: %{
-          "< 1 hour" => 200,
-          "1-6 hours" => 500,
-          "6-24 hours" => 600,
-          "> 24 hours" => 200
+          "< 1 hour" => %{count: 200, percentage: 13.3},
+          "1-6 hours" => %{count: 500, percentage: 33.3},
+          "6-24 hours" => %{count: 600, percentage: 40.0},
+          "> 24 hours" => %{count: 200, percentage: 13.3}
         },
         recommendations: [
           "Consider increasing cache size - current hit rate is below 90%",
           "ESI namespace uses 53% of cache - consider dedicated ESI cache"
         ]
       }
+
+  Note: TTL distribution is estimated based on namespace usage and configured TTLs.
+  Access tracking (top keys) is not available without custom Cachex hooks.
   """
   @spec get_analytics() :: analytics_result()
   def get_analytics do
@@ -66,7 +140,6 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
 
     # Get detailed analytics
     namespace_breakdown = analyze_namespaces()
-    top_keys = get_top_accessed_keys(cache_name, 10)
     ttl_distribution = analyze_ttl_distribution(cache_name)
 
     # Generate recommendations based on analytics
@@ -77,7 +150,6 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
       miss_rate: Map.get(stats, :miss_rate, 0.0),
       size: Map.get(stats, :size, 0),
       namespace_breakdown: namespace_breakdown,
-      top_keys: top_keys,
       ttl_distribution: ttl_distribution,
       recommendations: recommendations
     }
@@ -112,23 +184,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     end
   end
 
-  @doc """
-  Gets the top accessed keys in the cache.
-
-  ## Examples
-      iex> Analytics.get_top_keys(5)
-      [
-        {"esi:character:123", 150},
-        {"esi:system:456", 120},
-        {"tracking:character:789", 100},
-        {"esi:corporation:111", 90},
-        {"notification:dedup:xyz", 85}
-      ]
-  """
-  @spec get_top_keys(pos_integer()) :: list({String.t(), integer()})
-  def get_top_keys(limit \\ 10) when is_integer(limit) and limit > 0 do
-    get_top_accessed_keys(Cache.cache_name(), limit)
-  end
+  # get_top_keys function removed - access tracking not supported by Cachex without custom hooks
 
   @doc """
   Analyzes cache usage by namespace.
@@ -140,13 +196,13 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
           count: 800,
           percentage: 53.3,
           avg_ttl_minutes: 720,
-          hit_rate: 0.92
+          hit_rate: 0.85
         },
         "tracking" => %{
           count: 400,
           percentage: 26.7,
           avg_ttl_minutes: 60,
-          hit_rate: 0.88
+          hit_rate: 0.85
         }
       }
   """
@@ -264,76 +320,75 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     analytics = get_analytics()
     namespace_usage = analyze_namespace_usage()
 
-    suggestions = []
+    []
+    |> add_hit_rate_suggestions(analytics)
+    |> add_namespace_suggestions(namespace_usage)
+    |> add_cache_size_suggestions(analytics)
+    |> Enum.reverse()
+  end
 
-    # Check overall hit rate
-    suggestions =
-      if analytics.hit_rate < 0.85 do
-        [
-          %{
-            type: :low_hit_rate,
-            current: analytics.hit_rate,
-            target: 0.85,
-            suggestion: "Overall hit rate is below 85% - consider increasing cache size or TTLs"
-          }
-          | suggestions
-        ]
-      else
-        suggestions
-      end
+  defp add_hit_rate_suggestions(suggestions, analytics) do
+    if analytics.hit_rate < hit_rate_threshold() do
+      hit_rate_suggestion = %{
+        type: :low_hit_rate,
+        current: analytics.hit_rate,
+        target: hit_rate_threshold(),
+        suggestion:
+          "Overall hit rate is below #{Float.round(hit_rate_threshold() * 100, 1)}% - consider increasing cache size or TTLs"
+      }
 
-    # Check namespace distribution
-    suggestions =
-      Enum.reduce(namespace_usage, suggestions, fn {namespace, data}, acc ->
-        cond do
-          data.percentage > 50 ->
-            [
-              %{
-                type: :oversized_namespace,
-                namespace: namespace,
-                percentage: data.percentage,
-                suggestion:
-                  "#{namespace} namespace uses #{data.percentage}% of cache - consider dedicated cache"
-              }
-              | acc
-            ]
+      [hit_rate_suggestion | suggestions]
+    else
+      suggestions
+    end
+  end
 
-          data.hit_rate < 0.80 ->
-            [
-              %{
-                type: :low_namespace_hit_rate,
-                namespace: namespace,
-                current: data.hit_rate,
-                target: 0.80,
-                suggestion: "#{namespace} namespace has low hit rate - review TTL settings"
-              }
-              | acc
-            ]
+  defp add_namespace_suggestions(suggestions, namespace_usage) do
+    Enum.reduce(namespace_usage, suggestions, &build_namespace_suggestion/2)
+  end
 
-          true ->
-            acc
-        end
-      end)
+  defp build_namespace_suggestion({namespace, data}, acc) do
+    cond do
+      data.percentage > namespace_percentage_threshold() ->
+        suggestion = %{
+          type: :oversized_namespace,
+          namespace: namespace,
+          percentage: data.percentage,
+          suggestion:
+            "#{namespace} namespace uses #{data.percentage}% of cache - consider dedicated cache"
+        }
 
-    # Check cache size utilization
-    cache_size = analytics.size
+        [suggestion | acc]
 
-    suggestions =
-      if cache_size > 10_000 do
-        [
-          %{
-            type: :large_cache,
-            size: cache_size,
-            suggestion:
-              "Cache has #{cache_size} entries - consider implementing eviction policies"
-          }
-          | suggestions
-        ]
-      else
-        suggestions
-      end
+      data.hit_rate < namespace_hit_rate_threshold() ->
+        suggestion = %{
+          type: :low_namespace_hit_rate,
+          namespace: namespace,
+          current: data.hit_rate,
+          target: namespace_hit_rate_threshold(),
+          suggestion: "#{namespace} namespace has low hit rate - review TTL settings"
+        }
 
-    Enum.reverse(suggestions)
+        [suggestion | acc]
+
+      true ->
+        acc
+    end
+  end
+
+  defp add_cache_size_suggestions(suggestions, analytics) do
+    if analytics.size > large_cache_threshold() do
+      size_suggestion = %{
+        type: :large_cache,
+        size: analytics.size,
+        suggestion:
+          "Cache has #{analytics.size} entries (above #{large_cache_threshold()}) - consider implementing eviction policies"
+      }
+
+      [size_suggestion | suggestions]
+    else
+      suggestions
+    end
   end
 
   # ============================================================================
@@ -384,53 +439,76 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     end
   end
 
-  defp get_top_accessed_keys(cache_name, limit) do
-    # Note: Cachex doesn't track access counts by default
-    # This would require custom implementation with hooks
-    # For now, return sample data based on namespace stats
+  # Access tracking functions removed - not supported by Cachex without custom hooks
+  # If needed in the future, implement using Cachex.Hooks for real access count tracking
 
-    case Cachex.keys(cache_name) do
-      {:ok, keys} ->
-        # Sample the first N keys as a placeholder
-        keys
-        |> Enum.take(limit)
-        |> Enum.map(fn key ->
-          # Random access count for demo
-          {key, :rand.uniform(100)}
-        end)
-        |> Enum.sort_by(&elem(&1, 1), :desc)
+  defp analyze_ttl_distribution(_cache_name) do
+    # Note: Cachex doesn't expose TTL values directly
+    # Return distribution based on configured TTLs and actual namespace usage
 
-      {:error, _} ->
-        []
+    total_entries = Cache.size()
+
+    if total_entries == 0 do
+      %{
+        "< 1 hour" => %{count: 0, percentage: 0.0},
+        "1-6 hours" => %{count: 0, percentage: 0.0},
+        "6-24 hours" => %{count: 0, percentage: 0.0},
+        "> 24 hours" => %{count: 0, percentage: 0.0}
+      }
+    else
+      # Estimate based on actual namespace usage and known TTL configurations
+      namespace_breakdown = analyze_namespaces()
+
+      # Calculate estimated distribution based on actual namespace usage
+      esi_count = get_in(namespace_breakdown, ["esi", :count]) || 0
+      tracking_count = get_in(namespace_breakdown, ["tracking", :count]) || 0
+      notification_count = get_in(namespace_breakdown, ["notification", :count]) || 0
+      dedup_count = get_in(namespace_breakdown, ["dedup", :count]) || 0
+
+      other_count =
+        max(0, total_entries - esi_count - tracking_count - notification_count - dedup_count)
+
+      %{
+        "< 1 hour" => %{
+          count: notification_count + dedup_count,
+          percentage: calculate_percentage(notification_count + dedup_count, total_entries)
+        },
+        "1-6 hours" => %{
+          count: tracking_count,
+          percentage: calculate_percentage(tracking_count, total_entries)
+        },
+        "6-24 hours" => %{
+          count: esi_count,
+          percentage: calculate_percentage(esi_count, total_entries)
+        },
+        "> 24 hours" => %{
+          count: other_count,
+          percentage: calculate_percentage(other_count, total_entries)
+        }
+      }
     end
   end
 
-  defp analyze_ttl_distribution(_cache_name) do
-    # Note: This would require inspecting TTL values which Cachex doesn't expose directly
-    # Returning estimated distribution based on configured TTLs
-
-    %{
-      "< 1 hour" => %{count: estimate_count(0.1), percentage: 10.0},
-      "1-6 hours" => %{count: estimate_count(0.35), percentage: 35.0},
-      "6-24 hours" => %{count: estimate_count(0.40), percentage: 40.0},
-      "> 24 hours" => %{count: estimate_count(0.15), percentage: 15.0}
-    }
+  defp calculate_percentage(count, total) do
+    if total > 0 do
+      Float.round(count / total * 100, 1)
+    else
+      0.0
+    end
   end
 
-  defp estimate_count(percentage) do
-    total = Cache.size()
-    round(total * percentage)
-  end
+  defp get_namespace_hit_rate(_cache_name, _namespace) do
+    # Note: Cachex doesn't provide namespace-level hit/miss statistics
+    # Return global hit rate as best available approximation
 
-  defp get_namespace_hit_rate(_cache_name, namespace) do
-    # This would require namespace-specific hit tracking
-    # Return estimated values based on namespace type
-    case namespace do
-      "esi" -> 0.92
-      "tracking" -> 0.88
-      "notification" -> 0.85
-      "dedup" -> 0.95
-      _ -> 0.80
+    case Cachex.stats(Cache.cache_name()) do
+      {:ok, stats} ->
+        hits = Map.get(stats, :hits, 0)
+        misses = Map.get(stats, :misses, 0)
+        calculate_hit_rate(hits, misses)
+
+      {:error, _} ->
+        0.0
     end
   end
 
@@ -453,7 +531,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     hit_rate = Map.get(stats, :hit_rate, 0.0)
 
     recommendations =
-      if hit_rate < 0.90 do
+      if hit_rate < hit_rate_warning_threshold() do
         [
           "Consider increasing cache size - current hit rate is #{Float.round(hit_rate * 100, 1)}%"
           | recommendations
@@ -465,7 +543,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     # Namespace balance recommendations
     recommendations =
       Enum.reduce(namespace_breakdown, recommendations, fn {namespace, data}, acc ->
-        if data.percentage > 50 do
+        if data.percentage > namespace_percentage_threshold() do
           [
             "#{namespace} namespace uses #{data.percentage}% of cache - consider dedicated cache"
             | acc
@@ -480,8 +558,11 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
 
     recommendations =
       cond do
-        size > 10_000 ->
-          ["Cache size exceeds 10k entries - monitor memory usage" | recommendations]
+        size > large_cache_threshold() ->
+          [
+            "Cache size exceeds #{large_cache_threshold()} entries - monitor memory usage"
+            | recommendations
+          ]
 
         size < 100 ->
           ["Cache is underutilized with only #{size} entries" | recommendations]
@@ -524,10 +605,6 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     -------------------
     #{format_namespace_breakdown(analytics.namespace_breakdown)}
 
-    Top Accessed Keys
-    -----------------
-    #{format_top_keys(analytics.top_keys)}
-
     TTL Distribution
     ----------------
     #{format_ttl_distribution(analytics.ttl_distribution)}
@@ -567,14 +644,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Analytics do
     |> Enum.join("\n")
   end
 
-  defp format_top_keys(keys) do
-    keys
-    |> Enum.with_index(1)
-    |> Enum.map(fn {{key, count}, idx} ->
-      "  #{idx}. #{key} - #{count} accesses"
-    end)
-    |> Enum.join("\n")
-  end
+  # format_top_keys function removed - top_keys feature not supported
 
   defp format_ttl_distribution(distribution) do
     distribution

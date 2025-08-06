@@ -365,13 +365,11 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp cache_individual_entities(:characters, entities) do
     Cache.put_tracked_characters_list(entities)
     cache_individual_characters(entities)
-    warm_character_cache_if_needed(entities)
   end
 
   defp cache_individual_entities(:systems, entities) do
     Cache.put_tracked_systems_list(entities)
     cache_individual_systems(entities)
-    warm_system_cache_if_needed(entities)
   end
 
   defp cache_individual_characters(entities) do
@@ -390,36 +388,18 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     end)
   end
 
-  defp warm_character_cache_if_needed(_entities) do
-    # Disable automatic cache warming to prevent rate limiting on startup
-    # Cache will warm naturally as data is requested
-    :ok
-  end
-
-  defp warm_system_cache_if_needed(_entities) do
-    # Disable automatic cache warming to prevent rate limiting on startup
-    # Cache will warm naturally as data is requested
-    :ok
-  end
-
   # Helper to extract character ID from various formats and convert to integer
-  defp get_character_id(%{"character" => %{"eve_id" => id}}) when is_binary(id),
-    do: String.to_integer(id)
+  defp get_character_id(data) do
+    EntityUtils.extract_character_id(data)
+  end
 
-  defp get_character_id(%{"character" => %{"eve_id" => id}}) when is_integer(id), do: id
-  defp get_character_id(%{character: %{eve_id: id}}) when is_binary(id), do: String.to_integer(id)
-  defp get_character_id(%{character: %{eve_id: id}}) when is_integer(id), do: id
-  defp get_character_id(%{"eve_id" => id}) when is_binary(id), do: String.to_integer(id)
-  defp get_character_id(%{"eve_id" => id}) when is_integer(id), do: id
-  defp get_character_id(%{eve_id: id}) when is_binary(id), do: String.to_integer(id)
-  defp get_character_id(%{eve_id: id}) when is_integer(id), do: id
-  defp get_character_id(_), do: nil
-
-  # Helper to extract system ID from various formats
-  defp get_system_id(%System{solar_system_id: id}), do: to_string(id)
-  defp get_system_id(%{"solar_system_id" => id}), do: to_string(id)
-  defp get_system_id(%{solar_system_id: id}), do: to_string(id)
-  defp get_system_id(_), do: nil
+  # Helper to extract system ID from various formats and convert to string
+  defp get_system_id(data) do
+    case EntityUtils.extract_system_id(data) do
+      nil -> nil
+      id -> to_string(id)
+    end
+  end
 
   @spec process_entities(entity_type(), list(), boolean()) :: :ok
   defp process_entities(entity_type, entities, skip_notifications) do

@@ -9,6 +9,9 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
   setup :verify_on_exit!
 
   setup do
+    # Capture original HTTP client value
+    original_http_client = Application.get_env(:wanderer_notifier, :http_client)
+
     # Set up HTTP client mock
     Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
@@ -20,6 +23,11 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
       _pid ->
         :ok
     end
+
+    # Restore original HTTP client on exit
+    on_exit(fn ->
+      Application.put_env(:wanderer_notifier, :http_client, original_http_client)
+    end)
 
     :ok
   end

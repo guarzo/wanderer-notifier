@@ -84,7 +84,31 @@ config :logger,
 # Console logger configuration
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:pid, :module, :file, :line],
+  metadata: [
+    :pid,
+    :module,
+    :file,
+    :line,
+    # WebSocket connection metadata
+    :url,
+    :socket_url,
+    :connection_id,
+    :attempt,
+    :delay_ms,
+    # System and character tracking
+    :system_id,
+    :killmail_id,
+    :systems_count,
+    :characters_count,
+    # Error handling
+    :error,
+    :reason,
+    :result,
+    # Performance monitoring
+    :message_size,
+    :uptime_seconds,
+    :count
+  ],
   colors: [
     debug: :cyan,
     info: :green,

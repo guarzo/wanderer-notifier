@@ -217,4 +217,86 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
     duration = monotonic_ms() - start
     {result, duration}
   end
+
+  @doc """
+  Parses an HTTP-date as defined in RFC 7231.
+  Supports the preferred format: "Sun, 06 Nov 1994 08:49:37 GMT"
+
+  Returns {:ok, DateTime.t()} or {:error, reason}.
+  """
+  @spec parse_http_date(String.t()) :: {:ok, DateTime.t()} | {:error, atom()}
+  def parse_http_date(date_string) when is_binary(date_string) do
+    with {:ok, date_parts} <- split_http_date(date_string),
+         {:ok, date_values} <- parse_date_parts(date_parts),
+         {:ok, time_values} <- parse_time_part(date_parts.time),
+         {:ok, datetime} <- build_datetime(date_values, time_values) do
+      {:ok, datetime}
+    else
+      _ -> {:error, :invalid_http_date}
+    end
+  end
+
+  def parse_http_date(_), do: {:error, :invalid_input}
+
+  defp split_http_date(date_string) do
+    # HTTP-date format: "Sun, 06 Nov 1994 08:49:37 GMT"
+    case String.split(date_string, [" ", ","]) |> Enum.filter(&(&1 != "")) do
+      [_day_name, day, month, year, time, "GMT"] ->
+        {:ok, %{day: day, month: month, year: year, time: time}}
+
+      _ ->
+        {:error, :invalid_format}
+    end
+  end
+
+  defp parse_date_parts(%{day: day, month: month, year: year}) do
+    with {:ok, month_num} <- parse_month(month),
+         {day_num, ""} <- Integer.parse(day),
+         {year_num, ""} <- Integer.parse(year) do
+      {:ok, %{day: day_num, month: month_num, year: year_num}}
+    else
+      _ -> {:error, :invalid_date_parts}
+    end
+  end
+
+  defp parse_time_part(time_string) do
+    case String.split(time_string, ":") do
+      [hour, minute, second] ->
+        with {hour_num, ""} <- Integer.parse(hour),
+             {minute_num, ""} <- Integer.parse(minute),
+             {second_num, ""} <- Integer.parse(second) do
+          {:ok, %{hour: hour_num, minute: minute_num, second: second_num}}
+        else
+          _ -> {:error, :invalid_time_parts}
+        end
+
+      _ ->
+        {:error, :invalid_time_format}
+    end
+  end
+
+  defp build_datetime(date_values, time_values) do
+    with {:ok, date} <- Date.new(date_values.year, date_values.month, date_values.day),
+         {:ok, time} <- Time.new(time_values.hour, time_values.minute, time_values.second),
+         {:ok, datetime} <- DateTime.new(date, time, "Etc/UTC") do
+      {:ok, datetime}
+    else
+      _ -> {:error, :invalid_datetime_construction}
+    end
+  end
+
+  # Helper function to parse month names
+  defp parse_month("Jan"), do: {:ok, 1}
+  defp parse_month("Feb"), do: {:ok, 2}
+  defp parse_month("Mar"), do: {:ok, 3}
+  defp parse_month("Apr"), do: {:ok, 4}
+  defp parse_month("May"), do: {:ok, 5}
+  defp parse_month("Jun"), do: {:ok, 6}
+  defp parse_month("Jul"), do: {:ok, 7}
+  defp parse_month("Aug"), do: {:ok, 8}
+  defp parse_month("Sep"), do: {:ok, 9}
+  defp parse_month("Oct"), do: {:ok, 10}
+  defp parse_month("Nov"), do: {:ok, 11}
+  defp parse_month("Dec"), do: {:ok, 12}
+  defp parse_month(_), do: {:error, :invalid_month}
 end

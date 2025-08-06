@@ -43,10 +43,16 @@ defmodule WandererNotifier.Map.Initializer do
         :ok
 
       e ->
-        # Other unexpected errors - add more debug info
-        Logger.error(
-          "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)} (#{e.__struct__}). Exception: #{Exception.message(e)}. Stacktrace: #{Exception.format_stacktrace(__STACKTRACE__)}"
-        )
+        # Other unexpected errors - conditional debug info based on environment
+        if WandererNotifier.Shared.Config.production?() do
+          Logger.error(
+            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
+          )
+        else
+          Logger.error(
+            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)} (#{e.__struct__}). Exception: #{Exception.message(e)}. Stacktrace: #{Exception.format_stacktrace(__STACKTRACE__)}"
+          )
+        end
 
         # Continue startup even if map data fails
         :ok

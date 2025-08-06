@@ -103,13 +103,33 @@ defmodule WandererNotifier.Shared.Env do
 
   @doc """
   Gets an environment variable as an atom.
-  Returns the default if the variable is missing.
+  Returns the default if the variable is missing or cannot be converted.
+
+  WARNING: This function uses String.to_existing_atom/1 to prevent atom exhaustion.
+  The atom must already exist in the system. Only use this function with trusted
+  environment variables that map to known, predefined atoms.
+
+  ## Examples
+      iex> System.put_env("LOG_LEVEL", "info")
+      iex> WandererNotifier.Shared.Env.get_atom("LOG_LEVEL", :debug)
+      :info
+      
+      iex> System.put_env("INVALID_ATOM", "non_existing_atom")
+      iex> WandererNotifier.Shared.Env.get_atom("INVALID_ATOM", :default)
+      :default
   """
   @spec get_atom(String.t(), atom()) :: atom()
   def get_atom(key, default) when is_binary(key) and is_atom(default) do
     case System.get_env(key) do
-      nil -> default
-      value -> String.to_atom(value)
+      nil ->
+        default
+
+      value ->
+        try do
+          String.to_existing_atom(value)
+        rescue
+          ArgumentError -> default
+        end
     end
   end
 

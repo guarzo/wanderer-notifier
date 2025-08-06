@@ -114,18 +114,46 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
       iex> Deduplication.clear_duplicates(:killmail)
       :ok
   """
-  @spec clear_duplicates(dedup_type()) :: :ok
+  @spec clear_duplicates(dedup_type()) :: :ok | {:error, term()}
   def clear_duplicates(type) when is_atom(type) do
-    _prefix = get_prefix_for_type(type)
+    prefix = get_prefix_for_type(type)
 
-    # This is a simplified version - in production you might want to
-    # implement a more efficient batch deletion
-    Logger.info("Clearing all duplicates for type #{type}")
+    Logger.info("Clearing all duplicates for type #{type}", type: type, prefix: prefix)
 
-    # Note: Cachex doesn't have a direct "delete by prefix" operation
-    # In a real implementation, you might need to track keys or use
-    # a different strategy
-    :ok
+    try do
+      # Stream all keys from the cache and filter by prefix
+      keys_to_delete =
+        Cache.cache_name()
+        |> Cachex.stream!(of: :key)
+        |> Stream.filter(&String.starts_with?(&1, prefix))
+        |> Enum.to_list()
+
+      # Delete all matching keys
+      deletion_results =
+        keys_to_delete
+        |> Enum.map(&Cache.delete/1)
+        |> Enum.all?(&match?(:ok, &1))
+
+      if deletion_results do
+        Logger.info("Successfully cleared #{length(keys_to_delete)} duplicates for type #{type}",
+          type: type,
+          keys_cleared: length(keys_to_delete)
+        )
+
+        :ok
+      else
+        Logger.error("Some deletions failed for type #{type}", type: type)
+        {:error, :partial_deletion_failure}
+      end
+    rescue
+      error ->
+        Logger.error("Failed to clear duplicates for type #{type}",
+          type: type,
+          error: inspect(error)
+        )
+
+        {:error, error}
+    end
   end
 
   @doc """
@@ -187,6 +215,13 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   defp get_prefix_for_type(:notification_rally), do: "notification:dedup:rally"
   defp get_prefix_for_type(:status_report), do: "status_report"
   defp get_prefix_for_type(:websocket), do: "websocket_dedup"
+
+  defp get_prefix_for_type(unknown_type) do
+    raise ArgumentError,
+          "Unknown deduplication type: #{inspect(unknown_type)}. " <>
+            "Expected one of: :killmail, :notification_kill, :notification_system, " <>
+            ":notification_character, :notification_rally, :status_report, :websocket"
+  end
 
   @spec get_ttl_for_type(dedup_type()) :: pos_integer()
   defp get_ttl_for_type(:killmail), do: @killmail_dedup_ttl

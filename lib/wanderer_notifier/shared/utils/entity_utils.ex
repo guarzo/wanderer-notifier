@@ -267,7 +267,7 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   @spec parse_float(any(), float() | nil) :: float() | nil
   def parse_float(value, default \\ nil)
   def parse_float(value, _default) when is_float(value), do: value
-  def parse_float(value, _default) when is_integer(value), do: value / 1
+  def parse_float(value, _default) when is_integer(value), do: value * 1.0
 
   def parse_float(value, default) when is_binary(value) do
     case Float.parse(value) do

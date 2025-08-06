@@ -9,7 +9,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Utils.ErrorHandler
   alias WandererNotifier.Shared.Utils.StringUtils
-  alias WandererNotifier.Domains.License.Validation
   require Logger
 
   # Define the behaviour callbacks
@@ -99,7 +98,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   defp safe_validate_call do
     ErrorHandler.with_timeout(
-      fn -> {:ok, GenServer.call(__MODULE__, :validate, 5000)} end,
+      fn -> {:ok, GenServer.call(__MODULE__, :validate)} end,
       5000
     )
   end
@@ -212,7 +211,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   # Private helper to check if license is valid
   defp valid? do
-    Validation.license_and_bot_valid?()
+    license_and_bot_valid?()
   end
 
   # Server Implementation
@@ -228,7 +227,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   @impl true
   def handle_continue(:initial_validation, state) do
     # Perform initial license validation at startup
-    result =
+    {:ok, new_state} =
       try do
         Logger.debug("License Service performing initial validation", category: :config)
 
@@ -274,9 +273,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
           {:ok, fallback_state}
       end
 
-    case result do
-      {:ok, new_state} -> {:noreply, new_state}
-    end
+    {:noreply, new_state}
   end
 
   defp process_validation_result({:ok, response}, state) do
@@ -508,7 +505,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   defp should_use_dev_mode?(_license_key, _notifier_api_token) do
-    Validation.should_use_dev_mode?()
+    should_use_dev_mode?()
   end
 
   defp create_dev_mode_state(state) do
@@ -692,7 +689,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   # Helper function to convert error reasons to human-readable messages
-  defp error_reason_to_message(reason), do: Validation.format_error_message(reason)
+  defp error_reason_to_message(reason), do: format_error_message(reason)
 
   # Helper to ensure the state has all required fields
   defp ensure_complete_state(state) do
@@ -715,6 +712,51 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     else
       Map.put(base_state, :notification_counts, defaults.notification_counts)
     end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # License Validation Functions (migrated from deprecated License.Validation)
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @spec license_and_bot_valid?() :: boolean()
+  defp license_and_bot_valid? do
+    bot_token_assigned?() && license_key_present?()
+  end
+
+  @spec should_use_dev_mode?() :: boolean()
+  defp should_use_dev_mode? do
+    env = Application.get_env(:wanderer_notifier, :environment)
+    env in [:dev, :test] && (!license_key_present?() || !api_token_valid?())
+  end
+
+  @spec format_error_message(atom() | binary() | any()) :: binary()
+  defp format_error_message(:rate_limited), do: "License server rate limit exceeded"
+  defp format_error_message(:timeout), do: "License validation timed out"
+  defp format_error_message(:invalid_response), do: "Invalid response from license server"
+  defp format_error_message(:invalid_license_key), do: "Invalid or missing license key"
+  defp format_error_message(:invalid_api_token), do: "Invalid or missing API token"
+
+  defp format_error_message({reason, _detail}) when is_atom(reason),
+    do: "License server error: #{reason}"
+
+  defp format_error_message(reason) when is_atom(reason), do: "License server error: #{reason}"
+
+  @spec bot_token_assigned?() :: boolean()
+  defp bot_token_assigned? do
+    token = Config.discord_bot_token()
+    StringUtils.present?(token)
+  end
+
+  @spec license_key_present?() :: boolean()
+  defp license_key_present? do
+    key = Config.license_key()
+    StringUtils.present?(key)
+  end
+
+  @spec api_token_valid?() :: boolean()
+  defp api_token_valid? do
+    token = Config.notifier_api_token()
+    StringUtils.present?(token)
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

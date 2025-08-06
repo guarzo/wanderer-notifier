@@ -17,9 +17,13 @@ defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
   def format_isk(value), do: FormattingUtils.format_isk(value, suffix: false)
 
   @doc """
-  Formats ISK values with commas for readability.
+  Formats ISK values with commas for readability, including the ISK suffix.
+
+  ## Examples
+      iex> format_isk_with_commas(2_500_000_000)
+      "2,500,000,000 ISK"
   """
-  def format_isk_with_commas(value), do: FormattingUtils.format_number(value)
+  def format_isk_with_commas(value), do: FormattingUtils.format_isk_full(value)
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Text Formatting

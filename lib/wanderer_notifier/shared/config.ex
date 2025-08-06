@@ -231,6 +231,43 @@ defmodule WandererNotifier.Shared.Config do
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
+  # Safe Retrieval Functions (return tuples instead of raising)
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc """
+  Safely get map URL, returning {:ok, value} or {:error, :not_found}
+  """
+  def map_url_safe do
+    try do
+      {:ok, map_url()}
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Safely get license key, returning {:ok, value} or {:error, :not_found}
+  """
+  def license_key_safe do
+    try do
+      {:ok, license_key()}
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Safely get Discord bot token, returning {:ok, value} or {:error, :not_found}
+  """
+  def discord_bot_token_safe do
+    try do
+      {:ok, discord_bot_token()}
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
   # Helper Functions (private implementations)
   # ──────────────────────────────────────────────────────────────────────────────
 

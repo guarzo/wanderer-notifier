@@ -9,6 +9,7 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   """
 
   alias WandererNotifier.Shared.Types.Constants
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   @type retry_options :: [
           max_attempts: pos_integer(),
@@ -21,6 +22,7 @@ defmodule WandererNotifier.Shared.Utils.Retry do
           context: String.t(),
           mode: :exponential | :fixed | :linear,
           async: boolean(),
+          supervisor: atom() | pid(),
           extract_retry_after: (term() -> pos_integer() | nil)
         ]
 
@@ -40,6 +42,7 @@ defmodule WandererNotifier.Shared.Utils.Retry do
     * `:context` - Context string for logging (default: "operation")
     * `:mode` - Retry mode: :exponential, :fixed, or :linear (default: :exponential)
     * `:async` - Whether to perform retries asynchronously (default: false)
+    * `:supervisor` - Task supervisor to use for async retries (default: WandererNotifier.TaskSupervisor)
     * `:extract_retry_after` - Function to extract retry-after value from error (default: nil)
   """
   @spec run(function(), retry_options()) :: retry_result(term())
@@ -60,6 +63,7 @@ defmodule WandererNotifier.Shared.Utils.Retry do
       context: Keyword.get(opts, :context, "operation"),
       mode: Keyword.get(opts, :mode, :exponential),
       async: Keyword.get(opts, :async, false),
+      supervisor: Keyword.get(opts, :supervisor, WandererNotifier.TaskSupervisor),
       extract_retry_after: Keyword.get(opts, :extract_retry_after),
       attempt: 1
     }
@@ -266,6 +270,8 @@ defmodule WandererNotifier.Shared.Utils.Retry do
     )
   end
 
+  # Normalizes jitter values for retry backoff calculations.
+  # `true` corresponds to the default jitter value (0.2)
   defp normalize_jitter(true), do: 0.2
   defp normalize_jitter(false), do: 0.0
 
@@ -275,7 +281,7 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   defp normalize_jitter(_), do: 0.2
 
   defp execute_async_retry(fun, state) do
-    Task.async(fn -> execute_with_retry(fun, state) end)
+    Task.Supervisor.async(state.supervisor, fn -> execute_with_retry(fun, state) end)
   end
 
   defp extract_retry_delay(error, state) do
@@ -298,13 +304,38 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   defp extract_http_retry_after(_), do: nil
 
   defp parse_retry_after(value) when is_binary(value) do
+    # Try to parse as integer first (seconds)
     case Integer.parse(value, 10) do
-      # Convert to milliseconds
-      {seconds, ""} -> seconds * 1000
-      _ -> nil
+      {seconds, ""} ->
+        # Convert seconds to milliseconds
+        seconds * 1000
+
+      _ ->
+        # Try to parse as HTTP-date
+        case TimeUtils.parse_http_date(value) do
+          {:ok, datetime} ->
+            calculate_delay_from_datetime(datetime)
+
+          {:error, _} ->
+            nil
+        end
     end
   end
 
   defp parse_retry_after(value) when is_integer(value), do: value * 1000
+
   defp parse_retry_after(_), do: nil
+
+  defp calculate_delay_from_datetime(datetime) do
+    # Calculate delay from current time in milliseconds
+    now = TimeUtils.now()
+    delay_seconds = DateTime.diff(datetime, now)
+
+    if delay_seconds > 0 do
+      delay_seconds * 1000
+    else
+      # If the date is in the past, don't retry
+      nil
+    end
+  end
 end

@@ -232,19 +232,28 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     end
   end
 
-  defp config_missing?(:map_url), do: config_value_missing?(&Config.map_url/0)
-  defp config_missing?(:license_key), do: config_value_missing?(&Config.license_key/0)
-  defp config_missing?(:discord_bot_token), do: config_value_missing?(&Config.discord_bot_token/0)
-  defp config_missing?(_), do: true
-
-  defp config_value_missing?(config_func) do
-    try do
-      config_func.()
-      false
-    rescue
-      _ -> true
+  defp config_missing?(:map_url) do
+    case Config.map_url_safe() do
+      {:ok, _} -> false
+      {:error, _} -> true
     end
   end
+
+  defp config_missing?(:license_key) do
+    case Config.license_key_safe() do
+      {:ok, _} -> false
+      {:error, _} -> true
+    end
+  end
+
+  defp config_missing?(:discord_bot_token) do
+    case Config.discord_bot_token_safe() do
+      {:ok, _} -> false
+      {:error, _} -> true
+    end
+  end
+
+  defp config_missing?(_), do: true
 
   defp check_external_services do
     # Basic connectivity check - don't make actual API calls during health checks

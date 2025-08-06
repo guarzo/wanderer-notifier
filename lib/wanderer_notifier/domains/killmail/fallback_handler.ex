@@ -11,7 +11,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
-  alias WandererNotifier.Shared.Utils.EntityUtils
+  alias WandererNotifier.Shared.Utils.{EntityUtils, Retry}
 
   # Check every 30 seconds
   @check_interval 30_000
@@ -324,12 +324,16 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp calculate_backoff_time(failure_count) do
-    # Exponential backoff with jitter, capped at recovery_time
-    base_backoff =
-      min(@backoff_base * :math.pow(2, failure_count - @failure_threshold), @recovery_time)
+    # Use centralized Retry module for consistent backoff calculation
+    state = %{
+      attempt: failure_count - @failure_threshold + 1,
+      base_backoff: @backoff_base,
+      max_backoff: @recovery_time,
+      jitter: 0.1,
+      mode: :exponential
+    }
 
-    jitter = :rand.uniform() * 0.1 * base_backoff
-    round(base_backoff + jitter)
+    Retry.calculate_backoff(state)
   end
 
   defp process_fetched_killmails(killmails) do

@@ -33,7 +33,14 @@ defmodule WandererNotifier.Infrastructure.Http do
   """
 
   alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
-  alias WandererNotifier.Infrastructure.Http.Middleware.{Telemetry, Retry, RateLimiter}
+
+  alias WandererNotifier.Infrastructure.Http.Middleware.{
+    Telemetry,
+    Retry,
+    RateLimiter,
+    DynamicRateLimiter
+  }
+
   alias WandererNotifier.Shared.Utils.ErrorHandler
   require Logger
 
@@ -318,8 +325,8 @@ defmodule WandererNotifier.Infrastructure.Http do
       retry_count: 3,
       retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],
-      rate_limit: [requests_per_second: 50, burst_capacity: 150, per_host: true],
-      middlewares: [Retry, RateLimiter],
+      # Use dynamic rate limiting based on X-ESI-Error-Limit-* headers
+      middlewares: [Retry, DynamicRateLimiter],
       decode_json: true
     ],
     wanderer_kills: [
@@ -368,8 +375,8 @@ defmodule WandererNotifier.Infrastructure.Http do
       retry_count: 3,
       retry_delay: 1_000,
       retryable_status_codes: [429, 500, 502, 503, 504],
-      rate_limit: [requests_per_second: 20, burst_capacity: 50, per_host: true],
-      middlewares: [Retry, RateLimiter],
+      # Use dynamic rate limiting based on X-RateLimit-* headers with webhook and global limits
+      middlewares: [Retry, DynamicRateLimiter],
       decode_json: true
     ],
     streaming: [

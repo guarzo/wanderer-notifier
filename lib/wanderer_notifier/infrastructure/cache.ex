@@ -25,6 +25,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   # Cache configuration
   @default_cache_name :wanderer_notifier_cache
   @default_ttl :timer.hours(24)
+  @namespace_index_key "__namespace_index__"
 
   # TTL configurations
   @character_ttl :timer.hours(24)
@@ -173,9 +174,16 @@ defmodule WandererNotifier.Infrastructure.Cache do
       end
 
     case result do
-      {:ok, true} -> :ok
-      {:ok, false} -> {:error, :not_stored}
-      error -> error
+      {:ok, true} ->
+        # Update namespace index on successful put
+        update_namespace_index(key)
+        :ok
+
+      {:ok, false} ->
+        {:error, :not_stored}
+
+      error ->
+        error
     end
   end
 
@@ -189,6 +197,8 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @spec delete(cache_key()) :: :ok
   def delete(key) when is_binary(key) do
     Cachex.del(cache_name(), key)
+    # Remove from namespace index
+    remove_from_namespace_index(key)
     :ok
   end
 
@@ -463,6 +473,15 @@ defmodule WandererNotifier.Infrastructure.Cache do
   # Batch Operations
   # ============================================================================
 
+  # Helper function to transform cache get results
+  defp transform_cache_result(key, cache_result) do
+    case cache_result do
+      {:ok, nil} -> {key, {:error, :not_found}}
+      {:ok, value} -> {key, {:ok, value}}
+      {:error, reason} -> {key, {:error, reason}}
+    end
+  end
+
   @doc """
   Gets multiple values from the cache in a single operation.
 
@@ -478,19 +497,22 @@ defmodule WandererNotifier.Infrastructure.Cache do
   def get_batch(keys) when is_list(keys) do
     cache_name = cache_name()
 
-    # Get all keys individually since Cachex doesn't have get_many
-    # This is still more efficient than multiple separate calls from client code
-    results =
-      Enum.map(keys, fn key ->
-        case Cachex.get(cache_name, key) do
-          {:ok, nil} -> {key, {:error, :not_found}}
-          {:ok, value} -> {key, {:ok, value}}
-          {:error, reason} -> {key, {:error, reason}}
-        end
-      end)
+    # Use Cachex.execute to reduce overhead from multiple process jumps
+    # This executes all get operations in the cache worker context
+    case Cachex.execute(cache_name, fn worker ->
+           Enum.map(keys, &transform_cache_result(&1, Cachex.get(worker, &1)))
+         end) do
+      {:ok, results} ->
+        # Convert to map
+        Enum.into(results, %{})
 
-    # Convert to map
-    Enum.into(results, %{})
+      {:error, reason} ->
+        Logger.error("Batch get failed", error: inspect(reason))
+        # Return empty results map on error
+        keys
+        |> Enum.map(&{&1, {:error, reason}})
+        |> Enum.into(%{})
+    end
   end
 
   @doc """
@@ -517,19 +539,41 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_batch_with_ttl([{cache_key(), cache_value(), ttl_value()}]) :: :ok | {:error, term()}
   def put_batch_with_ttl(entries) when is_list(entries) do
+    entries
+    |> group_entries_by_ttl()
+    |> process_ttl_groups()
+    |> check_batch_results()
+  end
+
+  # Helper function to group entries by TTL
+  defp group_entries_by_ttl(entries) do
+    Enum.group_by(entries, fn {_key, _value, ttl} -> ttl end)
+  end
+
+  # Helper function to process each TTL group
+  defp process_ttl_groups(grouped_entries) do
     cache_name = cache_name()
 
-    # Process each entry
-    results =
-      Enum.map(entries, fn
-        {key, value, nil} ->
-          Cachex.put(cache_name, key, value)
+    Enum.map(grouped_entries, fn
+      {nil, entries} ->
+        entries
+        |> extract_key_value_pairs()
+        |> then(&Cachex.put_many(cache_name, &1))
 
-        {key, value, ttl} when is_integer(ttl) or ttl == :infinity ->
-          Cachex.put(cache_name, key, value, ttl: ttl)
-      end)
+      {ttl, entries} when is_integer(ttl) or ttl == :infinity ->
+        entries
+        |> extract_key_value_pairs()
+        |> then(&Cachex.put_many(cache_name, &1, ttl: ttl))
+    end)
+  end
 
-    # Check if all operations succeeded
+  # Helper function to extract key-value pairs
+  defp extract_key_value_pairs(entries) do
+    Enum.map(entries, fn {key, value, _ttl} -> {key, value} end)
+  end
+
+  # Helper function to check batch results
+  defp check_batch_results(results) do
     case Enum.find(results, &match?({:error, _}, &1)) do
       nil ->
         :ok
@@ -653,7 +697,14 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_with_ttl(cache_key(), cache_value(), ttl_value()) :: :ok | {:error, term()}
   def put_with_ttl(key, value, ttl) do
-    put(key, value, ttl)
+    result = put(key, value, ttl)
+
+    # Update namespace index when successful
+    if result == :ok do
+      update_namespace_index(key)
+    end
+
+    result
   end
 
   @doc """
@@ -698,27 +749,65 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @doc """
   Clears all cache entries with keys matching the given namespace prefix.
 
+  ## Options
+    * `:async` - Run as background task (default: false)
+    * `:batch_size` - Number of keys to delete per batch (default: 100)
+    * `:callback` - Function to call when async operation completes
+
   ## Examples
       iex> Cache.clear_namespace("esi")
       {:ok, 42}  # Cleared 42 entries
 
-      iex> Cache.clear_namespace("tracking")
-      {:ok, 0}   # No entries found
+      iex> Cache.clear_namespace("tracking", async: true)
+      {:ok, :async}  # Started background job
+
+      iex> Cache.clear_namespace("esi", batch_size: 50)
+      {:ok, 42}  # Cleared in smaller batches
   """
-  @spec clear_namespace(String.t()) :: {:ok, integer()} | {:error, term()}
-  def clear_namespace(namespace) when is_binary(namespace) do
+  @spec clear_namespace(String.t(), keyword()) :: {:ok, integer() | :async} | {:error, term()}
+  def clear_namespace(namespace, opts \\ []) when is_binary(namespace) do
+    async = Keyword.get(opts, :async, false)
+    batch_size = Keyword.get(opts, :batch_size, 100)
+    callback = Keyword.get(opts, :callback)
+
+    if async do
+      start_async_clear_namespace(namespace, batch_size, callback)
+      {:ok, :async}
+    else
+      do_clear_namespace(namespace, batch_size)
+    end
+  end
+
+  defp start_async_clear_namespace(namespace, batch_size, callback) do
+    Task.start(fn ->
+      result = do_clear_namespace(namespace, batch_size)
+
+      execute_callback_if_present(callback, namespace, result)
+
+      Logger.info("Background namespace clear completed",
+        namespace: namespace,
+        result: inspect(result)
+      )
+    end)
+  end
+
+  defp execute_callback_if_present(callback, namespace, result) do
+    if callback && is_function(callback, 2) do
+      callback.(namespace, result)
+    end
+  end
+
+  defp do_clear_namespace(namespace, batch_size) do
     cache_name = cache_name()
 
     try do
-      # Get all keys matching the namespace
-      matching_keys = get_keys_by_namespace(namespace)
+      # Get all keys matching the namespace using optimized method
+      matching_keys = get_keys_by_namespace_optimized(namespace)
 
-      # Delete all matching keys
-      Enum.each(matching_keys, fn key ->
-        Cachex.del(cache_name, key)
-      end)
+      # Delete in batches to avoid blocking
+      deleted_count = delete_keys_in_batches(cache_name, matching_keys, batch_size)
 
-      {:ok, length(matching_keys)}
+      {:ok, deleted_count}
     rescue
       error ->
         Logger.error("Failed to clear namespace",
@@ -728,6 +817,25 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
         {:error, error}
     end
+  end
+
+  defp delete_keys_in_batches(cache_name, keys, batch_size) do
+    keys
+    |> Enum.chunk_every(batch_size)
+    |> Enum.reduce(0, fn batch, acc ->
+      Enum.each(batch, fn key ->
+        Cachex.del(cache_name, key)
+        # Remove from namespace index
+        remove_from_namespace_index(key)
+      end)
+
+      # Small delay between batches to prevent overwhelming the cache
+      if length(batch) == batch_size do
+        :timer.sleep(10)
+      end
+
+      acc + length(batch)
+    end)
   end
 
   @doc """
@@ -756,18 +864,61 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @doc """
   Lists all namespaces in the cache.
 
+  ## Options
+    * `:use_index` - Use namespace index for faster lookup (default: true)
+
   ## Examples
       iex> Cache.list_namespaces()
       ["esi", "tracking", "notification", "scheduler", "websocket_dedup", "dedup"]
+      
+      iex> Cache.list_namespaces(use_index: false)
+      ["esi", "tracking"]  # Forces scan of all keys
   """
-  @spec list_namespaces() :: [String.t()]
-  def list_namespaces do
+  @spec list_namespaces(keyword()) :: [String.t()]
+  def list_namespaces(opts \\ []) do
+    use_index = Keyword.get(opts, :use_index, true)
+
+    if use_index do
+      list_namespaces_with_index()
+    else
+      list_namespaces_traditional()
+    end
+  end
+
+  defp list_namespaces_with_index do
+    case get_namespace_index() do
+      {:ok, index} when is_map(index) ->
+        extract_sorted_keys(index)
+
+      _ ->
+        list_namespaces_with_rebuilt_index()
+    end
+  end
+
+  defp list_namespaces_with_rebuilt_index do
+    case do_rebuild_namespace_index() do
+      {:ok, index} ->
+        extract_sorted_keys(index)
+
+      _ ->
+        list_namespaces_traditional()
+    end
+  end
+
+  defp extract_sorted_keys(index) do
+    index
+    |> Map.keys()
+    |> Enum.sort()
+  end
+
+  defp list_namespaces_traditional do
     cache_name = cache_name()
 
     # Get all keys and extract namespaces
     case Cachex.keys(cache_name) do
       {:ok, keys} ->
         keys
+        |> Enum.reject(&(&1 == @namespace_index_key))
         |> Enum.map(&extract_namespace/1)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq()
@@ -778,6 +929,20 @@ defmodule WandererNotifier.Infrastructure.Cache do
     end
   end
 
+  @doc """
+  Rebuilds the namespace index from scratch.
+
+  This can be useful when the index becomes stale or corrupted.
+
+  ## Examples
+      iex> Cache.rebuild_namespace_index()
+      {:ok, %{"esi" => [...], "tracking" => [...]}}
+  """
+  @spec rebuild_namespace_index() :: {:ok, map()} | {:error, term()}
+  def rebuild_namespace_index do
+    do_rebuild_namespace_index()
+  end
+
   # ============================================================================
   # Private Namespace Functions
   # ============================================================================
@@ -786,12 +951,145 @@ defmodule WandererNotifier.Infrastructure.Cache do
     cache_name = cache_name()
     prefix = "#{namespace}:"
 
+    # Use paginated key fetching
+    get_keys_by_namespace_paginated(cache_name, prefix, [])
+  end
+
+  defp get_keys_by_namespace_optimized(namespace) do
+    # Try to get keys from namespace index first
+    case get_namespace_index() do
+      {:ok, index} when is_map(index) ->
+        Map.get(index, namespace, [])
+
+      _ ->
+        # Fallback to traditional method
+        get_keys_by_namespace(namespace)
+    end
+  end
+
+  # Namespace index management
+  defp get_namespace_index do
+    get(@namespace_index_key)
+  end
+
+  defp update_namespace_index(key) do
+    namespace = extract_namespace(key)
+
+    if namespace do
+      case get_namespace_index() do
+        {:ok, index} when is_map(index) ->
+          updated_keys = [key | Map.get(index, namespace, [])]
+          updated_index = Map.put(index, namespace, Enum.uniq(updated_keys))
+          put(@namespace_index_key, updated_index, :timer.hours(24))
+
+        _ ->
+          # Create new index
+          new_index = %{namespace => [key]}
+          put(@namespace_index_key, new_index, :timer.hours(24))
+      end
+    end
+  end
+
+  defp remove_from_namespace_index(key) do
+    namespace = extract_namespace(key)
+
+    if namespace do
+      update_namespace_index_for_removal(namespace, key)
+    end
+  end
+
+  defp update_namespace_index_for_removal(namespace, key) do
+    case get_namespace_index() do
+      {:ok, index} when is_map(index) ->
+        updated_keys =
+          index
+          |> Map.get(namespace, [])
+          |> Enum.reject(&(&1 == key))
+
+        updated_index = build_updated_index(index, namespace, updated_keys)
+        put(@namespace_index_key, updated_index, :timer.hours(24))
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp build_updated_index(index, namespace, updated_keys) do
+    if Enum.empty?(updated_keys) do
+      Map.delete(index, namespace)
+    else
+      Map.put(index, namespace, updated_keys)
+    end
+  end
+
+  defp do_rebuild_namespace_index do
+    cache_name = cache_name()
+
     case Cachex.keys(cache_name) do
       {:ok, keys} ->
-        Enum.filter(keys, &String.starts_with?(&1, prefix))
+        # Filter out the index key itself
+        actual_keys = Enum.reject(keys, &(&1 == @namespace_index_key))
+
+        # Build namespace index
+        index =
+          actual_keys
+          |> Enum.group_by(&extract_namespace/1)
+          |> Enum.reject(fn {namespace, _} -> is_nil(namespace) end)
+          |> Enum.into(%{})
+
+        put(@namespace_index_key, index, :timer.hours(24))
+        {:ok, index}
+
+      error ->
+        error
+    end
+  end
+
+  defp get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor \\ nil) do
+    # Fetch keys in batches of 1000
+    batch_size = 1000
+
+    case fetch_keys_batch(cache_name, cursor, batch_size) do
+      {:ok, keys, nil} ->
+        # Last batch
+        matching_keys = Enum.filter(keys, &String.starts_with?(&1, prefix))
+        accumulator ++ matching_keys
+
+      {:ok, keys, next_cursor} ->
+        # More batches available
+        matching_keys = Enum.filter(keys, &String.starts_with?(&1, prefix))
+
+        get_keys_by_namespace_paginated(
+          cache_name,
+          prefix,
+          accumulator ++ matching_keys,
+          next_cursor
+        )
 
       {:error, _} ->
-        []
+        accumulator
+    end
+  end
+
+  defp fetch_keys_batch(cache_name, cursor, batch_size) do
+    # Since Cachex doesn't support native pagination, we'll implement a workaround
+    # by fetching all keys and manually paginating them
+    case Cachex.keys(cache_name) do
+      {:ok, all_keys} ->
+        start_index = cursor || 0
+        keys_batch = Enum.slice(all_keys, start_index, batch_size)
+
+        next_cursor =
+          if length(keys_batch) < batch_size do
+            nil
+          else
+            start_index + batch_size
+          end
+
+        {:ok, keys_batch, next_cursor}
+
+      error ->
+        error
     end
   end
 

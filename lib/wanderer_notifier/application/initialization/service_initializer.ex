@@ -197,11 +197,6 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       initialize_sse_clients()
     end
 
-    # Warm essential cache data if not in test mode
-    if Application.get_env(:wanderer_notifier, :env) != :test do
-      initialize_cache_warming()
-    end
-
     duration = System.monotonic_time(:millisecond) - start_time
     Logger.info("Finalization phase completed in #{duration}ms", category: :startup)
   end
@@ -266,22 +261,6 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     rescue
       error ->
         Logger.error("Failed to initialize SSE clients",
-          error: Exception.message(error),
-          category: :startup
-        )
-    end
-  end
-
-  defp initialize_cache_warming do
-    Logger.debug("Initializing cache warming", category: :startup)
-
-    try do
-      # Skip cache warming to prevent rate limiting on startup
-      # Cache will warm naturally as data is requested
-      Logger.debug("Cache warming disabled to prevent rate limiting", category: :startup)
-    rescue
-      error ->
-        Logger.error("Failed to initialize cache warming",
           error: Exception.message(error),
           category: :startup
         )

@@ -99,13 +99,19 @@ defmodule WandererNotifier.Shared.EnvTest do
   end
 
   describe "get_atom/2" do
-    test "returns atom value when present" do
-      System.put_env("ATOM_VAR", "test_atom")
-      assert Env.get_atom("ATOM_VAR", :default) == :test_atom
+    test "returns atom value when present and atom exists" do
+      # Use an existing atom that we know exists
+      System.put_env("ATOM_VAR", "info")
+      assert Env.get_atom("ATOM_VAR", :default) == :info
     end
 
     test "returns default when variable is missing" do
       assert Env.get_atom("MISSING_ATOM", :default) == :default
+    end
+
+    test "returns default when atom does not exist" do
+      System.put_env("ATOM_VAR", "non_existing_atom_that_definitely_does_not_exist")
+      assert Env.get_atom("ATOM_VAR", :default) == :default
     end
   end
 

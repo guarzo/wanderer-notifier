@@ -5,7 +5,7 @@ defmodule WandererNotifier.Shared.Validation do
   This module combines and replaces:
   - WandererNotifier.Shared.Utils.ValidationUtils (general validation patterns)
   - HTTP-specific validation (consolidated into this module)
-  - WandererNotifier.Domains.License.Validation (license-specific validation)
+  - License-specific validation (previously in WandererNotifier.Domains.License.Validation - now removed)
   - Various validation patterns scattered throughout the codebase
 
   ## Design Principles
