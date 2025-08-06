@@ -8,7 +8,32 @@ config :logger,
 # Console logger configuration with structured format for production
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :category],
+  metadata: [
+    :request_id,
+    :category,
+    # Critical WebSocket metadata for production monitoring
+    :url,
+    :connection_id,
+    :attempt,
+    :delay_ms,
+    # Essential tracking metrics for operations
+    :system_id,
+    :killmail_id,
+    :systems_count,
+    :characters_count,
+    # Error context for production troubleshooting
+    :error,
+    :reason,
+    # Performance indicators
+    :message_size,
+    :uptime_seconds,
+    :count,
+    # Operational status indicators
+    :systems_changed,
+    :characters_changed,
+    :total_kills,
+    :systems_processed
+  ],
   # Disable colors in production
   colors: [enabled: false]
 
@@ -143,6 +168,6 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   enable_debugging: false,
   enable_profiling: false,
-  enable_test_endpoints: false
+  test_endpoints: false
 
 # Runtime configuration should be in runtime.exs

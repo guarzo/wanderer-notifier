@@ -229,7 +229,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:error, :not_found} = Cache.get(key)
 
       # Mark as processed
-      :ok = Cache.put(key, true, Cache.killmail_ttl())
+      :ok = Cache.put(key, true, Cache.ttl(:killmail))
 
       # Should be marked as processed
       assert {:ok, true} = Cache.get(key)
@@ -252,17 +252,98 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
   describe "TTL configuration functions" do
     test "provides correct TTL values" do
-      assert Cache.character_ttl() == :timer.hours(24)
-      assert Cache.corporation_ttl() == :timer.hours(24)
-      assert Cache.alliance_ttl() == :timer.hours(24)
-      assert Cache.system_ttl() == :timer.hours(1)
-      assert Cache.killmail_ttl() == :timer.minutes(30)
-      assert Cache.map_ttl() == :timer.hours(1)
+      assert Cache.ttl(:character) == :timer.hours(24)
+      assert Cache.ttl(:corporation) == :timer.hours(24)
+      assert Cache.ttl(:alliance) == :timer.hours(24)
+      assert Cache.ttl(:system) == :timer.hours(1)
+      assert Cache.ttl(:killmail) == :timer.minutes(30)
+      assert Cache.ttl(:map_data) == :timer.hours(1)
     end
 
-    test "ttl_for/1 returns appropriate TTL" do
-      assert Cache.ttl_for(:map_data) == :timer.hours(1)
-      assert Cache.ttl_for(:anything_else) == :timer.hours(24)
+    test "ttl/1 returns appropriate TTL" do
+      assert Cache.ttl(:map_data) == :timer.hours(1)
+      assert Cache.ttl(:anything_else) == :timer.hours(24)
+    end
+  end
+
+  describe "batch operations" do
+    test "get_batch retrieves multiple keys efficiently" do
+      # Put test data
+      :ok = Cache.put("batch:1", "value1")
+      :ok = Cache.put("batch:2", "value2")
+      :ok = Cache.put("batch:3", "value3")
+
+      # Test batch get
+      keys = ["batch:1", "batch:2", "batch:3", "batch:nonexistent"]
+      results = Cache.get_batch(keys)
+
+      assert results["batch:1"] == {:ok, "value1"}
+      assert results["batch:2"] == {:ok, "value2"}
+      assert results["batch:3"] == {:ok, "value3"}
+      assert results["batch:nonexistent"] == {:error, :not_found}
+    end
+
+    test "put_batch stores multiple values" do
+      entries = [
+        {"batch_put:1", "value1"},
+        {"batch_put:2", "value2"},
+        {"batch_put:3", "value3"}
+      ]
+
+      assert :ok = Cache.put_batch(entries)
+
+      # Verify all were stored
+      assert {:ok, "value1"} = Cache.get("batch_put:1")
+      assert {:ok, "value2"} = Cache.get("batch_put:2")
+      assert {:ok, "value3"} = Cache.get("batch_put:3")
+    end
+
+    test "put_batch_with_ttl stores multiple values with TTL" do
+      entries = [
+        {"batch_ttl:1", "value1", nil},
+        {"batch_ttl:2", "value2", :timer.hours(1)},
+        {"batch_ttl:3", "value3", :timer.hours(1)}
+      ]
+
+      assert :ok = Cache.put_batch_with_ttl(entries)
+
+      # Verify all were stored
+      assert {:ok, "value1"} = Cache.get("batch_ttl:1")
+      assert {:ok, "value2"} = Cache.get("batch_ttl:2")
+      assert {:ok, "value3"} = Cache.get("batch_ttl:3")
+    end
+
+    test "put_batch_with_ttl groups by TTL for optimization" do
+      # Mix of different TTLs to test grouping
+      entries = [
+        {"ttl_group:1", "value1", :timer.hours(1)},
+        {"ttl_group:2", "value2", nil},
+        {"ttl_group:3", "value3", :timer.hours(1)},
+        {"ttl_group:4", "value4", :timer.hours(2)},
+        {"ttl_group:5", "value5", nil}
+      ]
+
+      assert :ok = Cache.put_batch_with_ttl(entries)
+
+      # Verify all were stored correctly
+      assert {:ok, "value1"} = Cache.get("ttl_group:1")
+      assert {:ok, "value2"} = Cache.get("ttl_group:2")
+      assert {:ok, "value3"} = Cache.get("ttl_group:3")
+      assert {:ok, "value4"} = Cache.get("ttl_group:4")
+      assert {:ok, "value5"} = Cache.get("ttl_group:5")
+    end
+
+    test "get_batch handles empty list" do
+      results = Cache.get_batch([])
+      assert results == %{}
+    end
+
+    test "put_batch handles empty list" do
+      assert :ok = Cache.put_batch([])
+    end
+
+    test "put_batch_with_ttl handles empty list" do
+      assert :ok = Cache.put_batch_with_ttl([])
     end
   end
 

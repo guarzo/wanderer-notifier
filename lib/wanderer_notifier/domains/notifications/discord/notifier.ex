@@ -16,6 +16,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   alias WandererNotifier.Domains.Notifications.LicenseLimiter
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.ErrorHandler
   alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
 
   # Default embed colors
@@ -101,51 +102,47 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a kill notification.
   """
   def send_kill_notification(kill_data) do
-    if LicenseLimiter.should_send_rich?(:killmail) do
-      killmail = ensure_killmail_struct(kill_data)
-      send_rich_kill_notification(killmail)
-      LicenseLimiter.increment(:killmail)
-    else
-      channel_id = Config.discord_channel_id()
-      send_simple_kill_notification(kill_data, channel_id)
-    end
-  rescue
-    e ->
-      Logger.error("Exception in send_kill_notification",
-        error: Exception.message(e),
-        category: :processor,
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, e}
+    ErrorHandler.safe_execute(
+      fn ->
+        if LicenseLimiter.should_send_rich?(:killmail) do
+          killmail = ensure_killmail_struct(kill_data)
+          send_rich_kill_notification(killmail)
+          LicenseLimiter.increment(:killmail)
+        else
+          channel_id = Config.discord_channel_id()
+          send_simple_kill_notification(kill_data, channel_id)
+        end
+      end,
+      context: %{operation: :send_kill_notification, category: :processor}
+    )
   end
 
   @doc """
   Send a kill notification to a specific channel.
   """
   def send_kill_notification_to_channel(kill_data, channel_id) do
-    killmail = ensure_killmail_struct(kill_data)
+    ErrorHandler.safe_execute(
+      fn ->
+        killmail = ensure_killmail_struct(kill_data)
 
-    # Enrich with system name if needed
-    enriched_killmail = enrich_with_system_name(killmail)
+        # Enrich with system name if needed
+        enriched_killmail = enrich_with_system_name(killmail)
 
-    # Format the notification
-    notification = NotificationFormatter.format_notification(enriched_killmail)
+        # Format the notification
+        notification = NotificationFormatter.format_notification(enriched_killmail)
 
-    # Check if this is a system kill and add voice mentions
-    notification = maybe_add_voice_mentions(notification, killmail, channel_id)
+        # Check if this is a system kill and add voice mentions
+        notification = maybe_add_voice_mentions(notification, killmail, channel_id)
 
-    # Send to channel
-    NeoClient.send_embed(notification, channel_id)
-  rescue
-    e ->
-      Logger.error("Exception in send_kill_notification_to_channel",
-        error: Exception.message(e),
-        category: :api,
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, {:exception, Exception.message(e)}}
+        # Send to channel
+        NeoClient.send_embed(notification, channel_id)
+      end,
+      context: %{
+        operation: :send_kill_notification_to_channel,
+        channel_id: channel_id,
+        category: :api
+      }
+    )
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -156,32 +153,32 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a character tracking notification.
   """
   def send_new_tracked_character_notification(character) do
-    if LicenseLimiter.should_send_rich?(:character) do
-      notification = NotificationFormatter.format_notification(character)
-      channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
-      NeoClient.send_embed(notification, channel_id)
-      LicenseLimiter.increment(:character)
-    else
-      message = NotificationFormatter.format_plain_text(character)
-      NeoClient.send_message(message)
-    end
+    ErrorHandler.safe_execute(
+      fn ->
+        if LicenseLimiter.should_send_rich?(:character) do
+          notification = NotificationFormatter.format_notification(character)
+          channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
+          NeoClient.send_embed(notification, channel_id)
+          LicenseLimiter.increment(:character)
+        else
+          message = NotificationFormatter.format_plain_text(character)
+          NeoClient.send_message(message)
+        end
 
-    WandererNotifier.Shared.Metrics.increment(:characters)
+        WandererNotifier.Shared.Metrics.increment(:characters)
 
-    Logger.info("Character #{character.name} (#{character.character_id}) notified",
-      category: :processor
+        Logger.info("Character #{character.name} (#{character.character_id}) notified",
+          category: :processor
+        )
+
+        {:ok, :sent}
+      end,
+      context: %{
+        operation: :send_new_tracked_character_notification,
+        character_id: character.character_id,
+        category: :processor
+      }
     )
-
-    {:ok, :sent}
-  rescue
-    e ->
-      Logger.error("Exception in send_new_tracked_character_notification",
-        error: Exception.message(e),
-        category: :processor,
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, e}
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -192,32 +189,32 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a system tracking notification.
   """
   def send_new_system_notification(system) do
-    if LicenseLimiter.should_send_rich?(:system) do
-      notification = NotificationFormatter.format_notification(system)
-      channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
-      NeoClient.send_embed(notification, channel_id)
-      LicenseLimiter.increment(:system)
-    else
-      message = NotificationFormatter.format_plain_text(system)
-      NeoClient.send_message(message)
-    end
+    ErrorHandler.safe_execute(
+      fn ->
+        if LicenseLimiter.should_send_rich?(:system) do
+          notification = NotificationFormatter.format_notification(system)
+          channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
+          NeoClient.send_embed(notification, channel_id)
+          LicenseLimiter.increment(:system)
+        else
+          message = NotificationFormatter.format_plain_text(system)
+          NeoClient.send_message(message)
+        end
 
-    WandererNotifier.Shared.Metrics.increment(:systems)
+        WandererNotifier.Shared.Metrics.increment(:systems)
 
-    Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
-      category: :processor
+        Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
+          category: :processor
+        )
+
+        {:ok, :sent}
+      end,
+      context: %{
+        operation: :send_new_system_notification,
+        system_id: system.solar_system_id,
+        category: :processor
+      }
     )
-
-    {:ok, :sent}
-  rescue
-    e ->
-      Logger.error("Exception in send_new_system_notification",
-        error: Exception.message(e),
-        category: :processor,
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, e}
   end
 
   @doc """
@@ -227,24 +224,26 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     start_time = System.monotonic_time(:millisecond)
     rally_id = rally_point[:id]
 
-    try do
-      log_rally_start(rally_id)
+    ErrorHandler.safe_execute(
+      fn ->
+        log_rally_start(rally_id)
 
-      notification = format_rally_notification(rally_point, rally_id, start_time)
-      channel_id = get_rally_channel_id(rally_id, start_time)
-      notification_with_content = add_rally_content(notification, rally_point)
+        notification = format_rally_notification(rally_point, rally_id, start_time)
+        channel_id = get_rally_channel_id(rally_id, start_time)
+        notification_with_content = add_rally_content(notification, rally_point)
 
-      send_rally_to_discord(
-        notification_with_content,
-        channel_id,
-        rally_point,
-        rally_id,
-        start_time
-      )
-    rescue
-      e ->
-        handle_rally_exception(e, rally_id, start_time)
-    end
+        send_rally_to_discord(
+          notification_with_content,
+          channel_id,
+          rally_point,
+          rally_id,
+          start_time
+        )
+      end,
+      fallback: fn error ->
+        handle_rally_exception(error, rally_id, start_time)
+      end
+    )
   end
 
   defp log_rally_start(rally_id) do
@@ -444,7 +443,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
     case system_id do
       id when is_integer(id) ->
-        system_name = Enrichment.get_system_name(id)
+        # First check if it's a tracked system with a custom name
+        system_name = get_tracked_system_name(id) || Enrichment.get_system_name(id)
         %{killmail | system_name: system_name}
 
       _ ->
@@ -458,8 +458,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp get_system_id_from_killmail(_), do: nil
 
+  defp get_tracked_system_name(system_id) when is_integer(system_id) do
+    # Get the tracked system from map cache to get custom name
+    # Convert integer to string as get_system expects String.t()
+    system_id
+    |> Integer.to_string()
+    |> WandererNotifier.Domains.Tracking.Entities.System.get_system()
+    |> case do
+      {:ok, %{name: name}} when is_binary(name) -> name
+      _ -> nil
+    end
+  end
+
   defp debug_logging_enabled? do
-    Config.get(:discord_debug_logging, false) or Logger.level() == :debug
+    Config.feature_enabled?(:discord_debug_logging) or Logger.level() == :debug
   end
 
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do

@@ -13,6 +13,7 @@ defmodule WandererNotifier.Map.SSEClient do
   alias WandererNotifier.Map.SSEParser
   alias WandererNotifier.Map.SSEConnection
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
+  alias WandererNotifier.Shared.Utils.Retry
 
   @type state :: %{
           map_slug: String.t(),
@@ -37,7 +38,6 @@ defmodule WandererNotifier.Map.SSEClient do
   ]
   @initial_reconnect_delay 1000
   @max_reconnect_delay 30_000
-  @reconnect_backoff_factor 2
 
   # Client API
 
@@ -96,12 +96,8 @@ defmodule WandererNotifier.Map.SSEClient do
     # If events is not provided, use default events for filtering
     events = Keyword.get(opts, :events, @default_events)
 
-    Logger.debug("SSE client init",
-      map_slug: map_slug,
-      opts: inspect(opts),
-      events: inspect(events),
-      default_events: inspect(@default_events),
-      category: :api
+    Logger.debug(
+      "SSE client init - map_slug: #{map_slug}, opts: #{inspect(opts)}, events: #{inspect(events)}, default_events: #{inspect(@default_events)}"
     )
 
     state = %{
@@ -116,9 +112,8 @@ defmodule WandererNotifier.Map.SSEClient do
       connection_id: nil
     }
 
-    Logger.debug("SSE client initialized with events: #{inspect(state.events_filter)}",
-      map_slug: map_slug,
-      category: :api
+    Logger.debug(
+      "SSE client initialized with events: #{inspect(state.events_filter)} - map_slug: #{map_slug}"
     )
 
     # Start connection immediately
@@ -153,9 +148,8 @@ defmodule WandererNotifier.Map.SSEClient do
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.error("SSE connection failed",
-          map_slug: state.map_slug,
-          error: inspect(reason)
+        Logger.error(
+          "SSE connection failed - map_slug: #{state.map_slug}, error: #{inspect(reason)}"
         )
 
         # Register failed connection with ConnectionMonitor
@@ -198,9 +192,8 @@ defmodule WandererNotifier.Map.SSEClient do
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.error("Event processing failed",
-          map_slug: state.map_slug,
-          error: inspect(reason)
+        Logger.error(
+          "Event processing failed - map_slug: #{state.map_slug}, error: #{inspect(reason)}"
         )
 
         {:noreply, state}
@@ -209,10 +202,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_error, reason}, state) do
-    Logger.error("SSE connection error",
-      map_slug: state.map_slug,
-      error: inspect(reason)
-    )
+    Logger.error("SSE connection error - map_slug: #{state.map_slug}, error: #{inspect(reason)}")
 
     # Close connection and schedule reconnect
     if state.connection, do: close_connection(state.connection)
@@ -225,7 +215,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_closed}, state) do
-    Logger.debug("SSE connection closed", map_slug: state.map_slug, category: :api)
+    Logger.debug("SSE connection closed - map_slug: #{state.map_slug}")
 
     new_state = %{state | connection: nil}
     new_state = schedule_reconnect(new_state)
@@ -254,9 +244,8 @@ defmodule WandererNotifier.Map.SSEClient do
       {:noreply, state}
     else
       # Connection failed
-      Logger.error("SSE connection failed",
-        map_slug: state.map_slug,
-        status_code: status_code
+      Logger.error(
+        "SSE connection failed - map_slug: #{state.map_slug}, status_code: #{status_code}"
       )
 
       new_state = schedule_reconnect(state)
@@ -266,9 +255,8 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncHeaders{headers: headers, id: async_id}, state) do
-    Logger.debug("SSE connection headers received",
-      map_slug: state.map_slug,
-      headers: inspect(headers)
+    Logger.debug(
+      "SSE connection headers received - map_slug: #{state.map_slug}, headers: #{inspect(headers)}"
     )
 
     # Continue streaming
@@ -286,10 +274,8 @@ defmodule WandererNotifier.Map.SSEClient do
         process_sse_events(events, state, async_id)
 
       {:error, reason} ->
-        Logger.error("Failed to parse SSE chunk",
-          map_slug: state.map_slug,
-          error: inspect(reason),
-          chunk: inspect(chunk)
+        Logger.error(
+          "Failed to parse SSE chunk - map_slug: #{state.map_slug}, error: #{inspect(reason)}, chunk: #{inspect(chunk)}"
         )
 
         # Continue streaming despite parse error
@@ -301,7 +287,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncEnd{}, state) do
-    Logger.debug("SSE connection ended", map_slug: state.map_slug, category: :api)
+    Logger.debug("SSE connection ended - map_slug: #{state.map_slug}")
 
     # Connection ended, schedule reconnect
     new_state = %{state | connection: nil}
@@ -311,10 +297,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.Error{reason: reason}, state) do
-    Logger.error("SSE connection error",
-      map_slug: state.map_slug,
-      error: inspect(reason)
-    )
+    Logger.error("SSE connection error - map_slug: #{state.map_slug}, error: #{inspect(reason)}")
 
     # Connection error, schedule reconnect
     new_state = %{state | connection: nil}
@@ -416,10 +399,8 @@ defmodule WandererNotifier.Map.SSEClient do
     if Enum.empty?(missing_fields) do
       {:ok, event}
     else
-      Logger.error("Event validation failed - missing required fields",
-        event: inspect(event),
-        missing_fields: inspect(missing_fields),
-        present_fields: inspect(Map.keys(event))
+      Logger.error(
+        "Event validation failed - missing required fields - event: #{inspect(event)}, missing_fields: #{inspect(missing_fields)}, present_fields: #{inspect(Map.keys(event))}"
       )
 
       {:error, :missing_required_fields}
@@ -435,21 +416,21 @@ defmodule WandererNotifier.Map.SSEClient do
       ConnectionMonitor.update_connection_status(state.connection_id, :disconnected)
     end
 
-    # Calculate delay with exponential backoff
-    delay =
-      min(
-        @initial_reconnect_delay * :math.pow(@reconnect_backoff_factor, state.reconnect_attempts),
-        @max_reconnect_delay
-      )
+    # Calculate delay with exponential backoff using unified retry logic
+    retry_state = %{
+      mode: :exponential,
+      base_backoff: @initial_reconnect_delay,
+      max_backoff: @max_reconnect_delay,
+      # Approximate 30-50% jitter range
+      jitter: 0.4,
+      # Retry module uses 1-based attempts
+      attempt: state.reconnect_attempts + 1
+    }
 
-    # Add 30-50% jitter to prevent thundering herd
-    jitter = (delay * 0.3 + delay * 0.2 * :rand.uniform()) |> trunc()
-    final_delay = (delay + jitter) |> trunc()
+    final_delay = Retry.calculate_backoff(retry_state)
 
-    Logger.debug("Scheduling reconnect",
-      map_slug: state.map_slug,
-      attempt: state.reconnect_attempts + 1,
-      delay_ms: final_delay
+    Logger.debug(
+      "Scheduling reconnect - map_slug: #{state.map_slug}, attempt: #{state.reconnect_attempts + 1}, delay_ms: #{final_delay}"
     )
 
     timer = Process.send_after(self(), :reconnect_timer, final_delay)
@@ -474,10 +455,8 @@ defmodule WandererNotifier.Map.SSEClient do
             {event_id || last_id, count + 1}
 
           {:error, reason} ->
-            Logger.error("Failed to process SSE event",
-              map_slug: state.map_slug,
-              error: inspect(reason),
-              event: inspect(event)
+            Logger.error(
+              "Failed to process SSE event - map_slug: #{state.map_slug}, error: #{inspect(reason)}, event: #{inspect(event)}"
             )
 
             {last_id, count}

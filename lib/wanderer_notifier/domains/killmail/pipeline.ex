@@ -15,6 +15,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
   alias WandererNotifier.Domains.Notifications.Deduplication
+  alias WandererNotifier.Shared.Utils.EntityUtils
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -155,28 +156,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec extract_system_id(killmail_data()) :: integer() | nil
   defp extract_system_id(data) do
-    possible_keys = ["system_id", :system_id, "solar_system_id", :solar_system_id]
-
-    system_id =
-      find_system_id_value(data, possible_keys) || get_in(data, ["killmail", "solar_system_id"])
-
-    parse_system_id(system_id)
+    # Try EntityUtils first, then fallback to nested killmail structure
+    EntityUtils.extract_system_id(data) ||
+      data
+      |> get_in(["killmail", "solar_system_id"])
+      |> EntityUtils.normalize_id()
   end
-
-  defp find_system_id_value(data, keys) do
-    Enum.find_value(keys, fn key -> data[key] end)
-  end
-
-  defp parse_system_id(id) when is_integer(id), do: id
-
-  defp parse_system_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_id, ""} -> int_id
-      _ -> nil
-    end
-  end
-
-  defp parse_system_id(_), do: nil
 
   @spec check_duplicate(String.t()) :: {:ok, :new | :duplicate} | {:error, term()}
   defp check_duplicate(kill_id) do
@@ -189,9 +174,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
       {:error, reason} ->
         # Log the error but don't fail the pipeline - treat as new to be safe
-        Logger.warning("Deduplication check failed, treating as new",
-          killmail_id: kill_id,
-          error: reason
+        Logger.warning(
+          "Deduplication check failed, treating as new - killmail_id: #{kill_id}, error: #{inspect(reason)}"
         )
 
         {:ok, :new}
@@ -239,14 +223,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec notifications_enabled?() :: boolean()
   defp notifications_enabled? do
-    notifications_enabled = WandererNotifier.Shared.Config.notifications_enabled?()
-    kill_notifications_enabled = WandererNotifier.Shared.Config.kill_notifications_enabled?()
+    enabled = WandererNotifier.Shared.Config.kill_notifications_fully_enabled?()
 
-    Logger.debug(
-      "[Pipeline] Config - notifications_enabled: #{notifications_enabled}, kill_notifications_enabled: #{kill_notifications_enabled}"
-    )
+    Logger.debug("[Pipeline] Notifications enabled: #{enabled}")
 
-    notifications_enabled and kill_notifications_enabled
+    enabled
   end
 
   @spec system_tracked?(integer() | nil) :: {:ok, boolean()} | {:error, term()}
@@ -313,32 +294,34 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp send_notification(%Killmail{} = killmail) do
     Logger.debug("Sending kill notification", killmail_id: killmail.killmail_id)
 
-    # Determine whether to process items based on startup suppression period
-    killmail_to_notify =
-      if in_startup_suppression_period?() do
-        # Skip item processing entirely during startup suppression period
-        killmail
-      else
-        # Process items right before sending notification (after we've decided to notify)
+    # Check if we're in startup suppression period
+    if in_startup_suppression_period?() do
+      Logger.debug(
+        "Kill notification suppressed during startup period - killmail_id: #{killmail.killmail_id}"
+      )
+
+      handle_skipped(killmail.killmail_id, :startup_suppression)
+    else
+      # Process items right before sending notification (after we've decided to notify)
+      killmail_to_notify =
         case maybe_process_items(killmail) do
           {:ok, enriched} ->
-            Logger.debug("Item processing completed successfully",
-              killmail_id: killmail.killmail_id
+            Logger.debug(
+              "Item processing completed successfully - killmail_id: #{killmail.killmail_id}"
             )
 
             enriched
 
           {:error, reason} ->
-            Logger.warning("Item processing failed, continuing without items",
-              killmail_id: killmail.killmail_id,
-              reason: reason
+            Logger.warning(
+              "Item processing failed, continuing without items - killmail_id: #{killmail.killmail_id}, reason: #{inspect(reason)}"
             )
 
             killmail
         end
-      end
 
-    handle_notification_response(killmail_to_notify)
+      handle_notification_response(killmail_to_notify)
+    end
   end
 
   @spec handle_notification_response(Killmail.t()) :: result()
@@ -380,15 +363,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     victim_name = killmail.victim_character_name || "Unknown"
     system_name = killmail.system_name
 
-    Logger.debug("Killmail #{kill_id} skipped: #{reason_text}",
-      category: :killmail,
-      system_id: killmail.system_id,
-      system_name: system_name,
-      victim_id: killmail.victim_character_id,
-      victim_name: victim_name,
-      victim_corp: killmail.victim_corporation_name,
-      victim_alliance: killmail.victim_alliance_name,
-      attacker_count: length(killmail.attackers || [])
+    Logger.debug(
+      "Killmail #{kill_id} skipped: #{reason_text} - system: #{killmail.system_id}/#{system_name}, victim: #{killmail.victim_character_id}/#{victim_name}, corp: #{killmail.victim_corporation_name}, alliance: #{killmail.victim_alliance_name}, attackers: #{length(killmail.attackers || [])}"
     )
 
     {:ok, :skipped}
@@ -399,10 +375,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     Telemetry.processing_completed(kill_id, {:error, reason})
     Telemetry.processing_error(kill_id, reason)
 
-    Logger.error("Killmail #{kill_id} processing failed",
-      error: inspect(reason),
-      category: :killmail
-    )
+    Logger.error("Killmail #{kill_id} processing failed - error: #{inspect(reason)}")
 
     {:error, reason}
   end
@@ -416,11 +389,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     enabled = Config.notable_items_enabled?()
     token_present = Config.janice_api_token() != nil
 
-    Logger.debug("Item processing status",
-      killmail_id: killmail.killmail_id,
-      notable_items_enabled: enabled,
-      janice_token_present: token_present,
-      category: :item_processing
+    Logger.debug(
+      "Item processing status - killmail_id: #{killmail.killmail_id}, notable_items_enabled: #{enabled}, janice_token_present: #{token_present}"
     )
 
     if enabled and token_present do
@@ -435,9 +405,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
           true -> "unknown reason"
         end
 
-      Logger.debug("Item processing skipped - #{reason}",
-        killmail_id: killmail.killmail_id
-      )
+      Logger.debug("Item processing skipped - #{reason} (killmail_id: #{killmail.killmail_id})")
 
       {:ok, killmail}
     end

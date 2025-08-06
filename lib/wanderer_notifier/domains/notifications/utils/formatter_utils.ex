@@ -5,7 +5,7 @@ defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
   Contains common functions used across killmail, character, and system formatters.
   """
 
-  alias WandererNotifier.Shared.Utils.TimeUtils
+  alias WandererNotifier.Shared.Utils.{TimeUtils, FormattingUtils}
 
   # ══════════════════════════════════════════════════════════════════════════════
   # ISK Formatting
@@ -14,46 +14,16 @@ defmodule WandererNotifier.Domains.Notifications.Utils.FormatterUtils do
   @doc """
   Formats ISK values with appropriate units (B for billions, M for millions, K for thousands).
   """
-  def format_isk(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 ->
-        "#{Float.round(value / 1_000_000_000, 1)}B"
-
-      value >= 1_000_000 ->
-        "#{Float.round(value / 1_000_000, 1)}M"
-
-      value >= 1_000 ->
-        "#{Float.round(value / 1_000, 1)}K"
-
-      true ->
-        "#{Float.round(value, 0)}"
-    end
-  end
-
-  def format_isk(_), do: "0"
+  def format_isk(value), do: FormattingUtils.format_isk(value, suffix: false)
 
   @doc """
-  Formats ISK values with commas for readability.
+  Formats ISK values with commas for readability, including the ISK suffix.
+
+  ## Examples
+      iex> format_isk_with_commas(2_500_000_000)
+      "2,500,000,000 ISK"
   """
-  def format_isk_with_commas(value) when is_number(value) do
-    value
-    |> Float.round(0)
-    |> trunc()
-    |> Integer.to_string()
-    |> add_commas()
-  end
-
-  def format_isk_with_commas(_), do: "0"
-
-  defp add_commas(string) do
-    string
-    |> String.graphemes()
-    |> Enum.reverse()
-    |> Enum.chunk_every(3)
-    |> Enum.map(&Enum.reverse/1)
-    |> Enum.join(",")
-    |> String.reverse()
-  end
+  def format_isk_with_commas(value), do: FormattingUtils.format_isk_full(value)
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Text Formatting

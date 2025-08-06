@@ -107,16 +107,20 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.Retry do
 
   defp execute_with_retry(retry_fun, retry_options, context) do
     try do
-      case RetryUtils.run(retry_fun,
-             max_attempts: Keyword.get(retry_options, :max_attempts, 3),
-             base_backoff: Keyword.get(retry_options, :base_backoff, 1000),
-             max_backoff: Keyword.get(retry_options, :max_backoff, 30_000),
-             jitter: Keyword.get(retry_options, :jitter, true),
-             retryable_errors:
-               [:retryable_http_status, :http_error] ++ get_all_retryable_errors(retry_options),
-             context: context,
-             on_retry: &log_retry_attempt/3
-           ) do
+      # Use the new http_retry helper with custom options
+      http_options = [
+        max_attempts: Keyword.get(retry_options, :max_attempts, 3),
+        base_backoff: Keyword.get(retry_options, :base_backoff, 1000),
+        max_backoff: Keyword.get(retry_options, :max_backoff, 30_000),
+        jitter: Keyword.get(retry_options, :jitter, true),
+        retryable_errors: [:retryable_http_status] ++ get_all_retryable_errors(retry_options),
+        retryable_status_codes:
+          Keyword.get(retry_options, :retryable_status_codes, @default_retryable_status_codes),
+        context: context,
+        on_retry: &log_retry_attempt/3
+      ]
+
+      case RetryUtils.http_retry(retry_fun, http_options) do
         {:ok, result} -> {:ok, result}
         {:error, {:retryable_http_status, response}} -> {:ok, response}
         {:error, reason} -> {:error, reason}

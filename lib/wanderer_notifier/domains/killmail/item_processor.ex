@@ -20,7 +20,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
 
   # Helper function for safe integer parsing
   defp safe_parse_killmail_id(killmail_id_str) when is_binary(killmail_id_str) do
-    case Integer.parse(killmail_id_str) do
+    case Integer.parse(killmail_id_str, 10) do
       {int_id, ""} -> {:ok, int_id}
       {_int_id, _remainder} -> {:error, :invalid_format}
       :error -> {:error, :invalid_format}
@@ -49,7 +49,8 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
       end)
       |> Enum.sort()
 
-    cache_key = "janice_appraisal:#{:erlang.phash2(cache_key_data)}"
+    hash = :erlang.phash2(cache_key_data)
+    cache_key = Cache.Keys.janice_appraisal(hash)
 
     # Try to get cached prices first
     case Cache.get(cache_key) do
@@ -62,7 +63,7 @@ defmodule WandererNotifier.Domains.Killmail.ItemProcessor do
         case JaniceClient.appraise_items(items) do
           {:ok, price_data} ->
             # Cache the results with item price TTL
-            Cache.put(cache_key, price_data, Cache.item_price_ttl())
+            Cache.put(cache_key, price_data, Cache.ttl(:item_price))
             {:ok, price_data}
 
           {:error, reason} ->

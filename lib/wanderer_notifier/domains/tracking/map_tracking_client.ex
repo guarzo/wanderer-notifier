@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.EntityUtils
   alias WandererNotifier.Domains.Notifications.Determiner
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Domains.Tracking.StaticInfo
@@ -116,20 +117,38 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec is_character_tracked?(String.t()) :: {:ok, boolean()} | {:error, term()}
   def is_character_tracked?(character_id) when is_binary(character_id) do
-    case Cache.get("map:character_list") do
-      {:ok, characters} when is_list(characters) ->
-        check_character_in_list(characters, character_id)
+    # First try O(1) lookup from individual cache
+    character_id_int = String.to_integer(character_id)
 
-      {:ok, _} ->
-        {:ok, false}
+    case Cache.is_character_tracked?(character_id_int) do
+      true ->
+        {:ok, true}
 
-      {:error, :not_found} ->
-        {:ok, false}
+      false ->
+        # Fallback to list lookup for backward compatibility or if individual cache is not populated
+        case Cache.get(Cache.Keys.map_characters()) do
+          {:ok, characters} when is_list(characters) ->
+            check_character_in_list(characters, character_id)
+
+          {:ok, _} ->
+            {:ok, false}
+
+          {:error, :not_found} ->
+            {:ok, false}
+        end
     end
   end
 
   def is_character_tracked?(character_id) when is_integer(character_id) do
-    is_character_tracked?(Integer.to_string(character_id))
+    # Direct O(1) lookup
+    case Cache.is_character_tracked?(character_id) do
+      true ->
+        {:ok, true}
+
+      false ->
+        # Fallback to string version
+        is_character_tracked?(Integer.to_string(character_id))
+    end
   end
 
   defp check_character_in_list(characters, character_id) do
@@ -172,25 +191,28 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   defp check_character_eve_id(_, _), do: false
 
-  defp character_matches?(character_id, %{"character" => %{"eve_id" => id}}),
-    do: to_string(id) == character_id
-
-  defp character_matches?(character_id, %{character: %{eve_id: id}}),
-    do: to_string(id) == character_id
-
-  defp character_matches?(character_id, %{"eve_id" => id}), do: to_string(id) == character_id
-  defp character_matches?(character_id, %{eve_id: id}), do: to_string(id) == character_id
-  defp character_matches?(_, _), do: false
+  defp character_matches?(character_id, character_data) do
+    extracted_id = EntityUtils.extract_character_id(character_data)
+    extracted_id && to_string(extracted_id) == character_id
+  end
 
   @doc """
   Checks if a system is tracked.
   """
   @spec is_system_tracked?(String.t()) :: {:ok, boolean()} | {:error, term()}
   def is_system_tracked?(system_id) when is_binary(system_id) do
-    case Cache.get("map:systems") do
-      {:ok, systems} when is_list(systems) -> check_system_in_list(systems, system_id)
-      {:ok, _} -> {:ok, false}
-      {:error, :not_found} -> {:ok, false}
+    # First try O(1) lookup from individual cache
+    case Cache.is_system_tracked?(system_id) do
+      true ->
+        {:ok, true}
+
+      false ->
+        # Fallback to list lookup for backward compatibility or if individual cache is not populated
+        case Cache.get(Cache.Keys.map_systems()) do
+          {:ok, systems} when is_list(systems) -> check_system_in_list(systems, system_id)
+          {:ok, _} -> {:ok, false}
+          {:error, :not_found} -> {:ok, false}
+        end
     end
   end
 
@@ -213,10 +235,10 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     {:ok, tracked}
   end
 
-  defp system_matches?(system_id, %System{solar_system_id: id}), do: to_string(id) == system_id
-  defp system_matches?(system_id, %{"solar_system_id" => id}), do: to_string(id) == system_id
-  defp system_matches?(system_id, %{solar_system_id: id}), do: to_string(id) == system_id
-  defp system_matches?(_, _), do: false
+  defp system_matches?(system_id, system_data) do
+    extracted_id = EntityUtils.extract_system_id(system_data)
+    extracted_id && to_string(extracted_id) == system_id
+  end
 
   defp extract_sample_system_ids(systems) do
     systems
@@ -251,7 +273,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
       category: :api
     )
 
-    case Http.request(:get, url, nil, headers, service: :map, timeout: 30_000) do
+    case Http.map_get(url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
         parse_response(entity_type, body)
 
@@ -325,7 +347,11 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec cache_entities(entity_type(), list(), entity_config()) :: :ok
   defp cache_entities(entity_type, entities, config) do
-    Cache.put(config.cache_key, entities, :timer.hours(1))
+    # Cache the full list for backward compatibility
+    Cache.put(config.cache_key, entities, Cache.ttl(:map_data))
+
+    # Also cache individual entries for O(1) lookups
+    cache_individual_entities(entity_type, entities)
 
     Logger.debug("Cached #{length(entities)} #{entity_type}",
       category: :cache,
@@ -334,6 +360,45 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     )
 
     :ok
+  end
+
+  defp cache_individual_entities(:characters, entities) do
+    Cache.put_tracked_characters_list(entities)
+    cache_individual_characters(entities)
+  end
+
+  defp cache_individual_entities(:systems, entities) do
+    Cache.put_tracked_systems_list(entities)
+    cache_individual_systems(entities)
+  end
+
+  defp cache_individual_characters(entities) do
+    Enum.each(entities, fn character ->
+      if character_id = get_character_id(character) do
+        Cache.put_tracked_character(character_id, character)
+      end
+    end)
+  end
+
+  defp cache_individual_systems(entities) do
+    Enum.each(entities, fn system ->
+      if system_id = get_system_id(system) do
+        Cache.put_tracked_system(system_id, system)
+      end
+    end)
+  end
+
+  # Helper to extract character ID from various formats and convert to integer
+  defp get_character_id(data) do
+    EntityUtils.extract_character_id(data)
+  end
+
+  # Helper to extract system ID from various formats and convert to string
+  defp get_system_id(data) do
+    case EntityUtils.extract_system_id(data) do
+      nil -> nil
+      id -> to_string(id)
+    end
   end
 
   @spec process_entities(entity_type(), list(), boolean()) :: :ok

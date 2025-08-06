@@ -93,10 +93,6 @@ lib/wanderer_notifier/
 │   ├── sse_client.ex                 # Server-Sent Events client
 │   ├── connection_monitor.ex         # Connection health monitoring
 │   └── schemas/                      # Map data schemas
-├── event_sourcing/                   # Event-driven architecture
-│   ├── event.ex                      # Event definitions
-│   ├── handlers/                     # Event handlers
-│   └── pipeline.ex                   # Event processing pipeline
 ├── shared/                           # Cross-cutting concerns
 │   ├── config/                       # Configuration management
 │   ├── utils/                        # Shared utilities
@@ -132,11 +128,10 @@ lib/wanderer_notifier/
 4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time Server-Sent Events connection to map API for system and character updates with connection monitoring
 5. **Processing Context** (`lib/wanderer_notifier/contexts/processing_context/`) - Coordinates killmail processing across domains
 6. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline/`) - Processes killmail data through supervised workers
-7. **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`) - Event-driven architecture for extensible processing
-8. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
-9. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`) - Coordinates notification processing across domains
-10. **Notification Formatters** (`lib/wanderer_notifier/domains/notifications/formatters/`) - Domain-specific message formatting
-11. **Discord Integration** (`lib/wanderer_notifier/domains/notifications/discord/`) - Discord bot integration with slash commands and rich notifications
+7. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
+8. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`) - Coordinates notification processing across domains
+9. **Notification Formatters** (`lib/wanderer_notifier/domains/notifications/formatters/`) - Domain-specific message formatting
+10. **Discord Integration** (`lib/wanderer_notifier/domains/notifications/discord/`) - Discord bot integration with slash commands and rich notifications
 
 ### Domain-Driven Design Principles
 The reorganized codebase follows DDD patterns for better maintainability:
@@ -160,7 +155,6 @@ The reorganized codebase follows DDD patterns for better maintainability:
 - **Lightweight Application Service** (`lib/wanderer_notifier/application/services/simple_application_service.ex`): Minimal coordinator with focused responsibilities
 - **Modular Metrics & Health** (`lib/wanderer_notifier/shared/metrics.ex`, `lib/wanderer_notifier/shared/health.ex`): Agent-based metrics and process-based health checks
 - **Multi-Phase Initialization** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Sophisticated startup process with infrastructure, foundation, integration, and processing phases
-- **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers and processing pipeline
 - **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
 - **Simplified Configuration** (`lib/wanderer_notifier/shared/config.ex`): Direct Application.get_env access without complex schemas or macro generation
 - **Unified Utilities** (`lib/wanderer_notifier/shared/utils/`): Consolidated error handling, time utilities, and validation
@@ -250,7 +244,6 @@ The codebase has completed major reorganization phases and architecture simplifi
 - **Infrastructure Unification**: Single HTTP client and cache module ✅
 - **Domain Organization**: All business domains properly structured ✅
 - **Context Layer**: Cross-domain coordination added ✅
-- **Event Sourcing**: Event-driven architecture foundation ✅
 - **Real-Time Integration**: Advanced SSE client with monitoring ✅
 - **Architecture Simplification (2024-08)**: Removed over-engineered abstractions and simplified core systems ✅
 
@@ -267,7 +260,6 @@ The application now represents a mature, production-ready architecture with:
 - Simplified `SimpleApplicationService` with focused responsibilities
 - Multi-phase initialization system for reliable startup
 - Function-based dependency injection without GenServer overhead
-- Event sourcing capabilities for future extensibility
 - Advanced real-time data integration via SSE
 - Unified infrastructure with simplified HTTP and cache systems
 - Clean, maintainable codebase with reduced complexity

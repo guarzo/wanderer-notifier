@@ -1,6 +1,0 @@
-duration:1.0;mem stats:false;sys mem stats:false
-module;test;tags;iterations;elapsed
-PipelineBench	full pipeline simulation		10000000	2375234
-PipelineBench	killmail enrichment simulation		1000000000	1134644
-PipelineBench	killmail validation		10000000	1998069
-PipelineBench	notification determination		100000000	7311068

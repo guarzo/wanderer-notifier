@@ -84,7 +84,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Value and timestamp
     value_time_line =
       if killmail.value && killmail.value > 0 do
-        "Value: #{FormatterUtils.format_isk(killmail.value)} • #{format_timestamp(killmail)}"
+        "Value: #{FormatterUtils.format_isk(killmail.value)} ISK • #{format_timestamp(killmail)}"
       else
         format_timestamp(killmail)
       end
@@ -288,9 +288,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       quantity = Map.get(item, "quantity", 1)
 
       if quantity > 1 do
-        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)})"
+        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)} ISK)"
       else
-        "• #{name} (~#{FormatterUtils.format_isk(value)})"
+        "• #{name} (~#{FormatterUtils.format_isk(value)} ISK)"
       end
     end)
     |> Enum.join("\n")
@@ -313,7 +313,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp get_corporation_ticker(corp_id) when is_integer(corp_id) do
-    case Cache.get("corporation:#{corp_id}") do
+    case Cache.get_corporation_data(corp_id) do
       {:ok, corp_data} when is_map(corp_data) ->
         Map.get(corp_data, "ticker", fetch_and_cache_corporation(corp_id))
 
@@ -327,7 +327,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp fetch_and_cache_corporation(corp_id) do
     case ESI.Service.get_corporation_info(corp_id) do
       {:ok, corp_data} ->
-        Cache.put("corporation:#{corp_id}", corp_data, :timer.hours(24))
+        Cache.put_corporation_data(corp_id, corp_data)
         Map.get(corp_data, "ticker", "????")
 
       {:error, _} ->
@@ -345,7 +345,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp get_ship_type_name(ship_type_id) when is_integer(ship_type_id) do
-    case Cache.get("ship_type:#{ship_type_id}") do
+    case Cache.get_ship_type(ship_type_id) do
       {:ok, ship_data} when is_map(ship_data) ->
         Map.get(ship_data, "name", fetch_and_cache_ship_type(ship_type_id))
 
@@ -359,7 +359,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp fetch_and_cache_ship_type(ship_type_id) do
     case ESI.Service.get_type(ship_type_id) do
       {:ok, type_data} ->
-        Cache.put("ship_type:#{ship_type_id}", type_data, :timer.hours(24))
+        Cache.put_ship_type(ship_type_id, type_data)
         Map.get(type_data, "name", "Unknown Ship")
 
       {:error, _} ->
@@ -406,10 +406,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp character_tracked?(nil), do: false
 
   defp character_tracked?(character_id) do
-    case Cache.get("tracked_character:#{character_id}") do
-      {:ok, _} -> true
-      _ -> false
-    end
+    Cache.is_character_tracked?(character_id)
   end
 
   defp get_system_display_name(%Killmail{} = killmail) do
@@ -427,7 +424,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp fetch_system_name(system_id_string, killmail) do
-    case Cache.get("tracked_system:#{system_id_string}") do
+    case Cache.get_tracked_system(system_id_string) do
       {:ok, system_data} when is_map(system_data) ->
         custom_name = Map.get(system_data, "custom_name")
 

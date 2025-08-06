@@ -14,7 +14,7 @@ defmodule WandererNotifierWeb.Endpoint do
   @session_options [
     store: :cookie,
     key: "_wanderer_notifier_key",
-    signing_salt: System.get_env("SESSION_SIGNING_SALT") || "wanderer_salt",
+    signing_salt: WandererNotifier.Shared.Env.get("SESSION_SIGNING_SALT", "wanderer_salt"),
     same_site: "Lax"
   ]
 
@@ -65,6 +65,11 @@ defmodule WandererNotifierWeb.Endpoint do
   Determines if code reloading is enabled.
   """
   def code_reloading? do
-    Application.get_env(:wanderer_notifier, :code_reloader, false)
+    WandererNotifier.Shared.Env.get_app_config(
+      :wanderer_notifier,
+      :code_reloader,
+      "CODE_RELOADER_ENABLED",
+      false
+    )
   end
 end

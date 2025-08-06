@@ -151,10 +151,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       {:ok, cached_systems} when is_list(cached_systems) ->
         updated_systems = update_system_in_list(cached_systems, system)
         Logger.debug("Storing system in cache, type: #{inspect(system.__struct__)}")
-        Cache.put_with_ttl(cache_key, updated_systems, Cache.map_ttl())
+        Cache.put_with_ttl(cache_key, updated_systems, Cache.ttl(:map_data))
 
       {:ok, nil} ->
-        Cache.put_with_ttl(cache_key, [system], Cache.map_ttl())
+        Cache.put_with_ttl(cache_key, [system], Cache.ttl(:map_data))
 
       {:error, reason} ->
         Logger.error("Failed to read system cache",
@@ -178,7 +178,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp handle_cache_result_for_removal({:ok, cached_systems}, cache_key, system_id)
        when is_list(cached_systems) do
     updated_systems = filter_out_system(cached_systems, system_id)
-    Cache.put_with_ttl(cache_key, updated_systems, Cache.map_ttl())
+    Cache.put_with_ttl(cache_key, updated_systems, Cache.ttl(:map_data))
   end
 
   defp handle_cache_result_for_removal({:ok, nil}, _cache_key, _system_id) do

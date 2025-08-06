@@ -8,6 +8,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Tracking.Entities.{Character, System}
+  alias WandererNotifier.Shared.Utils.FormattingUtils
 
   alias WandererNotifier.Domains.Notifications.Formatters.{
     KillmailFormatter,
@@ -117,7 +118,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
     value =
       if killmail.value && killmail.value > 0,
-        do: " (#{format_isk_simple(killmail.value)})",
+        do: " (#{format_isk_simple(killmail.value)} ISK)",
         else: ""
 
     "#{victim} lost a #{ship} in #{system}#{value}"
@@ -131,14 +132,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     "System #{system.name} is now being tracked"
   end
 
-  defp format_isk_simple(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
-      true -> "#{Float.round(value, 0)} ISK"
-    end
-  end
-
-  defp format_isk_simple(_), do: "0 ISK"
+  # Use centralized ISK formatting
+  defp format_isk_simple(value), do: FormattingUtils.format_isk(value)
 end

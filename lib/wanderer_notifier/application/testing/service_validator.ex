@@ -48,7 +48,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   @spec validate_service_interfaces() :: validation_result()
   def validate_service_interfaces do
     services_to_check = [
-      WandererNotifier.Application.Services.SimpleApplicationService
+      WandererNotifier.Application.Services.ApplicationCoordinator
     ]
 
     case check_service_interfaces(services_to_check) do
@@ -121,7 +121,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
   defp validate_service_initialization do
     # Check that key services are running
     critical_services = [
-      WandererNotifier.Application.Services.SimpleApplicationService,
+      WandererNotifier.Application.Services.ApplicationCoordinator,
       WandererNotifier.Infrastructure.Cache
     ]
 
@@ -224,7 +224,7 @@ defmodule WandererNotifier.Application.Testing.ServiceValidator do
 
   defp validate_application_service do
     try do
-      case Process.whereis(WandererNotifier.Application.Services.SimpleApplicationService) do
+      case Process.whereis(WandererNotifier.Application.Services.ApplicationCoordinator) do
         nil ->
           {:error, "Application Service not running", :not_started}
 

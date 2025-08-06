@@ -15,8 +15,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   alias WandererNotifier.Domains.Universe.Services.{FuzzworksService, CsvProcessor}
   alias WandererNotifier.Infrastructure.{Cache, Http}
 
-  @esi_fallback_cache_ttl :timer.hours(24)
-  @refresh_interval :timer.hours(24)
+  # Use centralized TTL functions from Cache module
 
   # GenServer state
   defstruct [
@@ -60,7 +59,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   end
 
   def get_item_name(type_id) when is_binary(type_id) do
-    case Integer.parse(type_id) do
+    case Integer.parse(type_id, 10) do
       {int_id, ""} -> get_item_name(int_id)
       _ -> "Unknown Item"
     end
@@ -151,7 +150,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
       send(self(), :load_data)
 
       # Schedule periodic refresh
-      Process.send_after(self(), :periodic_refresh, @refresh_interval)
+      Process.send_after(self(), :periodic_refresh, :timer.hours(1))
     end
 
     {:ok, state}
@@ -291,7 +290,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     Logger.debug("Running periodic CSV data refresh")
 
     # Schedule next refresh
-    Process.send_after(self(), :periodic_refresh, @refresh_interval)
+    Process.send_after(self(), :periodic_refresh, :timer.hours(1))
 
     # Refresh in background - don't block if it fails
     Task.start(fn ->
@@ -351,13 +350,14 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   end
 
   defp get_item_name_fallback(type_id) do
-    cache_key = "esi:universe_type:#{type_id}"
+    cache_key = Cache.Keys.universe_type(type_id)
 
     case Cache.get(cache_key) do
       {:ok, type_data} ->
         Map.get(type_data, "name", "Unknown Item")
 
-      {:error, :not_found} ->
+      {:error, _reason} ->
+        # Cache miss or error, fallback to ESI
         fetch_from_esi_and_cache(type_id, cache_key)
     end
   end
@@ -365,7 +365,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   defp fetch_from_esi_and_cache(type_id, cache_key) do
     case fetch_type_from_esi(type_id) do
       {:ok, type_data} ->
-        Cache.put(cache_key, type_data, @esi_fallback_cache_ttl)
+        Cache.put(cache_key, type_data, Cache.ttl(:universe_type))
         Map.get(type_data, "name", "Unknown Item")
 
       {:error, _} ->
@@ -385,7 +385,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   defp fetch_type_from_esi(type_id) do
     url = "https://esi.evetech.net/latest/universe/types/#{type_id}/"
 
-    case Http.request(:get, url, nil, [], service: :esi) do
+    case Http.esi_get(url) do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 

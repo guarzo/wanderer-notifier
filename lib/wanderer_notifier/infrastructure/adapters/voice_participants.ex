@@ -38,7 +38,7 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
         []
 
       guild_id when is_binary(guild_id) ->
-        case Integer.parse(guild_id) do
+        case Integer.parse(guild_id, 10) do
           {parsed_id, ""} ->
             get_active_voice_mentions(parsed_id)
 

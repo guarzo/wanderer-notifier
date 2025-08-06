@@ -6,7 +6,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
 
   setup do
     # Clear the cache before each test
-    Cache.delete("map:character_list")
+    Cache.delete(Cache.Keys.map_characters())
     :ok
   end
 
@@ -164,7 +164,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put("map:character_list", characters)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?("123456")
     end
@@ -174,7 +174,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put("map:character_list", characters)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, false} = Character.is_tracked?("123456")
     end
@@ -189,7 +189,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "123456", "name" => "Test Character"}
       ]
 
-      Cache.put("map:character_list", characters)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?(123_456)
     end
@@ -207,7 +207,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put("map:character_list", characters)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, character} = Character.get_character("123456")
       assert character.name == "Test Character"
@@ -218,7 +218,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put("map:character_list", characters)
+      Cache.put(Cache.Keys.map_characters(), characters)
 
       assert {:error, :not_found} = Character.get_character("123456")
     end

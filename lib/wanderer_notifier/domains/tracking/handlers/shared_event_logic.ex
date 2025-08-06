@@ -7,6 +7,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   """
 
   require Logger
+  alias WandererNotifier.Shared.Utils.EntityUtils
 
   @doc """
   Generic event handler that processes entity events with customizable steps.
@@ -105,6 +106,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   """
   @spec extract_entity_id(map()) :: String.t() | integer() | nil
   def extract_entity_id(payload) do
+    # Maintain original extraction logic for backward compatibility
     Map.get(payload, "id") ||
       Map.get(payload, "character_eve_id") ||
       Map.get(payload, "eve_id") ||
@@ -130,14 +132,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   """
   @spec extract_entity_id_from_result(term()) :: String.t() | integer() | nil
   def extract_entity_id_from_result(entity) do
+    # Use EntityUtils for consistent extraction logic, but preserve original data types
     case entity do
-      %{eve_id: id} -> id
-      %{"eve_id" => id} -> id
-      %{solar_system_id: id} -> id
-      %{"solar_system_id" => id} -> id
-      %{id: id} -> id
-      %{"id" => id} -> id
-      _ -> nil
+      %{eve_id: id} ->
+        id
+
+      %{"eve_id" => id} ->
+        id
+
+      _ ->
+        EntityUtils.extract_character_id(entity) ||
+          EntityUtils.extract_system_id(entity) ||
+          EntityUtils.get_value(entity, "id")
     end
   end
 

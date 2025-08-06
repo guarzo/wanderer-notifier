@@ -4,6 +4,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   Single source of truth for all formatting helpers.
   """
 
+  alias WandererNotifier.Shared.Utils.FormattingUtils
+
   # ═══════════════════════════════════════════════════════════════════════════════
   # URL Generation
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -83,40 +85,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   @doc "Format ISK value with proper suffix"
-  def format_isk(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 2)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 2)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 2)}K ISK"
-      true -> "#{round(value)} ISK"
-    end
-  end
-
-  def format_isk(_), do: "0 ISK"
+  def format_isk(value), do: FormattingUtils.format_isk(value, precision: 2)
 
   @doc "Format number with thousand separators"
-  def format_number(number) when is_integer(number) do
-    number
-    |> Integer.to_string()
-    |> String.reverse()
-    |> String.replace(~r/.{3}(?=.)/, "\\0,")
-    |> String.reverse()
-  end
-
-  def format_number(number) when is_float(number) do
-    number
-    |> Float.round(2)
-    |> Float.to_string()
-  end
-
-  def format_number(_), do: "0"
+  def format_number(value), do: FormattingUtils.format_number(value)
 
   @doc "Format percentage"
-  def format_percentage(value) when is_number(value) do
-    "#{Float.round(value * 100, 1)}%"
-  end
-
-  def format_percentage(_), do: "0%"
+  def format_percentage(value), do: FormattingUtils.format_percentage(value)
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Color Management

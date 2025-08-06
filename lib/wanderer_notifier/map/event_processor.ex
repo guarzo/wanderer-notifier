@@ -289,35 +289,14 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `payload` - Event-specific data
   """
   @spec validate_event(map()) :: :ok | {:error, term()}
-  def validate_event(event) when is_map(event) do
-    required_fields = ["id", "type", "map_id", "timestamp", "payload"]
-
-    case find_missing_fields(event, required_fields) do
-      [] ->
-        validate_event_payload(event)
-
-      missing_fields ->
-        {:error, {:missing_fields, missing_fields}}
+  def validate_event(event) do
+    case WandererNotifier.Shared.Validation.validate_event_data(event) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  def validate_event(_), do: {:error, :invalid_event_structure}
-
-  defp find_missing_fields(event, required_fields) do
-    Enum.filter(required_fields, fn field ->
-      not Map.has_key?(event, field) or is_nil(Map.get(event, field))
-    end)
-  end
-
-  defp validate_event_payload(event) do
-    payload = Map.get(event, "payload")
-
-    if is_map(payload) and map_size(payload) > 0 do
-      :ok
-    else
-      {:error, :invalid_payload}
-    end
-  end
+  # Event validation logic moved to WandererNotifier.Shared.Validation
 
   @doc """
   Extracts event metadata for logging and debugging.

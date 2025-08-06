@@ -23,6 +23,12 @@ config :wanderer_notifier,
   default_connect_timeout: 3_000,
   default_pool_timeout: 3_000
 
+# Configure cache settings
+config :wanderer_notifier,
+  cache_name: :wanderer_notifier_cache,
+  cache_size_limit: 10_000,
+  cache_stats_enabled: true
+
 # Configure Finch to use IPv4 only to avoid production IPv6 timeout issues
 config :finch, :default_pool_config,
   pool_size: 25,
@@ -84,7 +90,31 @@ config :logger,
 # Console logger configuration
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:pid, :module, :file, :line],
+  metadata: [
+    :pid,
+    :module,
+    :file,
+    :line,
+    # WebSocket connection metadata
+    :url,
+    :socket_url,
+    :connection_id,
+    :attempt,
+    :delay_ms,
+    # System and character tracking
+    :system_id,
+    :killmail_id,
+    :systems_count,
+    :characters_count,
+    # Error handling
+    :error,
+    :reason,
+    :result,
+    # Performance monitoring
+    :message_size,
+    :uptime_seconds,
+    :count
+  ],
   colors: [
     debug: :cyan,
     info: :green,

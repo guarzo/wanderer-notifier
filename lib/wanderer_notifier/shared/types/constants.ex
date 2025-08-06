@@ -43,18 +43,8 @@ defmodule WandererNotifier.Shared.Types.Constants do
   def wanderer_kills_retry_backoff, do: 1_500
 
   # ── Cache & TTL Values ──────────────────────────────────────────────────────
-
-  @doc "Default cache TTL in seconds"
-  def default_cache_ttl, do: 300
-
-  @doc "Static information cache TTL in seconds"
-  def static_info_ttl, do: 3_600
-
-  @doc "Deduplication TTL in seconds"
-  def dedup_ttl, do: 3_600
-
-  @doc "Killmail processing cache TTL in seconds"
-  def killmail_cache_ttl, do: 3_600
+  # Note: Cache TTL values have been moved to WandererNotifier.Infrastructure.Cache module
+  # for better centralization and consistency.
 
   # ── Scheduler Intervals ─────────────────────────────────────────────────────
 

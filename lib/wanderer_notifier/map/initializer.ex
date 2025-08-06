@@ -26,9 +26,6 @@ defmodule WandererNotifier.Map.Initializer do
       # First fetch systems
       systems_result = fetch_systems()
 
-      # Add delay between bulk operations to allow GC
-      Process.sleep(1000)
-
       # Then fetch characters
       characters_result = fetch_characters()
 
@@ -36,23 +33,26 @@ defmodule WandererNotifier.Map.Initializer do
       results = [systems_result, characters_result]
       process_results(results)
     rescue
-      e in HTTPoison.Error ->
-        # Network/HTTP errors
-        Logger.error("Map initialization network error",
-          error: Exception.message(e),
-          category: :api
+      e in [MatchError, CaseClauseError] ->
+        # Handle pattern matching errors from fetch operations
+        Logger.error(
+          "Map initialization network error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
         )
 
         # Continue startup even if map data fails
         :ok
 
       e ->
-        # Other unexpected errors
-        Logger.error("Map initialization unexpected error",
-          error: inspect(e),
-          exception_type: e.__struct__,
-          category: :api
-        )
+        # Other unexpected errors - conditional debug info based on environment
+        if WandererNotifier.Shared.Config.production?() do
+          Logger.error(
+            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
+          )
+        else
+          Logger.error(
+            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)} (#{e.__struct__}). Exception: #{Exception.message(e)}. Stacktrace: #{Exception.format_stacktrace(__STACKTRACE__)}"
+          )
+        end
 
         # Continue startup even if map data fails
         :ok

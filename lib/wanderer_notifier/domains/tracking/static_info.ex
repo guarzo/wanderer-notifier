@@ -390,7 +390,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
 
   # Simple parse_int helper to replace Config.Utils
   defp parse_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
+    case Integer.parse(value, 10) do
       {int, ""} -> int
       _ -> default
     end

@@ -9,7 +9,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Shared.Utils.ErrorHandler
   alias WandererNotifier.Shared.Utils.StringUtils
-  alias WandererNotifier.Domains.License.Validation
   require Logger
 
   # Define the behaviour callbacks
@@ -88,13 +87,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
         Logger.error("Error in license validation: #{inspect(e)}", category: :config)
         default_error_state(:exception, "License validation error: #{inspect(e)}")
 
-      {:error, {:exit, type, reason}} ->
-        Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}",
-          category: :config
-        )
-
-        default_error_state(type, "License validation error: #{inspect(reason)}")
-
       {:unexpected, result} ->
         Logger.error("Unexpected result from license validation: #{inspect(result)}",
           category: :config
@@ -105,16 +97,10 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   defp safe_validate_call do
-    {:ok, GenServer.call(__MODULE__, :validate, 5000)}
-  rescue
-    e ->
-      {:error, {:exception, e}}
-  catch
-    :exit, {:timeout, _} ->
-      {:error, :timeout}
-
-    type, reason ->
-      {:error, {:exit, type, reason}}
+    ErrorHandler.with_timeout(
+      fn -> {:ok, GenServer.call(__MODULE__, :validate)} end,
+      5000
+    )
   end
 
   defp valid_result?(result) do
@@ -162,7 +148,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       category: :config
     )
 
-    Logger.info("License validation - environment: #{Config.get_env(:environment)}",
+    Logger.info("License validation - environment: #{Config.environment()}",
       category: :config
     )
 
@@ -180,14 +166,14 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   Gets the license key from configuration.
   """
   def get_license_key do
-    Config.get_env(:license_key)
+    Config.license_key()
   end
 
   @doc """
   Gets the license manager URL from configuration.
   """
   def get_license_manager_url do
-    Config.get_env(:license_manager_url)
+    Config.license_manager_api_url()
   end
 
   @doc """
@@ -225,7 +211,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   # Private helper to check if license is valid
   defp valid? do
-    Validation.license_and_bot_valid?()
+    license_and_bot_valid?()
   end
 
   # Server Implementation
@@ -241,50 +227,53 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   @impl true
   def handle_continue(:initial_validation, state) do
     # Perform initial license validation at startup
-    Logger.debug("License Service performing initial validation", category: :config)
+    {:ok, new_state} =
+      try do
+        Logger.debug("License Service performing initial validation", category: :config)
 
-    _license_key = Config.license_key()
+        _license_key = Config.license_key()
+        Logger.debug("License key loaded", category: :config)
 
-    Logger.debug("License key loaded", category: :config)
+        _notifier_api_token = Config.notifier_api_token()
+        Logger.debug("API token loaded", category: :config)
 
-    _notifier_api_token = Config.notifier_api_token()
+        license_manager_url = Config.license_manager_api_url()
+        Logger.debug("License manager URL", url: license_manager_url, category: :config)
 
-    Logger.debug("API token loaded", category: :config)
+        new_state = do_validate(state)
 
-    license_manager_url = Config.license_manager_api_url()
-    Logger.debug("License manager URL", url: license_manager_url, category: :config)
+        if new_state.valid do
+          Logger.debug(
+            "License validated successfully: #{new_state.details["status"] || "valid"}",
+            category: :config
+          )
+        else
+          error_msg = new_state.error_message || "No error message provided"
+          Logger.warning("License validation warning: #{error_msg}", category: :config)
+        end
 
-    new_state = do_validate(state)
+        {:ok, new_state}
+      rescue
+        error ->
+          Logger.error(
+            "License validation failed, continuing with invalid license state: #{ErrorHandler.format_error(error)}"
+          )
 
-    if new_state.valid do
-      Logger.debug(
-        "License validated successfully: #{new_state.details["status"] || "valid"}",
-        category: :config
-      )
-    else
-      error_msg = new_state.error_message || "No error message provided"
-      Logger.warning("License validation warning: #{error_msg}", category: :config)
-    end
+          # Return invalid license state but don't crash
+          fallback_state = %State{
+            valid: false,
+            bot_assigned: false,
+            details: nil,
+            error: :exception,
+            error_message: "License validation error: #{ErrorHandler.format_error(error)}",
+            last_validated: :os.system_time(:second),
+            notification_counts: state.notification_counts
+          }
+
+          {:ok, fallback_state}
+      end
 
     {:noreply, new_state}
-  rescue
-    e ->
-      Logger.error(
-        "License validation failed, continuing with invalid license state: #{inspect(e)}"
-      )
-
-      # Return invalid license state but don't crash
-      invalid_state = %State{
-        valid: false,
-        bot_assigned: false,
-        details: nil,
-        error: :exception,
-        error_message: "License validation error: #{inspect(e)}",
-        last_validated: :os.system_time(:second),
-        notification_counts: state.notification_counts
-      }
-
-      {:noreply, invalid_state}
   end
 
   defp process_validation_result({:ok, response}, state) do
@@ -516,7 +505,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   defp should_use_dev_mode?(_license_key, _notifier_api_token) do
-    Validation.should_use_dev_mode?()
+    should_use_dev_mode?()
   end
 
   defp create_dev_mode_state(state) do
@@ -700,7 +689,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   # Helper function to convert error reasons to human-readable messages
-  defp error_reason_to_message(reason), do: Validation.format_error_message(reason)
+  defp error_reason_to_message(reason), do: format_error_message(reason)
 
   # Helper to ensure the state has all required fields
   defp ensure_complete_state(state) do
@@ -723,6 +712,51 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     else
       Map.put(base_state, :notification_counts, defaults.notification_counts)
     end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # License Validation Functions (migrated from deprecated License.Validation)
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @spec license_and_bot_valid?() :: boolean()
+  defp license_and_bot_valid? do
+    bot_token_assigned?() && license_key_present?()
+  end
+
+  @spec should_use_dev_mode?() :: boolean()
+  defp should_use_dev_mode? do
+    env = Application.get_env(:wanderer_notifier, :environment)
+    env in [:dev, :test] && (!license_key_present?() || !api_token_valid?())
+  end
+
+  @spec format_error_message(atom() | binary() | any()) :: binary()
+  defp format_error_message(:rate_limited), do: "License server rate limit exceeded"
+  defp format_error_message(:timeout), do: "License validation timed out"
+  defp format_error_message(:invalid_response), do: "Invalid response from license server"
+  defp format_error_message(:invalid_license_key), do: "Invalid or missing license key"
+  defp format_error_message(:invalid_api_token), do: "Invalid or missing API token"
+
+  defp format_error_message({reason, _detail}) when is_atom(reason),
+    do: "License server error: #{reason}"
+
+  defp format_error_message(reason) when is_atom(reason), do: "License server error: #{reason}"
+
+  @spec bot_token_assigned?() :: boolean()
+  defp bot_token_assigned? do
+    token = Config.discord_bot_token()
+    StringUtils.present?(token)
+  end
+
+  @spec license_key_present?() :: boolean()
+  defp license_key_present? do
+    key = Config.license_key()
+    StringUtils.present?(key)
+  end
+
+  @spec api_token_valid?() :: boolean()
+  defp api_token_valid? do
+    token = Config.notifier_api_token()
+    StringUtils.present?(token)
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -750,11 +784,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       category: :api
     )
 
-    # Use unified HTTP client with license service configuration
-    case Http.request(:post, url, body, [],
-           service: :license,
-           auth: [type: :bearer, token: notifier_api_token]
-         ) do
+    # Use simplified license API helper
+    case Http.license_post(url, body, notifier_api_token) do
       {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
         process_successful_validation(response_body)
 
@@ -804,11 +835,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   # Private helper functions (merged from License.Client)
 
   defp make_validation_request(url, body, notifier_api_token) do
-    # Use unified HTTP client with license service configuration
-    case Http.request(:post, url, body, [],
-           service: :license,
-           auth: [type: :bearer, token: notifier_api_token]
-         ) do
+    # Use simplified license API helper
+    case Http.license_post(url, body, notifier_api_token) do
       {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
         {:ok, response_body}
 

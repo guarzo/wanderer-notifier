@@ -12,6 +12,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Shared.Utils.Startup
 
   @type notification_type :: :character | :system | :kill
   @type entity_id :: String.t() | integer()
@@ -40,26 +41,46 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   def should_notify?(type, entity_id, entity_data \\ nil)
 
   def should_notify?(:character, character_id, _character_data) do
-    if Config.character_notifications_enabled?() do
-      case Deduplication.check(:character, character_id) do
-        {:ok, :new} -> true
-        {:ok, :duplicate} -> false
-        {:error, _reason} -> true
-      end
-    else
-      false
+    cond do
+      Startup.in_suppression_period?() ->
+        Logger.debug("Character notification suppressed during startup period",
+          character_id: character_id,
+          category: :notification
+        )
+
+        false
+
+      not Config.character_notifications_enabled?() ->
+        false
+
+      true ->
+        case Deduplication.check(:character, character_id) do
+          {:ok, :new} -> true
+          {:ok, :duplicate} -> false
+          {:error, _reason} -> true
+        end
     end
   end
 
   def should_notify?(:system, system_id, _system_data) do
-    if Config.system_notifications_enabled?() do
-      case Deduplication.check(:system, system_id) do
-        {:ok, :new} -> true
-        {:ok, :duplicate} -> false
-        {:error, _reason} -> true
-      end
-    else
-      false
+    cond do
+      Startup.in_suppression_period?() ->
+        Logger.debug("System notification suppressed during startup period",
+          system_id: system_id,
+          category: :notification
+        )
+
+        false
+
+      not Config.system_notifications_enabled?() ->
+        false
+
+      true ->
+        case Deduplication.check(:system, system_id) do
+          {:ok, :new} -> true
+          {:ok, :duplicate} -> false
+          {:error, _reason} -> true
+        end
     end
   end
 
@@ -69,14 +90,19 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def should_notify?(:rally_point, rally_id, _rally_data) do
-    if Config.rally_notifications_enabled?() do
-      case Deduplication.check(:rally_point, rally_id) do
-        {:ok, :new} -> true
-        {:ok, :duplicate} -> false
-        {:error, _reason} -> true
-      end
-    else
-      false
+    cond do
+      Startup.in_suppression_period?() ->
+        false
+
+      not Config.rally_notifications_enabled?() ->
+        false
+
+      true ->
+        case Deduplication.check(:rally_point, rally_id) do
+          {:ok, :new} -> true
+          {:ok, :duplicate} -> false
+          {:error, _reason} -> true
+        end
     end
   end
 
@@ -298,6 +324,9 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
 
   defp check_killmail_notification(killmail_id, system_id, victim_character_id) do
     cond do
+      Startup.in_suppression_period?() ->
+        {:ok, %{should_notify: false, reason: :startup_suppression}}
+
       not Config.kill_notifications_enabled?() ->
         {:ok, %{should_notify: false, reason: :kill_notifications_disabled}}
 

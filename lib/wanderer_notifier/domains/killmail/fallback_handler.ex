@@ -11,9 +11,17 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
+  alias WandererNotifier.Shared.Utils.{EntityUtils, Retry}
 
   # Check every 30 seconds
   @check_interval 30_000
+
+  # Circuit breaker settings
+  @failure_threshold 5
+  # 5 minutes
+  @recovery_time 300_000
+  # 2 seconds base backoff
+  @backoff_base 2_000
 
   defstruct [
     :websocket_pid,
@@ -21,7 +29,11 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
     :fallback_active,
     :tracked_systems,
     :tracked_characters,
-    check_timer: nil
+    check_timer: nil,
+    circuit_breaker_state: :closed,
+    failure_count: 0,
+    last_failure_time: nil,
+    next_retry_time: nil
   ]
 
   # Client API
@@ -85,7 +97,12 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
     new_state = %{updated_state | fallback_active: true}
 
     # Immediately fetch recent data in background
-    Task.start(fn -> fetch_all_recent_data(new_state) end)
+    Task.start(fn ->
+      case fetch_all_recent_data(new_state) do
+        {:ok, _result, _updated_state} -> :ok
+        {:error, :circuit_breaker_open} -> :ok
+      end
+    end)
 
     {:noreply, new_state}
   end
@@ -103,8 +120,14 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   def handle_call(:fetch_recent_data, _from, state) do
     # Update tracked entities first
     updated_state = update_tracked_entities(state)
-    result = fetch_all_recent_data(updated_state)
-    {:reply, result, %{updated_state | last_check: DateTime.utc_now()}}
+
+    case fetch_all_recent_data(updated_state) do
+      {:ok, result, new_state} ->
+        {:reply, {:ok, result}, %{new_state | last_check: DateTime.utc_now()}}
+
+      {:error, :circuit_breaker_open} ->
+        {:reply, {:error, :circuit_breaker_open}, updated_state}
+    end
   end
 
   @impl true
@@ -135,8 +158,13 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
     new_state =
       if state.fallback_active do
         # Only fetch data if WebSocket is still down
-        Task.start(fn -> fetch_all_recent_data(state) end)
-        %{state | last_check: DateTime.utc_now()}
+        case fetch_all_recent_data(state) do
+          {:ok, _result, updated_state} ->
+            %{updated_state | last_check: DateTime.utc_now()}
+
+          {:error, :circuit_breaker_open} ->
+            %{state | last_check: DateTime.utc_now()}
+        end
       else
         state
       end
@@ -154,22 +182,35 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp fetch_all_recent_data(state) do
-    Logger.info("Fetching recent data via HTTP API",
-      systems_count: MapSet.size(state.tracked_systems),
-      characters_count: MapSet.size(state.tracked_characters)
-    )
+    # Check circuit breaker before proceeding
+    if should_skip_api_call?(state) do
+      Logger.warning("Skipping API call due to circuit breaker",
+        circuit_state: state.circuit_breaker_state,
+        failure_count: state.failure_count,
+        next_retry: state.next_retry_time
+      )
 
-    # Fetch data for all tracked systems
-    system_results = fetch_system_data(state.tracked_systems)
+      {:error, :circuit_breaker_open}
+    else
+      Logger.info("Fetching recent data via HTTP API",
+        systems_count: MapSet.size(state.tracked_systems),
+        characters_count: MapSet.size(state.tracked_characters),
+        circuit_state: state.circuit_breaker_state
+      )
 
-    # Process results through the pipeline
-    process_fetched_killmails(system_results)
+      # Fetch data for all tracked systems
+      {system_results, updated_state} =
+        fetch_system_data_with_circuit_breaker(state.tracked_systems, state)
 
-    {:ok,
-     %{
-       systems_checked: MapSet.size(state.tracked_systems),
-       killmails_processed: count_killmails(system_results)
-     }}
+      # Process results through the pipeline
+      process_fetched_killmails(system_results)
+
+      {:ok,
+       %{
+         systems_checked: MapSet.size(state.tracked_systems),
+         killmails_processed: count_killmails(system_results)
+       }, updated_state}
+    end
   end
 
   defp update_tracked_entities(state) do
@@ -192,29 +233,107 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
     %{state | tracked_systems: tracked_systems, tracked_characters: tracked_characters}
   end
 
-  defp fetch_system_data(system_ids) do
-    system_ids
-    |> MapSet.to_list()
-    # Process in chunks
-    |> Enum.chunk_every(10)
-    |> Enum.map(&fetch_chunk/1)
-    |> List.flatten()
+  defp get_error_type(%{type: type}), do: type
+
+  # Circuit Breaker Functions
+
+  defp should_skip_api_call?(state) do
+    case state.circuit_breaker_state do
+      :open ->
+        # Circuit is open, check if we should attempt recovery
+        current_time = System.monotonic_time(:millisecond)
+        current_time < (state.next_retry_time || 0)
+
+      _ ->
+        false
+    end
   end
 
-  defp fetch_chunk(system_ids) do
+  defp fetch_system_data_with_circuit_breaker(system_ids, state) do
+    system_ids_list = MapSet.to_list(system_ids)
+
+    # Process in chunks
+    chunks = Enum.chunk_every(system_ids_list, 10)
+
+    {results, updated_state} =
+      Enum.reduce(chunks, {[], state}, fn chunk, {acc_results, current_state} ->
+        case fetch_chunk_with_circuit_breaker(chunk, current_state) do
+          {:ok, killmails, new_state} ->
+            {[killmails | acc_results], new_state}
+
+          {:error, new_state} ->
+            {acc_results, new_state}
+        end
+      end)
+
+    {List.flatten(results), updated_state}
+  end
+
+  defp fetch_chunk_with_circuit_breaker(system_ids, state) do
     case WandererKillsAPI.fetch_systems_killmails(system_ids, 1, 20) do
       {:ok, data} ->
-        data
-        |> Enum.flat_map(fn {_system_id, kills} -> kills end)
+        killmails = data |> Enum.flat_map(fn {_system_id, kills} -> kills end)
+        new_state = record_success(state)
+        {:ok, killmails, new_state}
 
       {:error, reason} ->
-        Logger.info("Failed to fetch killmails for chunk",
+        Logger.error("Failed to fetch killmails for chunk - detailed error",
           systems: system_ids,
-          error: inspect(reason)
+          system_count: length(system_ids),
+          error_type: get_error_type(reason),
+          error_details: inspect(reason, pretty: true),
+          chunk_systems: Enum.join(system_ids, ", "),
+          circuit_state: state.circuit_breaker_state,
+          failure_count: state.failure_count
         )
 
-        []
+        new_state = record_failure(state)
+        {:error, new_state}
     end
+  end
+
+  defp record_success(state) do
+    %{
+      state
+      | circuit_breaker_state: :closed,
+        failure_count: 0,
+        last_failure_time: nil,
+        next_retry_time: nil
+    }
+  end
+
+  defp record_failure(state) do
+    current_time = System.monotonic_time(:millisecond)
+    new_failure_count = state.failure_count + 1
+
+    new_state = %{state | failure_count: new_failure_count, last_failure_time: current_time}
+
+    if new_failure_count >= @failure_threshold do
+      backoff_time = calculate_backoff_time(new_failure_count)
+
+      Logger.warning("Circuit breaker opening due to repeated failures",
+        failure_count: new_failure_count,
+        threshold: @failure_threshold,
+        backoff_seconds: backoff_time / 1000
+      )
+
+      %{new_state | circuit_breaker_state: :open, next_retry_time: current_time + backoff_time}
+    else
+      new_state
+    end
+  end
+
+  defp calculate_backoff_time(failure_count) do
+    # Use centralized Retry module for consistent backoff calculation
+    state = %{
+      attempt: failure_count - @failure_threshold + 1,
+      base_backoff: @backoff_base,
+      max_backoff: @recovery_time,
+      jitter: 0.1,
+      mode: :exponential
+    }
+
+    Retry.calculate_backoff(state)
   end
 
   defp process_fetched_killmails(killmails) do
@@ -238,38 +357,11 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
 
   # Helper functions (similar to WebSocket client)
 
-  defp extract_system_id(system) when is_struct(system) do
-    system.solar_system_id || system.system_id || system.id
-  end
+  defp extract_system_id(system), do: EntityUtils.extract_system_id(system)
 
-  defp extract_system_id(system) when is_map(system) do
-    system["solar_system_id"] || system[:solar_system_id] ||
-      system["system_id"] || system[:system_id] ||
-      system["id"] || system[:id]
-  end
+  defp valid_system_id?(system_id), do: EntityUtils.valid_system_id?(system_id)
 
-  defp extract_system_id(_), do: nil
-
-  defp valid_system_id?(system_id) do
-    is_integer(system_id) && system_id > 30_000_000 && system_id < 40_000_000
-  end
-
-  defp extract_character_id(char) do
-    # Extract from nested character structure
-    char_id = char["character"]["eve_id"]
-    normalize_character_id(char_id)
-  end
-
-  defp normalize_character_id(id) when is_integer(id), do: id
-
-  defp normalize_character_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_id, ""} -> int_id
-      _ -> nil
-    end
-  end
-
-  defp normalize_character_id(_), do: nil
+  defp extract_character_id(char), do: EntityUtils.extract_character_id(char)
 
   defp valid_character_id?(char_id) do
     is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000

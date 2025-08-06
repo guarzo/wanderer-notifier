@@ -11,10 +11,8 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
   alias WandererNotifier.Infrastructure.Http.Utils.HttpUtils
   alias WandererNotifier.Shared.Config
 
-  @base_url_key :wanderer_kills_url
-
   defp base_url do
-    Config.get(@base_url_key, "http://host.docker.internal:4004")
+    Config.wanderer_kills_url()
   end
 
   def fetch_system_killmails(system_id, hours \\ 24, limit \\ 50) do
@@ -35,7 +33,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     )
 
     full_url
-    |> then(&Http.request(:get, &1, nil, default_headers(), service: :wanderer_kills))
+    |> then(&Http.wanderer_kills_get(&1, default_headers()))
     |> handle_killmails_response()
   end
 
@@ -43,31 +41,62 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       when is_list(system_ids) do
     url = "#{base_url()}/api/v1/systems/bulk/killmails"
 
-    body = %{
+    body = build_systems_request_body(system_ids, hours, limit_per_system)
+    log_systems_request(system_ids, hours, limit_per_system)
+
+    url
+    |> Http.wanderer_kills_post(body, default_headers())
+    |> handle_systems_response(url, body, system_ids)
+  end
+
+  defp build_systems_request_body(system_ids, hours, limit_per_system) do
+    %{
       "system_ids" => system_ids,
       "hours" => hours,
       "limit_per_system" => limit_per_system
     }
+  end
 
+  defp log_systems_request(system_ids, hours, limit_per_system) do
     Logger.info("Fetching bulk system killmails",
       system_count: length(system_ids),
       hours: hours,
       limit_per_system: limit_per_system,
       category: :api
     )
+  end
 
-    case Http.request(:post, url, Jason.encode!(body), default_headers(),
-           service: :wanderer_kills
-         ) do
+  defp handle_systems_response(response, url, body, system_ids) do
+    case response do
       {:ok, %{status_code: 200, body: data}} when is_map(data) ->
         {:ok, convert_system_ids_to_integers(data)}
 
-      {:ok, %{status_code: status, body: body}} ->
-        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(body)}"}}
+      {:ok, %{status_code: status, body: response_body}} ->
+        log_systems_http_error(status, response_body, url, body, system_ids)
+        {:error, %{type: :http_error, message: "HTTP #{status}: #{inspect(response_body)}"}}
 
       {:error, reason} ->
+        log_systems_network_error(reason, url, system_ids)
         {:error, %{type: :network_error, message: inspect(reason)}}
     end
+  end
+
+  defp log_systems_http_error(status, response_body, url, body, system_ids) do
+    Logger.error("Bulk killmails API returned error status",
+      status: status,
+      response_body: inspect(response_body),
+      url: url,
+      request_body: inspect(body),
+      system_count: length(system_ids)
+    )
+  end
+
+  defp log_systems_network_error(reason, url, system_ids) do
+    Logger.error("Bulk killmails API network error",
+      error: inspect(reason, pretty: true),
+      url: url,
+      system_count: length(system_ids)
+    )
   end
 
   def get_killmail(killmail_id) do
@@ -75,7 +104,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     Logger.debug("Fetching killmail from URL: #{url}", killmail_id: killmail_id, category: :api)
 
-    result = Http.request(:get, url, nil, default_headers(), service: :wanderer_kills)
+    result = Http.wanderer_kills_get(url, default_headers())
     Logger.debug("HTTP request result: #{inspect(result)}", category: :api)
 
     handle_killmail_response(result, killmail_id)
@@ -135,9 +164,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
       category: :api
     )
 
-    case Http.request(:post, url, Jason.encode!(body), default_headers(),
-           service: :wanderer_kills
-         ) do
+    case Http.wanderer_kills_post(url, body, default_headers()) do
       {:ok, %{status_code: 201, body: %{"subscription_id" => subscription_id}}} ->
         {:ok, subscription_id}
 
@@ -167,7 +194,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
     )
 
     full_url
-    |> then(&Http.request(:get, &1, nil, default_headers(), service: :wanderer_kills))
+    |> then(&Http.wanderer_kills_get(&1, default_headers()))
     |> handle_killmails_response()
   end
 
@@ -176,7 +203,7 @@ defmodule WandererNotifier.Domains.Killmail.WandererKillsAPI do
 
     Logger.debug("Checking API health", category: :api)
 
-    case Http.request(:get, url, nil, default_headers(), service: :wanderer_kills) do
+    case Http.wanderer_kills_get(url, default_headers()) do
       {:ok, %{status_code: 200, body: health_data}} when is_map(health_data) ->
         {:ok, health_data}
 
