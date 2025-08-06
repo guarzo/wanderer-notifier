@@ -192,6 +192,9 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
     # Initialize cache monitoring
     initialize_cache_monitoring()
 
+    # Attach custom telemetry handler for endpoint logging
+    WandererNotifierWeb.Telemetry.EndpointHandler.attach()
+
     # Initialize SSE clients if not in test mode
     if Application.get_env(:wanderer_notifier, :env) != :test do
       initialize_sse_clients()
