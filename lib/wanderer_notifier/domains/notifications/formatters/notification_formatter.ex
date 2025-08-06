@@ -118,7 +118,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
     value =
       if killmail.value && killmail.value > 0,
-        do: " (#{format_isk_simple(killmail.value)})",
+        do: " (#{format_isk_simple(killmail.value)} ISK)",
         else: ""
 
     "#{victim} lost a #{ship} in #{system}#{value}"

@@ -84,7 +84,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Value and timestamp
     value_time_line =
       if killmail.value && killmail.value > 0 do
-        "Value: #{FormatterUtils.format_isk(killmail.value)} • #{format_timestamp(killmail)}"
+        "Value: #{FormatterUtils.format_isk(killmail.value)} ISK • #{format_timestamp(killmail)}"
       else
         format_timestamp(killmail)
       end
@@ -288,9 +288,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       quantity = Map.get(item, "quantity", 1)
 
       if quantity > 1 do
-        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)})"
+        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)} ISK)"
       else
-        "• #{name} (~#{FormatterUtils.format_isk(value)})"
+        "• #{name} (~#{FormatterUtils.format_isk(value)} ISK)"
       end
     end)
     |> Enum.join("\n")

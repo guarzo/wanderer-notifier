@@ -66,7 +66,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
 
   # Performance metrics endpoint for monitoring
   get "/metrics" do
-    case Config.feature_enabled?(:enable_test_endpoints) do
+    case Config.feature_enabled?(:test_endpoints) do
       true ->
         metrics = collect_performance_metrics()
         send_success(conn, metrics)

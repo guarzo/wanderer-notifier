@@ -34,7 +34,7 @@ defmodule WandererNotifier.Map.Initializer do
       process_results(results)
     rescue
       e in [MatchError, CaseClauseError] ->
-        # Handle HTTP client errors (which return {:error, reason} tuples)
+        # Handle pattern matching errors from fetch operations
         Logger.error(
           "Map initialization network error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
         )

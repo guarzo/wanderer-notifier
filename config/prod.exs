@@ -168,6 +168,6 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   enable_debugging: false,
   enable_profiling: false,
-  enable_test_endpoints: false
+  test_endpoints: false
 
 # Runtime configuration should be in runtime.exs

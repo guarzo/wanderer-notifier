@@ -213,7 +213,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       mode: :exponential,
       base_backoff: @initial_reconnect_delay,
       max_backoff: @max_reconnect_delay,
-      # Approximate 20-40% jitter range
+      # Fixed 30% jitter
       jitter: 0.3,
       # Retry module uses 1-based attempts
       attempt: attempts + 1

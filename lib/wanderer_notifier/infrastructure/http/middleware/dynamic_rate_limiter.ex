@@ -299,32 +299,22 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter do
 
   defp update_discord_webhook_cache(cache_key, _rate_limit_info) do
     # Update webhook-specific tracking (5 requests per 2 seconds)
-    current_time = System.system_time(:millisecond)
+    # Use atomic update_windowed_counter for thread-safe rate limit tracking
+    case Cache.update_windowed_counter(
+           cache_key,
+           @discord_webhook_window,
+           @discord_webhook_window
+         ) do
+      {:ok, _updated_value} ->
+        :ok
 
-    case Cache.get(cache_key) do
-      {:error, :not_found} ->
-        Cache.put(cache_key, %{requests: 1, window_start: current_time}, @discord_webhook_window)
+      {:error, reason} ->
+        Logger.warning("Failed to update Discord webhook rate limit cache",
+          cache_key: cache_key,
+          error: inspect(reason)
+        )
 
-      {:ok, %{requests: requests, window_start: window_start}} ->
-        if current_time - window_start < @discord_webhook_window do
-          # Same window, increment requests
-          Cache.put(
-            cache_key,
-            %{requests: requests + 1, window_start: window_start},
-            @discord_webhook_window
-          )
-        else
-          # New window, reset
-          Cache.put(
-            cache_key,
-            %{requests: 1, window_start: current_time},
-            @discord_webhook_window
-          )
-        end
-
-      _ ->
-        # Fallback case
-        Cache.put(cache_key, %{requests: 1, window_start: current_time}, @discord_webhook_window)
+        :ok
     end
   end
 

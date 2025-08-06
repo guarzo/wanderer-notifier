@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Shared.EnvTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
   alias WandererNotifier.Shared.Env
 

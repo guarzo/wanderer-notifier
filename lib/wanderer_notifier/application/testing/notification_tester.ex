@@ -56,7 +56,8 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
 
     case Cache.get("map:character_list") do
       {:ok, character_list} when is_list(character_list) ->
-        handle_character_list(character_list, character_id)
+        character_id_int = String.to_integer(character_id)
+        handle_character_list(character_list, character_id_int, character_id)
 
       {:ok, non_list_data} ->
         Logger.info(
@@ -72,7 +73,28 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
   end
 
   def test_character(character_id) when is_binary(character_id) do
-    test_character(String.to_integer(character_id))
+    Logger.debug("[TEST] Testing character notification for ID: #{character_id}")
+
+    # Debug: check what cache keys exist
+    debug_cache_keys()
+
+    character_id_int = String.to_integer(character_id)
+
+    case Cache.get("map:character_list") do
+      {:ok, character_list} when is_list(character_list) ->
+        handle_character_list(character_list, character_id_int, character_id)
+
+      {:ok, non_list_data} ->
+        Logger.info(
+          "[TEST] map:character_list exists but is not a list: #{inspect(non_list_data)}"
+        )
+
+        check_other_cache_locations(character_id_int)
+
+      {:error, :not_found} ->
+        Logger.info("[TEST] map:character_list not found in cache")
+        check_other_cache_locations(character_id_int)
+    end
   end
 
   defp debug_cache_keys do
@@ -101,11 +123,9 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
     end)
   end
 
-  defp handle_character_list(character_list, character_id) do
+  defp handle_character_list(character_list, character_id, character_id_str) do
     Logger.debug("[TEST] Found #{length(character_list)} characters in map:character_list")
     log_sample_character(character_list)
-
-    character_id_str = Integer.to_string(character_id)
 
     case find_character_in_list(character_list, character_id_str, character_id) do
       nil ->

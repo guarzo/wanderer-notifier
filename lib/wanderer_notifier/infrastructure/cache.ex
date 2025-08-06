@@ -26,6 +26,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @default_cache_name :wanderer_notifier_cache
   @default_ttl :timer.hours(24)
   @namespace_index_key "__namespace_index__"
+  @default_size_limit 10_000
 
   # TTL configurations
   @character_ttl :timer.hours(24)
@@ -48,6 +49,13 @@ defmodule WandererNotifier.Infrastructure.Cache do
   # ============================================================================
 
   def cache_name, do: Application.get_env(:wanderer_notifier, :cache_name, @default_cache_name)
+
+  def cache_size_limit,
+    do: Application.get_env(:wanderer_notifier, :cache_size_limit, @default_size_limit)
+
+  def cache_stats_enabled?,
+    do: Application.get_env(:wanderer_notifier, :cache_stats_enabled, false)
+
   def default_cache_name, do: @default_cache_name
 
   # Simplified TTL access - single function with pattern matching
@@ -128,6 +136,62 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   # ============================================================================
+  # Cache Size Management
+  # ============================================================================
+
+  @doc """
+  Checks if cache is approaching size limit and triggers eviction if needed.
+  """
+  def check_cache_size do
+    cache_name = cache_name()
+    size_limit = cache_size_limit()
+
+    case Cachex.size(cache_name) do
+      {:ok, current_size} when current_size > size_limit * 0.9 ->
+        Logger.warning("Cache approaching size limit",
+          current_size: current_size,
+          limit: size_limit
+        )
+
+        evict_oldest_entries()
+
+      {:ok, current_size} when current_size > size_limit ->
+        Logger.error("Cache exceeded size limit",
+          current_size: current_size,
+          limit: size_limit
+        )
+
+        evict_oldest_entries(0.3)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp evict_oldest_entries(percentage \\ 0.1) do
+    cache_name = cache_name()
+
+    case Cachex.keys(cache_name) do
+      {:ok, keys} ->
+        evict_count = max(1, trunc(length(keys) * percentage))
+        Logger.info("Evicting #{evict_count} oldest cache entries")
+
+        # Simple LRU-like eviction - remove random entries
+        keys
+        |> Enum.take_random(evict_count)
+        |> Enum.each(fn key ->
+          unless key == @namespace_index_key do
+            Cachex.del(cache_name, key)
+            remove_from_namespace_index(key)
+          end
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # ============================================================================
   # Core Cache Operations
   # ============================================================================
 
@@ -143,11 +207,23 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec get(cache_key()) :: cache_result()
   def get(key) when is_binary(key) do
-    case Cachex.get(cache_name(), key) do
-      {:ok, nil} -> {:error, :not_found}
-      {:ok, value} -> {:ok, value}
-      {:error, _reason} = error -> error
-    end
+    start_time = System.monotonic_time()
+
+    result =
+      case Cachex.get(cache_name(), key) do
+        {:ok, nil} -> {:error, :not_found}
+        {:ok, value} -> {:ok, value}
+        {:error, _reason} = error -> error
+      end
+
+    # Emit telemetry for cache operations
+    :telemetry.execute(
+      [:wanderer_notifier, :cache, :get],
+      %{duration: System.monotonic_time() - start_time},
+      %{key: key, result: elem(result, 0)}
+    )
+
+    result
   end
 
   @doc """
@@ -162,6 +238,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put(cache_key(), cache_value(), ttl_value()) :: :ok | {:error, term()}
   def put(key, value, ttl \\ nil) when is_binary(key) do
+    start_time = System.monotonic_time()
     cache_name = cache_name()
 
     result =
@@ -173,18 +250,35 @@ defmodule WandererNotifier.Infrastructure.Cache do
           Cachex.put(cache_name, key, value, ttl: ttl_value)
       end
 
-    case result do
-      {:ok, true} ->
-        # Update namespace index on successful put
-        update_namespace_index(key)
-        :ok
+    final_result =
+      case result do
+        {:ok, true} ->
+          # Update namespace index on successful put
+          update_namespace_index(key)
+          :ok
 
-      {:ok, false} ->
-        {:error, :not_stored}
+        {:ok, false} ->
+          {:error, :not_stored}
 
-      error ->
-        error
-    end
+        error ->
+          error
+      end
+
+    # Emit telemetry for cache operations
+    result_type =
+      case final_result do
+        :ok -> :ok
+        {:error, _} -> :error
+        _ -> :unknown
+      end
+
+    :telemetry.execute(
+      [:wanderer_notifier, :cache, :put],
+      %{duration: System.monotonic_time() - start_time},
+      %{key: key, result: result_type}
+    )
+
+    final_result
   end
 
   @doc """
@@ -214,6 +308,123 @@ defmodule WandererNotifier.Infrastructure.Cache do
     case Cachex.exists?(cache_name(), key) do
       {:ok, exists} -> exists
       {:error, _} -> false
+    end
+  end
+
+  @doc """
+  Atomically updates a counter by incrementing it by the given delta.
+  If the key doesn't exist, initializes it with the delta value.
+  Optionally resets the TTL on update.
+
+  ## Examples
+      iex> Cache.update_counter("rate_limit:user:123", 1, :timer.minutes(5))
+      {:ok, 1}
+
+      iex> Cache.update_counter("rate_limit:user:123", 1, :timer.minutes(5))
+      {:ok, 2}
+  """
+  @spec update_counter(cache_key(), integer(), ttl_value()) :: {:ok, integer()} | {:error, term()}
+  def update_counter(key, delta \\ 1, ttl \\ nil) when is_binary(key) and is_integer(delta) do
+    cache_name = cache_name()
+
+    case Cachex.incr(cache_name, key, delta) do
+      {:ok, new_value} ->
+        # If TTL is provided, set it after the increment
+        if ttl do
+          case Cachex.expire(cache_name, key, ttl) do
+            {:ok, true} ->
+              update_namespace_index(key)
+              {:ok, new_value}
+
+            {:ok, false} ->
+              {:error, :key_not_found}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        else
+          update_namespace_index(key)
+          {:ok, new_value}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Atomically updates a windowed counter for rate limiting.
+  If the current window is still valid, increments the counter.
+  If the window has expired, resets to 1 with a new window start time.
+
+  ## Examples
+      iex> Cache.update_windowed_counter("webhook:123", 2000)
+      {:ok, %{requests: 1, window_start: 1640995200000}}
+
+      iex> Cache.update_windowed_counter("webhook:123", 2000)
+      {:ok, %{requests: 2, window_start: 1640995200000}}
+  """
+  @spec update_windowed_counter(cache_key(), pos_integer(), ttl_value()) ::
+          {:ok, map()} | {:error, term()}
+  def update_windowed_counter(key, window_ms, ttl \\ nil)
+      when is_binary(key) and is_integer(window_ms) do
+    cache_name = cache_name()
+    current_time = System.system_time(:millisecond)
+
+    # Use Cachex.transaction for atomic read-modify-write operation
+    case Cachex.transaction(cache_name, [key], fn ->
+           case Cachex.get(cache_name, key) do
+             {:ok, nil} ->
+               # Key doesn't exist, create new window
+               new_value = %{requests: 1, window_start: current_time}
+               put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
+
+               case put_result do
+                 {:ok, true} -> {:ok, new_value}
+                 error -> error
+               end
+
+             {:ok, %{requests: requests, window_start: window_start}} ->
+               if current_time - window_start < window_ms do
+                 # Same window, increment requests
+                 updated_value = %{requests: requests + 1, window_start: window_start}
+                 put_result = Cachex.put(cache_name, key, updated_value, ttl: ttl)
+
+                 case put_result do
+                   {:ok, true} -> {:ok, updated_value}
+                   error -> error
+                 end
+               else
+                 # New window, reset
+                 new_value = %{requests: 1, window_start: current_time}
+                 put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
+
+                 case put_result do
+                   {:ok, true} -> {:ok, new_value}
+                   error -> error
+                 end
+               end
+
+             {:error, reason} ->
+               {:error, reason}
+
+             _ ->
+               # Fallback case - corrupted data, reset
+               new_value = %{requests: 1, window_start: current_time}
+               put_result = Cachex.put(cache_name, key, new_value, ttl: ttl)
+
+               case put_result do
+                 {:ok, true} -> {:ok, new_value}
+                 error -> error
+               end
+           end
+         end) do
+      {:ok, result} ->
+        update_namespace_index(key)
+        result
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -685,14 +896,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   """
   @spec put_with_ttl(cache_key(), cache_value(), ttl_value()) :: :ok | {:error, term()}
   def put_with_ttl(key, value, ttl) do
-    result = put(key, value, ttl)
-
-    # Update namespace index when successful
-    if result == :ok do
-      update_namespace_index(key)
-    end
-
-    result
+    put(key, value, ttl)
   end
 
   @doc """
@@ -813,15 +1017,18 @@ defmodule WandererNotifier.Infrastructure.Cache do
     keys
     |> Enum.chunk_every(batch_size)
     |> Enum.reduce(0, fn batch, acc ->
-      Enum.each(batch, fn key ->
-        Cachex.del(cache_name, key)
-        # Remove from namespace index
-        remove_from_namespace_index(key)
+      # Use Cachex.execute for batch operations to reduce process overhead
+      Cachex.execute(cache_name, fn cache ->
+        Enum.each(batch, fn key ->
+          Cachex.del!(cache, key)
+          # Remove from namespace index
+          remove_from_namespace_index(key)
+        end)
       end)
 
       # Small delay between batches to prevent overwhelming the cache
       if length(batch) == batch_size do
-        :timer.sleep(10)
+        :timer.sleep(5)
       end
 
       acc + length(batch)
@@ -1032,6 +1239,38 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   defp get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor \\ nil) do
+    # Extract namespace from prefix for direct index lookup
+    namespace = extract_namespace(prefix)
+
+    case namespace do
+      nil ->
+        # Fallback to generic batch processing if no namespace
+        get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
+
+      namespace ->
+        # Use namespace index for efficient filtering
+        case get_namespace_index() do
+          {:ok, index} when is_map(index) ->
+            # Get keys directly from namespace index
+            namespace_keys = Map.get(index, namespace, [])
+            matching_keys = Enum.filter(namespace_keys, &String.starts_with?(&1, prefix))
+            accumulator ++ matching_keys
+
+          {:error, :not_found} ->
+            # Rebuild index and retry
+            case rebuild_namespace_index() do
+              {:ok, _} -> get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor)
+              _ -> accumulator
+            end
+
+          _ ->
+            # Fallback to batch processing on error
+            get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
+        end
+    end
+  end
+
+  defp get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor) do
     # Fetch keys in batches of 1000
     batch_size = 1000
 
@@ -1045,7 +1284,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
         # More batches available
         matching_keys = Enum.filter(keys, &String.starts_with?(&1, prefix))
 
-        get_keys_by_namespace_paginated(
+        get_keys_by_namespace_paginated_fallback(
           cache_name,
           prefix,
           accumulator ++ matching_keys,
@@ -1058,10 +1297,16 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   defp fetch_keys_batch(cache_name, cursor, batch_size) do
-    # Since Cachex doesn't support native pagination, we'll implement a workaround
-    # by fetching all keys and manually paginating them
-    case Cachex.keys(cache_name) do
-      {:ok, all_keys} ->
+    # Use namespace index for efficient key retrieval instead of loading all keys
+    case get_namespace_index() do
+      {:ok, index} when is_map(index) ->
+        # Flatten all keys from namespace index
+        all_keys =
+          index
+          |> Map.values()
+          |> List.flatten()
+          |> Enum.sort()
+
         start_index = cursor || 0
         keys_batch = Enum.slice(all_keys, start_index, batch_size)
 
@@ -1073,6 +1318,17 @@ defmodule WandererNotifier.Infrastructure.Cache do
           end
 
         {:ok, keys_batch, next_cursor}
+
+      {:error, :not_found} ->
+        # Fallback: rebuild index if it doesn't exist
+        case rebuild_namespace_index() do
+          {:ok, index} when is_map(index) ->
+            # Retry with newly built index
+            fetch_keys_batch(cache_name, cursor, batch_size)
+
+          error ->
+            error
+        end
 
       error ->
         error
