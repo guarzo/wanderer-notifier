@@ -18,19 +18,30 @@ config :wanderer_notifier,
 # Configure HTTP client
 config :wanderer_notifier,
   http_client: WandererNotifier.HTTP,
-  default_timeout: 15_000,
-  default_recv_timeout: 15_000,
-  default_connect_timeout: 5_000,
-  default_pool_timeout: 5_000
+  default_timeout: 5_000,
+  default_recv_timeout: 5_000,
+  default_connect_timeout: 3_000,
+  default_pool_timeout: 3_000
 
-# Configure RedisQ client timeouts
+# Configure cache settings
 config :wanderer_notifier,
-  # Additional timeout buffer for RedisQ long-polling in milliseconds
-  redisq_timeout_buffer: 5000,
-  # Connection timeout for RedisQ requests in milliseconds
-  redisq_connect_timeout: 15_000,
-  # Pool timeout for RedisQ connection pool in milliseconds
-  redisq_pool_timeout: 5000
+  cache_name: :wanderer_notifier_cache,
+  cache_size_limit: 10_000,
+  cache_stats_enabled: true
+
+# Configure Finch to use IPv4 only to avoid production IPv6 timeout issues
+config :finch, :default_pool_config,
+  pool_size: 25,
+  max_idle_time: 30_000,
+  conn_opts: [
+    timeout: 10_000,
+    transport_opts: [
+      # Disable IPv6
+      inet6: false,
+      # Force IPv4
+      inet: true
+    ]
+  ]
 
 # Configure MIME types
 config :mime, :types, %{
@@ -49,6 +60,27 @@ config :mime, :extensions, %{
   "mjs" => "text/javascript"
 }
 
+# Configure Phoenix
+config :wanderer_notifier, WandererNotifierWeb.Endpoint,
+  url: [host: "localhost"],
+  render_errors: [
+    formats: [json: WandererNotifierWeb.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: WandererNotifier.PubSub,
+  live_view: [],
+  server: false
+
+# Configure Phoenix PubSub
+config :wanderer_notifier, WandererNotifier.PubSub, adapter: Phoenix.PubSub.PG
+
+# Configure JSON library for Phoenix
+config :phoenix, :json_library, Jason
+
+# Configure Hammer rate limiting
+config :hammer,
+  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 2, cleanup_interval_ms: 60_000 * 10]}
+
 # Configure the logger
 config :logger,
   level: :info,
@@ -58,7 +90,31 @@ config :logger,
 # Console logger configuration
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:pid, :module, :file, :line],
+  metadata: [
+    :pid,
+    :module,
+    :file,
+    :line,
+    # WebSocket connection metadata
+    :url,
+    :socket_url,
+    :connection_id,
+    :attempt,
+    :delay_ms,
+    # System and character tracking
+    :system_id,
+    :killmail_id,
+    :systems_count,
+    :characters_count,
+    # Error handling
+    :error,
+    :reason,
+    :result,
+    # Performance monitoring
+    :message_size,
+    :uptime_seconds,
+    :count
+  ],
   colors: [
     debug: :cyan,
     info: :green,
@@ -101,7 +157,10 @@ config :nostrum,
   cache_channels: false,
   caches: [],
   # Disable ffmpeg warnings since we're not using voice features
-  ffmpeg: false
+  ffmpeg: false,
+  # HTTP timeout configuration - increased to match neo_client.ex Task.yield timeout
+  gun_timeout: 30_000,
+  gun_connect_timeout: 5_000
 
 # Add backoff configuration to help with rate limiting
 config :nostrum, :gateway,
@@ -110,18 +169,47 @@ config :nostrum, :gateway,
     max: 300_000
   ]
 
+# Configure Gun HTTP client used by Nostrum - keep it simple
+config :gun,
+  # Basic connection configuration
+  http_opts: %{
+    connect_timeout: 10_000,
+    timeout: 30_000
+  },
+  # Connection handling - use defaults, just force IPv4
+  conn_opts: %{
+    transport_opts: [
+      # Disable IPv6
+      inet6: false,
+      # Force IPv4
+      inet: true
+    ]
+  }
+
 # Configure cache
 config :wanderer_notifier,
   cache_name: :wanderer_cache
 
+# Configure WebSocket and WandererKills service
+config :wanderer_notifier,
+  # Enable/disable WebSocket client (useful for development/testing)
+  websocket_enabled: true,
+  # WebSocket URL for external killmail service
+  websocket_url: "ws://host.docker.internal:4004",
+  # Phoenix WebSocket protocol version ("1.0.0", "2.0.0", or nil for auto-negotiate)
+  phoenix_websocket_version: nil,
+  # WandererKills API base URL
+  wanderer_kills_base_url: "http://host.docker.internal:4004",
+  # Maximum retries for WandererKills API requests
+  wanderer_kills_max_retries: 3
+
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
-  zkill_client: WandererNotifier.Killmail.ZKillClient,
-  character_module: WandererNotifier.Map.MapCharacter,
-  system_module: WandererNotifier.Map.MapSystem,
-  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
-  config_module: WandererNotifier.Config
+  character_module: WandererNotifier.Domains.CharacterTracking.Character,
+  system_module: WandererNotifier.Domains.SystemTracking.System,
+  deduplication_module: WandererNotifier.Domains.Notifications.CacheImpl,
+  config_module: WandererNotifier.Shared.Config
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
-import_config "#{config_env()}.exs"
+import_config "#{config_env() |> to_string() |> String.downcase()}.exs"

@@ -1,25 +1,26 @@
-defmodule WandererNotifier.Killmail.PipelineTest do
+defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias WandererNotifier.Killmail.{Pipeline, Context}
-  alias WandererNotifier.Notifications.DiscordNotifierMock
+  alias WandererNotifier.Domains.Killmail.Pipeline
   alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Utils.TimeUtils
+  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Shared.Utils.TimeUtils
 
   # Define MockConfig for testing
   defmodule MockConfig do
     def notifications_enabled?, do: true
     def system_notifications_enabled?, do: true
     def character_notifications_enabled?, do: true
-    def deduplication_module, do: MockDeduplication
+    def deduplication_module, do: WandererNotifier.Domains.Notifications.CacheImpl
     def system_track_module, do: WandererNotifier.MockSystem
     def character_track_module, do: WandererNotifier.MockCharacter
-    def notification_determiner_module, do: WandererNotifier.Notifications.Determiner.Kill
-    def killmail_enrichment_module, do: WandererNotifier.Killmail.Enrichment
-    def notification_dispatcher_module, do: WandererNotifier.MockDispatcher
-    def killmail_notification_module, do: WandererNotifier.Notifications.KillmailNotification
+    def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
+    def killmail_enrichment_module, do: WandererNotifier.Domains.Killmail.Enrichment
+
+    def killmail_notification_module,
+      do: WandererNotifier.Domains.Notifications.KillmailNotification
+
     def config_module, do: __MODULE__
   end
 
@@ -27,10 +28,10 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   defmodule MockCache do
     def get(key) do
       cond do
-        key == CacheKeys.system_list() ->
+        key == CacheKeys.map_systems() ->
           {:ok, []}
 
-        key == CacheKeys.character_list() ->
+        key == CacheKeys.map_characters() ->
           {:ok, [character_id: "100", name: "Victim"]}
 
         String.starts_with?(key, "tracked_character:") ->
@@ -51,11 +52,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     def get_recent_kills(), do: []
   end
 
-  # Define MockDeduplication for the tests
-  defmodule MockDeduplication do
-    def check(:kill, _id), do: {:ok, :new}
-    def clear_key(_type, _id), do: {:ok, :cleared}
-  end
+  # Use real deduplication implementation (CacheImpl)
 
   # Define MockMetrics for the tests
   defmodule MockMetrics do
@@ -70,24 +67,43 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
-  setup :set_mox_from_context
 
   setup do
-    # Set up Mox for ESI.Service
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+    # Ensure Cachex application is started
+    case Application.ensure_all_started(:cachex) do
+      {:ok, _apps} -> :ok
+      {:error, _reason} -> :ok
+    end
 
+    # Use the correct cache name from config
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+
+    # Start Cachex cache for tests - ignore if already started
+    case Cachex.start_link(name: cache_name, limit: 1000) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      # Ignore other errors for test simplicity
+      _ -> :ok
+    end
+
+    # Set up Mox for ESI.Service
     Application.put_env(
       :wanderer_notifier,
-      :discord_notifier,
-      WandererNotifier.Notifications.DiscordNotifierMock
+      :esi_service,
+      WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
     )
 
     # Set up config module
     Application.put_env(:wanderer_notifier, :config, MockConfig)
 
-    # Set up cache and deduplication modules
+    # Set up cache module and deduplication - use real implementation
     Application.put_env(:wanderer_notifier, :cache_repo, MockCache)
-    Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
+
+    Application.put_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.Domains.Notifications.CacheImpl
+    )
 
     # Set up metrics module
     Application.put_env(:wanderer_notifier, :metrics, MockMetrics)
@@ -99,11 +115,11 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       WandererNotifier.HTTPMock
     )
 
-    # Add stub for HTTPMock.get/3
+    # Add stub for HTTPMock.request/5
     WandererNotifier.HTTPMock
-    |> stub(:get, fn url, _headers, _opts ->
+    |> stub(:request, fn method, url, _body, _headers, _opts ->
       cond do
-        String.contains?(url, "killmails/12345/test_hash") ->
+        method == :get and String.contains?(url, "killmails/12345/test_hash") ->
           {:ok,
            %{
              status_code: 200,
@@ -120,7 +136,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
              }
            }}
 
-        String.contains?(url, "killmails/54321/error_hash") ->
+        method == :get and String.contains?(url, "killmails/54321/error_hash") ->
           {:error, :timeout}
 
         true ->
@@ -132,7 +148,9 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     ESIMockHelper.setup_esi_mocks()
 
     # Always stub the DiscordNotifier with a default response
-    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail, _type, input_opts ->
+    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
+                                                                          _type,
+                                                                          input_opts ->
       _formatted_opts = if is_map(input_opts), do: Map.to_list(input_opts), else: input_opts
       :ok
     end)
@@ -140,213 +158,102 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     :ok
   end
 
-  describe "process_killmail/2" do
-    test "process_killmail/2 successfully processes a valid killmail" do
+  describe "process_killmail/1" do
+    test "process_killmail/1 successfully processes a valid killmail" do
       zkb_data = %{
         "killmail_id" => 12_345,
         "zkb" => %{"hash" => "test_hash"},
         "solar_system_id" => 30_000_142
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Test System",
-        options: %{
-          source: :test_source
-        }
-      }
+      # Set up cache data to make system tracked
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      Cachex.put(cache_name, "map:systems", [%{"solar_system_id" => 30_000_142}])
+      Cachex.put(cache_name, "map:character_list", [])
 
-      # Create a direct replacement for the Pipeline module just for this test
-      defmodule SuccessPipeline do
-        def process_killmail(_zkb_data, _context) do
-          enriched_killmail = %WandererNotifier.Killmail.Killmail{
-            killmail_id: "12345",
-            zkb: %{"hash" => "test_hash"},
-            system_name: "Test System",
-            system_id: 30_000_142,
-            victim_name: "Victim",
-            victim_corporation: "Victim Corp",
-            victim_corp_ticker: "VC",
-            ship_name: "Victim Ship",
-            esi_data: %{
-              "victim" => %{
-                "character_id" => 100,
-                "corporation_id" => 300,
-                "ship_type_id" => 200,
-                "alliance_id" => 400
-              },
-              "solar_system_id" => 30_000_142,
-              "attackers" => []
-            }
-          }
+      # Pipeline works with pre-enriched WebSocket data, no ESI calls needed
 
-          {:ok, enriched_killmail}
-        end
-      end
-
-      # Use dependency injection to replace the module under test
-      _original_pipeline_module = Pipeline
-
-      # Save the current code path
-      Code.ensure_loaded(SuccessPipeline)
-
-      try do
-        # Temporarily define Pipeline as an alias to SuccessPipeline
-        # This allows us to call Pipeline.process_killmail but have it dispatch to our test module
-        alias SuccessPipeline, as: TestPipeline
-
-        # Execute our test by calling process_killmail through our alias
-        result = TestPipeline.process_killmail(zkb_data, context)
-        assert {:ok, killmail} = result
-        assert killmail.killmail_id == "12345"
-        assert killmail.system_name == "Test System"
-      after
-        # No cleanup needed as aliases are lexical
-        :ok
-      end
+      # Execute the test - don't mock deduplication or Discord as they work in TEST MODE
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, _} = result
     end
 
-    test "process_killmail/2 skips processing when notification is not needed" do
-      # Similar to the first test, we'll use a direct replacement for the pipeline
-      # This ensures we don't need complex mocking of dependencies
-
-      defmodule SkipPipeline do
-        def process_killmail(_zkb_data, _context) do
-          # Simply return a skipped result directly
-          {:ok, :skipped}
-        end
-      end
-
+    test "process_killmail/1 skips processing when notification is not needed" do
       zkb_data = %{
         "killmail_id" => 12_345,
         "zkb" => %{"hash" => "test_hash"},
         "solar_system_id" => 30_000_142
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Test System",
-        options: %{
-          source: :test_source
-        }
-      }
+      # Set up cache data with no tracked systems/characters
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      Cachex.put(cache_name, "map:systems", [])
+      Cachex.put(cache_name, "map:character_list", [])
 
-      # Create a direct test using our replacement module
-      alias SkipPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, context)
-
-      # Simply assert on the result - no need for complex mocking
+      # Execute the test - should be skipped because neither system nor character is tracked
+      result = Pipeline.process_killmail(zkb_data)
       assert {:ok, :skipped} = result
     end
 
-    test "process_killmail/2 handles enrichment errors" do
-      # Similar approach - use a test module that directly returns the expected result
-      defmodule ErrorPipeline do
-        def process_killmail(_zkb_data, _context) do
-          # Return the specific error we want to test
-          {:error, :create_failed}
-        end
-      end
-
+    test "process_killmail/1 handles enrichment errors" do
       zkb_data = %{
         "killmail_id" => 54_321,
-        "zkb" => %{"hash" => "error_hash"},
-        "solar_system_id" => 30_000_142
+        "zkb" => %{"hash" => "error_hash"}
+        # Missing system_id to trigger error
       }
 
-      context = %Context{
-        options: %{
-          "systems" => [30_000_142],
-          "corporations" => [300],
-          "alliances" => []
-        }
-      }
-
-      # Create a direct test using our replacement module
-      alias ErrorPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, context)
-
-      # Assert the expected error result
-      assert {:error, :create_failed} = result
+      # Don't expect deduplication check since error happens before that
+      # Execute the test - should error due to missing system_id
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:error, :missing_system_id} = result
     end
 
-    test "process_killmail/2 handles invalid payload" do
-      defmodule InvalidPayloadPipeline do
-        def process_killmail(_zkb_data, _context) do
-          # Return invalid payload error directly
-          {:error, :invalid_payload}
-        end
-      end
-
+    test "process_killmail/1 handles invalid payload" do
       # Missing killmail_id
       zkb_data = %{
         "zkb" => %{"hash" => "test_hash"},
         "solar_system_id" => 30_000_142
       }
 
-      # Create a direct test using our replacement module
-      alias InvalidPayloadPipeline, as: TestPipeline
-
-      result =
-        TestPipeline.process_killmail(zkb_data, %Context{
-          killmail_id: nil,
-          system_name: nil,
-          options: %{
-            source: :test_source
-          }
-        })
-
-      # Assert the expected error result
-      assert {:error, :invalid_payload} = result
+      # Execute the test - should error due to missing killmail_id
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:error, :missing_killmail_id} = result
     end
 
-    test "process_killmail/2 handles ESI timeout during enrichment" do
-      defmodule TimeoutPipeline do
-        def process_killmail(_zkb_data, _context) do
-          # Return timeout error directly
-          {:error, :timeout}
-        end
-      end
-
+    test "process_killmail/1 handles duplicate killmail" do
       zkb_data = %{
         "killmail_id" => 12_345,
         "zkb" => %{"hash" => "test_hash"},
         "solar_system_id" => 30_000_142
       }
 
-      # Create a direct test using our replacement module
-      alias TimeoutPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, %Context{})
+      # First, prime the cache to make this killmail appear as a duplicate
+      # by processing it once first
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      Cachex.put(cache_name, "map:systems", [%{"solar_system_id" => 30_000_142}])
+      Cachex.put(cache_name, "map:character_list", [])
 
-      # Assert the expected error result
-      assert {:error, :timeout} = result
+      # Pipeline works with pre-enriched WebSocket data, no ESI calls needed
+
+      # Process once to create the deduplication entry
+      Pipeline.process_killmail(zkb_data)
+
+      # Now process again - this should be detected as duplicate
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, :skipped} = result
     end
 
-    test "process_killmail/2 handles ESI API errors during enrichment" do
-      defmodule ApiErrorPipeline do
-        def process_killmail(_zkb_data, _context) do
-          # Simulate an API error during enrichment
-          reason = :rate_limited
-          error = %WandererNotifier.ESI.Service.ApiError{reason: reason, message: "Rate limited"}
-          raise error
-        rescue
-          e in WandererNotifier.ESI.Service.ApiError ->
-            {:error, e.reason}
-        end
-      end
-
+    test "process_killmail/1 handles invalid system ID" do
       zkb_data = %{
-        "killmail_id" => 12_345,
+        "killmail_id" => 99_999,
         "zkb" => %{"hash" => "test_hash"},
-        "solar_system_id" => 30_000_142
+        "solar_system_id" => "invalid"
       }
 
-      # Create a direct test using our replacement module
-      alias ApiErrorPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, %Context{})
-
-      # Assert the expected error result
-      assert {:error, :rate_limited} = result
+      # Don't expect deduplication check since error happens before that
+      # Execute the test - should error due to invalid system_id parsing to nil
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:error, :missing_system_id} = result
     end
   end
 end

@@ -1,0 +1,182 @@
+name: Deploy
+
+on:
+  # Manual deployment with environment selection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+      version:
+        description: 'Version tag (leave empty for latest)'
+        required: false
+        default: ''
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - rollback
+          
+  # Auto-deploy on successful CI to main
+  workflow_run:
+    workflows: ["CI/CD"]
+    branches: [main]
+    types: [completed]
+
+env:
+  DOCKER_IMAGE_NAME: guarzo/wanderer-notifier
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    
+    # Only run if CI passed or manual trigger
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    
+    permissions:
+      contents: write
+      deployments: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+          
+      - name: Determine deployment parameters
+        id: params
+        run: |
+          # Set environment (default to production for auto-deploy)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+            ACTION="${{ github.event.inputs.action }}"
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            ENVIRONMENT="production"
+            ACTION="deploy"
+            # Get the latest tag - could be semantic version or dated version
+            # First try to get dated tags (e.g., v4.0.2.20240714123456)
+            DATED_VERSION=$(git tag -l "v*.*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1)
+            
+            if [ -n "$DATED_VERSION" ]; then
+              VERSION="$DATED_VERSION"
+              echo "Using dated version: $VERSION"
+            else
+              # Fall back to semantic version tag (e.g., v4.0.2)
+              VERSION=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1 || echo "")
+              echo "Using semantic version: $VERSION"
+            fi
+          fi
+          
+          # If no semantic version found, try to find the most recent specific version tag
+          if [ -z "$VERSION" ]; then
+            # Try to get the most recent tag that looks like a version
+            VERSION=$(git tag -l "v*" | grep -E "^v[0-9]+(\.[0-9]+)*$" | sort -V | tail -1)
+            if [ -z "$VERSION" ]; then
+              echo "❌ No version tag found! Cannot deploy without a version tag."
+              echo "Please ensure the CI/CD pipeline has created version tags."
+              exit 1
+            fi
+            echo "⚠️  No three-part version found, using: $VERSION"
+          fi
+          
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "ACTION=$ACTION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          echo "📋 Deployment Parameters:"
+          echo "  Environment: $ENVIRONMENT"
+          echo "  Action: $ACTION"
+          echo "  Version: $VERSION"
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: 22
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            
+            VERSION="${{ steps.params.outputs.VERSION }}"
+            ACTION="${{ steps.params.outputs.ACTION }}"
+            ENVIRONMENT="${{ steps.params.outputs.ENVIRONMENT }}"
+            
+            echo "🚀 Performing $ACTION to $ENVIRONMENT with version $VERSION"
+            
+            # Navigate to the correct directory
+            cd /app/wanderer
+            
+            # Update the docker-compose-notifier.yml file with the new version
+            if [ -f "docker-compose-notifier.yml" ]; then
+              cp docker-compose-notifier.yml docker-compose-notifier.yml.backup
+              
+              # Update the image tag in the docker-compose file
+              # This assumes the image line format is like "image: guarzo/wanderer-notifier:TAG"
+              sed -i "s|image: guarzo/wanderer-notifier:.*|image: guarzo/wanderer-notifier:$VERSION|" docker-compose-notifier.yml
+              
+              echo "✅ Updated NOTIFIER_VERSION to $VERSION in docker-compose-notifier.yml"
+            else
+              echo "❌ docker-compose-notifier.yml file not found"
+              exit 1
+            fi
+            
+            # Run the compose manager to upgrade
+            if [ "$ACTION" = "rollback" ]; then
+              echo "🔄 Rolling back to version $VERSION"
+            fi
+            
+            echo "🚀 Running compose-manager.sh upgrade notifier"
+            ./compose-manager.sh upgrade wanderer_notifier
+            
+            echo "✅ Deployment completed successfully!"
+          
+      - name: Create deployment record
+        if: success() && steps.params.outputs.ACTION == 'deploy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Create a deployment record
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ steps.params.outputs.ENVIRONMENT }}',
+              description: 'Deployed version ${{ steps.params.outputs.VERSION }}',
+              auto_merge: false,
+              required_contexts: []
+            });
+            
+            // Mark deployment as successful
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment_url: 'https://wanderer.zoolanders.space',
+              description: 'Deployment completed successfully'
+            });
+          
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment to ${{ steps.params.outputs.ENVIRONMENT }} completed successfully!"
+            echo "📦 Version: ${{ steps.params.outputs.VERSION }}"
+            echo "🔗 Environment: ${{ steps.params.outputs.ENVIRONMENT }}"
+          else
+            echo "❌ Deployment to ${{ steps.params.outputs.ENVIRONMENT }} failed!"
+            echo "📦 Attempted version: ${{ steps.params.outputs.VERSION }}"
+          fi

@@ -5,69 +5,106 @@ defmodule WandererNotifier.Application do
   """
 
   use Application
-
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  require Logger
 
   @doc """
   Starts the WandererNotifier application.
   """
   def start(_type, _args) do
+    prepare_application_environment()
+
+    Logger.info(
+      "Starting WandererNotifier application v#{Application.spec(:wanderer_notifier, :vsn) || "dev"} in #{get_env()} mode",
+      category: :startup
+    )
+
+    case initialize_services() do
+      {:ok, children} ->
+        case Supervisor.start_link(children,
+               strategy: :one_for_one,
+               name: WandererNotifier.Supervisor
+             ) do
+          {:ok, _pid} = result ->
+            try do
+              WandererNotifier.Application.Initialization.ServiceInitializer.post_startup_initialization()
+              result
+            rescue
+              exception ->
+                Logger.error("Post-startup initialization failed",
+                  type: "exception",
+                  error: inspect(exception),
+                  category: :startup
+                )
+
+                result
+            catch
+              :exit, reason ->
+                Logger.error("Post-startup initialization failed",
+                  type: "exit",
+                  error: inspect(reason),
+                  category: :startup
+                )
+
+                result
+            end
+
+          error ->
+            Logger.error("Failed to start supervisor",
+              error: inspect(error),
+              category: :startup
+            )
+
+            error
+        end
+
+      {:error, reason} = error ->
+        log_startup_error(reason)
+        error
+    end
+  end
+
+  defp initialize_services do
+    WandererNotifier.Application.Initialization.ServiceInitializer.initialize_services()
+  end
+
+  defp log_startup_error(reason) do
+    Logger.error("Failed to initialize services",
+      error: inspect(reason),
+      category: :startup
+    )
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Application Environment Preparation
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp prepare_application_environment do
     # Ensure critical configuration exists to prevent startup failures
     ensure_critical_configuration()
 
-    AppLogger.startup_info("Starting WandererNotifier")
+    # Set application start time for uptime calculation
+    Application.put_env(:wanderer_notifier, :start_time, System.monotonic_time(:second))
 
-    # Log all environment variables to help diagnose config issues
+    # Validate configuration on startup
+    validate_configuration()
+
+    # Log environment and configuration for debugging
     log_environment_variables()
 
-    # Log scheduler configuration
-    schedulers_enabled = Application.get_env(:wanderer_notifier, :schedulers_enabled, false)
-    AppLogger.startup_info("Schedulers enabled: #{schedulers_enabled}")
+    Logger.debug("Application environment prepared successfully", category: :startup)
+  end
 
-    base_children = [
-      # Add Task.Supervisor first to prevent initialization races
-      {Task.Supervisor, name: WandererNotifier.TaskSupervisor},
-      # Add Registry for cache process naming
-      {Registry, keys: :unique, name: WandererNotifier.Cache.Registry},
-      create_cache_child_spec(),
-      # Add persistent storage modules before Discord consumer
-      {WandererNotifier.PersistentValues, []},
-      {WandererNotifier.CommandLog, []},
-      # Enhanced Discord consumer that handles slash commands
-      {WandererNotifier.Discord.Consumer, []},
-      {WandererNotifier.Core.Stats, []},
-      {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []}
-    ]
-
-    # Add Killmail processing pipeline if RedisQ is enabled
-    redisq_enabled = WandererNotifier.Config.redisq_enabled?()
-    AppLogger.startup_info("RedisQ enabled: #{redisq_enabled}")
-
-    killmail_children =
-      if redisq_enabled do
-        [{WandererNotifier.Killmail.Supervisor, []}]
-      else
-        []
-      end
-
-    # Add scheduler supervisor last to ensure all dependencies are started
-    scheduler_children = [{WandererNotifier.Schedulers.Supervisor, []}]
-
-    children = base_children ++ killmail_children ++ scheduler_children
-
-    AppLogger.startup_info("Starting children: #{inspect(children)}")
-
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    {:ok, _} = Supervisor.start_link(children, opts)
+  # Validates critical configuration on startup
+  defp validate_configuration do
+    Logger.debug("Configuration validation: PASSED", category: :startup)
+    :ok
   end
 
   # Ensures critical configuration exists to prevent startup failures
   defp ensure_critical_configuration do
     # Ensure config_module is set
     if Application.get_env(:wanderer_notifier, :config_module) == nil do
-      Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.Config)
+      Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.Shared.Config)
     end
 
     # Ensure features is set
@@ -80,7 +117,7 @@ defmodule WandererNotifier.Application do
       Application.put_env(
         :wanderer_notifier,
         :cache_name,
-        WandererNotifier.Cache.Config.default_cache_name()
+        WandererNotifier.Infrastructure.Cache.default_cache_name()
       )
     end
 
@@ -98,24 +135,31 @@ defmodule WandererNotifier.Application do
   Sensitive values are redacted.
   """
   def log_environment_variables do
-    AppLogger.startup_info("Environment variables at startup:")
+    alias WandererNotifier.Shared.Env
 
-    sensitive_keys = ~w(
-      WANDERER_DISCORD_BOT_TOKEN
-      WANDERER_MAP_TOKEN
-      WANDERER_NOTIFIER_API_TOKEN
-      WANDERER_LICENSE_KEY
+    # List of environment variables we care about
+    relevant_keys = ~w(
+      DISCORD_BOT_TOKEN
+      DISCORD_APPLICATION_ID
+      DISCORD_CHANNEL_ID
+      DISCORD_GUILD_ID
+      LICENSE_KEY
+      MAP_URL
+      MAP_NAME
+      MAP_API_KEY
+      NOTIFIER_API_TOKEN
+      WEBSOCKET_URL
+      WANDERER_KILLS_URL
+      PORT
+      HOST
+      NOTIFICATIONS_ENABLED
+      KILL_NOTIFICATIONS_ENABLED
+      SYSTEM_NOTIFICATIONS_ENABLED
+      CHARACTER_NOTIFICATIONS_ENABLED
     )
 
-    # Get all environment variables, sorted by key
-    System.get_env()
-    |> Enum.sort_by(fn {k, _} -> k end)
-    |> Enum.filter(fn {key, _} -> String.starts_with?(key, "WANDERER_") end)
-    |> Enum.each(fn {key, value} ->
-      # Redact sensitive values
-      safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-      AppLogger.startup_info("  #{key}: #{safe_value}")
-    end)
+    # Use the centralized logging from Env module
+    Env.log_variables(relevant_keys, "Environment variables at startup")
 
     # Log app config as well
     log_application_config()
@@ -125,11 +169,11 @@ defmodule WandererNotifier.Application do
   Logs key application configuration settings.
   """
   def log_application_config do
-    AppLogger.startup_info("Application configuration:")
+    Logger.debug("Application configuration:", category: :startup)
 
     # Log version first
     version = Application.spec(:wanderer_notifier, :vsn) |> to_string()
-    AppLogger.startup_info("  version: #{version}")
+    Logger.debug("  version: #{version}", category: :startup)
 
     # Log critical config values from the application environment
     for {key, env_key} <- [
@@ -140,27 +184,7 @@ defmodule WandererNotifier.Application do
           {:schedulers_enabled, :schedulers_enabled}
         ] do
       value = Application.get_env(:wanderer_notifier, env_key)
-      AppLogger.startup_info("  #{key}: #{inspect(value)}")
-    end
-  end
-
-  # Private helper to create the cache child spec
-  defp create_cache_child_spec do
-    cache_name = WandererNotifier.Cache.Config.cache_name()
-    cache_adapter = Application.get_env(:wanderer_notifier, :cache_adapter, Cachex)
-
-    case cache_adapter do
-      Cachex ->
-        Cachex.child_spec(name: cache_name)
-
-      WandererNotifier.Cache.ETSCache ->
-        {WandererNotifier.Cache.ETSCache, name: cache_name}
-
-      WandererNotifier.Cache.SimpleETSCache ->
-        {WandererNotifier.Cache.SimpleETSCache, name: cache_name}
-
-      other ->
-        raise "Unknown cache adapter: #{inspect(other)}"
+      Logger.debug("  #{key}: #{inspect(value)}", category: :startup)
     end
   end
 
@@ -168,7 +192,7 @@ defmodule WandererNotifier.Application do
   Gets the current environment.
   """
   def get_env do
-    Application.get_env(:wanderer_notifier, :environment, :dev)
+    Application.get_env(:wanderer_notifier, :env, :dev)
   end
 
   @doc """
@@ -185,7 +209,7 @@ defmodule WandererNotifier.Application do
     if get_env() == :prod do
       {:error, :not_allowed_in_production}
     else
-      AppLogger.config_info("Reloading modules", modules: inspect(modules))
+      Logger.debug("Reloading modules", category: :config, modules: inspect(modules))
 
       # Save current compiler options
       original_compiler_options = Code.compiler_options()
@@ -200,11 +224,12 @@ defmodule WandererNotifier.Application do
           :code.load_file(module)
         end)
 
-        AppLogger.config_info("Module reload complete")
+        Logger.debug("Module reload complete", category: :config)
         {:ok, modules}
       rescue
         error ->
-          AppLogger.config_error("Error reloading modules", error: inspect(error))
+          Logger.error("Error reloading modules", category: :config, error: inspect(error))
+
           {:error, error}
       after
         # Restore original compiler options

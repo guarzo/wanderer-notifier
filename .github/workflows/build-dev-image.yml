@@ -1,0 +1,126 @@
+name: Build Dev Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'main'
+        type: string
+
+jobs:
+  build-dev-image:
+    name: Build Dev Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Validate branch exists
+        run: |
+          if ! git show-ref --verify --quiet refs/heads/${{ inputs.branch }} && ! git show-ref --verify --quiet refs/remotes/origin/${{ inputs.branch }}; then
+            echo "Error: Branch '${{ inputs.branch }}' does not exist"
+            exit 1
+          fi
+          echo "Building from branch: ${{ inputs.branch }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.NOTIFIER_API_TOKEN }}" ]; then
+            echo "Error: NOTIFIER_API_TOKEN secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DOCKERHUB_PAT }}" ]; then
+            echo "Error: DOCKERHUB_PAT secret is required"
+            exit 1
+          fi
+          echo "Required secrets are present"
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:dev-test
+          cache-from: type=gha
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
+      - name: Test Docker image
+        run: |
+          chmod +x ./scripts/test_docker_image.sh
+          timeout 300 ./scripts/test_docker_image.sh -i guarzo/wanderer-notifier -t dev-test -d ${{ secrets.FAKE_DISCORD_TOKEN }} \
+            -e "MAP_URL=http://test.example.com" \
+            -e "MAP_NAME=test_map" \
+            -e "MAP_API_KEY=test_key" \
+            -e "LICENSE_KEY=test_license" \
+            -e "NOTIFIER_API_TOKEN=test_token" || {
+            echo "Docker image test failed or timed out"
+            # Clean up any remaining containers
+            docker ps -a | grep "test_container" | awk '{print $1}' | xargs -r docker rm -f || true
+            exit 1
+          }
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Build and push dev image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: guarzo/wanderer-notifier:dev
+          labels: |
+            org.opencontainers.image.title=Wanderer Notifier Dev
+            org.opencontainers.image.description=Development build of Wanderer Notifier from branch ${{ inputs.branch }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            branch=${{ inputs.branch }}
+          cache-from: |
+            type=gha
+            type=registry,ref=guarzo/wanderer-notifier:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=guarzo/wanderer-notifier:buildcache,mode=max
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## 🐳 Dev Docker Image Built Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ inputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`guarzo/wanderer-notifier:dev\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull guarzo/wanderer-notifier:dev" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Note:** This dev image will be overwritten by subsequent dev builds from any branch." >> $GITHUB_STEP_SUMMARY

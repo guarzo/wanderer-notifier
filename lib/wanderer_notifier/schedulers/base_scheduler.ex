@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Schedulers.BaseMapScheduler do
+defmodule WandererNotifier.Schedulers.BaseScheduler do
   @moduledoc """
   Base scheduler module that provides common functionality for map-related schedulers.
   These schedulers handle periodic updates of data from the map API.
@@ -7,9 +7,8 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Constants
+  alias WandererNotifier.Shared.Types.Constants
+  alias WandererNotifier.Infrastructure.Cache
 
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
@@ -27,11 +26,9 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour WandererNotifier.Schedulers.BaseMapScheduler
+      @behaviour WandererNotifier.Schedulers.BaseScheduler
       use GenServer
       require Logger
-
-      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       def start_link(opts) do
         GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -39,14 +36,17 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       @impl GenServer
       def init(opts) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        primed? = Cachex.get(cache_name, primed_key()) == {:ok, true}
+        primed? =
+          __MODULE__
+          |> Cache.Keys.scheduler_primed()
+          |> Cache.get()
+          |> Kernel.==({:ok, true})
 
         # Get the configured interval for this scheduler type
         interval = get_scheduler_interval(opts)
 
         # Get cached data, defaulting to empty list if not found
-        cached_data = get_cached_data(cache_name)
+        cached_data = get_cached_data()
 
         state = %{
           interval: interval,
@@ -55,7 +55,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           cached_data: cached_data
         }
 
-        AppLogger.scheduler_info("Scheduler initialized",
+        Logger.info("Scheduler initialized",
           module: __MODULE__,
           interval: state.interval,
           primed: state.primed,
@@ -79,8 +79,11 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       # Get cached data with error handling
-      defp get_cached_data(cache_name) do
-        case Cachex.get(cache_name, cache_key()) do
+      defp get_cached_data do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.get()
+        |> case do
           {:ok, data} when is_list(data) ->
             data
 
@@ -88,16 +91,16 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
             []
 
           {:ok, data} ->
-            AppLogger.scheduler_error("Invalid cached data format",
-              key: cache_key(),
+            Logger.error("Invalid cached data format",
+              key: Cache.Keys.scheduler_data(__MODULE__),
               data: inspect(data)
             )
 
             []
 
           {:error, reason} ->
-            AppLogger.scheduler_error("Failed to get cached data",
-              key: cache_key(),
+            Logger.error("Failed to get cached data",
+              key: Cache.Keys.scheduler_data(__MODULE__),
               error: inspect(reason)
             )
 
@@ -108,10 +111,17 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       @impl GenServer
       def handle_continue(:schedule, state) do
         # Use the Config module's feature_enabled? function which handles both maps and keyword lists
-        feature_enabled = WandererNotifier.Config.feature_enabled?(feature_flag())
+        feature_flag_value = feature_flag()
+        feature_enabled = WandererNotifier.Shared.Config.feature_enabled?(feature_flag_value)
+
+        Logger.info("Scheduler feature check",
+          module: __MODULE__,
+          feature_flag: feature_flag_value,
+          feature_enabled: feature_enabled
+        )
 
         if feature_enabled do
-          AppLogger.scheduler_info("Scheduling update",
+          Logger.info("Scheduling update",
             module: __MODULE__,
             feature: feature_flag(),
             enabled: true
@@ -121,11 +131,31 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
           timer = Process.send_after(self(), :update, 0)
           {:noreply, %{state | timer: timer}}
         else
-          AppLogger.scheduler_info("Feature disabled",
-            module: __MODULE__,
-            feature: feature_flag(),
-            enabled: false
-          )
+          # Only log for actual feature disabling, not SSE-based disabling
+          # Check the module name to suppress logs for SSE-enabled schedulers
+          should_log =
+            case __MODULE__ do
+              WandererNotifier.Schedulers.SystemUpdateScheduler ->
+                not WandererNotifier.Shared.Config.feature_enabled?(
+                  :system_polling_disabled_for_sse
+                )
+
+              WandererNotifier.Schedulers.CharacterUpdateScheduler ->
+                not WandererNotifier.Shared.Config.feature_enabled?(
+                  :character_polling_disabled_for_sse
+                )
+
+              _ ->
+                true
+            end
+
+          if should_log do
+            Logger.info("Feature disabled",
+              module: __MODULE__,
+              feature: feature_flag(),
+              enabled: false
+            )
+          end
 
           # Even if feature is disabled, we should still schedule the next check
           timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
@@ -141,11 +171,9 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
 
       @impl GenServer
       def handle_info(:update, state) do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-
         case update_data(state.cached_data) do
           {:ok, new_data} ->
-            handle_update_success(new_data, state, cache_name)
+            handle_update_success(new_data, state)
 
           {:error, reason} ->
             handle_update_error(reason, state)
@@ -153,9 +181,15 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       # Handle successful data update
-      defp handle_update_success(new_data, state, cache_name) do
-        Cachex.put(cache_name, primed_key(), true)
-        Cachex.put(cache_name, cache_key(), new_data)
+      defp handle_update_success(new_data, state) do
+        __MODULE__
+        |> Cache.Keys.scheduler_primed()
+        |> Cache.put(true)
+
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.put(new_data)
+
         log_update(__MODULE__, new_data, state.cached_data)
 
         # Update Stats module with the tracked count
@@ -170,7 +204,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       defp handle_update_error(reason, state) do
         error_type = get_error_type(reason)
 
-        AppLogger.scheduler_error("Update failed",
+        Logger.error("Update failed",
           module: __MODULE__,
           error: inspect(reason),
           error_type: error_type
@@ -200,12 +234,11 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       Runs an update cycle.
       """
       def run do
-        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-        cached_data = get_cached_data_for_run(cache_name)
+        cached_data = get_cached_data_for_run()
 
         case update_data(cached_data) do
           {:ok, new_data} ->
-            handle_successful_run(new_data, cache_name)
+            handle_successful_run(new_data)
 
           {:error, reason} ->
             handle_failed_run(reason)
@@ -213,24 +246,27 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       # Get cached data for manual run operation
-      defp get_cached_data_for_run(cache_name) do
-        case Cachex.get(cache_name, cache_key()) do
+      defp get_cached_data_for_run do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.get()
+        |> case do
           {:ok, data} when is_list(data) ->
             data
 
           {:ok, nil} ->
-            AppLogger.scheduler_info("No cached data found")
+            Logger.info("No cached data found")
             []
 
           {:ok, data} ->
-            AppLogger.scheduler_error("Invalid cached data format",
+            Logger.error("Invalid cached data format",
               data: inspect(data)
             )
 
             []
 
           {:error, reason} ->
-            AppLogger.scheduler_error("Failed to get cached data",
+            Logger.error("Failed to get cached data",
               error: inspect(reason)
             )
 
@@ -239,14 +275,17 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
       end
 
       # Handle successful manual run
-      defp handle_successful_run(new_data, cache_name) do
-        Cachex.put(cache_name, cache_key(), new_data)
+      defp handle_successful_run(new_data) do
+        __MODULE__
+        |> Cache.Keys.scheduler_data()
+        |> Cache.put(new_data)
+
         {:ok, new_data}
       end
 
       # Handle failed manual run
       defp handle_failed_run(reason) do
-        AppLogger.scheduler_error("Manual update failed",
+        Logger.error("Manual update failed",
           error: inspect(reason)
         )
 
@@ -268,7 +307,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
         emoji = module.log_emoji()
         label = module.log_label()
 
-        AppLogger.api_info(
+        Logger.info(
           "#{emoji} #{label} updated | #{old_count} → #{new_count} | #{change_indicator}"
         )
       end
@@ -278,7 +317,7 @@ defmodule WandererNotifier.Schedulers.BaseMapScheduler do
         # This function will only be called from schedulers that return :systems or :characters
         case module.stats_type() do
           stat_type when stat_type in [:systems, :characters] ->
-            Stats.set_tracked_count(stat_type, count)
+            WandererNotifier.Shared.Metrics.set_tracked_count(stat_type, count)
 
           _ ->
             :ok

@@ -1,6 +1,6 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
+    image: guarzo/wanderer-notifier:v4.3.4
     container_name: wanderer-notifier
     restart: unless-stopped
     env_file:
@@ -14,8 +14,8 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 5m
       timeout: 5s
       retries: 3
       start_period: 15s

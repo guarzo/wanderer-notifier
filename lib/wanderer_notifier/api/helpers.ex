@@ -5,7 +5,7 @@ defmodule WandererNotifier.Api.Helpers do
   import Plug.Conn
   require Logger
 
-  alias WandererNotifier.Http.Utils.JsonUtils
+  alias WandererNotifier.Infrastructure.Http.Utils.JsonUtils
 
   @success_status 200
   @error_key :error
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Api.Helpers do
 
       {:error, reason} ->
         # Log the error
-        Logger.error("JSON encoding failed: #{inspect(reason)}, data: #{inspect(data)}")
+        Logger.error("JSON encoding failed", reason: inspect(reason), data: inspect(data))
 
         # Send a 500 error with a safe message
         error_response =
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Api.Helpers do
   rescue
     e ->
       # Log the unexpected error and return a safe error response
-      Logger.error("Unexpected error in send_json_response: #{inspect(e)}")
+      Logger.error("Unexpected error in send_json_response", error: inspect(e))
 
       # Do not re-encode with JsonUtils.encode! to avoid potential infinite loop
       conn

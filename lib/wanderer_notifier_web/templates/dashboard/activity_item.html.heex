@@ -1,0 +1,13 @@
+<div class="activity-item">
+    <div class="activity-timestamp">
+        <%= format_timestamp(@event.timestamp) %>
+    </div>
+    <div class="activity-content">
+        <span class="activity-type activity-<%= @event.type %>">
+            <%= @event.type %>
+        </span>
+        <span class="activity-message">
+            <%= @event.message %>
+        </span>
+    </div>
+</div>

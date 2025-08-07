@@ -29,7 +29,7 @@ There are two ways to install Wanderer Notifier: a **Quick Install** option usin
 For a streamlined installation that creates the necessary directory and files automatically, run:
 
 ```bash
-curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
+curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/33cba423f27c12a09ec3054d4eb76b283da66ab4/wanderer-notifier-setup.sh | bash
 ```
 
 Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container.
@@ -43,7 +43,7 @@ If you'd rather set up everything manually, follow these steps:
 Pull the latest Docker image:
 
 ```bash
-docker pull guarzo/wanderer-notifier:v2
+docker pull guarzo/wanderer-notifier:latest
 ```
 
 #### 2. Configure Your Environment
@@ -75,10 +75,16 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
 # ENABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
 
-# Notification Control (tracking is always enabled)
+# Notification Control
 # KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
 # SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
 # CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
+# RALLY_NOTIFICATIONS_ENABLED=true  # Controls rally point notifications
+
+# Voice Participant Notifications (NEW)
+# DISCORD_GUILD_ID=your_discord_guild_id  # Required for voice participant notifications
+# VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED=false  # Target only active voice channel users
+# FALLBACK_TO_HERE_ENABLED=true  # Fallback to @here if no voice participants
 
 # Character Configuration
 # CHARACTER_EXCLUDE_LIST=character_id1,character_id2
@@ -100,7 +106,7 @@ Create a file named `docker-compose.yml` with the following content:
 ```yaml
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v2
+    image: guarzo/wanderer-notifier:latest
     container_name: wanderer-notifier
     restart: unless-stopped
     env_file:
@@ -165,10 +171,19 @@ Wanderer Notifier supports Discord slash commands for managing your notification
 ### Priority Systems
 
 Priority systems receive special treatment in notifications:
-- Kill notifications in priority systems include @here mentions
+- System notifications in priority systems include targeted mentions (@here or voice participants)
 - Ensures critical systems get immediate attention
 - Priority status persists between bot restarts
 - Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
+
+### Voice Participant Notifications (NEW)
+
+For more targeted notifications, the system can now notify only users actively in Discord voice channels:
+
+- **Smart Targeting**: Only mentions users currently in voice channels (excludes AFK channel)
+- **Fallback Support**: Optionally falls back to @here if no voice participants are found
+- **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
+- **Configurable**: Disabled by default, requires Discord Guild ID to enable
 
 ## Configuration Validation
 
@@ -176,16 +191,19 @@ On startup, the application validates all configuration settings. If there are i
 
 ## Current Features
 
-- **Real-Time Kill Monitoring:** Consumes live killmail data via ZKillboard's RedisQ API
+- **Real-Time Kill Monitoring:** Receives pre-enriched killmail data via WebSocket connection to WandererKills service
+- **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the map
 - **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
 - **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications
+- **Rally Point Notifications:** Get instant alerts when players create rally points in your tracked systems
 - **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
 - **Discord Slash Commands:** Manage priority systems and check bot status directly from Discord
-- **Priority Systems:** Mark critical systems for special notifications with @here mentions
+- **Priority Systems:** Mark critical systems for special notifications with targeted mentions
+- **Voice Participant Notifications:** Target only active voice channel users instead of @here mentions
 - **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
 - **Advanced Caching:** Multi-adapter caching system (Cachex/ETS) with intelligent TTL management
-- **Data Enrichment:** Integrates with EVE's ESI API to fetch detailed character, corporation, and alliance information
-- **Map Integration:** Connects to Wanderer map API for system and character tracking
+- **Data Enrichment:** Integrates with EVE's ESI API when needed (pre-enriched data used when available)
+- **Map Integration:** Real-time SSE connection to Wanderer map API for system and character tracking
 - **Robust Architecture:** Built on Elixir's OTP supervision trees for fault tolerance and reliability
 - **Production Ready:** Comprehensive logging, telemetry, Docker deployment, and health checks
 

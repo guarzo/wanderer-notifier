@@ -8,157 +8,53 @@ ExUnit.start()
 # Configure Mox
 Application.ensure_all_started(:mox)
 
-# Set up Mox mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
-Mox.defmock(WandererNotifier.MockSystem, for: WandererNotifier.Map.TrackingBehaviour)
-Mox.defmock(WandererNotifier.MockCharacter, for: WandererNotifier.Map.TrackingBehaviour)
+# Load test mock infrastructure (with guards to prevent redefinition)
+unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestMocks) do
+  Code.require_file("support/mocks/test_mocks.ex", __DIR__)
+end
 
-Mox.defmock(WandererNotifier.MockDeduplication,
-  for: WandererNotifier.Notifications.Deduplication.DeduplicationBehaviour
-)
+unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestDataFactory) do
+  Code.require_file("support/mocks/test_data_factory.ex", __DIR__)
+end
 
-Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
-
-Mox.defmock(WandererNotifier.MockDispatcher,
-  for: WandererNotifier.Notifications.DispatcherBehaviour
-)
-
-Mox.defmock(WandererNotifier.HTTPMock, for: WandererNotifier.HTTP.HttpBehaviour)
-Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
-Mox.defmock(WandererNotifier.ESI.ClientMock, for: WandererNotifier.ESI.ClientBehaviour)
-
-Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Notifications.DispatcherBehaviour
-)
+# Import test mocks module
+alias WandererNotifier.Test.Support.Mocks.TestMocks
 
 # Configure application to use mocks
-Application.put_env(:wanderer_notifier, :cache_module, WandererNotifier.MockCache)
+# Cache module removed - using simplified Cache directly
+# Application.put_env(:wanderer_notifier, :cache_module, WandererNotifier.MockCache)
 Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.MockSystem)
 Application.put_env(:wanderer_notifier, :character_module, WandererNotifier.MockCharacter)
+Application.put_env(:wanderer_notifier, :system_track_module, WandererNotifier.MockSystem)
+Application.put_env(:wanderer_notifier, :character_track_module, WandererNotifier.MockCharacter)
 Application.put_env(:wanderer_notifier, :deduplication_module, WandererNotifier.MockDeduplication)
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
-Application.put_env(:wanderer_notifier, :dispatcher_module, WandererNotifier.MockDispatcher)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
-Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.ClientMock)
+
+Application.put_env(
+  :wanderer_notifier,
+  :esi_service,
+  WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+)
+
+Application.put_env(
+  :wanderer_notifier,
+  :esi_client,
+  WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
+)
+
 Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HTTPMock)
 
-# Set up default stubs for cache mock
-Mox.stub(WandererNotifier.MockCache, :get, fn _key, _opts -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :mget, fn _keys -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :get_kill, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.MockCache, :set, fn _key, value, _ttl -> {:ok, value} end)
-Mox.stub(WandererNotifier.MockCache, :put, fn _key, value -> {:ok, value} end)
-Mox.stub(WandererNotifier.MockCache, :delete, fn _key -> :ok end)
-Mox.stub(WandererNotifier.MockCache, :clear, fn -> :ok end)
+Application.put_env(
+  :wanderer_notifier,
+  :static_info_module,
+  WandererNotifier.Domains.Tracking.StaticInfoMock
+)
 
-Mox.stub(WandererNotifier.MockCache, :get_and_update, fn _key, update_fun ->
-  {current, updated} = update_fun.(nil)
-  {:ok, {current, updated}}
-end)
-
-Mox.stub(WandererNotifier.MockCache, :get_recent_kills, fn -> [] end)
-Mox.stub(WandererNotifier.MockCache, :init_batch_logging, fn -> :ok end)
-
-# Set up default stubs for deduplication mock
-Mox.stub(WandererNotifier.MockDeduplication, :check, fn _, _ -> {:ok, :new} end)
-Mox.stub(WandererNotifier.MockDeduplication, :clear_key, fn _, _ -> :ok end)
-
-# Set up default stubs for config mock
-Mox.stub(WandererNotifier.MockConfig, :notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :kill_notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :system_notifications_enabled?, fn -> true end)
-Mox.stub(WandererNotifier.MockConfig, :character_notifications_enabled?, fn -> true end)
-
-Mox.stub(WandererNotifier.MockConfig, :get_notification_setting, fn _type, _key -> {:ok, true} end)
-
-Mox.stub(WandererNotifier.MockConfig, :get_config, fn ->
-  {:ok,
-   %{
-     notifications: %{
-       enabled: true,
-       kill: %{
-         enabled: true,
-         system: %{enabled: true},
-         character: %{enabled: true},
-         min_value: 100_000_000,
-         min_isk_per_character: 50_000_000,
-         min_isk_per_corporation: 50_000_000,
-         min_isk_per_alliance: 50_000_000,
-         min_isk_per_ship: 50_000_000,
-         min_isk_per_system: 50_000_000
-       }
-     }
-   }}
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :deduplication_module, fn ->
-  WandererNotifier.MockDeduplication
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :system_track_module, fn -> WandererNotifier.MockSystem end)
-
-Mox.stub(WandererNotifier.MockConfig, :character_track_module, fn ->
-  WandererNotifier.MockCharacter
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :notification_determiner_module, fn ->
-  WandererNotifier.Notifications.Determiner.Kill
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :killmail_enrichment_module, fn ->
-  WandererNotifier.Killmail.Enrichment
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :notification_dispatcher_module, fn ->
-  WandererNotifier.MockDispatcher
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :killmail_notification_module, fn ->
-  WandererNotifier.Notifications.KillmailNotification
-end)
-
-Mox.stub(WandererNotifier.MockConfig, :config_module, fn -> WandererNotifier.MockConfig end)
-
-# Set up default stubs for system mock
-Mox.stub(WandererNotifier.MockSystem, :is_tracked?, fn _id -> {:ok, false} end)
-
-# Set up default stubs for character mock
-Mox.stub(WandererNotifier.MockCharacter, :is_tracked?, fn _id -> {:ok, false} end)
-
-# Set up default stubs for dispatcher mock
-Mox.stub(WandererNotifier.MockDispatcher, :send_message, fn _ -> {:ok, :sent} end)
-
-# Set up default stubs for notifier factory mock
-Mox.stub(WandererNotifier.MockNotifierFactory, :send_message, fn _ -> {:ok, :sent} end)
-
-# Set up default stubs for HTTP client mock
-Mox.stub(WandererNotifier.HTTPMock, :get, fn _url, _headers, _opts ->
-  {:ok, %{status_code: 200, body: "{}"}}
-end)
-
-# Set up default stubs for ESI service mock
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_killmail, fn _id, _hash -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_character, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_corporation_info, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_alliance_info, fn _id -> {:ok, %{}} end)
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_universe_type, fn _id, _opts -> {:ok, %{}} end)
-
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system, fn id, _opts ->
-  {:ok, %{"name" => "System-#{id}", "security_status" => 0.5}}
-end)
-
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id -> {:ok, %{}} end)
-
-Mox.stub(WandererNotifier.ESI.ServiceMock, :get_system_kills, fn _id, _limit, _opts ->
-  {:ok, []}
-end)
-
-Mox.stub(WandererNotifier.ESI.ServiceMock, :search, fn _query, _categories, _opts ->
-  {:ok, %{}}
-end)
+# Set up all mocks with default behaviors using test infrastructure
+TestMocks.setup_all_mocks()
 
 # Configure logger level for tests
-Logger.configure(level: :warning)
+Logger.configure(level: :debug)
 
 # Initialize ETS tables
 table_opts = [
@@ -192,15 +88,23 @@ Application.put_env(:wanderer_notifier, :character_tracking_enabled, false)
 Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
 Application.put_env(:wanderer_notifier, :schedulers_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_supervisor_enabled, false)
+Application.put_env(:wanderer_notifier, :pipeline_worker_enabled, false)
 
 # Disable RedisQ client in tests to prevent HTTP calls
 Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
 
 # Configure cache implementation
-Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
+Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache_test)
 
-# Load shared test mocks
-Code.require_file("support/test_mocks.ex", __DIR__)
+# Initialize RateLimiter ETS table for tests
+unless :ets.whereis(WandererNotifier.RateLimiter) == :undefined do
+  :ets.delete(WandererNotifier.RateLimiter)
+end
+
+:ets.new(WandererNotifier.RateLimiter, [:set, :public, :named_table])
+
+# Note: Shared test mocks are currently disabled in favor of per-test mocking
+# These were commented out during test refactoring to avoid conflicts with Mox setup
 
 # Set up test environment variables
 System.put_env("MAP_URL", "http://test.map.url")

@@ -3,9 +3,9 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   Scheduler responsible for generating periodic service status reports.
   """
   use GenServer
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Constants
-  alias WandererNotifier.Utils.TimeUtils
+  require Logger
+  alias WandererNotifier.Shared.Types.Constants
+  alias WandererNotifier.Shared.Utils.{TimeUtils, ErrorHandler}
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
@@ -52,7 +52,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
   @impl GenServer
   def init(opts) do
-    AppLogger.scheduler_info("ServiceStatusScheduler starting", opts: opts)
+    Logger.info("ServiceStatusScheduler starting", opts: opts)
     state = State.new()
     timer_ref = schedule_next_run()
     {:ok, %{state | timer_ref: timer_ref}}
@@ -60,14 +60,14 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
   @impl GenServer
   def handle_info(:run_status_report, state) do
-    try do
-      run()
-    rescue
-      e ->
-        AppLogger.scheduler_error("Error in scheduled status report",
-          error: Exception.message(e)
+    ErrorHandler.safe_execute(
+      fn -> run() end,
+      fallback: fn error ->
+        Logger.error("Error in scheduled status report",
+          error: ErrorHandler.format_error(error)
         )
-    end
+      end
+    )
 
     timer_ref = schedule_next_run()
 
@@ -92,39 +92,62 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   end
 
   defp generate_service_status_report do
-    alias WandererNotifier.Notifications.Deduplication
-
-    # First check if status messages are enabled
-    if WandererNotifier.Config.status_messages_enabled?() do
-      uptime_seconds = calculate_uptime()
-      days = div(uptime_seconds, 86_400)
-      hours = div(rem(uptime_seconds, 86_400), 3600)
-      minutes = div(rem(uptime_seconds, 3600), 60)
-      seconds = rem(uptime_seconds, 60)
-      formatted_uptime = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-      current_minute = div(:os.system_time(:second), 60)
-      dedup_key = "status_report:#{current_minute}"
-
-      case Deduplication.check(:system, dedup_key) do
-        {:ok, :new} ->
-          AppLogger.maintenance_info("📊 Status report sent | #{formatted_uptime} uptime")
-
-          WandererNotifier.Notifiers.StatusNotifier.send_status_message(
-            "WandererNotifier Service Status",
-            "Automated periodic status report."
-          )
-
-        {:ok, :duplicate} ->
-          AppLogger.maintenance_info("📊 Status report skipped - duplicate")
+    ErrorHandler.safe_execute(
+      fn -> maybe_send_status_report() end,
+      fallback: fn error ->
+        Logger.error("📊 Status report failed",
+          error: ErrorHandler.format_error(error)
+        )
       end
+    )
+  end
+
+  defp maybe_send_status_report do
+    if WandererNotifier.Shared.Config.enable_status_messages?() do
+      send_status_report_if_new()
     else
-      AppLogger.maintenance_info("📊 Status report skipped - disabled by config")
+      Logger.info("📊 Status report skipped - disabled by config")
     end
-  rescue
-    e ->
-      AppLogger.maintenance_error("📊 Status report failed",
-        error: Exception.message(e)
-      )
+  end
+
+  defp send_status_report_if_new do
+    alias WandererNotifier.Infrastructure.Cache.Deduplication
+
+    formatted_uptime = calculate_formatted_uptime()
+    current_minute = div(:os.system_time(:second), 60)
+    dedup_key = "#{current_minute}"
+
+    case Deduplication.check_and_mark(:status_report, dedup_key) do
+      :new ->
+        Logger.info("📊 Status report sent | #{formatted_uptime} uptime")
+        send_discord_status_message(formatted_uptime)
+
+      :duplicate ->
+        Logger.info("📊 Status report skipped - duplicate")
+    end
+  end
+
+  defp calculate_formatted_uptime do
+    uptime_seconds = calculate_uptime()
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
+    minutes = div(rem(uptime_seconds, 3600), 60)
+    seconds = rem(uptime_seconds, 60)
+    "#{days}d #{hours}h #{minutes}m #{seconds}s"
+  end
+
+  defp send_discord_status_message(formatted_uptime) do
+    status_message = """
+    **WandererNotifier Service Status**
+
+    ✅ System is operational
+    ⏱️ Uptime: #{formatted_uptime}
+    📅 Report generated at: #{DateTime.utc_now() |> DateTime.to_string()}
+
+    _Automated periodic status report_
+    """
+
+    WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier.send_message(status_message)
   end
 
   defp calculate_uptime do

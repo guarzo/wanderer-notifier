@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: "2.1.5",
+      version: "3.3.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -19,7 +19,8 @@ defmodule WandererNotifier.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.json": :test
-      ]
+      ],
+      dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"]
     ]
   end
 
@@ -45,12 +46,23 @@ defmodule WandererNotifier.MixProject do
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},
+      {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},
+      {:nimble_csv, "~> 1.2"},
       {:plug, "~> 1.18"},
       {:plug_cowboy, "~> 2.7"},
       {:mime, "~> 2.0"},
       {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
+      # Phoenix & Ecto
+      {:phoenix, "~> 1.7.14"},
+      {:phoenix_html, "~> 4.0"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:ecto, "~> 3.12"},
+      {:mint_web_socket, "~> 1.0"},
+      # Rate limiting
+      {:hammer, "~> 7.0"},
+      # Development & Testing
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},
       {:bunt, "~> 1.0"},
@@ -59,6 +71,7 @@ defmodule WandererNotifier.MixProject do
       {:stream_data, "~> 1.0", only: [:dev, :test]},
       {:crontab, "~> 1.1"},
       {:excoveralls, "~> 0.18", only: :test},
+      {:benchfella, "~> 0.3", only: :dev},
       {:mix_version, "~> 2.4", only: [:dev, :test], runtime: false}
     ]
   end
@@ -70,8 +83,7 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"],
-        config_providers: [{WandererNotifier.ConfigProvider, []}]
+        overlays: ["rel/overlays"]
       ]
     ]
   end
