@@ -12,7 +12,23 @@ defmodule WandererNotifierWeb.Plugs.ConditionalLogger do
 
   def call(conn, _opts) do
     if should_log?(conn) do
-      Plug.Logger.call(conn, Plug.Logger.init([]))
+      start_time = System.monotonic_time()
+
+      Plug.Conn.register_before_send(conn, fn conn ->
+        duration = System.monotonic_time() - start_time
+        duration_us = System.convert_time_unit(duration, :native, :microsecond)
+
+        Logger.info("#{conn.method} #{conn.request_path}",
+          request_id: Logger.metadata()[:request_id],
+          duration: duration_us
+        )
+
+        Logger.info("Sent #{conn.status} in #{duration_us}µs",
+          request_id: Logger.metadata()[:request_id]
+        )
+
+        conn
+      end)
     else
       conn
     end
