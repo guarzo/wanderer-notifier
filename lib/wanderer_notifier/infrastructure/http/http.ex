@@ -216,7 +216,7 @@ defmodule WandererNotifier.Infrastructure.Http do
 
   defp log_license_request_if_needed(url, method, headers, body, opts) do
     if String.contains?(url, "validate_bot") do
-      Logger.info("License HTTP request details",
+      Logger.debug("License HTTP request details",
         method: method,
         url: url,
         headers: sanitize_headers(headers),
@@ -401,13 +401,13 @@ defmodule WandererNotifier.Infrastructure.Http do
       decode_json: true
     ],
     discord: [
-      # Discord API typically responds in 200-500ms
-      timeout: 10_000,
-      retry_count: 3,
-      retry_delay: 1_000,
+      # Discord API typically responds in 200-500ms, but can be slow during outages
+      timeout: 30_000,
+      # Disable retries to prevent duplicate notifications
+      retry_count: 0,
       retryable_status_codes: [429, 500, 502, 503, 504],
       # Use dynamic rate limiting based on X-RateLimit-* headers with webhook and global limits
-      middlewares: [Retry, DynamicRateLimiter],
+      middlewares: [DynamicRateLimiter],
       decode_json: true
     ],
     streaming: [

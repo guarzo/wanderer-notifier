@@ -794,7 +794,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   defp log_validation_request(url, notifier_api_token, license_key) do
-    Logger.info("License validation HTTP request",
+    Logger.debug("License validation HTTP request",
       url: url,
       has_token: notifier_api_token != nil && notifier_api_token != "",
       has_license_key: license_key != nil && license_key != "",
@@ -849,8 +849,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     url = build_url("validate_license")
     body = %{"license_key" => license_key}
 
-    Logger.info("Making license validation request to License Manager API", category: :api)
-
     Logger.debug("Sending HTTP request for license validation",
       endpoint: "validate_license",
       category: :api
@@ -887,14 +885,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   defp build_url(endpoint) do
     base_url = Config.license_manager_api_url()
     full_url = "#{base_url}/#{endpoint}"
-
-    Logger.info("License URL construction",
-      base_url: base_url,
-      endpoint: endpoint,
-      full_url: full_url,
-      category: :api
-    )
-
     full_url
   end
 
