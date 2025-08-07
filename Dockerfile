@@ -174,7 +174,7 @@ RUN chmod +x /app/bin/wanderer_notifier \
 VOLUME ["/app/data", "/app/logs"]
 
 # Health check for container orchestration
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=5m --timeout=3s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:4000/api/health || exit 1
 
 # Switch to non-root user for security
