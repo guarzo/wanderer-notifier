@@ -3,19 +3,19 @@ defmodule WandererNotifier.DiscordNotifier do
   Simplified Discord notification system.
 
   Handles all Discord notifications (kills, rally points, system/character tracking)
-  using a single, unified approach with proper async handling and simplified HTTP client usage.
+  using a single, unified approach with proper async handling and Nostrum integration.
 
   Key design principles:
   - Fire-and-forget: All public functions return immediately
-  - Single HTTP client: Uses Req for all Discord API calls
+  - Single Discord client: Uses Nostrum via NeoClient for all Discord API calls
   - No blocking: All Discord API calls run in separate Tasks
-  - Simple retry logic: Leverages Req's built-in retry capabilities
+  - Built-in Discord features: Leverages Nostrum's rate limiting and reconnection handling
   """
 
   require Logger
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
-  alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
 
   @doc """
   Send a kill notification asynchronously.
@@ -231,80 +231,40 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
-  # Discord API Communication - Simplified using Req only
+  # Discord API Communication - Using Nostrum via NeoClient
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp send_to_discord(embed, channel_id) do
-    if Application.get_env(:wanderer_notifier, :env) == :test do
-      Logger.info("TEST MODE: Would send embed to Discord", channel: channel_id)
-      :ok
-    else
-      post_embed_to_discord(embed, channel_id)
-    end
-  end
+    # NeoClient already handles test mode internally
+    # Extract content from embed if present
+    embed_with_content =
+      case Map.get(embed, :content) do
+        nil ->
+          embed
 
-  defp post_embed_to_discord(embed, channel_id) do
-    url = "https://discord.com/api/v10/channels/#{channel_id}/messages"
+        "" ->
+          embed
 
-    headers = [
-      {"Authorization", "Bot #{Config.discord_bot_token()}"},
-      {"Content-Type", "application/json"},
-      {"User-Agent", "DiscordBot (wanderer-notifier, 1.0)"}
-    ]
+        content ->
+          # NeoClient expects content at the top level for embeds with content
+          Map.put(embed, :content, content)
+      end
 
-    # Build request body
-    body = build_discord_message_body(embed)
-
-    # Make request with Infrastructure.Http (disable retries to prevent duplicates)
-    # Discord notifications are fire-and-forget, and retries can cause duplicate messages
-    # Increase timeout to 30s to handle Discord API slowness
-    case Http.discord_post(url, body, headers, retry_count: 0, timeout: 30_000) do
-      {:ok, %{status_code: status_code}} when status_code in 200..299 ->
-        Logger.debug("Discord API call successful", status: status_code)
+    case NeoClient.send_embed(embed_with_content, channel_id) do
+      :ok ->
+        Logger.debug("Discord notification sent successfully via Nostrum", channel: channel_id)
         :ok
-
-      {:ok, %{status_code: 429, body: body}} ->
-        # Rate limited - log and continue (Req will retry automatically)
-        retry_after = get_retry_after_from_body(body)
-
-        Logger.warning(
-          "Discord rate limited: POST #{url} (channel: #{channel_id}, retry_after: #{retry_after})"
-        )
-
-        {:error, :rate_limited}
-
-      {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error(
-          "Discord API error: POST #{url} returned #{status_code} (channel: #{channel_id}) - #{inspect(body)}"
-        )
-
-        {:error, {:http_error, status_code}}
 
       {:error, reason} ->
         Logger.error(
-          "Discord API request failed: POST #{url} (channel: #{channel_id}) - #{inspect(reason)}"
+          "Discord notification failed via Nostrum",
+          channel: channel_id,
+          reason: inspect(reason)
         )
 
         {:error, reason}
     end
   end
-
-  defp build_discord_message_body(embed) do
-    body = %{embeds: [embed]}
-
-    # Add content if present
-    case Map.get(embed, :content) do
-      nil -> body
-      "" -> body
-      content -> Map.put(body, :content, content)
-    end
-  end
-
-  defp get_retry_after_from_body(body) when is_map(body) do
-    Map.get(body, "retry_after", 5)
-  end
-
-  defp get_retry_after_from_body(_), do: 5
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Helper Functions

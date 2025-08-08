@@ -51,26 +51,25 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec process_killmail_pipeline(killmail_data(), String.t()) :: result()
   defp process_killmail_pipeline(killmail_data, kill_id) do
+    Logger.info("[Pipeline] Starting pipeline for killmail #{kill_id}")
+
     # Check for duplicates first (in addition to WebSocket client deduplication)
-    with {:ok, :new} <- check_duplicate(kill_id),
+    duplicate_check = check_duplicate(kill_id)
+    Logger.info("[Pipeline] Duplicate check for #{kill_id}: #{inspect(duplicate_check)}")
+
+    with {:ok, :new} <- duplicate_check,
          {:ok, %Killmail{} = killmail} <- build_killmail(killmail_data),
          {:ok, true} <- should_notify?(killmail) do
       send_notification(killmail)
     else
       {:ok, :duplicate} ->
-        handle_skipped(kill_id, :duplicate)
+        handle_duplicate_killmail(kill_id)
 
       {:ok, false} ->
-        # Get killmail for logging details even though we're not notifying
-        case build_killmail(killmail_data) do
-          {:ok, %Killmail{} = killmail} ->
-            handle_skipped_with_details(kill_id, :not_tracked, killmail)
-
-          _ ->
-            handle_skipped(kill_id, :not_tracked)
-        end
+        handle_non_tracked_killmail(kill_id, killmail_data)
 
       {:error, reason} ->
+        Logger.info("[Pipeline] Error processing #{kill_id}: #{inspect(reason)}")
         handle_error(kill_id, reason)
     end
   end
@@ -86,6 +85,25 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
       result ->
         result
+    end
+  end
+
+  @spec handle_duplicate_killmail(String.t()) :: result()
+  defp handle_duplicate_killmail(kill_id) do
+    Logger.info("[Pipeline] Killmail #{kill_id} is a duplicate")
+    handle_skipped(kill_id, :duplicate)
+  end
+
+  @spec handle_non_tracked_killmail(String.t(), killmail_data()) :: result()
+  defp handle_non_tracked_killmail(kill_id, killmail_data) do
+    Logger.info("[Pipeline] Killmail #{kill_id} should_notify returned false")
+    # Get killmail for logging details even though we're not notifying
+    case build_killmail(killmail_data) do
+      {:ok, %Killmail{} = killmail} ->
+        handle_skipped_with_details(kill_id, :not_tracked, killmail)
+
+      _ ->
+        handle_skipped(kill_id, :not_tracked)
     end
   end
 
@@ -199,6 +217,10 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   @spec check_entity_tracking(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
   defp check_entity_tracking(%Killmail{} = killmail) do
     # Check if this killmail involves tracked entities
+    Logger.info(
+      "[Pipeline] Checking tracking for killmail #{killmail.killmail_id}, system_id: #{killmail.system_id}"
+    )
+
     with {:ok, system_tracked} <- system_tracked?(killmail.system_id),
          {:ok, character_tracked} <- character_tracked?(killmail) do
       is_tracked = system_tracked or character_tracked
@@ -209,9 +231,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp log_tracking_status(killmail_id, system_tracked, character_tracked, is_tracked) do
+    Logger.info(
+      "[Pipeline] Tracking status for killmail #{killmail_id}: system_tracked=#{system_tracked}, character_tracked=#{character_tracked}, is_tracked=#{is_tracked}"
+    )
+
     if is_tracked do
       tracking_reason = get_tracking_reason(system_tracked, character_tracked)
-      Logger.debug("[Pipeline] Killmail #{killmail_id} tracked: #{tracking_reason}")
+      Logger.info("[Pipeline] Killmail #{killmail_id} IS TRACKED: #{tracking_reason}")
     else
       Logger.debug("[Pipeline] Killmail #{killmail_id} not tracked")
     end
@@ -235,9 +261,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp system_tracked?(nil), do: {:ok, false}
 
   defp system_tracked?(system_id) when is_integer(system_id) do
-    system_id
-    |> Integer.to_string()
-    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?()
+    system_id_str = Integer.to_string(system_id)
+    Logger.info("[Pipeline] Checking if system #{system_id_str} is tracked")
+
+    result = WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str)
+    Logger.info("[Pipeline] System #{system_id_str} tracked check result: #{inspect(result)}")
+
+    result
   end
 
   @spec character_tracked?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
@@ -257,10 +287,17 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp victim_tracked?(nil), do: false
 
   defp victim_tracked?(character_id) when is_integer(character_id) do
-    character_id
-    |> Integer.to_string()
-    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?()
-    |> case do
+    character_id_str = Integer.to_string(character_id)
+    Logger.info("[Pipeline] Checking if victim character #{character_id_str} is tracked")
+
+    result =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
+
+    Logger.info(
+      "[Pipeline] Victim character #{character_id_str} tracked check result: #{inspect(result)}"
+    )
+
+    case result do
       {:ok, true} -> true
       _ -> false
     end
@@ -293,24 +330,30 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec send_notification(Killmail.t()) :: result()
   defp send_notification(%Killmail{} = killmail) do
-    Logger.debug("Sending kill notification", killmail_id: killmail.killmail_id)
+    Logger.info("[Pipeline] Starting notification process for killmail #{killmail.killmail_id}")
 
     # Check if we're in startup suppression period
-    if in_startup_suppression_period?() do
-      Logger.debug(
-        "Kill notification suppressed during startup period - killmail_id: #{killmail.killmail_id}"
+    in_suppression = in_startup_suppression_period?()
+    Logger.info("[Pipeline] Startup suppression check: #{in_suppression}")
+
+    if in_suppression do
+      Logger.info(
+        "[Pipeline] Kill notification suppressed during startup period - killmail_id: #{killmail.killmail_id}"
       )
 
       handle_skipped(killmail.killmail_id, :startup_suppression)
     else
       # Check if killmail is too old
+      Logger.info("[Pipeline] Checking killmail age for #{killmail.killmail_id}")
+
       case check_killmail_age(killmail) do
         :ok ->
+          Logger.info("[Pipeline] Killmail age OK, proceeding to process_and_notify")
           process_and_notify(killmail)
 
         {:too_old, age_seconds} ->
           Logger.info(
-            "Kill notification suppressed - killmail too old",
+            "[Pipeline] Kill notification suppressed - killmail too old",
             killmail_id: killmail.killmail_id,
             age_seconds: age_seconds,
             kill_time: killmail.kill_time

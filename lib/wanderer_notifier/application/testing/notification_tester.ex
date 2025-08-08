@@ -14,7 +14,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
       iex> NT.test_system("30000142")
 
       # Process killmail by ID as new notification
-      iex> NT.test_killmail_id("129069312")
+      iex> NT.test_killmail_id(129076453)
 
       # Test WandererKills service connectivity
       iex> NT.test_wanderer_kills_connection()
@@ -569,6 +569,10 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
       recent_keys = filter_recent_keys(keys)
       process_recent_keys(recent_keys)
 
+      # Also check for deduplication keys
+      dedup_keys = filter_dedup_keys(keys)
+      process_dedup_keys(dedup_keys)
+
       {:ok, length(killmail_keys)}
     rescue
       e ->
@@ -641,6 +645,28 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
     case Cachex.get(:wanderer_cache, key) do
       {:ok, data} -> Logger.info("[TEST] #{key}: #{inspect(data)}")
       _ -> Logger.info("[TEST] #{key}: no data")
+    end
+  end
+
+  defp filter_dedup_keys(keys) do
+    Enum.filter(keys, fn key ->
+      is_binary(key) && (String.contains?(key, "dedup") || String.contains?(key, "notification:"))
+    end)
+  end
+
+  defp process_dedup_keys([]), do: :ok
+
+  defp process_dedup_keys(dedup_keys) do
+    Logger.info("[TEST] Found #{length(dedup_keys)} deduplication entries")
+
+    dedup_keys
+    |> Enum.take(10)
+    |> Enum.each(fn key ->
+      Logger.info("[TEST] Dedup key: #{key}")
+    end)
+
+    if length(dedup_keys) > 10 do
+      Logger.info("[TEST] ... and #{length(dedup_keys) - 10} more dedup entries")
     end
   end
 
