@@ -37,7 +37,19 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp format_killmail_notification(%Killmail{} = killmail, _opts) do
-    embed_color = FormatterUtils.get_isk_color(killmail.value || 0)
+    # Determine color based on tracked character role
+    tracked_as = get_tracked_character_role(killmail)
+
+    embed_color =
+      case tracked_as do
+        # Red for losses
+        :victim -> 0xE74C3C
+        # Green for kills
+        :attacker -> 0x2ECC71
+        # Default ISK-based color for system kills
+        _ -> FormatterUtils.get_isk_color(killmail.value || 0)
+      end
+
     full_description = build_full_kill_description(killmail)
 
     %{
@@ -465,7 +477,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp format_timestamp(%Killmail{kill_time: kill_time}) when is_binary(kill_time) do
-    FormatterUtils.format_timestamp_with_context(kill_time)
+    # Convert to Discord timestamp format
+    case DateTime.from_iso8601(kill_time) do
+      {:ok, datetime, _offset} ->
+        unix_timestamp = DateTime.to_unix(datetime)
+        # Discord format: <t:timestamp:R> for relative time
+        "<t:#{unix_timestamp}:R>"
+
+      _ ->
+        "Recently"
+    end
   end
 
   defp format_timestamp(_), do: "Recently"
