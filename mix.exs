@@ -55,7 +55,7 @@ defmodule WandererNotifier.MixProject do
       {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
       # Phoenix & Ecto
-      {:phoenix, "~> 1.7.14"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:ecto, "~> 3.12"},
