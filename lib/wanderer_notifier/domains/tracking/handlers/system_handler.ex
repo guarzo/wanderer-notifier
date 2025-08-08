@@ -21,12 +21,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @impl true
   @spec handle_entity_added(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_added(event, map_slug) do
+    payload = Map.get(event, "payload", %{})
+
     SharedEventLogic.handle_entity_event(
       event,
       map_slug,
       :system_added,
       &create_system_from_payload/1,
-      &handle_cache_update/1,
+      &handle_cache_update(&1, payload),
       &maybe_send_notification/1
     )
   end
@@ -47,12 +49,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @impl true
   @spec handle_entity_updated(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_updated(event, map_slug) do
+    payload = Map.get(event, "payload", %{})
+
     SharedEventLogic.handle_entity_event(
       event,
       map_slug,
       :system_updated,
       &create_system_from_payload/1,
-      &update_system_cache/1,
+      &handle_cache_update(&1, payload),
       &maybe_log_system_update/1
     )
   end
@@ -140,8 +144,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # System-Specific Cache Operations
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp handle_cache_update(enriched_system) do
-    update_system_cache(enriched_system)
+  defp handle_cache_update(enriched_system, payload) do
+    with :ok <- update_system_cache(enriched_system),
+         :ok <- cache_individual_system(enriched_system, payload) do
+      :ok
+    else
+      error -> error
+    end
   end
 
   defp update_system_cache(system) do
@@ -167,12 +176,42 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
+  defp cache_individual_system(system, payload) do
+    system_id = to_string(system.solar_system_id)
+
+    # Store the raw payload data to preserve custom_name and other fields
+    # This mirrors what MapTrackingClient does when fetching from API
+    Cache.put_tracked_system(system_id, payload)
+
+    Logger.debug("Cached individual system data",
+      system_id: system_id,
+      has_custom_name: Map.has_key?(payload, "custom_name"),
+      custom_name: Map.get(payload, "custom_name"),
+      category: :cache
+    )
+
+    :ok
+  end
+
   defp remove_system_from_cache(payload) do
     cache_key = Cache.Keys.map_systems()
     system_id = Map.get(payload, "id")
 
-    Cache.get(cache_key)
-    |> handle_cache_result_for_removal(cache_key, system_id)
+    # Remove from main systems list
+    result =
+      cache_key
+      |> Cache.get()
+      |> handle_cache_result_for_removal(cache_key, system_id)
+
+    # Also remove individual system cache entry
+    if system_id do
+      system_id
+      |> to_string()
+      |> Cache.Keys.tracked_system()
+      |> Cache.delete()
+    end
+
+    result
   end
 
   defp handle_cache_result_for_removal({:ok, cached_systems}, cache_key, system_id)

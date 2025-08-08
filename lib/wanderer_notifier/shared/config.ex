@@ -181,6 +181,9 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Get startup suppression duration in seconds"
   def startup_suppression_seconds, do: get_integer("STARTUP_SUPPRESSION_SECONDS", 30)
 
+  @doc "Get maximum killmail age for notifications in seconds"
+  def max_killmail_age_seconds, do: get_integer("MAX_KILLMAIL_AGE_SECONDS", 3600)
+
   @doc "Get deduplication TTL in seconds"
   def deduplication_ttl_seconds, do: get_integer("DEDUPLICATION_TTL_SECONDS", 1800)
 

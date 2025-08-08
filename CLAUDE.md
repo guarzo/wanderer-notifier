@@ -344,3 +344,13 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `ENABLE_STATUS_MESSAGES` - Enable/disable startup status messages (default: false)
 - `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
 - `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
+
+### Notification Timing Configuration
+
+Control when notifications are sent based on timing:
+
+- `STARTUP_SUPPRESSION_SECONDS` - Suppress all notifications for this many seconds after startup (default: 30)
+- `MAX_KILLMAIL_AGE_SECONDS` - Maximum age of killmails to notify about in seconds (default: 3600 / 1 hour)
+  - Prevents notifications for old killmails when the service starts or reconnects
+  - Killmails older than this threshold will be silently skipped
+  - This works in addition to startup suppression for better control
