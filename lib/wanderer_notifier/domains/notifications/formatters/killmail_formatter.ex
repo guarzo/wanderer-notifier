@@ -64,7 +64,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
   defp build_full_kill_description(%Killmail{} = killmail) do
     # System line - use custom name if available
-    system_name = get_system_display_name(killmail)
+    system_name = get_system_display_name(killmail) |> capitalize_name()
 
     system_link =
       if killmail.system_id do
@@ -109,17 +109,19 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     tracked_as = get_tracked_character_role(killmail)
     author_name = if tracked_as == :victim, do: "Loss", else: "Kill"
 
-    final_blow = get_final_blow_attacker(killmail.attackers)
-
+    # For losses, use victim's corp logo, for kills use final blow attacker's corp logo
     corp_id =
-      if final_blow do
-        Map.get(final_blow, "corporation_id")
+      if tracked_as == :victim do
+        killmail.victim_corporation_id
+      else
+        final_blow = get_final_blow_attacker(killmail.attackers)
+        if final_blow, do: Map.get(final_blow, "corporation_id"), else: nil
       end
 
     if corp_id do
       %{
         name: author_name,
-        icon_url: Utils.corporation_logo_url(corp_id, 32),
+        icon_url: Utils.corporation_logo_url(corp_id, 64),
         url: Utils.zkillboard_url(killmail.killmail_id)
       }
     else
@@ -136,12 +138,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       killmail.victim_ship_type_id ->
         killmail.victim_ship_type_id
         # Larger size for main thumbnail
-        |> Utils.ship_render_url(512)
+        |> Utils.ship_render_url(1024)
         |> Utils.build_thumbnail()
 
       killmail.victim_character_id ->
         killmail.victim_character_id
-        |> Utils.character_portrait_url()
+        |> Utils.character_portrait_url(512)
         |> Utils.build_thumbnail()
 
       true ->
@@ -154,7 +156,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp build_victim_description_part(%Killmail{} = killmail) do
-    victim_name = killmail.victim_character_name || "Unknown pilot"
+    victim_name = (killmail.victim_character_name || "Unknown pilot") |> capitalize_name()
     victim_id = killmail.victim_character_id
     corp_id = killmail.victim_corporation_id
     ship_name = get_ship_name_from_killmail(killmail, :victim)
@@ -162,23 +164,23 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Get corporation ticker
     corp_ticker = get_corp_ticker_from_killmail(killmail, "victim")
 
-    # Create character link
+    # Create character link with bold formatting
     victim_link =
       if victim_id do
-        "[#{victim_name}](https://zkillboard.com/character/#{victim_id}/)"
+        "**[#{victim_name}](https://zkillboard.com/character/#{victim_id}/)**"
       else
-        victim_name
+        "**#{victim_name}**"
       end
 
-    # Create corp ticker link
+    # Create corp ticker link with bold formatting
     corp_link =
       if corp_id do
-        "[#{corp_ticker}](https://zkillboard.com/corporation/#{corp_id}/)"
+        "**[#{corp_ticker}](https://zkillboard.com/corporation/#{corp_id}/)**"
       else
-        corp_ticker
+        "**#{corp_ticker}**"
       end
 
-    "#{victim_link}(#{corp_link}) lost their #{ship_name} to"
+    "#{victim_link}(#{corp_link}) lost their **#{ship_name}** to"
   end
 
   defp build_attacker_description_part(%Killmail{} = killmail) do
@@ -199,7 +201,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     attacker_ship = get_attacker_ship_name(final_blow)
 
     if attacker_count == 1 do
-      "#{attacker_display} flying in a #{attacker_ship} solo."
+      "#{attacker_display} flying in a **#{attacker_ship}** solo."
     else
       build_multi_attacker_description(
         attacker_display,
@@ -221,7 +223,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     top_damage_part = build_top_damage_part(attackers, final_blow)
     others_count = attacker_count - 1
 
-    "#{attacker_display} flying in a #{attacker_ship}#{top_damage_part} and #{others_count} others"
+    "#{attacker_display} flying in a **#{attacker_ship}**#{top_damage_part} and #{others_count} others"
   end
 
   defp build_top_damage_part(attackers, final_blow) do
@@ -230,22 +232,37 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     if top_damage && top_damage != final_blow do
       top_display = build_attacker_display(top_damage)
       top_ship = get_attacker_ship_name(top_damage)
-      ", Top Damage was done by #{top_display} flying in a #{top_ship}"
+
+      # Handle NPCs (empty display means NPC)
+      if top_display == "" do
+        ", Top Damage was done by a **#{top_ship}**"
+      else
+        ", Top Damage was done by #{top_display} flying in a **#{top_ship}**"
+      end
     else
       ""
     end
   end
 
   defp build_attacker_display(attacker) do
-    attacker_name = Map.get(attacker, "character_name", "Unknown")
+    attacker_name = Map.get(attacker, "character_name")
     attacker_id = Map.get(attacker, "character_id")
     attacker_corp_id = Map.get(attacker, "corporation_id")
-    attacker_ticker = get_attacker_corp_ticker(attacker)
 
-    attacker_link = create_character_link(attacker_name, attacker_id)
-    attacker_corp_link = create_corporation_link(attacker_ticker, attacker_corp_id)
+    # Check if this is an NPC (no character_id means NPC)
+    if attacker_id do
+      # Player character
+      formatted_name = (attacker_name || "Unknown") |> capitalize_name()
+      attacker_ticker = get_attacker_corp_ticker(attacker)
 
-    "#{attacker_link}(#{attacker_corp_link})"
+      attacker_link = create_character_link(formatted_name, attacker_id)
+      attacker_corp_link = create_corporation_link(attacker_ticker, attacker_corp_id)
+
+      "#{attacker_link}(#{attacker_corp_link})"
+    else
+      # NPC - just show the ship name without character info
+      ""
+    end
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -300,13 +317,15 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # Helper Functions
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp create_character_link(name, nil), do: name
-  defp create_character_link(name, id), do: "[#{name}](https://zkillboard.com/character/#{id}/)"
+  defp create_character_link(name, nil), do: "**#{name}**"
 
-  defp create_corporation_link(ticker, nil), do: ticker
+  defp create_character_link(name, id),
+    do: "**[#{name}](https://zkillboard.com/character/#{id}/)**"
+
+  defp create_corporation_link(ticker, nil), do: "**#{ticker}**"
 
   defp create_corporation_link(ticker, id),
-    do: "[#{ticker}](https://zkillboard.com/corporation/#{id}/)"
+    do: "**[#{ticker}](https://zkillboard.com/corporation/#{id}/)**"
 
   defp get_corp_ticker_from_killmail(%Killmail{} = killmail, "victim") do
     get_corporation_ticker(killmail.victim_corporation_id)
@@ -450,4 +469,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp format_timestamp(_), do: "Recently"
+
+  # Capitalize each word in a name (handles multi-word names)
+  defp capitalize_name(nil), do: nil
+
+  defp capitalize_name(name) when is_binary(name) do
+    name
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp capitalize_name(name), do: name
 end
