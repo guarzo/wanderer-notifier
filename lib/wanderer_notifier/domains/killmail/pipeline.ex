@@ -14,6 +14,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
+  alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Shared.Utils.EntityUtils
 
@@ -302,26 +303,44 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
       handle_skipped(killmail.killmail_id, :startup_suppression)
     else
-      # Process items right before sending notification (after we've decided to notify)
-      killmail_to_notify =
-        case maybe_process_items(killmail) do
-          {:ok, enriched} ->
-            Logger.debug(
-              "Item processing completed successfully - killmail_id: #{killmail.killmail_id}"
-            )
+      # Check if killmail is too old
+      case check_killmail_age(killmail) do
+        :ok ->
+          process_and_notify(killmail)
 
-            enriched
+        {:too_old, age_seconds} ->
+          Logger.info(
+            "Kill notification suppressed - killmail too old",
+            killmail_id: killmail.killmail_id,
+            age_seconds: age_seconds,
+            kill_time: killmail.kill_time
+          )
 
-          {:error, reason} ->
-            Logger.warning(
-              "Item processing failed, continuing without items - killmail_id: #{killmail.killmail_id}, reason: #{inspect(reason)}"
-            )
-
-            killmail
-        end
-
-      handle_notification_response(killmail_to_notify)
+          handle_skipped(killmail.killmail_id, :too_old)
+      end
     end
+  end
+
+  defp process_and_notify(killmail) do
+    # Process items right before sending notification (after we've decided to notify)
+    killmail_to_notify =
+      case maybe_process_items(killmail) do
+        {:ok, enriched} ->
+          Logger.debug(
+            "Item processing completed successfully - killmail_id: #{killmail.killmail_id}"
+          )
+
+          enriched
+
+        {:error, reason} ->
+          Logger.warning(
+            "Item processing failed, continuing without items - killmail_id: #{killmail.killmail_id}, reason: #{inspect(reason)}"
+          )
+
+          killmail
+      end
+
+    handle_notification_response(killmail_to_notify)
   end
 
   @spec handle_notification_response(Killmail.t()) :: result()
@@ -416,6 +435,27 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp in_startup_suppression_period?, do: Startup.in_suppression_period?()
+
+  defp check_killmail_age(%Killmail{kill_time: nil}), do: :ok
+
+  defp check_killmail_age(%Killmail{kill_time: kill_time}) do
+    case TimeUtils.parse_iso8601(kill_time) do
+      {:ok, kill_datetime} ->
+        max_age_seconds = Config.max_killmail_age_seconds()
+
+        if TimeUtils.within_age?(kill_datetime, max_age_seconds) do
+          :ok
+        else
+          age_seconds = TimeUtils.elapsed_seconds(kill_datetime)
+          {:too_old, age_seconds}
+        end
+
+      {:error, _reason} ->
+        # If we can't parse the kill time, allow it through
+        Logger.warning("Failed to parse kill_time", kill_time: kill_time)
+        :ok
+    end
+  end
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Utilities
