@@ -235,13 +235,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     top_damage_part = build_top_damage_part(attackers, final_blow)
     others_count = attacker_count - 1
 
-    "#{attacker_display} flying in a **#{attacker_ship}**#{top_damage_part} and #{others_count} others"
+    "#{attacker_display} flying in a **#{attacker_ship}**#{top_damage_part}, and #{others_count} others."
   end
 
   defp build_top_damage_part(attackers, final_blow) do
     top_damage = get_top_damage_attacker(attackers)
 
-    if top_damage && top_damage != final_blow do
+    # Compare by character_id to avoid reference comparison issues
+    final_blow_id = Map.get(final_blow, "character_id")
+    top_damage_id = top_damage && Map.get(top_damage, "character_id")
+
+    if top_damage && top_damage_id != final_blow_id do
       top_display = build_attacker_display(top_damage)
       top_ship = get_attacker_ship_name(top_damage)
 

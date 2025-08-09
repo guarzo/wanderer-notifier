@@ -188,9 +188,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     end
   end
 
-  defp handle_discord_result({:ok, response}, start_time, rally_id) do
+  defp handle_discord_result({:ok, _response}, start_time, rally_id) do
     handle_success(start_time, rally_id, 0)
-    response
+    :ok
   end
 
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
