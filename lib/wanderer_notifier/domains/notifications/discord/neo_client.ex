@@ -261,8 +261,15 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp call_discord_api(channel_id_int, discord_embed, content) do
     # Add debugging for Discord API calls
+    content_info =
+      if content do
+        "\"#{String.slice(content, 0, 50)}#{if String.length(content) > 50, do: "...", else: ""}\""
+      else
+        "none"
+      end
+
     Logger.info(
-      "Discord API call starting - Channel: #{channel_id_int}, Content: #{not is_nil(content)}"
+      "Discord API call starting - Channel: #{channel_id_int}, Content: #{content_info}"
     )
 
     # Log timestamp before call for precise timing

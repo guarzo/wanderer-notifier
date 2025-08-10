@@ -17,15 +17,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.RallyFormatterTest d
 
       result = RallyFormatter.format_embed(rally_point)
 
-      assert %{embeds: [embed]} = result
-      assert embed.title == "⚔️ Rally Point Created"
-      assert embed.description =~ "Test Pilot"
-      assert embed.description =~ "Jita"
-      assert embed.color == 0xFF6B00
-      assert embed.footer.text == "Rally ID: rally-123"
+      assert result.title == "⚔️ Rally Point Created"
+      assert result.description =~ "Test Pilot"
+      assert result.description =~ "Jita"
+      assert result.color == 0xFF6B00
+      assert result.footer.text == "Rally ID: rally-123"
 
       # Check fields
-      fields = embed.fields
+      fields = result.fields
       assert length(fields) == 4
       assert Enum.any?(fields, &(&1.name == "System" and &1.value == "Jita"))
       assert Enum.any?(fields, &(&1.name == "Created By" and &1.value == "Test Pilot"))
@@ -44,8 +43,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.RallyFormatterTest d
 
       result = RallyFormatter.format_embed(rally_point)
 
-      assert %{embeds: [embed]} = result
-      fields = embed.fields
+      fields = result.fields
       assert length(fields) == 2
       assert Enum.any?(fields, &(&1.name == "System" and &1.value == "Amarr"))
       assert Enum.any?(fields, &(&1.name == "Created By" and &1.value == "Solo Pilot"))

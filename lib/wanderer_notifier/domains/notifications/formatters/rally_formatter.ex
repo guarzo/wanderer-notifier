@@ -11,18 +11,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.RallyFormatter do
   """
   def format_embed(rally_point) do
     %{
-      embeds: [
-        %{
-          title: "⚔️ Rally Point Created",
-          description: build_description(rally_point),
-          color: @rally_embed_color,
-          fields: build_fields(rally_point),
-          footer: %{
-            text: "Rally ID: #{rally_point.id}"
-          },
-          timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
-        }
-      ]
+      title: "⚔️ Rally Point Created",
+      description: build_description(rally_point),
+      color: @rally_embed_color,
+      fields: build_fields(rally_point),
+      footer: %{
+        text: "Rally ID: #{rally_point.id}"
+      },
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
     }
   end
 

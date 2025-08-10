@@ -16,10 +16,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
       result = NotificationFormatter.format_notification(rally_point)
 
-      assert %{embeds: [embed]} = result
-      assert embed.title == "⚔️ Rally Point Created"
-      assert embed.description =~ "Test Pilot"
-      assert embed.description =~ "Jita"
+      assert result.title == "⚔️ Rally Point Created"
+      assert result.description =~ "Test Pilot"
+      assert result.description =~ "Jita"
     end
 
     test "formats rally point plain text correctly" do
@@ -44,7 +43,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       result = NotificationFormatter.format_notification(rally_point)
 
       refute result == {:error, :unknown_notification_type}
-      assert %{embeds: _} = result
+      assert is_map(result)
+      assert result.title == "⚔️ Rally Point Created"
     end
   end
 end
