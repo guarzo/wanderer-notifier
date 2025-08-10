@@ -13,7 +13,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   alias WandererNotifier.Domains.Notifications.Formatters.{
     KillmailFormatter,
     CharacterFormatter,
-    SystemFormatter
+    SystemFormatter,
+    RallyFormatter
   }
 
   require Logger
@@ -65,6 +66,21 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     SystemFormatter.format_embed(system)
   end
 
+  # Handle rally point notifications
+  def format_notification(%{id: _, system_id: _, character_eve_id: _} = rally_point) do
+    Logger.debug("NotificationFormatter received rally point: #{inspect(rally_point)}")
+    RallyFormatter.format_embed(rally_point)
+  end
+
+  # Also handle the original format for backwards compatibility
+  def format_notification(%{id: _, system_name: _, character_name: _} = rally_point) do
+    Logger.debug(
+      "NotificationFormatter received rally point (legacy format): #{inspect(rally_point)}"
+    )
+
+    RallyFormatter.format_embed(rally_point)
+  end
+
   def format_notification(notification) do
     Logger.error("Unknown notification type: #{inspect(notification)}")
     {:error, :unknown_notification_type}
@@ -103,6 +119,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
       %Killmail{} = killmail -> format_killmail_plain_text(killmail)
       %Character{} = character -> format_character_plain_text(character)
       %System{} = system -> format_system_plain_text(system)
+      %{id: _} = rally_point -> format_rally_plain_text(rally_point)
       _ -> "Unknown notification type"
     end
   end
@@ -130,6 +147,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   defp format_system_plain_text(%System{} = system) do
     "System #{system.name} is now being tracked"
+  end
+
+  defp format_rally_plain_text(rally_point) do
+    RallyFormatter.format_plain_text(rally_point)
   end
 
   # Use centralized ISK formatting
