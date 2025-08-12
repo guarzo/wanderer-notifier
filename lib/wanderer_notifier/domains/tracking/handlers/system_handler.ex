@@ -225,6 +225,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     :ok
   end
 
+  defp handle_cache_result_for_removal({:error, :not_found}, _cache_key, _system_id) do
+    # No cached systems, nothing to remove
+    :ok
+  end
+
   defp handle_cache_result_for_removal({:error, reason}, cache_key, _system_id) do
     Logger.error("Failed to read system cache for removal",
       cache_key: cache_key,
@@ -239,12 +244,43 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     Enum.reject(systems, &has_matching_system_id?(&1, system_id))
   end
 
-  defp has_matching_system_id?(%System{solar_system_id: sid}, system_id), do: sid == system_id
-  defp has_matching_system_id?(%{solar_system_id: sid}, system_id), do: sid == system_id
-  defp has_matching_system_id?(%{"solar_system_id" => sid}, system_id), do: sid == system_id
-  defp has_matching_system_id?(%{id: id}, system_id), do: id == system_id
-  defp has_matching_system_id?(%{"id" => id}, system_id), do: id == system_id
+  defp has_matching_system_id?(%System{solar_system_id: sid}, system_id) do
+    compare_system_ids(sid, system_id)
+  end
+
+  defp has_matching_system_id?(%{solar_system_id: sid}, system_id) do
+    compare_system_ids(sid, system_id)
+  end
+
+  defp has_matching_system_id?(%{"solar_system_id" => sid}, system_id) do
+    compare_system_ids(sid, system_id)
+  end
+
+  defp has_matching_system_id?(%{id: id}, system_id) do
+    compare_system_ids(id, system_id)
+  end
+
+  defp has_matching_system_id?(%{"id" => id}, system_id) do
+    compare_system_ids(id, system_id)
+  end
+
   defp has_matching_system_id?(_, _), do: false
+
+  # Helper to compare system IDs regardless of type (string vs integer)
+  defp compare_system_ids(id1, id2) do
+    normalize_id(id1) == normalize_id(id2)
+  end
+
+  defp normalize_id(id) when is_integer(id), do: id
+
+  defp normalize_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ -> id
+    end
+  end
+
+  defp normalize_id(id), do: id
 
   defp update_system_in_list(systems, new_system) do
     system_id = new_system.solar_system_id
