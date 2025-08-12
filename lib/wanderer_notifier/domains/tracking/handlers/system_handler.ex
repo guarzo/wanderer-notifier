@@ -230,16 +230,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     :ok
   end
 
-  defp handle_cache_result_for_removal({:error, reason}, cache_key, _system_id) do
-    Logger.error("Failed to read system cache for removal",
-      cache_key: cache_key,
-      error: inspect(reason),
-      category: :api
-    )
-
-    {:error, {:cache_read_failed, reason}}
-  end
-
   defp filter_out_system(systems, system_id) do
     Enum.reject(systems, &has_matching_system_id?(&1, system_id))
   end
