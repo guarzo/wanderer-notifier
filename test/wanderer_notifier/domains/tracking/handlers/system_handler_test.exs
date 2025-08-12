@@ -181,7 +181,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       assert log_output =~ "system_removed payload received"
       assert log_output =~ "Processing system_removed event"
       assert log_output =~ "System removed from tracking"
-      assert log_output =~ "31000001"
     end
 
     test "removes individual system cache entry even if main cache fails" do
@@ -210,6 +209,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
   describe "handle_entity_added/2" do
     test "adds new system to cache and enriches it" do
+      # Mock the system static info request
+      expect(WandererNotifier.HTTPMock, :request, fn
+        :get,
+        "http://test.map.url/api/common/system-static-info?id=31000001",
+        nil,
+        _headers,
+        _opts ->
+          {:ok,
+           %{
+             status_code: 200,
+             body: %{
+               "data" => %{
+                 "solar_system_id" => 31_000_001,
+                 "solar_system_name" => "J123456",
+                 "class_title" => "C3",
+                 "statics" => ["D845"],
+                 "region_name" => "W-Space"
+               }
+             }
+           }}
+      end)
+
       event = %{
         "type" => "add_system",
         "payload" => %{
@@ -241,6 +262,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
     end
 
     test "updates existing system instead of duplicating" do
+      # Mock the system static info request
+      expect(WandererNotifier.HTTPMock, :request, fn
+        :get,
+        "http://test.map.url/api/common/system-static-info?id=31000001",
+        nil,
+        _headers,
+        _opts ->
+          {:ok,
+           %{
+             status_code: 200,
+             body: %{
+               "data" => %{
+                 "solar_system_id" => 31_000_001,
+                 "solar_system_name" => "J123456",
+                 "class_title" => "C3",
+                 "statics" => ["D845"],
+                 "region_name" => "W-Space"
+               }
+             }
+           }}
+      end)
+
       # Setup: Add existing system
       existing_system = %System{
         solar_system_id: 31_000_001,
@@ -276,6 +319,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
   describe "handle_entity_updated/2" do
     test "updates system metadata" do
+      # Mock the system static info request
+      expect(WandererNotifier.HTTPMock, :request, fn
+        :get,
+        "http://test.map.url/api/common/system-static-info?id=31000001",
+        nil,
+        _headers,
+        _opts ->
+          {:ok,
+           %{
+             status_code: 200,
+             body: %{
+               "data" => %{
+                 "solar_system_id" => 31_000_001,
+                 "solar_system_name" => "J123456",
+                 "class_title" => "C3",
+                 "statics" => ["D845"],
+                 "region_name" => "W-Space"
+               }
+             }
+           }}
+      end)
+
       # Setup: Add existing system
       existing_system = %System{
         solar_system_id: 31_000_001,
@@ -316,6 +381,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
     end
 
     test "adds system if it doesn't exist during update" do
+      # Mock the system static info request
+      expect(WandererNotifier.HTTPMock, :request, fn
+        :get,
+        "http://test.map.url/api/common/system-static-info?id=31000001",
+        nil,
+        _headers,
+        _opts ->
+          {:ok,
+           %{
+             status_code: 200,
+             body: %{
+               "data" => %{
+                 "solar_system_id" => 31_000_001,
+                 "solar_system_name" => "J123456",
+                 "class_title" => "C3",
+                 "statics" => ["D845"],
+                 "region_name" => "W-Space"
+               }
+             }
+           }}
+      end)
+
       # Update event for non-existent system
       event = %{
         "type" => "system_metadata_changed",

@@ -279,6 +279,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   end
 
   defp maybe_notify_character_removed(character) do
+    # Always log removal, regardless of notification decision
+    Logger.debug("Character removed from tracking",
+      character_name: character["name"],
+      eve_id: character["eve_id"],
+      category: :api
+    )
+
     if should_notify_character_removed(character) do
       send_character_removed_notification(character)
     end
@@ -333,14 +340,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     :ok
   end
 
-  defp send_character_removed_notification(character) do
+  defp send_character_removed_notification(_character) do
     # For now, we don't have a specific "character removed" notification
-    Logger.debug("Character removed from tracking",
-      character_name: character["name"],
-      eve_id: character["eve_id"],
-      category: :api
-    )
-
+    # Logging is handled in maybe_notify_character_removed
     :ok
   end
 

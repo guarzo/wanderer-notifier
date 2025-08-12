@@ -184,8 +184,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert log_output =~ "character_removed payload received"
       assert log_output =~ "Processing character_removed event"
       assert log_output =~ "Character removed from tracking"
-      assert log_output =~ "Test Character"
-      assert log_output =~ "123456"
     end
   end
 

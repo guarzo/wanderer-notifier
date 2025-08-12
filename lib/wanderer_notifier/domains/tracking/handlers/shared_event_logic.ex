@@ -134,6 +134,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
   def extract_entity_id_from_result(entity) do
     # Use EntityUtils for consistent extraction logic, but preserve original data types
     case entity do
+      %WandererNotifier.Domains.Tracking.Entities.System{solar_system_id: id} ->
+        id
+
       %{eve_id: id} ->
         id
 
@@ -141,8 +144,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
         id
 
       _ ->
-        EntityUtils.extract_character_id(entity) ||
-          EntityUtils.extract_system_id(entity) ||
+        EntityUtils.extract_system_id(entity) ||
+          EntityUtils.extract_character_id(entity) ||
           EntityUtils.get_value(entity, "id")
     end
   end

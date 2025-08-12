@@ -165,6 +165,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       {:ok, nil} ->
         Cache.put_with_ttl(cache_key, [system], Cache.ttl(:map_data))
 
+      {:error, :not_found} ->
+        # Cache is empty, create new entry
+        Cache.put_with_ttl(cache_key, [system], Cache.ttl(:map_data))
+
       {:error, reason} ->
         Logger.error("Failed to read system cache",
           cache_key: cache_key,
