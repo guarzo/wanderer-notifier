@@ -87,6 +87,14 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Check if only priority systems should be notified"
   def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
 
+  @doc "Check if kill notifications should only be sent for wormhole systems"
+  def wormhole_only_kill_notifications? do
+    case Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications) do
+      nil -> get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false)
+      value -> value
+    end
+  end
+
   @doc "Check if kill notifications are fully enabled (both global and kill-specific flags)"
   def kill_notifications_fully_enabled? do
     notifications_enabled?() and kill_notifications_enabled?()

@@ -255,5 +255,178 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       result = Pipeline.process_killmail(zkb_data)
       assert {:error, :missing_system_id} = result
     end
+
+    test "process_killmail/1 filters k-space kills when wormhole_only_kill_notifications is true" do
+      # Set config environment variables temporarily
+      original_wormhole_value =
+        Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications)
+
+      original_suppression_value =
+        Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
+
+      Application.put_env(:wanderer_notifier, :wormhole_only_kill_notifications, true)
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 78_910,
+        "zkb" => %{"hash" => "kspace_hash"},
+        "solar_system_id" => 30_000_142,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 200
+        },
+        "attackers" => []
+      }
+
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      # Mark system as tracked
+      Cachex.put(cache_name, "tracked_system:30000142", true)
+
+      # Create a proper System struct in cache
+      system_data = %WandererNotifier.Domains.Tracking.Entities.System{
+        solar_system_id: "30000142",
+        name: "Jita",
+        system_type: "k-space",
+        security_status: 1.0,
+        tracked: true
+      }
+
+      # Store in map:systems cache with proper structure
+      Cachex.put(cache_name, "map:systems", [system_data])
+      Cachex.put(cache_name, "map:character_list", [])
+
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, :skipped} = result
+
+      # Restore original configs
+      Application.put_env(
+        :wanderer_notifier,
+        :wormhole_only_kill_notifications,
+        original_wormhole_value
+      )
+
+      Application.put_env(
+        :wanderer_notifier,
+        :startup_suppression_seconds,
+        original_suppression_value
+      )
+    end
+
+    test "process_killmail/1 allows wormhole kills when wormhole_only_kill_notifications is true" do
+      # Set config environment variables temporarily
+      original_wormhole_value =
+        Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications)
+
+      original_suppression_value =
+        Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
+
+      Application.put_env(:wanderer_notifier, :wormhole_only_kill_notifications, true)
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 78_911,
+        "zkb" => %{"hash" => "wh_hash", "totalValue" => 1_000_000},
+        "solar_system_id" => 31_000_001,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 200,
+          "ship_type_id" => 670
+        },
+        "attackers" => []
+      }
+
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      # Mark system as tracked wormhole
+      Cachex.put(cache_name, "tracked_system:31000001", true)
+
+      # Create a proper System struct in cache
+      system_data = %WandererNotifier.Domains.Tracking.Entities.System{
+        solar_system_id: "31000001",
+        name: "J123456",
+        system_type: "wormhole",
+        security_status: -0.99,
+        tracked: true
+      }
+
+      # Store in map:systems cache with proper structure
+      Cachex.put(cache_name, "map:systems", [system_data])
+      Cachex.put(cache_name, "map:character_list", [])
+
+      # Should process successfully since it's a wormhole system
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, "78911"} = result
+
+      # Restore original configs
+      Application.put_env(
+        :wanderer_notifier,
+        :wormhole_only_kill_notifications,
+        original_wormhole_value
+      )
+
+      Application.put_env(
+        :wanderer_notifier,
+        :startup_suppression_seconds,
+        original_suppression_value
+      )
+    end
+
+    test "process_killmail/1 processes all systems when wormhole_only_kill_notifications is false" do
+      # Set config environment variables
+      original_wormhole_value =
+        Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications)
+
+      original_suppression_value =
+        Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
+
+      Application.put_env(:wanderer_notifier, :wormhole_only_kill_notifications, false)
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 78_912,
+        "zkb" => %{"hash" => "kspace_hash2", "totalValue" => 1_000_000},
+        "solar_system_id" => 30_000_142,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 200,
+          "ship_type_id" => 670
+        },
+        "attackers" => []
+      }
+
+      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
+      # Mark system as tracked k-space
+      Cachex.put(cache_name, "tracked_system:30000142", true)
+
+      Cachex.put(cache_name, "map:systems", [
+        %{
+          "solar_system_id" => 30_000_142,
+          "system_name" => "Jita",
+          "system_type" => "k-space",
+          "security_status" => 1.0
+        }
+      ])
+
+      Cachex.put(cache_name, "map:character_list", [])
+
+      # Should process successfully since wormhole_only flag is false
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, "78912"} = result
+
+      # Restore original configs
+      Application.put_env(
+        :wanderer_notifier,
+        :wormhole_only_kill_notifications,
+        original_wormhole_value
+      )
+
+      Application.put_env(
+        :wanderer_notifier,
+        :startup_suppression_seconds,
+        original_suppression_value
+      )
+    end
   end
 end

@@ -344,6 +344,7 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `ENABLE_STATUS_MESSAGES` - Enable/disable startup status messages (default: false)
 - `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
 - `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
+- `WORMHOLE_ONLY_KILL_NOTIFICATIONS` - Only send kill notifications for wormhole systems (default: false)
 
 ### Notification Timing Configuration
 
