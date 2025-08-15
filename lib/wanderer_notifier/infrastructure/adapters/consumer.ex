@@ -23,6 +23,15 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.Consumer do
   def handle_event({:READY, _data, _ws_state}) do
     Logger.info("Discord consumer ready, registering slash commands")
 
+    # Log process info for debugging
+    self_pid = self()
+
+    Logger.debug("Discord consumer process info",
+      pid: inspect(self_pid),
+      registered_name: Process.info(self_pid, :registered_name),
+      module: __MODULE__
+    )
+
     case CommandRegistrar.register() do
       :ok ->
         Logger.info("Slash commands registered successfully")

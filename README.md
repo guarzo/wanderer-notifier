@@ -362,8 +362,6 @@ lib/wanderer_notifier/
 
 - **Context Layer** (`lib/wanderer_notifier/contexts/`): Cross-domain coordination for API, notification, and processing concerns
 
-- **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers and processing pipeline
-
 - **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
 
 - **Configuration Management** (`lib/wanderer_notifier/shared/config/`): Comprehensive configuration with validation and feature flags

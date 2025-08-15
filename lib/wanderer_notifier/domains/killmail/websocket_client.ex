@@ -81,6 +81,11 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
     ConnectionMonitor.update_connection_status(connection_id, :connected)
 
+    # Update metrics with connection start time
+    WandererNotifier.Shared.Metrics.update_websocket_info(%{
+      connection_start: System.system_time(:second)
+    })
+
     # Start heartbeat
     heartbeat_ref = Process.send_after(self(), :heartbeat, @heartbeat_interval)
 
@@ -121,7 +126,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
 
     # Clear websocket stats on disconnect
-    # Health is now tracked by simple process checks %{})
+    WandererNotifier.Shared.Metrics.update_websocket_info(%{
+      connection_start: nil
+    })
 
     # Calculate exponential backoff with jitter using unified retry logic
     delay = calculate_backoff(state.reconnect_attempts)

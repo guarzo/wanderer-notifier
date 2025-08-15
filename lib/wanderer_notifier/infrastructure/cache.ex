@@ -54,7 +54,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
     do: Application.get_env(:wanderer_notifier, :cache_size_limit, @default_size_limit)
 
   def cache_stats_enabled?,
-    do: Application.get_env(:wanderer_notifier, :cache_stats_enabled, false)
+    do: Application.get_env(:wanderer_notifier, :cache_stats_enabled, true)
 
   def default_cache_name, do: @default_cache_name
 

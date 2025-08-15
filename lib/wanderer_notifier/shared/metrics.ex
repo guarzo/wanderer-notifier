@@ -99,6 +99,18 @@ defmodule WandererNotifier.Shared.Metrics do
     end)
   end
 
+  @doc """
+  Updates websocket connection info.
+  """
+  @spec update_websocket_info(map()) :: :ok
+  def update_websocket_info(info) do
+    Agent.update(__MODULE__, fn state ->
+      websocket_info = Map.get(state, :websocket, %{})
+      updated_info = Map.merge(websocket_info, info)
+      Map.put(state, :websocket, updated_info)
+    end)
+  end
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Private Functions
   # ──────────────────────────────────────────────────────────────────────────────

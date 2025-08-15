@@ -65,30 +65,16 @@ jobs:
           else
             ENVIRONMENT="production"
             ACTION="deploy"
-            # Get the latest tag - could be semantic version or dated version
-            # First try to get dated tags (e.g., v4.0.2.20240714123456)
-            DATED_VERSION=$(git tag -l "v*.*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1)
-            
-            if [ -n "$DATED_VERSION" ]; then
-              VERSION="$DATED_VERSION"
-              echo "Using dated version: $VERSION"
-            else
-              # Fall back to semantic version tag (e.g., v4.0.2)
-              VERSION=$(git tag -l "v*.*.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -1 || echo "")
-              echo "Using semantic version: $VERSION"
-            fi
+            # Get the most recent tag by creation time
+            VERSION=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags | grep -E "^v[0-9]+" | head -1)
+            echo "Using most recent tag by creation time: $VERSION"
           fi
           
-          # If no semantic version found, try to find the most recent specific version tag
+          # If no version found, exit with error
           if [ -z "$VERSION" ]; then
-            # Try to get the most recent tag that looks like a version
-            VERSION=$(git tag -l "v*" | grep -E "^v[0-9]+(\.[0-9]+)*$" | sort -V | tail -1)
-            if [ -z "$VERSION" ]; then
-              echo "❌ No version tag found! Cannot deploy without a version tag."
-              echo "Please ensure the CI/CD pipeline has created version tags."
-              exit 1
-            fi
-            echo "⚠️  No three-part version found, using: $VERSION"
+            echo "❌ No version tag found! Cannot deploy without a version tag."
+            echo "Please ensure the CI/CD pipeline has created version tags."
+            exit 1
           fi
           
           echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT

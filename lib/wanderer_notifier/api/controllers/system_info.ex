@@ -48,6 +48,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       processing: extract_processing_stats(stats),
       performance: extract_performance_stats(stats),
       websocket: extract_websocket_stats(),
+      sse: extract_sse_stats(),
+      connections: extract_connection_monitor_stats(),
       recent_activity: extract_recent_activity(),
       memory_detailed: extract_detailed_memory_stats(),
       processes: extract_process_stats(),
@@ -179,6 +181,66 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       connection_status: if(websocket_pid, do: "connected", else: "disconnected"),
       connection_uptime_seconds: connection_uptime,
       connection_uptime_formatted: uptime_formatted
+    }
+  end
+
+  defp extract_sse_stats do
+    # Try to get SSE client status - check for any registered SSE clients
+    try do
+      map_name = WandererNotifier.Shared.Config.map_name()
+      # If map_name is configured, it will have a value; if not, get_required will raise
+      try do
+        status = WandererNotifier.Map.SSEClient.get_status(map_name)
+
+        %{
+          client_alive: true,
+          connection_status: to_string(status),
+          map_name: map_name
+        }
+      catch
+        :exit, _ ->
+          %{
+            client_alive: false,
+            connection_status: "not_running",
+            map_name: map_name
+          }
+      end
+    rescue
+      _ ->
+        # Config.map_name() raised because it's not configured
+        %{
+          client_alive: false,
+          connection_status: "not_configured",
+          map_name: nil
+        }
+    end
+  end
+
+  defp extract_connection_monitor_stats do
+    try do
+      case WandererNotifier.Infrastructure.Messaging.ConnectionMonitor.get_connections() do
+        {:ok, connections} ->
+          %{
+            total_connections: length(connections),
+            connections: Enum.map(connections, &format_connection_info/1)
+          }
+
+        _ ->
+          %{total_connections: 0, connections: []}
+      end
+    rescue
+      _ -> %{total_connections: 0, connections: []}
+    end
+  end
+
+  defp format_connection_info(connection) do
+    %{
+      id: connection.id,
+      type: connection.type,
+      status: connection.status,
+      quality: connection.quality,
+      uptime_percentage: connection.uptime_percentage,
+      ping_time: connection.ping_time
     }
   end
 
@@ -334,9 +396,11 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp get_cache_stats_for_process(cache_name) do
     case Process.whereis(cache_name) do
       nil ->
+        Logger.debug("Cache process not found with name: #{inspect(cache_name)}")
         handle_missing_cache_process(cache_name)
 
-      _pid ->
+      pid ->
+        Logger.debug("Cache process found: #{inspect(cache_name)} -> #{inspect(pid)}")
         fetch_cachex_stats(cache_name)
     end
   end
@@ -349,32 +413,39 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp fetch_cachex_stats(cache_name) do
     case Cachex.stats(cache_name) do
       {:ok, stats} ->
+        Logger.debug("Raw cache stats: #{inspect(stats)}")
         build_cache_stats_from_cachex(stats, cache_name)
 
       {:error, reason} ->
+        Logger.debug("Cache stats error: #{inspect(reason)}")
         handle_cachex_error(reason)
     end
   end
 
   defp build_cache_stats_from_cachex(stats, cache_name) do
+    # Cachex stats returns a map with :hits, :misses, etc.
+    # Access them as map keys, not struct fields
+    hits = Map.get(stats, :hits, 0)
+    misses = Map.get(stats, :misses, 0)
+    writes = Map.get(stats, :writes, 0)
+
     %{
-      hits: stats.hits || 0,
-      misses: stats.misses || 0,
-      hit_rate: calculate_hit_rate(stats.hits, stats.misses),
+      hits: hits,
+      misses: misses,
+      hit_rate: calculate_hit_rate(hits, misses),
       evictions: Map.get(stats, :evictions, 0),
       expirations: Map.get(stats, :expirations, 0),
-      writes: stats.writes || 0,
+      writes: writes,
       size: get_cache_size(cache_name)
     }
   end
 
-  defp handle_cachex_error(%{reason: :stats_disabled}) do
-    # Stats are disabled, return empty stats without warning
-    empty_cache_stats()
-  end
-
   defp handle_cachex_error(reason) do
-    Logger.warning("Failed to get cache stats: #{inspect(reason)}")
+    # Don't warn for expected errors like stats_disabled
+    if reason != :stats_disabled do
+      Logger.warning("Failed to get cache stats: #{inspect(reason)}")
+    end
+
     empty_cache_stats()
   end
 
@@ -405,37 +476,83 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp get_key_process_info do
     processes = [
       {"WebSocket Client", WandererNotifier.Domains.Killmail.WebSocketClient},
-      {"Application Service", WandererNotifier.Application.Services.ApplicationService},
-      {"Pipeline Worker", WandererNotifier.Domains.Killmail.PipelineWorker},
-      {"Discord Consumer", WandererNotifier.Infrastructure.Adapters.Discord.Consumer}
+      {"Pipeline Worker", WandererNotifier.Domains.Killmail.PipelineWorker}
     ]
 
-    processes
-    |> Enum.map(fn {name, module} ->
-      pid = Process.whereis(module)
+    # Get standard processes
+    standard_processes =
+      processes
+      |> Enum.map(fn {name, module} ->
+        pid = Process.whereis(module)
 
-      if pid do
-        info = Process.info(pid)
-        memory_kb = div(info[:memory] || 0, 1024)
-        message_queue_len = info[:message_queue_len] || 0
+        if pid do
+          info = Process.info(pid)
+          memory_kb = div(info[:memory] || 0, 1024)
+          message_queue_len = info[:message_queue_len] || 0
 
+          %{
+            name: name,
+            status: "running",
+            memory_kb: memory_kb,
+            message_queue_len: message_queue_len,
+            heap_size: info[:heap_size] || 0
+          }
+        else
+          %{
+            name: name,
+            status: "not_running",
+            memory_kb: 0,
+            message_queue_len: 0,
+            heap_size: 0
+          }
+        end
+      end)
+
+    # Add SSE client info
+    sse_process = get_sse_client_process_info()
+
+    standard_processes ++ [sse_process]
+  end
+
+  defp get_sse_client_process_info do
+    try do
+      map_name = WandererNotifier.Shared.Config.map_name()
+      # If map_name is configured, it will have a value; if not, get_required will raise
+      # Try to find SSE client via Registry
+      case Registry.lookup(WandererNotifier.Registry, {:sse_client, map_name}) do
+        [{pid, _}] ->
+          info = Process.info(pid)
+          memory_kb = div(info[:memory] || 0, 1024)
+          message_queue_len = info[:message_queue_len] || 0
+
+          %{
+            name: "SSE Client (#{map_name})",
+            status: "running",
+            memory_kb: memory_kb,
+            message_queue_len: message_queue_len,
+            heap_size: info[:heap_size] || 0
+          }
+
+        _ ->
+          %{
+            name: "SSE Client",
+            status: "not_running",
+            memory_kb: 0,
+            message_queue_len: 0,
+            heap_size: 0
+          }
+      end
+    rescue
+      _ ->
+        # Config.map_name() raised because it's not configured
         %{
-          name: name,
-          status: "running",
-          memory_kb: memory_kb,
-          message_queue_len: message_queue_len,
-          heap_size: info[:heap_size] || 0
-        }
-      else
-        %{
-          name: name,
-          status: "not_running",
+          name: "SSE Client",
+          status: "not_configured",
           memory_kb: 0,
           message_queue_len: 0,
           heap_size: 0
         }
-      end
-    end)
+    end
   end
 
   defp bytes_to_mb(bytes) when is_integer(bytes) do

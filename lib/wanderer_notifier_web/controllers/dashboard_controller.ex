@@ -326,6 +326,7 @@ defmodule WandererNotifierWeb.DashboardController do
             .icon-status::before { content: '📊'; }
             .icon-memory::before { content: '💾'; }
             .icon-websocket::before { content: '🔌'; }
+            .icon-sse::before { content: '📡'; }
             .icon-cache::before { content: '⚡'; }
             .icon-processes::before { content: '⚙️'; }
             .icon-validation::before { content: '🧪'; }
@@ -453,6 +454,8 @@ defmodule WandererNotifierWeb.DashboardController do
                     </div>
                 </div>
 
+                #{build_sse_status_card(Map.get(data, :sse, %{}))}
+
                 <div class="card">
                     <h2 class="icon-memory">Memory Usage</h2>
                     <div class="metric">
@@ -486,6 +489,18 @@ defmodule WandererNotifierWeb.DashboardController do
                     <div class="metric">
                         <span class="label">Notifications Sent:</span>
                         <span class="value">#{data.processing.notifications_sent}</span>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2 class="icon-system">Tracking Stats</h2>
+                    <div class="metric">
+                        <span class="label">Tracked Systems:</span>
+                        <span class="value">#{data.tracking.systems_count}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Tracked Characters:</span>
+                        <span class="value">#{data.tracking.characters_count}</span>
                     </div>
                 </div>
             </div>
@@ -551,5 +566,35 @@ defmodule WandererNotifierWeb.DashboardController do
       """
     end)
     |> Enum.join("")
+  end
+
+  defp build_sse_status_card(sse_data) do
+    status = Map.get(sse_data, :connection_status, "not_configured")
+
+    status_class =
+      case status do
+        "connected" -> "connected"
+        "connecting" -> "disconnected"
+        "reconnecting" -> "disconnected"
+        _ -> "disconnected"
+      end
+
+    map_name = Map.get(sse_data, :map_name, "Not configured")
+
+    """
+    <div class="card">
+        <h2 class="icon-sse">SSE Map Status</h2>
+        <div class="metric">
+            <span class="label">Connection:</span>
+            <span class="connection-status #{status_class}">
+                #{status}
+            </span>
+        </div>
+        <div class="metric">
+            <span class="label">Map:</span>
+            <span class="value">#{map_name}</span>
+        </div>
+    </div>
+    """
   end
 end
