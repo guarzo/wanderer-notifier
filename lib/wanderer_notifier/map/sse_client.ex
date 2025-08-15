@@ -14,6 +14,7 @@ defmodule WandererNotifier.Map.SSEClient do
   alias WandererNotifier.Map.SSEConnection
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
   alias WandererNotifier.Shared.Utils.Retry
+  alias WandererNotifier.Shared.Config
 
   @type state :: %{
           map_slug: String.t(),
@@ -87,6 +88,16 @@ defmodule WandererNotifier.Map.SSEClient do
     |> GenServer.stop()
   end
 
+  @doc """
+  Gets connection health metrics.
+  """
+  @spec get_health_metrics(String.t()) :: map()
+  def get_health_metrics(map_slug) do
+    map_slug
+    |> via_tuple()
+    |> GenServer.call(:get_health_metrics)
+  end
+
   # GenServer Implementation
 
   @impl GenServer
@@ -148,8 +159,14 @@ defmodule WandererNotifier.Map.SSEClient do
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.error(
-          "SSE connection failed - map_slug: #{state.map_slug}, error: #{inspect(reason)}"
+        Logger.error("SSE connection attempt failed",
+          map_slug: state.map_slug,
+          error: inspect(reason),
+          error_type:
+            case reason do
+              {:connection_failed, inner} -> "connection_failed: #{inspect(inner)}"
+            end,
+          attempt: state.reconnect_attempts + 1
         )
 
         # Register failed connection with ConnectionMonitor
@@ -169,6 +186,24 @@ defmodule WandererNotifier.Map.SSEClient do
   @impl GenServer
   def handle_call(:get_status, _from, state) do
     {:reply, state.status, state}
+  end
+
+  @impl GenServer
+  def handle_call(:get_health_metrics, _from, state) do
+    metrics = %{
+      status: state.status,
+      reconnect_attempts: state.reconnect_attempts,
+      has_connection: state.connection != nil,
+      last_event_id: state.last_event_id,
+      events_filter: state.events_filter,
+      config: %{
+        recv_timeout: Config.sse_recv_timeout(),
+        connect_timeout: Config.sse_connect_timeout(),
+        keepalive_interval: Config.sse_keepalive_interval()
+      }
+    }
+
+    {:reply, metrics, state}
   end
 
   @impl GenServer
@@ -202,7 +237,11 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_error, reason}, state) do
-    Logger.error("SSE connection error - map_slug: #{state.map_slug}, error: #{inspect(reason)}")
+    Logger.error("SSE stream error",
+      map_slug: state.map_slug,
+      error: inspect(reason),
+      connection_active: state.connection != nil
+    )
 
     # Close connection and schedule reconnect
     if state.connection, do: close_connection(state.connection)
@@ -215,7 +254,10 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info({:sse_closed}, state) do
-    Logger.debug("SSE connection closed - map_slug: #{state.map_slug}")
+    Logger.info("SSE connection closed",
+      map_slug: state.map_slug,
+      reconnect_attempts: state.reconnect_attempts
+    )
 
     new_state = %{state | connection: nil}
     new_state = schedule_reconnect(new_state)
@@ -236,8 +278,18 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.AsyncStatus{code: status_code, id: async_id}, state) do
+    Logger.info("SSE connection status received",
+      map_slug: state.map_slug,
+      status_code: status_code,
+      async_id: async_id
+    )
+
     if status_code == 200 do
       # Connection successful, continue streaming
+      Logger.info("SSE connection established successfully",
+        map_slug: state.map_slug
+      )
+
       # Create the AsyncResponse struct that stream_next expects
       async_response = %HTTPoison.AsyncResponse{id: async_id}
       HTTPoison.stream_next(async_response)
@@ -286,8 +338,12 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   @impl GenServer
-  def handle_info(%HTTPoison.AsyncEnd{}, state) do
-    Logger.debug("SSE connection ended - map_slug: #{state.map_slug}")
+  def handle_info(%HTTPoison.AsyncEnd{id: async_id}, state) do
+    Logger.info("SSE connection ended (server closed)",
+      map_slug: state.map_slug,
+      async_id: async_id,
+      was_connected: state.status == :connected
+    )
 
     # Connection ended, schedule reconnect
     new_state = %{state | connection: nil}
@@ -297,7 +353,11 @@ defmodule WandererNotifier.Map.SSEClient do
 
   @impl GenServer
   def handle_info(%HTTPoison.Error{reason: reason}, state) do
-    Logger.error("SSE connection error - map_slug: #{state.map_slug}, error: #{inspect(reason)}")
+    Logger.error("SSE HTTP error received",
+      map_slug: state.map_slug,
+      error: inspect(reason),
+      error_type: elem(reason, 0) |> to_string() |> String.replace("_", " ")
+    )
 
     # Connection error, schedule reconnect
     new_state = %{state | connection: nil}
@@ -319,6 +379,13 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp do_connect(state) do
+    Logger.info("Attempting SSE connection",
+      map_slug: state.map_slug,
+      events_filter: inspect(state.events_filter),
+      has_last_event_id: state.last_event_id != nil,
+      attempt: state.reconnect_attempts + 1
+    )
+
     SSEConnection.connect(
       state.map_slug,
       state.api_token,
@@ -429,8 +496,13 @@ defmodule WandererNotifier.Map.SSEClient do
 
     final_delay = Retry.calculate_backoff(retry_state)
 
-    Logger.debug(
-      "Scheduling reconnect - map_slug: #{state.map_slug}, attempt: #{state.reconnect_attempts + 1}, delay_ms: #{final_delay}"
+    Logger.info("Scheduling SSE reconnect",
+      map_slug: state.map_slug,
+      attempt: state.reconnect_attempts + 1,
+      delay_ms: final_delay,
+      delay_seconds: final_delay / 1000,
+      max_delay_seconds: @max_reconnect_delay / 1000,
+      previous_status: state.status
     )
 
     timer = Process.send_after(self(), :reconnect_timer, final_delay)

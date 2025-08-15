@@ -137,6 +137,25 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Get map name (required)"
   def map_name, do: get_required_env("MAP_NAME")
 
+  # ──────────────────────────────────────────────────────────────────────────────
+  # SSE Configuration
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get SSE receive timeout in milliseconds (default: :infinity)"
+  def sse_recv_timeout do
+    case get_env_private("SSE_RECV_TIMEOUT") do
+      nil -> :infinity
+      "infinity" -> :infinity
+      value when is_binary(value) -> String.to_integer(value)
+    end
+  end
+
+  @doc "Get SSE connection timeout in milliseconds (default: 30000)"
+  def sse_connect_timeout, do: get_integer("SSE_CONNECT_TIMEOUT", 30_000)
+
+  @doc "Get SSE keepalive interval in seconds (default: 30)"
+  def sse_keepalive_interval, do: get_integer("SSE_KEEPALIVE_INTERVAL", 30)
+
   @doc "Get map API key (required)"
   def map_api_key, do: get_required_env("MAP_API_KEY")
 

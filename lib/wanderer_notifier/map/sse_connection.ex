@@ -118,6 +118,8 @@ defmodule WandererNotifier.Map.SSEConnection do
           "#{base_url}/api/maps/#{map_slug}/events/stream?#{query_string}"
       end
 
+    Logger.info("SSE URL constructed: #{final_url}")
+
     final_url
   end
 
@@ -132,15 +134,27 @@ defmodule WandererNotifier.Map.SSEConnection do
 
   defp start_connection(url, headers) do
     # Start real SSE connection using HTTPoison streaming
+    # SSE connections need to stay open indefinitely, so we use :infinity for recv_timeout by default
+    # The timeout is for initial connection establishment only
+    recv_timeout = Config.sse_recv_timeout()
+    connect_timeout = Config.sse_connect_timeout()
+
     options = [
       stream_to: self(),
       async: :once,
-      recv_timeout: 60_000,
-      timeout: 30_000,
+      # SSE streams should never timeout while receiving data
+      recv_timeout: recv_timeout,
+      # Initial connection timeout
+      timeout: connect_timeout,
       follow_redirect: true
     ]
 
-    Logger.debug("Starting SSE connection", url: url)
+    Logger.info("Starting SSE connection",
+      url: url,
+      recv_timeout: recv_timeout,
+      connect_timeout: connect_timeout,
+      keepalive_interval: Config.sse_keepalive_interval()
+    )
 
     case HTTPoison.get(url, headers, options) do
       {:ok, %HTTPoison.AsyncResponse{id: async_id}} ->
@@ -148,7 +162,14 @@ defmodule WandererNotifier.Map.SSEConnection do
         {:ok, async_id}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
-        Logger.error("SSE connection failed", reason: reason)
+        formatted_reason = format_error_reason(reason)
+
+        Logger.error("SSE connection failed",
+          reason: reason,
+          formatted_reason: formatted_reason,
+          is_timeout: timeout_error?(reason)
+        )
+
         {:error, {:connection_failed, reason}}
     end
   end
@@ -171,5 +192,26 @@ defmodule WandererNotifier.Map.SSEConnection do
     |> Map.put(:path, nil)
     |> Map.put(:query, nil)
     |> URI.to_string()
+  end
+
+  # Helper function to format error reasons for better logging
+  defp format_error_reason(reason) do
+    case reason do
+      {:closed, :timeout} -> "Connection closed due to timeout"
+      :timeout -> "Connection timeout"
+      :econnrefused -> "Connection refused - server may be down"
+      :nxdomain -> "Domain not found"
+      {:tls_alert, alert} -> "TLS error: #{inspect(alert)}"
+      _ -> inspect(reason)
+    end
+  end
+
+  # Helper function to detect timeout errors
+  defp timeout_error?(reason) do
+    case reason do
+      {:closed, :timeout} -> true
+      :timeout -> true
+      _ -> false
+    end
   end
 end
