@@ -233,20 +233,16 @@ jobs:
           # Start with the main version tag
           DOCKER_TAGS="guarzo/wanderer-notifier:$VERSION_TAG"
           
-          # If we have a base tag (semantic version), add semantic version tags
-          if [ -n "$BASE_TAG" ] && [ "$BASE_TAG" != "$VERSION_TAG" ]; then
-            echo "Adding semantic version tags based on $BASE_TAG"
-            # Parse semantic version (e.g., "v4.0.2" -> major=4, minor=0, patch=2)
-            if [[ $BASE_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              MAJOR="${BASH_REMATCH[1]}"
-              MINOR="${BASH_REMATCH[2]}"
-              PATCH="${BASH_REMATCH[3]}"
-              
-              # Add semantic version tags
-              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:$BASE_TAG"
-              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR.$MINOR"
-              DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR"
-            fi
+          # Always parse and add semantic version tags for any version tag
+          if [[ $VERSION_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            
+            echo "Adding semantic version tags for $VERSION_TAG"
+            # Add semantic version tags
+            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR.$MINOR"
+            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR"
           fi
           
           # Add latest tag if requested
