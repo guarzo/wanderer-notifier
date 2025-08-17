@@ -897,9 +897,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp check_shard_connections(children) do
     # Check if any shard is connected
-    connected = Enum.any?(children, fn {_, pid, _, _} ->
-      is_pid(pid) && Process.alive?(pid)
-    end)
+    connected =
+      Enum.any?(children, fn {_, pid, _, _} ->
+        is_pid(pid) && Process.alive?(pid)
+      end)
 
     if connected, do: :connected, else: :disconnected
   end
