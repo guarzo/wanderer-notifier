@@ -184,6 +184,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         {:error, response}
 
       nil ->
+        # Task timed out - log additional diagnostics
+        Logger.error("[RALLY_TIMING] Task.yield timed out",
+          rally_id: rally_id,
+          channel_id: channel_id_int,
+          nostrum_state: get_nostrum_state(),
+          elapsed: System.monotonic_time(:millisecond) - start_time,
+          category: :api
+        )
+
+        log_system_diagnostics()
         {:error, :timeout}
     end
   end
@@ -238,8 +248,29 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp create_discord_api_task(channel_id_int, discord_embed, content, rally_id) do
-    Task.async(fn ->
+    Task.Supervisor.async_nolink(WandererNotifier.TaskSupervisor, fn ->
       api_start = System.monotonic_time(:millisecond)
+
+      # Log Nostrum connection state
+      ws_state = get_nostrum_state()
+
+      Logger.info("[RALLY_TIMING] Pre-send state check",
+        rally_id: rally_id,
+        nostrum_connected: ws_state,
+        channel_id: channel_id_int,
+        category: :api
+      )
+
+      # Log embed size for diagnostics
+      embed_size = calculate_embed_size(discord_embed)
+
+      Logger.info("[RALLY_TIMING] Embed size",
+        rally_id: rally_id,
+        embed_size_bytes: embed_size,
+        has_content: content != nil,
+        content_length: if(content, do: String.length(content), else: 0),
+        category: :api
+      )
 
       Logger.info("[RALLY_TIMING] Calling Message.create",
         rally_id: rally_id,
@@ -272,23 +303,52 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       "Discord API call starting - Channel: #{channel_id_int}, Content: #{content_info}"
     )
 
+    # Check current rate limit status before making the call
+    rate_limit_info = check_rate_limit_status(channel_id_int)
+
+    if rate_limit_info[:limited] do
+      Logger.warning("[RALLY_TIMING] Rate limit active",
+        channel_id: channel_id_int,
+        retry_after: rate_limit_info[:retry_after],
+        category: :api
+      )
+    end
+
     # Log timestamp before call for precise timing
     start_time = System.monotonic_time(:millisecond)
 
     result =
-      if content do
-        Message.create(channel_id_int, content: content, embeds: [discord_embed])
-      else
-        Message.create(channel_id_int, embeds: [discord_embed])
+      try do
+        # Log Gun connection pool status if available
+        log_gun_pool_status()
+
+        if content do
+          Message.create(channel_id_int, content: content, embeds: [discord_embed])
+        else
+          Message.create(channel_id_int, embeds: [discord_embed])
+        end
+      rescue
+        exception ->
+          Logger.error("[RALLY_TIMING] Exception during Discord API call",
+            error: inspect(exception),
+            stacktrace: inspect(__STACKTRACE__),
+            category: :api
+          )
+
+          {:error, exception}
       end
 
     duration = System.monotonic_time(:millisecond) - start_time
 
-    Logger.info(
-      "Discord API call completed in #{duration}ms - Result: #{inspect(elem(result, 0))}"
-    )
+    case result do
+      {:ok, _} = success ->
+        Logger.info("Discord API call completed successfully in #{duration}ms")
+        success
 
-    result
+      {:error, reason} = error ->
+        Logger.error("Discord API call failed after #{duration}ms - Reason: #{inspect(reason)}")
+        error
+    end
   end
 
   defp handle_success(start_time, rally_id, attempt) do
@@ -809,5 +869,115 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp get_retry_after(_) do
     5000
+  end
+
+  # Helper function to check Nostrum WebSocket state
+  defp get_nostrum_state do
+    # Check if Nostrum's websocket connection is established
+    # This is a simple check - you might need to enhance based on Nostrum's API
+    case Process.whereis(Nostrum.Shard.Supervisor) do
+      nil -> :not_started
+      pid when is_pid(pid) -> check_nostrum_supervisor_state(pid)
+    end
+  rescue
+    _ -> :unknown
+  end
+
+  defp check_nostrum_supervisor_state(pid) do
+    if Process.alive?(pid) do
+      # Check if we have any active shards
+      case Supervisor.which_children(Nostrum.Shard.Supervisor) do
+        [] -> :no_shards
+        children -> check_shard_connections(children)
+      end
+    else
+      :supervisor_dead
+    end
+  end
+
+  defp check_shard_connections(children) do
+    # Check if any shard is connected
+    connected = Enum.any?(children, fn {_, pid, _, _} ->
+      is_pid(pid) && Process.alive?(pid)
+    end)
+
+    if connected, do: :connected, else: :disconnected
+  end
+
+  # Calculate the approximate size of an embed in bytes
+  defp calculate_embed_size(embed) do
+    # Convert embed to JSON and calculate byte size
+    case Jason.encode(embed) do
+      {:ok, json} -> byte_size(json)
+      {:error, _} -> 0
+    end
+  rescue
+    _ -> 0
+  end
+
+  # Check rate limit status (placeholder - enhance with actual Nostrum rate limit tracking)
+  defp check_rate_limit_status(_channel_id) do
+    # This is a placeholder. In production, you'd want to track rate limits
+    # from previous Discord API responses (X-RateLimit headers)
+    # For now, we'll just return not limited
+    %{limited: false, retry_after: 0}
+  end
+
+  # Log Gun connection pool status for diagnostics
+  defp log_gun_pool_status do
+    # Try to get Gun connection info from Nostrum
+    # This is approximate since Nostrum manages Gun internally
+    try do
+      # Check for Gun processes
+      gun_processes =
+        Process.list()
+        |> Enum.filter(&gun_process?/1)
+        |> length()
+
+      Logger.info("[RALLY_TIMING] Gun connection pool status",
+        gun_processes: gun_processes,
+        category: :api
+      )
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp gun_process?(pid) do
+    case Process.info(pid, :registered_name) do
+      {:registered_name, name} when is_atom(name) ->
+        name
+        |> Atom.to_string()
+        |> String.contains?("gun")
+
+      _ ->
+        case Process.info(pid, :initial_call) do
+          {:initial_call, {:gun, _, _}} -> true
+          _ -> false
+        end
+    end
+  end
+
+  # Log system diagnostics when timeout occurs
+  defp log_system_diagnostics do
+    try do
+      # Get process count
+      process_count = length(Process.list())
+
+      # Get memory info
+      memory_info = :erlang.memory()
+
+      # Get scheduler info
+      schedulers_online = :erlang.system_info(:schedulers_online)
+
+      Logger.warning("[RALLY_TIMING] System diagnostics at timeout",
+        process_count: process_count,
+        memory_mb: div(memory_info[:total], 1_048_576),
+        schedulers_online: schedulers_online,
+        category: :api
+      )
+    rescue
+      _ -> :ok
+    end
   end
 end
