@@ -61,7 +61,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       author: build_kill_author_icon(killmail),
       thumbnail: build_kill_thumbnail(killmail),
       fields: [],
-      footer: nil,
+      footer: build_kill_footer(killmail),
       timestamp: nil
     }
   end
@@ -332,6 +332,25 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # ══════════════════════════════════════════════════════════════════════════════
   # Helper Functions
   # ══════════════════════════════════════════════════════════════════════════════
+
+  defp build_kill_footer(%Killmail{} = killmail) do
+    # Generate a unique message ID based on killmail_id and timestamp
+    # This helps identify potential duplicate messages
+    message_id = generate_message_id(killmail)
+
+    Utils.build_footer("ID: #{message_id}")
+  end
+
+  defp generate_message_id(%Killmail{killmail_id: killmail_id, kill_time: kill_time}) do
+    # Create a hash of the killmail ID and timestamp for uniqueness
+    # Use first 8 chars of hash for brevity
+    data = "#{killmail_id}-#{kill_time}"
+
+    :crypto.hash(:sha256, data)
+    |> Base.encode16()
+    |> String.slice(0..7)
+    |> String.downcase()
+  end
 
   defp create_character_link(name, nil), do: "**#{name}**"
 

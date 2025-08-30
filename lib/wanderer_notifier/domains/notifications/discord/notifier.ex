@@ -343,12 +343,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp build_rally_content(_rally_point) do
-    group_id = Config.discord_rally_group_id()
+    case Config.discord_rally_group_ids() do
+      [] ->
+        "Rally point created!"
 
-    if group_id do
-      "<@&#{group_id}> Rally point created!"
-    else
-      "Rally point created!"
+      group_ids ->
+        mentions = Enum.map(group_ids, fn id -> "<@&#{id}>" end) |> Enum.join(" ")
+        "#{mentions} Rally point created!"
     end
   end
 
