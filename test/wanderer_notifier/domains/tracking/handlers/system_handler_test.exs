@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Handlers.SystemHandler
   alias WandererNotifier.Domains.Tracking.Entities.System

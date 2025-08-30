@@ -46,7 +46,11 @@ defmodule WandererNotifier.Shared.Config do
 
   @doc "Get Discord rally group IDs (optional) - returns a list of group IDs from comma-separated string"
   def discord_rally_group_ids do
-    case get_env_private("DISCORD_RALLY_GROUP_ID") do
+    # Check plural first, then fall back to singular
+    value =
+      get_env_private("DISCORD_RALLY_GROUP_IDS") || get_env_private("DISCORD_RALLY_GROUP_ID")
+
+    case value do
       nil ->
         []
 
@@ -57,6 +61,11 @@ defmodule WandererNotifier.Shared.Config do
         value
         |> String.split(",", trim: true)
         |> Enum.map(&String.trim/1)
+        |> Enum.filter(fn id ->
+          # Filter out non-numeric entries
+          String.match?(id, ~r/^\d+$/)
+        end)
+        |> Enum.uniq()
     end
   end
 

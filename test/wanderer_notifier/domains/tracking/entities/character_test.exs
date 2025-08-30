@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Infrastructure.Cache

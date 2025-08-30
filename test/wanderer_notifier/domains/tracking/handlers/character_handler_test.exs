@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Handlers.CharacterHandler
   alias WandererNotifier.Infrastructure.Cache
@@ -33,7 +33,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      # Ensure cache operation succeeds
+      assert :ok = Cache.put(Cache.Keys.map_characters(), existing_characters)
+
+      # Verify data was actually stored
+      assert {:ok, ^existing_characters} = Cache.get(Cache.Keys.map_characters())
 
       # Create removal event
       event = %{
