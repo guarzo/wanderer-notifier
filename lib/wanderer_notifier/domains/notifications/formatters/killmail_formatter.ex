@@ -344,14 +344,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp generate_message_id(%Killmail{killmail_id: killmail_id, kill_time: kill_time}) do
     # Create a hash of the killmail ID and timestamp for uniqueness
     # Use first 8 chars of hash for brevity
-    # Normalize nils to empty strings to ensure predictable data
-    normalized_id = killmail_id || ""
-    normalized_time = kill_time || ""
-    data = "#{normalized_id}-#{normalized_time}"
+    # Normalize nils to explicit sentinels to keep data unambiguous
+    id_part = if is_nil(killmail_id), do: "nil", else: to_string(killmail_id)
+    time_part = if is_binary(kill_time) and kill_time != "", do: kill_time, else: "nil"
+    data = id_part <> "-" <> time_part
 
-    :crypto.hash(:sha256, data)
-    |> Base.encode16(case: :lower)
-    |> String.slice(0..7)
+    hash = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
+    binary_part(hash, 0, 8)
   end
 
   defp create_character_link(name, nil), do: "**#{name}**"

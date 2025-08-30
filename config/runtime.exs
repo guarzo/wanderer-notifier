@@ -104,7 +104,7 @@ config :wanderer_notifier,
   discord_system_channel_id: RuntimeConfig.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
   discord_character_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
   discord_rally_channel_id: RuntimeConfig.get_env("DISCORD_RALLY_CHANNEL_ID"),
-  discord_rally_group_id: RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID"),
+  discord_rally_group_ids: WandererNotifier.Shared.Config.discord_rally_group_ids(),
 
   # Map settings
   map_token: RuntimeConfig.get_env("MAP_API_KEY"),

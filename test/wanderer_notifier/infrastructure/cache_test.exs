@@ -3,6 +3,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
   alias WandererNotifier.Infrastructure.Cache
 
+  import WandererNotifier.Test.Helpers.CacheTestHelper
+
   setup do
     # Ensure Cachex is started for testing
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
@@ -35,11 +37,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = "test:key"
       value = %{"name" => "test", "id" => 123}
 
-      # Put value
-      :ok = Cache.put(key, value)
-
-      # Get value
-      assert {:ok, ^value} = Cache.get(key)
+      # Put value and verify it was stored
+      assert_cache_put(key, value)
     end
 
     test "get returns error for non-existent key" do
@@ -52,11 +51,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       # 1 second
       ttl = 1000
 
-      # Put with TTL should succeed
-      :ok = Cache.put(key, value, ttl)
-
-      # Should exist immediately
-      assert {:ok, ^value} = Cache.get(key)
+      # Put with TTL should succeed and verify value exists
+      assert_cache_put(key, value, ttl)
 
       # Note: We don't test actual expiration as it's timing-dependent
       # and the important thing is that the TTL parameter is accepted
@@ -66,9 +62,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = "test:delete"
       value = "to be deleted"
 
-      # Put value
-      :ok = Cache.put(key, value)
-      assert {:ok, ^value} = Cache.get(key)
+      # Put value and verify it was stored
+      assert_cache_put(key, value)
 
       # Delete value
       :ok = Cache.delete(key)
@@ -119,11 +114,11 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       character_id = 12_345
       character_data = %{name: "Test Character", corp_id: 67_890}
 
-      # Put character data directly
+      # Put character data directly and verify it was stored
       key = Cache.Keys.character(character_id)
-      :ok = Cache.put(key, character_data)
+      assert_cache_put(key, character_data)
 
-      # Use helper to retrieve
+      # Also verify using helper
       assert {:ok, ^character_data} = Cache.get_character(character_id)
     end
 
@@ -142,11 +137,11 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       corp_id = 67_890
       corp_data = %{name: "Test Corp", ticker: "TEST"}
 
-      # Put corp data directly
+      # Put corp data directly and verify it was stored
       key = Cache.Keys.corporation(corp_id)
-      :ok = Cache.put(key, corp_data)
+      assert_cache_put(key, corp_data)
 
-      # Use helper to retrieve
+      # Also verify using helper
       assert {:ok, ^corp_data} = Cache.get_corporation(corp_id)
     end
 
@@ -165,11 +160,11 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       alliance_id = 111_222
       alliance_data = %{name: "Test Alliance", ticker: "TESTA"}
 
-      # Put alliance data directly
+      # Put alliance data directly and verify it was stored
       key = Cache.Keys.alliance(alliance_id)
-      :ok = Cache.put(key, alliance_data)
+      assert_cache_put(key, alliance_data)
 
-      # Use helper to retrieve
+      # Also verify using helper
       assert {:ok, ^alliance_data} = Cache.get_alliance(alliance_id)
     end
 
@@ -188,11 +183,11 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       system_id = 30_000_142
       system_data = %{name: "Jita", security_status: 0.9}
 
-      # Put system data directly
+      # Put system data directly and verify it was stored
       key = Cache.Keys.system(system_id)
-      :ok = Cache.put(key, system_data)
+      assert_cache_put(key, system_data)
 
-      # Use helper to retrieve
+      # Also verify using helper
       assert {:ok, ^system_data} = Cache.get_system(system_id)
     end
 
@@ -228,11 +223,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       # Initially not processed
       assert {:error, :not_found} = Cache.get(key)
 
-      # Mark as processed
-      :ok = Cache.put(key, true, Cache.ttl(:killmail))
-
-      # Should be marked as processed
-      assert {:ok, true} = Cache.get(key)
+      # Mark as processed and verify
+      assert_cache_put(key, true, Cache.ttl(:killmail))
     end
 
     test "can implement notification deduplication with basic cache ops" do
@@ -242,11 +234,8 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       # Initially not sent
       assert {:error, :not_found} = Cache.get(key)
 
-      # Mark as sent
-      :ok = Cache.put(key, true, :timer.minutes(30))
-
-      # Should be marked as sent
-      assert {:ok, true} = Cache.get(key)
+      # Mark as sent and verify
+      assert_cache_put(key, true, :timer.minutes(30))
     end
   end
 

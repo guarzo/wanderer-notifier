@@ -5,6 +5,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   """
 
   alias WandererNotifier.Shared.Utils.FormattingUtils
+  alias WandererNotifier.Shared.Config
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # URL Generation
@@ -250,11 +251,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
 
   @doc "Build rally group mentions from configured IDs"
   def rally_mentions do
-    alias WandererNotifier.Shared.Config
-
-    Config.discord_rally_group_ids()
-    |> Enum.map(fn id -> "<@&#{id}>" end)
-    |> Enum.join(" ")
+    Enum.map_join(Config.discord_rally_group_ids(), " ", fn id -> "<@&#{id}>" end)
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

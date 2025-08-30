@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogicTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 

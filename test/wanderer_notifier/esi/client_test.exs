@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Infrastructure.Adapters.ESI.ClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Client
