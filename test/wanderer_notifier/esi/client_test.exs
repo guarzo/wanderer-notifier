@@ -1,21 +1,32 @@
 defmodule WandererNotifier.Infrastructure.Adapters.ESI.ClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Client
 
-  # Module attribute to control mock behavior in error cases
   @moduledoc false
 
-  setup :verify_on_exit!
   setup :set_mox_from_context
+  setup :verify_on_exit!
 
   setup do
+    # Capture original value to restore after test
+    original_http_client = Application.get_env(:wanderer_notifier, :http_client)
+
     Application.put_env(
       :wanderer_notifier,
       :http_client,
       WandererNotifier.HTTPMock
     )
+
+    on_exit(fn ->
+      # Restore original value
+      if original_http_client do
+        Application.put_env(:wanderer_notifier, :http_client, original_http_client)
+      else
+        Application.delete_env(:wanderer_notifier, :http_client)
+      end
+    end)
 
     :ok
   end

@@ -1,11 +1,12 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Handlers.CharacterHandler
   alias WandererNotifier.Infrastructure.Cache
 
   import ExUnit.CaptureLog
   import Mox
+  import WandererNotifier.Test.Helpers.CacheTestHelper
 
   setup :verify_on_exit!
 
@@ -33,7 +34,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      # Ensure cache operation succeeds and verify data was actually stored
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Create removal event
       event = %{
@@ -67,7 +69,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Create removal event for non-existent character
       event = %{
@@ -129,7 +131,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Create removal event
       event = %{
@@ -162,7 +164,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Create removal event
       event = %{
@@ -227,7 +229,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Try to add same character again
       event = %{
@@ -270,7 +272,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), existing_characters)
+      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
 
       # Update event
       event = %{

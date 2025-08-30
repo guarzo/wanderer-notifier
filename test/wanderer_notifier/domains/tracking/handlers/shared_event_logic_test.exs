@@ -4,9 +4,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogicTest do
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
   import ExUnit.CaptureLog
-  import Mox
-
-  setup :verify_on_exit!
 
   describe "handle_entity_event/6" do
     test "successfully processes entity event" do

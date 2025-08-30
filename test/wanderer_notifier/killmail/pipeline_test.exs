@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Killmail.PipelineTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Mox
 
   alias WandererNotifier.Domains.Killmail.Pipeline

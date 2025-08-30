@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Handlers.SystemHandler
   alias WandererNotifier.Domains.Tracking.Entities.System
@@ -7,6 +7,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
   import ExUnit.CaptureLog
   import Mox
+  import WandererNotifier.Test.Helpers.CacheTestHelper
 
   setup :verify_on_exit!
 
@@ -37,7 +38,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       existing_systems = [system1, system2]
-      Cache.put(Cache.Keys.map_systems(), existing_systems)
+      assert_cache_put(Cache.Keys.map_systems(), existing_systems)
 
       # Also add to individual system cache
       Cache.put_tracked_system("31000001", %{
@@ -78,7 +79,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         region_name: "The Forge"
       }
 
-      Cache.put(Cache.Keys.map_systems(), [system1])
+      assert_cache_put(Cache.Keys.map_systems(), [system1])
 
       # Create removal event for non-existent system
       event = %{
@@ -134,7 +135,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       existing_systems = [system_with_id, map_with_solar_system_id, map_with_id]
-      Cache.put(Cache.Keys.map_systems(), existing_systems)
+      assert_cache_put(Cache.Keys.map_systems(), existing_systems)
 
       # Test removal by system ID
       event1 = %{
@@ -161,7 +162,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         class_title: "C3"
       }
 
-      Cache.put(Cache.Keys.map_systems(), [system])
+      assert_cache_put(Cache.Keys.map_systems(), [system])
       Cache.put_tracked_system("31000001", %{"id" => 31_000_001, "name" => "J123456"})
 
       # Create removal event
@@ -292,7 +293,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         statics: ["D845"]
       }
 
-      Cache.put(Cache.Keys.map_systems(), [existing_system])
+      assert_cache_put(Cache.Keys.map_systems(), [existing_system])
 
       # Try to add same system again with updated data
       event = %{
@@ -349,7 +350,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         statics: ["D845"]
       }
 
-      Cache.put(Cache.Keys.map_systems(), [existing_system])
+      assert_cache_put(Cache.Keys.map_systems(), [existing_system])
 
       Cache.put_tracked_system("31000001", %{
         "id" => 31_000_001,

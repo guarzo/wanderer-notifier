@@ -299,9 +299,14 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp build_rally_content do
-    case Config.discord_rally_group_id() do
-      nil -> "Rally point created!"
-      group_id -> "<@&#{group_id}> Rally point created!"
+    alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils
+
+    case NotificationUtils.rally_mentions() do
+      "" ->
+        "Rally point created!"
+
+      mentions ->
+        "#{mentions} Rally point created!"
     end
   end
 

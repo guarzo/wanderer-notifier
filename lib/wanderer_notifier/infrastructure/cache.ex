@@ -38,6 +38,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @map_data_ttl :timer.hours(1)
   @item_price_ttl :timer.hours(6)
   @license_ttl :timer.minutes(20)
+  @notification_dedup_ttl :timer.minutes(30)
 
   @type cache_key :: String.t()
   @type cache_value :: term()
@@ -68,6 +69,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   def ttl(:map_data), do: @map_data_ttl
   def ttl(:item_price), do: @item_price_ttl
   def ttl(:license), do: @license_ttl
+  def ttl(:notification_dedup), do: @notification_dedup_ttl
   def ttl(:health_check), do: :timer.seconds(1)
   def ttl(_), do: @default_ttl
 

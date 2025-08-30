@@ -1,8 +1,10 @@
 defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Infrastructure.Cache
+
+  import WandererNotifier.Test.Helpers.CacheTestHelper
 
   setup do
     # Clear the cache before each test
@@ -164,7 +166,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?("123456")
     end
@@ -174,7 +176,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, false} = Character.is_tracked?("123456")
     end
@@ -189,7 +191,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "123456", "name" => "Test Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, true} = Character.is_tracked?(123_456)
     end
@@ -207,7 +209,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       assert {:ok, character} = Character.get_character("123456")
       assert character.name == "Test Character"
@@ -218,7 +220,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.CharacterTest do
         %{"eve_id" => "789012", "name" => "Another Character"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       assert {:error, :not_found} = Character.get_character("123456")
     end

@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Service
@@ -56,26 +56,53 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
   # Stub the Client module
   setup do
     # Make sure the required registries are started
-    if !Process.whereis(WandererNotifier.Cache.Registry) do
-      {:ok, _} = Registry.start_link(keys: :unique, name: WandererNotifier.Cache.Registry)
-    end
+    started_registry? =
+      case Process.whereis(WandererNotifier.Cache.Registry) do
+        nil ->
+          {:ok, _} = Registry.start_link(keys: :unique, name: WandererNotifier.Cache.Registry)
+          true
+
+        _ ->
+          false
+      end
 
     # Make sure Cachex is started for testing
     cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
     # Start Cachex if it's not already running
-    case Process.whereis(cache_name) do
-      nil ->
-        # Ensure Cachex application is started
-        Application.ensure_all_started(:cachex)
-        {:ok, _pid} = Cachex.start_link(name: cache_name, stats: true)
+    _cache_started? =
+      case Process.whereis(cache_name) do
+        nil ->
+          # Ensure Cachex application is started
+          Application.ensure_all_started(:cachex)
+          {:ok, _pid} = Cachex.start_link(name: cache_name, stats: true)
+          true
 
-      _pid ->
-        :ok
-    end
+        _pid ->
+          false
+      end
 
-    # Set the ESI client mock as the implementation
+    # Capture and set the ESI client mock as the implementation
+    prev_client = Application.get_env(:wanderer_notifier, :esi_client)
     Application.put_env(:wanderer_notifier, :esi_client, ServiceMock)
+
+    on_exit(fn ->
+      # Restore original ESI client
+      if prev_client do
+        Application.put_env(:wanderer_notifier, :esi_client, prev_client)
+      else
+        Application.delete_env(:wanderer_notifier, :esi_client)
+      end
+
+      # Clean up started processes
+      # Note: Cachex doesn't provide a stop/1 function, let supervisor handle cleanup
+      if started_registry? do
+        case Process.whereis(WandererNotifier.Cache.Registry) do
+          nil -> :ok
+          pid -> Process.exit(pid, :normal)
+        end
+      end
+    end)
 
     # Define mocks for ESI client calls
     ServiceMock

@@ -149,6 +149,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       max_backoff: 10_000,
       jitter: false,
       context: "Discord API call",
+      # IMPORTANT: Don't retry on timeouts to prevent duplicate messages
+      # Only retry on definitive connection failures
+      retryable_errors: [:econnrefused, :ehostunreach, :enetunreach, :econnreset],
+      # Still retry on rate limits and server errors (except 408 timeout)
+      retryable_status_codes: [429, 500, 502, 503, 504],
       on_retry: fn attempt, error, delay ->
         elapsed = System.monotonic_time(:millisecond) - start_time
         log_retry_attempt(attempt, error, delay, elapsed, rally_id, channel_id_int)

@@ -5,6 +5,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   """
 
   alias WandererNotifier.Shared.Utils.FormattingUtils
+  alias WandererNotifier.Shared.Config
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # URL Generation
@@ -243,6 +244,15 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   def get_system_icon("Wormhole"), do: @system_icons.wormhole
   def get_system_icon("W-Space"), do: @system_icons.wormhole
   def get_system_icon(_), do: @system_icons.wormhole
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Rally Mentions
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc "Build rally group mentions from configured IDs"
+  def rally_mentions do
+    Enum.map_join(Config.discord_rally_group_ids(), " ", fn id -> "<@&#{id}>" end)
+  end
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Field Building
