@@ -28,12 +28,18 @@ defmodule WandererNotifier.Test.Helpers.CacheTestHelper do
   @doc """
   Asserts that a Cache.put operation with TTL succeeds and the value is correctly stored.
 
+  The TTL must be a positive integer (milliseconds).
+
   ## Examples
 
       assert_cache_put("test:key", "test_value", :timer.hours(1))
   """
-  @spec assert_cache_put(term(), term(), integer()) :: :ok
+  @spec assert_cache_put(term(), term(), non_neg_integer()) :: :ok
   def assert_cache_put(key, value, ttl) do
+    # Validate TTL is a positive integer
+    assert is_integer(ttl) and ttl > 0,
+           "TTL must be a positive integer (milliseconds), got: #{inspect(ttl)}"
+
     assert :ok = Cache.put(key, value, ttl)
     assert {:ok, ^value} = Cache.get(key)
     :ok

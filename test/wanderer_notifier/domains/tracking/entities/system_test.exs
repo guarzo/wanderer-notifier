@@ -4,6 +4,8 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Infrastructure.Cache
 
+  import WandererNotifier.Test.Helpers.CacheTestHelper
+
   setup do
     # Clear the cache before each test
     Cache.delete("map:systems")
@@ -135,7 +137,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:ok, true} = System.is_tracked?("30000142")
     end
@@ -145,7 +147,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:ok, false} = System.is_tracked?("30000142")
     end
@@ -160,7 +162,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30000142", "name" => "Jita"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:ok, true} = System.is_tracked?(30_000_142)
     end
@@ -178,7 +180,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:ok, system} = System.get_system("30000142")
       assert system.name == "Jita"
@@ -189,7 +191,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:error, :not_found} = System.get_system("30000142")
     end
@@ -207,7 +209,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:ok, system} = System.get_system_by_name("Jita")
       assert system.solar_system_id == 30_000_142
@@ -218,7 +220,7 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
         %{"solar_system_id" => "30002659", "name" => "Rancer"}
       ]
 
-      Cache.put("map:systems", systems)
+      assert_cache_put("map:systems", systems)
 
       assert {:error, :not_found} = System.get_system_by_name("Jita")
     end

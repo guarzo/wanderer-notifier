@@ -114,7 +114,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       character_id = 12_345
       character_data = %{name: "Test Character", corp_id: 67_890}
 
-      # Put character data directly and verify it was stored
+      # Store character data via helper and verify it was stored
       key = Cache.Keys.character(character_id)
       assert_cache_put(key, character_data)
 
@@ -141,7 +141,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = Cache.Keys.corporation(corp_id)
       assert_cache_put(key, corp_data)
 
-      # Also verify using helper
+      # Also verify using helper (corporation)
       assert {:ok, ^corp_data} = Cache.get_corporation(corp_id)
     end
 
@@ -164,7 +164,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = Cache.Keys.alliance(alliance_id)
       assert_cache_put(key, alliance_data)
 
-      # Also verify using helper
+      # Also verify using get_alliance helper
       assert {:ok, ^alliance_data} = Cache.get_alliance(alliance_id)
     end
 
@@ -183,7 +183,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       system_id = 30_000_142
       system_data = %{name: "Jita", security_status: 0.9}
 
-      # Put system data directly and verify it was stored
+      # Put system data and verify it was stored using Cache.get_system helper
       key = Cache.Keys.system(system_id)
       assert_cache_put(key, system_data)
 
@@ -235,7 +235,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:error, :not_found} = Cache.get(key)
 
       # Mark as sent and verify
-      assert_cache_put(key, true, :timer.minutes(30))
+      assert_cache_put(key, true, Cache.ttl(:notification_dedup))
     end
   end
 
@@ -247,6 +247,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert Cache.ttl(:system) == :timer.hours(1)
       assert Cache.ttl(:killmail) == :timer.minutes(30)
       assert Cache.ttl(:map_data) == :timer.hours(1)
+      assert Cache.ttl(:notification_dedup) == :timer.minutes(30)
     end
 
     test "ttl/1 returns appropriate TTL" do

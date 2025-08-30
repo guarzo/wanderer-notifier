@@ -347,16 +347,36 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     Utils.build_footer("ID: #{message_id}")
   end
 
-  defp generate_message_id(%Killmail{killmail_id: killmail_id, kill_time: kill_time}) do
+  defp generate_message_id(%Killmail{killmail_id: killmail_id, kill_time: kill_time} = killmail) do
     # Create a hash of the killmail ID and timestamp for uniqueness
     # Use first 8 chars of hash for brevity
     # Normalize nils to explicit sentinels to keep data unambiguous
     id_part = if is_nil(killmail_id), do: "nil", else: to_string(killmail_id)
     time_part = if is_binary(kill_time) and kill_time != "", do: kill_time, else: "nil"
-    # Add unique token if both values are nil to prevent collisions
+
+    # Generate deterministic data based on available fields when both ID and time are missing
     data =
       if id_part == "nil" and time_part == "nil" do
-        "nil-nil-#{:erlang.unique_integer([:positive])}"
+        # Build deterministic map from other killmail fields
+        deterministic_data = %{
+          "victim_character_id" => killmail.victim_character_id,
+          "victim_corporation_id" => killmail.victim_corporation_id,
+          "victim_alliance_id" => killmail.victim_alliance_id,
+          "victim_ship_type_id" => killmail.victim_ship_type_id,
+          "system_id" => killmail.system_id,
+          "damage_taken" => killmail.damage_taken,
+          "value" => killmail.value,
+          "points" => killmail.points
+        }
+
+        # Sort keys and create stable string representation
+        sorted_pairs =
+          deterministic_data
+          |> Enum.sort_by(fn {k, _v} -> k end)
+          |> Enum.map(fn {k, v} -> "#{k}=#{inspect(v)}" end)
+          |> Enum.join("-")
+
+        "fallback-#{sorted_pairs}"
       else
         id_part <> "-" <> time_part
       end

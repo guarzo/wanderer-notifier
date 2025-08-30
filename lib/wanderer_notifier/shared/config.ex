@@ -44,29 +44,9 @@ defmodule WandererNotifier.Shared.Config do
   @doc "Get Discord system kill channel ID (optional)"
   def discord_system_kill_channel_id, do: get_env_private("DISCORD_SYSTEM_KILL_CHANNEL_ID")
 
-  @doc "Get Discord rally group IDs (optional) - returns a list of group IDs from comma-separated string"
+  @doc "Get Discord rally group IDs (optional) - returns a list of numeric group IDs"
   def discord_rally_group_ids do
-    # Check plural first, then fall back to singular
-    value =
-      get_env_private("DISCORD_RALLY_GROUP_IDS") || get_env_private("DISCORD_RALLY_GROUP_ID")
-
-    case value do
-      nil ->
-        []
-
-      "" ->
-        []
-
-      value ->
-        value
-        |> String.split(",", trim: true)
-        |> Enum.map(&String.trim/1)
-        |> Enum.filter(fn id ->
-          # Filter out non-numeric entries
-          String.match?(id, ~r/^\d+$/)
-        end)
-        |> Enum.uniq()
-    end
+    Application.get_env(:wanderer_notifier, :discord_rally_group_ids, [])
   end
 
   @doc "Get all Discord channel configuration in a single call"

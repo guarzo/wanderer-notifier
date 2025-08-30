@@ -4,6 +4,8 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Map.EventProcessor
 
+  import WandererNotifier.Test.Helpers.CacheTestHelper
+
   setup do
     # Clear cache before each test
     Cache.delete(Cache.Keys.map_characters())
@@ -33,7 +35,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         }
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       # Create SSE event
       event = %{
@@ -94,7 +96,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         region_name: "W-Space"
       }
 
-      Cache.put(Cache.Keys.map_systems(), [system])
+      assert_cache_put(Cache.Keys.map_systems(), [system])
 
       Cache.put_tracked_system("31000001", %{
         "id" => 31_000_001,
@@ -173,7 +175,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         %{"eve_id" => "444", "name" => "Char 4"}
       ]
 
-      Cache.put(Cache.Keys.map_characters(), characters)
+      assert_cache_put(Cache.Keys.map_characters(), characters)
 
       # Remove characters 2 and 3
       for eve_id <- ["222", "333"] do

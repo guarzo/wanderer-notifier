@@ -64,6 +64,25 @@ defmodule RuntimeConfig do
   end
 
   def parse_list(_), do: []
+
+  def parse_numeric_id_list(value) when is_binary(value) do
+    value
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(fn id -> id != "" end)
+    |> Enum.map(fn id ->
+      case Integer.parse(id) do
+        {num, ""} -> num
+        _ -> nil
+      end
+    end)
+    |> Enum.filter(&is_integer/1)
+    |> Enum.uniq()
+  end
+
+  def parse_numeric_id_list(nil), do: []
+  def parse_numeric_id_list(""), do: []
+  def parse_numeric_id_list(_), do: []
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -105,12 +124,10 @@ config :wanderer_notifier,
   discord_character_channel_id: RuntimeConfig.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
   discord_rally_channel_id: RuntimeConfig.get_env("DISCORD_RALLY_CHANNEL_ID"),
   discord_rally_group_ids:
-    (case RuntimeConfig.get_env("DISCORD_RALLY_GROUP_IDS") ||
-            RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID") do
-       nil -> []
-       "" -> []
-       v -> v |> RuntimeConfig.parse_list() |> Enum.uniq()
-     end),
+    RuntimeConfig.parse_numeric_id_list(
+      RuntimeConfig.get_env("DISCORD_RALLY_GROUP_IDS") ||
+        RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID")
+    ),
 
   # Map settings
   map_token: RuntimeConfig.get_env("MAP_API_KEY"),
