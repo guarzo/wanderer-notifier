@@ -347,16 +347,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     Utils.build_footer("ID: #{message_id}")
   end
 
+  @spec generate_message_id(Killmail.t()) :: <<_::64>>
   defp generate_message_id(%Killmail{killmail_id: killmail_id, kill_time: kill_time} = killmail) do
     # Create a hash of the killmail ID and timestamp for uniqueness
     # Use first 8 chars of hash for brevity
     id_part = normalize_id_part(killmail_id)
     time_part = normalize_time_part(kill_time)
 
-    data = build_hash_data(id_part, time_part, killmail)
+    data = build_seed(id_part, time_part, killmail)
 
-    hash = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-    binary_part(hash, 0, 8)
+    hash8(data)
   end
 
   defp normalize_id_part(nil), do: "nil"
@@ -365,12 +365,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp normalize_time_part(kill_time) when is_binary(kill_time) and kill_time != "", do: kill_time
   defp normalize_time_part(_), do: "nil"
 
-  defp build_hash_data("nil", "nil", killmail) do
+  defp build_seed("nil", "nil", killmail) do
     # Generate deterministic data based on available fields when both ID and time are missing
     generate_fallback_data(killmail)
   end
 
-  defp build_hash_data(id_part, time_part, _killmail) do
+  defp build_seed(id_part, time_part, _killmail) do
     id_part <> "-" <> time_part
   end
 
@@ -388,13 +388,21 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     }
 
     # Sort keys and create stable string representation
-    sorted_pairs =
-      deterministic_data
-      |> Enum.sort_by(fn {k, _v} -> k end)
-      |> Enum.map(fn {k, v} -> "#{k}=#{inspect(v)}" end)
-      |> Enum.join("-")
+    sorted_pairs = stable_pairs(deterministic_data)
 
     "fallback-#{sorted_pairs}"
+  end
+
+  defp stable_pairs(map) do
+    map
+    |> Enum.sort_by(fn {k, _v} -> k end)
+    |> Enum.map(fn {k, v} -> "#{k}=#{inspect(v)}" end)
+    |> Enum.join("-")
+  end
+
+  @spec hash8(binary()) :: <<_::64>>
+  defp hash8(data) do
+    :crypto.hash(:sha256, data) |> Base.encode16(case: :lower) |> binary_part(0, 8)
   end
 
   defp create_character_link(name, nil), do: "**#{name}**"
