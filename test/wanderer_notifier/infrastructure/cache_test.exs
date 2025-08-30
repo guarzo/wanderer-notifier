@@ -49,7 +49,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       key = "test:ttl"
       value = "expires eventually"
       # 1 second
-      ttl = 1000
+      ttl = :timer.seconds(1)
 
       # Put with TTL should succeed and verify value exists
       assert_cache_put(key, value, ttl)
@@ -78,7 +78,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       refute Cache.exists?(key)
 
       # Put value
-      :ok = Cache.put(key, value)
+      assert_cache_put(key, value)
 
       # Key exists now
       assert Cache.exists?(key)
@@ -90,9 +90,9 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
     test "clear removes all cached values" do
       # Put multiple values
-      :ok = Cache.put("test:1", "value1")
-      :ok = Cache.put("test:2", "value2")
-      :ok = Cache.put("test:3", "value3")
+      assert_cache_put("test:1", "value1")
+      assert_cache_put("test:2", "value2")
+      assert_cache_put("test:3", "value3")
 
       # Verify they exist
       assert {:ok, "value1"} = Cache.get("test:1")
@@ -258,9 +258,9 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
   describe "batch operations" do
     test "get_batch retrieves multiple keys efficiently" do
       # Put test data
-      :ok = Cache.put("batch:1", "value1")
-      :ok = Cache.put("batch:2", "value2")
-      :ok = Cache.put("batch:3", "value3")
+      assert_cache_put("batch:1", "value1")
+      assert_cache_put("batch:2", "value2")
+      assert_cache_put("batch:3", "value3")
 
       # Test batch get
       keys = ["batch:1", "batch:2", "batch:3", "batch:nonexistent"]

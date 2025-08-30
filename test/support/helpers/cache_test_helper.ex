@@ -18,9 +18,11 @@ defmodule WandererNotifier.Test.Helpers.CacheTestHelper do
       assert_cache_put("test:key", "test_value")
       assert_cache_put(Cache.Keys.map_characters(), characters)
   """
+  @spec assert_cache_put(term(), term()) :: :ok
   def assert_cache_put(key, value) do
     assert :ok = Cache.put(key, value)
     assert {:ok, ^value} = Cache.get(key)
+    :ok
   end
 
   @doc """
@@ -30,8 +32,10 @@ defmodule WandererNotifier.Test.Helpers.CacheTestHelper do
 
       assert_cache_put("test:key", "test_value", :timer.hours(1))
   """
+  @spec assert_cache_put(term(), term(), integer()) :: :ok
   def assert_cache_put(key, value, ttl) do
     assert :ok = Cache.put(key, value, ttl)
     assert {:ok, ^value} = Cache.get(key)
+    :ok
   end
 end

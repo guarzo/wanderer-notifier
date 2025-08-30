@@ -333,6 +333,12 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # Helper Functions
   # ══════════════════════════════════════════════════════════════════════════════
 
+  # Builds footer for killmail notifications.
+  # Footer ID is always 8 lowercase hex characters.
+  @spec build_kill_footer(Killmail.t()) :: %{
+          required(:text) => binary(),
+          optional(:icon_url) => binary() | nil
+        }
   defp build_kill_footer(%Killmail{} = killmail) do
     # Generate a unique message ID based on killmail_id and timestamp
     # This helps identify potential duplicate messages
@@ -347,7 +353,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Normalize nils to explicit sentinels to keep data unambiguous
     id_part = if is_nil(killmail_id), do: "nil", else: to_string(killmail_id)
     time_part = if is_binary(kill_time) and kill_time != "", do: kill_time, else: "nil"
-    data = id_part <> "-" <> time_part
+    # Add unique token if both values are nil to prevent collisions
+    data =
+      if id_part == "nil" and time_part == "nil" do
+        "nil-nil-#{:erlang.unique_integer([:positive])}"
+      else
+        id_part <> "-" <> time_part
+      end
 
     hash = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
     binary_part(hash, 0, 8)

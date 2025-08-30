@@ -4,8 +4,6 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Map.EventProcessor
 
-  import WandererNotifier.Test.Helpers.CacheTestHelper
-
   setup do
     # Clear cache before each test
     Cache.delete(Cache.Keys.map_characters())

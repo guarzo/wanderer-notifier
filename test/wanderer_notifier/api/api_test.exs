@@ -1,5 +1,5 @@
 defmodule WandererNotifier.API.APITest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import Mox
   alias WandererNotifier.Test.Fixtures.ApiResponses
 

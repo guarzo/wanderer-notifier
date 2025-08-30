@@ -9,8 +9,21 @@ defmodule WandererNotifier.Killmail.WandererKillsAPITest do
   setup :verify_on_exit!
 
   setup do
+    # Capture original value to restore after test
+    original_http_client = Application.get_env(:wanderer_notifier, :http_client)
+
     # Set up the HTTP client mock
     Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
+
+    on_exit(fn ->
+      # Restore original value
+      if original_http_client do
+        Application.put_env(:wanderer_notifier, :http_client, original_http_client)
+      else
+        Application.delete_env(:wanderer_notifier, :http_client)
+      end
+    end)
+
     :ok
   end
 
