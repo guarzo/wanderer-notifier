@@ -174,7 +174,11 @@ config :gun,
   # Basic connection configuration
   http_opts: %{
     connect_timeout: 10_000,
-    timeout: 30_000
+    timeout: 30_000,
+    # Disable HTTP/2 to avoid potential connection state issues
+    protocols: [:http],
+    # Keep connections alive to avoid reconnection overhead
+    keepalive: 10_000
   },
   # Connection handling - use defaults, just force IPv4
   conn_opts: %{
@@ -182,7 +186,11 @@ config :gun,
       # Disable IPv6
       inet6: false,
       # Force IPv4
-      inet: true
+      inet: true,
+      # TCP keepalive to detect dead connections
+      keepalive: true,
+      # Disable Nagle's algorithm for lower latency
+      nodelay: true
     ]
   }
 
