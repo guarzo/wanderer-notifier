@@ -179,58 +179,69 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp handle_task_result(task, channel_id_int, start_time, rally_id) do
     # Use a shorter initial timeout to detect stuck connections faster
     case Task.yield(task, 10_000) do
-      {:ok, {:ok, _message} = success} ->
-        success
-
-      {:ok, {:error, %{status_code: 429} = response}} ->
-        handle_rate_limit(response, channel_id_int, start_time, rally_id)
-        {:error, {:rate_limited, get_retry_after(response)}}
-
-      {:ok, {:error, response}} ->
-        {:error, response}
+      {:ok, result} ->
+        handle_task_success(result, channel_id_int, start_time, rally_id)
 
       nil ->
-        # First timeout - check if we should wait longer
-        Logger.warning("Discord API call still pending after 10s",
-          channel_id: channel_id_int,
-          nostrum_state: get_nostrum_state(),
-          elapsed: System.monotonic_time(:millisecond) - start_time,
-          category: :discord_api
-        )
-
-        # Give it another 5 seconds before giving up
-        case Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill) do
-          {:ok, result} ->
-            Logger.info("Discord API call completed after extended wait",
-              elapsed: System.monotonic_time(:millisecond) - start_time,
-              category: :discord_api
-            )
-
-            case result do
-              {:ok, _message} = success ->
-                success
-
-              {:error, %{status_code: 429} = response} ->
-                handle_rate_limit(response, channel_id_int, start_time, rally_id)
-                {:error, {:rate_limited, get_retry_after(response)}}
-
-              {:error, response} ->
-                {:error, response}
-            end
-
-          nil ->
-            # Task timed out - log additional diagnostics
-            Logger.error("Discord API timeout after 15s total",
-              channel_id: channel_id_int,
-              nostrum_state: get_nostrum_state(),
-              elapsed: System.monotonic_time(:millisecond) - start_time,
-              category: :discord_api
-            )
-
-            log_system_diagnostics()
-            {:error, :timeout}
-        end
+        handle_task_timeout(task, channel_id_int, start_time, rally_id)
     end
+  end
+
+  defp handle_task_success(result, channel_id_int, start_time, rally_id) do
+    case result do
+      {:ok, _message} = success ->
+        success
+
+      {:error, %{status_code: 429} = response} ->
+        handle_rate_limit(response, channel_id_int, start_time, rally_id)
+        {:error, %{status_code: 429, retry_after: get_retry_after(response)}}
+
+      {:error, response} ->
+        {:error, response}
+    end
+  end
+
+  defp handle_task_timeout(task, channel_id_int, start_time, rally_id) do
+    # First timeout - log warning
+    log_timeout_warning(channel_id_int, start_time, 10_000)
+
+    # Give it another 5 seconds before giving up
+    case Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        log_extended_completion(start_time)
+        handle_task_success(result, channel_id_int, start_time, rally_id)
+
+      nil ->
+        handle_final_timeout(channel_id_int, start_time)
+    end
+  end
+
+  defp log_timeout_warning(channel_id_int, start_time, timeout_ms) do
+    Logger.warning("Discord API call still pending after #{timeout_ms / 1000}s",
+      channel_id: channel_id_int,
+      nostrum_state: get_nostrum_state(),
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+  end
+
+  defp log_extended_completion(start_time) do
+    Logger.info("Discord API call completed after extended wait",
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+  end
+
+  defp handle_final_timeout(channel_id_int, start_time) do
+    Logger.error("Discord API timeout after 15s total",
+      channel_id: channel_id_int,
+      nostrum_state: get_nostrum_state(),
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+
+    log_system_diagnostics()
+    {:error, :timeout}
   end
 
   defp handle_discord_result({:ok, _response}, start_time, rally_id) do
@@ -244,14 +255,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    {:error, :discord_timeout}
+    {:error, reason}
   end
 
   defp log_retry_attempt(attempt, error, delay, elapsed, rally_id, channel_id) do
     error_msg =
       case error do
-        :timeout -> "timed out after 30 seconds"
-        {:rate_limited, _} -> "rate limited"
+        :timeout -> "timed out after 15 seconds"
+        %{status_code: 429} -> "rate limited (429)"
         other -> inspect(other)
       end
 
@@ -365,8 +376,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       rescue
         exception ->
           Logger.error("Exception during Discord API call",
-            error: inspect(exception),
-            stacktrace: inspect(__STACKTRACE__),
+            error: Exception.message(exception),
+            stacktrace: __STACKTRACE__,
             category: :discord_api
           )
 
@@ -911,8 +922,45 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp extract_image_from_map(_), do: {:error, "Data is not a map"}
 
+  defp get_retry_after(%{headers: headers}) when is_list(headers) do
+    # Prefer Discord's X-RateLimit-Reset-After (seconds, can be fractional), fallback to Retry-After
+    lower_headers = normalize_headers(headers)
+
+    # Try X-RateLimit-Reset-After first
+    case parse_retry_header(lower_headers, "x-ratelimit-reset-after") do
+      {:ok, ms} ->
+        ms
+
+      :error ->
+        # Fallback to Retry-After
+        case parse_retry_header(lower_headers, "retry-after") do
+          {:ok, ms} -> ms
+          :error -> 5_000
+        end
+    end
+  rescue
+    _ -> 5_000
+  end
+
   defp get_retry_after(_) do
-    5000
+    5_000
+  end
+
+  defp normalize_headers(headers) do
+    Enum.into(headers, %{}, fn {k, v} -> {String.downcase(to_string(k)), to_string(v)} end)
+  end
+
+  defp parse_retry_header(headers, header_name) do
+    case Map.get(headers, header_name) do
+      nil ->
+        :error
+
+      v ->
+        case Float.parse(v) do
+          {sec, _} -> {:ok, trunc(sec * 1000)}
+          :error -> :error
+        end
+    end
   end
 
   # Helper function to check Nostrum WebSocket state
@@ -970,21 +1018,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log Gun connection pool status for diagnostics
   defp log_gun_pool_status do
-    # Try to get Gun connection info from Nostrum
-    # This is approximate since Nostrum manages Gun internally
-    try do
-      # Check for Gun processes
-      gun_processes =
-        Process.list()
-        |> Enum.filter(&gun_process?/1)
-        |> length()
+    # Only run expensive diagnostics at debug level
+    if Logger.compare_levels(Logger.level(), :debug) != :gt do
+      # Try to get Gun connection info from Nostrum
+      # This is approximate since Nostrum manages Gun internally
+      try do
+        # Check for Gun processes
+        gun_processes =
+          Process.list()
+          |> Enum.filter(&gun_process?/1)
+          |> length()
 
-      Logger.info("Gun connection pool status",
-        gun_processes: gun_processes,
-        category: :discord_api
-      )
-    rescue
-      _ -> :ok
+        Logger.debug("Gun connection pool status",
+          gun_processes: gun_processes,
+          category: :discord_api
+        )
+      rescue
+        _ -> :ok
+      end
     end
   end
 

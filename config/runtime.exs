@@ -108,6 +108,31 @@ config :nostrum,
   token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
   gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
 
+# Configure Gun HTTP client used by Nostrum - runtime configuration
+config :gun,
+  # Basic connection configuration
+  http_opts: %{
+    connect_timeout: RuntimeConfig.get_integer("GUN_CONNECT_TIMEOUT", 10_000),
+    timeout: RuntimeConfig.get_integer("GUN_TIMEOUT", 30_000),
+    # Disable HTTP/2 to avoid potential connection state issues
+    protocols: [:http],
+    # Keep connections alive to avoid reconnection overhead
+    keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000)
+  },
+  # Connection handling - use defaults, just force IPv4
+  conn_opts: %{
+    transport_opts: [
+      # Disable IPv6
+      inet6: false,
+      # Force IPv4
+      inet: true,
+      # TCP keepalive to detect dead connections
+      keepalive: true,
+      # Disable Nagle's algorithm for lower latency
+      nodelay: true
+    ]
+  }
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Application Configuration
 # ══════════════════════════════════════════════════════════════════════════════
