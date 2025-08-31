@@ -431,7 +431,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    {:error, {:rate_limited, retry_after}}
+    {:error, %{status_code: 429, retry_after: retry_after}}
   end
 
   # Handle exceptions during message sending
@@ -495,7 +495,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     )
 
     case Message.create(target_channel,
-           embed: discord_embed,
+           embeds: [discord_embed],
            components: discord_components
          ) do
       {:ok, _message} ->
@@ -509,7 +509,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
         Logger.error("Failed to send message with components via Nostrum",
@@ -577,7 +577,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
         Logger.error("Failed to send message via Nostrum")
@@ -664,10 +664,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
-        Logger.error("Failed to send file via Nostrum")
+        Logger.error("Failed to send file via Nostrum", category: :discord_api)
         {:error, error}
     end
   end

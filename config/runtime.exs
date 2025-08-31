@@ -110,28 +110,28 @@ config :nostrum,
 
 # Configure Gun HTTP client used by Nostrum - runtime configuration
 config :gun,
-  # Basic connection configuration
+  # Top-level connection timeout
+  connect_timeout: RuntimeConfig.get_integer("GUN_CONNECT_TIMEOUT", 10_000),
+  # Protocol selection (HTTP/1.1 only to avoid HTTP/2 issues)
+  protocols: [:http],
+  # HTTP-specific options
   http_opts: %{
-    connect_timeout: RuntimeConfig.get_integer("GUN_CONNECT_TIMEOUT", 10_000),
-    timeout: RuntimeConfig.get_integer("GUN_TIMEOUT", 30_000),
-    # Disable HTTP/2 to avoid potential connection state issues
-    protocols: [:http],
     # Keep connections alive to avoid reconnection overhead
-    keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000)
+    keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000),
+    # HTTP version
+    version: :http
   },
-  # Connection handling - use defaults, just force IPv4
-  conn_opts: %{
-    transport_opts: [
-      # Disable IPv6
-      inet6: false,
-      # Force IPv4
-      inet: true,
-      # TCP keepalive to detect dead connections
-      keepalive: true,
-      # Disable Nagle's algorithm for lower latency
-      nodelay: true
-    ]
-  }
+  # TCP options for connection handling
+  tcp_opts: [
+    # Disable IPv6
+    inet6: false,
+    # Force IPv4
+    inet: true,
+    # TCP keepalive to detect dead connections
+    keepalive: true,
+    # Disable Nagle's algorithm for lower latency
+    nodelay: true
+  ]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Application Configuration
