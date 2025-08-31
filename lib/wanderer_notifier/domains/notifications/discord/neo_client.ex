@@ -392,6 +392,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           duration_ms: duration,
           category: :discord_api
         )
+
         success
 
       {:error, reason} = error ->
@@ -400,6 +401,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           reason: inspect(reason),
           category: :discord_api
         )
+
         error
     end
   end
