@@ -146,7 +146,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       max_attempts: 5,
       base_backoff: 2_000,
       max_backoff: 10_000,
-      jitter: false,
+      jitter: :full,
       context: "Discord API call",
       # IMPORTANT: Don't retry on timeouts to prevent duplicate messages
       # Only retry on definitive connection failures
@@ -298,7 +298,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       # Log Nostrum connection state
       ws_state = get_nostrum_state()
 
-      Logger.info("Pre-send state check",
+      Logger.debug("Pre-send state check",
         rally_id: rally_id,
         nostrum_connected: ws_state,
         channel_id: channel_id_int,
@@ -308,7 +308,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       # Log embed size for diagnostics
       embed_size = calculate_embed_size(discord_embed)
 
-      Logger.info("Embed size",
+      Logger.debug("Embed size",
         rally_id: rally_id,
         embed_size_bytes: embed_size,
         has_content: content != nil,
@@ -316,14 +316,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         category: :discord_api
       )
 
-      Logger.info("Calling Message.create",
+      Logger.debug("Calling Message.create",
         rally_id: rally_id,
         category: :discord_api
       )
 
       result = call_discord_api(channel_id_int, discord_embed, content)
 
-      Logger.info(
+      Logger.debug(
         "Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
         rally_id: rally_id,
         result: inspect(elem(result, 0)),
@@ -416,15 +416,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp handle_rate_limit(response, _channel_id_int, start_time, rally_id) do
     elapsed = System.monotonic_time(:millisecond) - start_time
+    retry_after = get_retry_after(Map.get(response, :response))
 
     Logger.warning("Discord rate limited after #{elapsed}ms",
       rally_id: rally_id,
-      category: :discord_api
-    )
-
-    retry_after = get_retry_after(Map.get(response, :response))
-
-    Logger.error("Discord rate limit hit via Nostrum",
       retry_after: retry_after,
       category: :discord_api
     )

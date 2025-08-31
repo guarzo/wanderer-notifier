@@ -95,7 +95,7 @@ missing_vars = Enum.filter(required_vars, &is_nil(System.get_env(&1)))
 if length(missing_vars) > 0 do
   IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
 
-  if Mix.env() == :prod do
+  if config_env() == :prod do
     System.halt(1)
   end
 end
