@@ -925,12 +925,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # Try X-RateLimit-Reset-After first
     case parse_retry_header(lower_headers, "x-ratelimit-reset-after") do
       {:ok, ms} ->
-        ms
+        clamp_ms(ms)
 
       :error ->
         # Fallback to Retry-After
         case parse_retry_header(lower_headers, "retry-after") do
-          {:ok, ms} -> ms
+          {:ok, ms} -> clamp_ms(ms)
           :error -> 5_000
         end
     end
@@ -957,6 +957,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           :error -> :error
         end
     end
+  end
+
+  # Clamp retry-after milliseconds to reasonable bounds (0 to 120 seconds)
+  defp clamp_ms(ms) when is_integer(ms) do
+    ms
+    |> max(0)
+    |> min(120_000)
   end
 
   # Helper function to check Nostrum WebSocket state
