@@ -343,8 +343,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         "none"
       end
 
-    Logger.info(
-      "Discord API call starting - Channel: #{channel_id_int}, Content: #{content_info}"
+    Logger.debug("Discord API call starting",
+      channel_id: channel_id_int,
+      content_preview: content_info,
+      category: :discord_api
     )
 
     # Check current rate limit status before making the call
@@ -386,11 +388,18 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
     case result do
       {:ok, _} = success ->
-        Logger.info("Discord API call completed successfully in #{duration}ms")
+        Logger.debug("Discord API call completed successfully",
+          duration_ms: duration,
+          category: :discord_api
+        )
         success
 
       {:error, reason} = error ->
-        Logger.error("Discord API call failed after #{duration}ms - Reason: #{inspect(reason)}")
+        Logger.error("Discord API call failed",
+          duration_ms: duration,
+          reason: inspect(reason),
+          category: :discord_api
+        )
         error
     end
   end
@@ -606,7 +615,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     if env() == :test do
       log_test_file(filename, title, description)
     else
-      Logger.info("Sending file to Discord via Nostrum",
+      Logger.debug("Sending file to Discord via Nostrum",
         filename: filename,
         category: :discord_api
       )
@@ -981,7 +990,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp check_nostrum_supervisor_state(pid) do
     if Process.alive?(pid) do
       # Check if we have any active shards
-      case Supervisor.which_children(Nostrum.Shard.Supervisor) do
+      case Supervisor.which_children(pid) do
         [] -> :no_shards
         children -> check_shard_connections(children)
       end
