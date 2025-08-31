@@ -82,8 +82,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         {:error, :nil_channel_id}
 
       channel_id when is_integer(channel_id) ->
-        # Convert integer channel ID to string
-        send_embed_to_valid_channel(embed, to_string(channel_id))
+        send_embed_to_valid_channel(embed, channel_id)
     end
   end
 
@@ -93,11 +92,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     discord_embed = convert_to_nostrum_embed(embed)
 
     # Check if there's content to send with the embed
-    content = Map.get(embed, :content, "")
+    content = get_field_with_fallback(embed, :content, "content", "")
 
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     try do
-      channel_id_int = String.to_integer(channel_id)
+      channel_id_int = channel_id
 
       if is_binary(content) and String.trim(content) != "" do
         send_discord_message(channel_id_int, discord_embed, content)
@@ -194,7 +193,6 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
       {:error, %{status_code: 429} = response} ->
         handle_rate_limit(response, channel_id_int, start_time, rally_id)
-        {:error, %{status_code: 429, retry_after: get_retry_after(response)}}
 
       {:error, response} ->
         {:error, response}
@@ -284,8 +282,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     end
   end
 
-  defp log_api_attempt(channel_id, has_content, rally_id, attempt) do
-    Logger.info("Starting Discord API call attempt #{attempt + 1}",
+  defp log_api_attempt(channel_id, has_content, rally_id, _attempt) do
+    Logger.info("Starting Discord API call",
       channel_id: channel_id,
       has_content: has_content,
       rally_id: rally_id,
@@ -610,11 +608,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         override_channel_id \\ nil,
         custom_embed \\ nil
       ) do
-    Logger.info("Sending file to Discord via Nostrum", filename: filename, category: :discord_api)
-
     if env() == :test do
       log_test_file(filename, title, description)
     else
+      Logger.info("Sending file to Discord via Nostrum",
+        filename: filename,
+        category: :discord_api
+      )
       target_channel = resolve_target_channel(override_channel_id)
       send_file_to_channel(filename, file_data, title, description, target_channel, custom_embed)
     end

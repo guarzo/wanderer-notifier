@@ -119,14 +119,12 @@ config :gun,
     # Keep connections alive to avoid reconnection overhead
     keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000),
     # HTTP version
-    version: :http
+    version: :"HTTP/1.1"
   },
   # TCP options for connection handling
   tcp_opts: [
-    # Disable IPv6
-    inet6: false,
-    # Force IPv4
-    inet: true,
+    # Force IPv4 address family
+    :inet,
     # TCP keepalive to detect dead connections
     keepalive: true,
     # Disable Nagle's algorithm for lower latency
