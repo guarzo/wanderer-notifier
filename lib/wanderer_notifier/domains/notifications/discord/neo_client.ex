@@ -615,6 +615,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         filename: filename,
         category: :discord_api
       )
+
       target_channel = resolve_target_channel(override_channel_id)
       send_file_to_channel(filename, file_data, title, description, target_channel, custom_embed)
     end
