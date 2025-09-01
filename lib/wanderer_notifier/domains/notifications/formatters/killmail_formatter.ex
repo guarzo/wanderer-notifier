@@ -461,9 +461,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       get_fallback_system_name(killmail) || "Unknown System"
     else
       # For system-based kills, use the custom system name if available
-      get_custom_system_name(killmail.system_id, killmail) ||
-        get_fallback_system_name(killmail) ||
-        "Unknown System"
+      # Guard against nil system_id to prevent crashes
+      if is_nil(killmail.system_id) do
+        get_fallback_system_name(killmail) || "Unknown System"
+      else
+        get_custom_system_name(killmail.system_id, killmail) ||
+          get_fallback_system_name(killmail) ||
+          "Unknown System"
+      end
     end
   end
 
@@ -525,18 +530,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp capitalize_name(name), do: name
 
   defp killmail_has_tracked_character?(%Killmail{} = killmail) do
-    # Check if victim is tracked
-    victim_tracked = character_tracked?(killmail.victim_character_id)
-
-    if victim_tracked do
-      true
-    else
-      # Check if any attacker is tracked
-      (killmail.attackers || [])
-      |> Enum.any?(fn attacker ->
-        char_id = Map.get(attacker, "character_id")
-        character_tracked?(char_id)
-      end)
+    # Use get_tracked_character_role to avoid duplicate logic and cache lookups
+    case get_tracked_character_role(killmail) do
+      :victim -> true
+      :attacker -> true
+      :unknown -> false
     end
   end
 end
