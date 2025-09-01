@@ -158,7 +158,7 @@ config :nostrum,
   caches: [],
   # Disable ffmpeg warnings since we're not using voice features
   ffmpeg: false,
-  # HTTP timeout configuration - increased to match neo_client.ex Task.yield timeout
+  # HTTP timeout configuration - set to 30s (neo_client.ex uses 15s total: 10s + 5s)
   gun_timeout: 30_000,
   gun_connect_timeout: 5_000
 
@@ -169,22 +169,7 @@ config :nostrum, :gateway,
     max: 300_000
   ]
 
-# Configure Gun HTTP client used by Nostrum - keep it simple
-config :gun,
-  # Basic connection configuration
-  http_opts: %{
-    connect_timeout: 10_000,
-    timeout: 30_000
-  },
-  # Connection handling - use defaults, just force IPv4
-  conn_opts: %{
-    transport_opts: [
-      # Disable IPv6
-      inet6: false,
-      # Force IPv4
-      inet: true
-    ]
-  }
+# Gun configuration moved to runtime.exs for runtime tunability
 
 # Configure cache
 config :wanderer_notifier,

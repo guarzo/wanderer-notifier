@@ -52,10 +52,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp log_test_embed(embed) do
     Logger.info("TEST MODE: Would send embed to Discord via Nostrum",
       embed: inspect(embed),
-      category: :api
+      category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Resolve the target channel ID
@@ -76,14 +76,13 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
           embed_type: typeof(embed),
           embed_title:
             if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown"),
-          category: :api
+          category: :discord_api
         )
 
         {:error, :nil_channel_id}
 
       channel_id when is_integer(channel_id) ->
-        # Convert integer channel ID to string
-        send_embed_to_valid_channel(embed, to_string(channel_id))
+        send_embed_to_valid_channel(embed, channel_id)
     end
   end
 
@@ -93,11 +92,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     discord_embed = convert_to_nostrum_embed(embed)
 
     # Check if there's content to send with the embed
-    content = Map.get(embed, :content, "")
+    content = extract_content_safely(embed)
 
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     try do
-      channel_id_int = String.to_integer(channel_id)
+      channel_id_int = channel_id
 
       if is_binary(content) and String.trim(content) != "" do
         send_discord_message(channel_id_int, discord_embed, content)
@@ -147,7 +146,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       max_attempts: 5,
       base_backoff: 2_000,
       max_backoff: 10_000,
-      jitter: false,
+      jitter: :full,
       context: "Discord API call",
       # IMPORTANT: Don't retry on timeouts to prevent duplicate messages
       # Only retry on definitive connection failures
@@ -177,59 +176,99 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp handle_task_result(task, channel_id_int, start_time, rally_id) do
-    case Task.yield(task, 30_000) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, _message} = success} ->
-        success
-
-      {:ok, {:error, %{status_code: 429} = response}} ->
-        handle_rate_limit(response, channel_id_int, start_time, rally_id)
-        {:error, {:rate_limited, get_retry_after(response)}}
-
-      {:ok, {:error, response}} ->
-        {:error, response}
+    # Use a shorter initial timeout to detect stuck connections faster
+    case Task.yield(task, 10_000) do
+      {:ok, result} ->
+        handle_task_success(result, channel_id_int, start_time, rally_id)
 
       nil ->
-        # Task timed out - log additional diagnostics
-        Logger.error("[RALLY_TIMING] Task.yield timed out",
-          rally_id: rally_id,
-          channel_id: channel_id_int,
-          nostrum_state: get_nostrum_state(),
-          elapsed: System.monotonic_time(:millisecond) - start_time,
-          category: :api
-        )
-
-        log_system_diagnostics()
-        {:error, :timeout}
+        handle_task_timeout(task, channel_id_int, start_time, rally_id)
     end
+  end
+
+  defp handle_task_success(result, channel_id_int, start_time, rally_id) do
+    case result do
+      {:ok, _message} = success ->
+        success
+
+      {:error, %{status_code: 429} = response} ->
+        handle_rate_limit(response, channel_id_int, start_time, rally_id)
+
+      {:error, response} ->
+        {:error, response}
+    end
+  end
+
+  defp handle_task_timeout(task, channel_id_int, start_time, rally_id) do
+    # First timeout - log warning
+    log_timeout_warning(channel_id_int, start_time, 10_000)
+
+    # Give it another 5 seconds before giving up
+    case Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        log_extended_completion(start_time)
+        handle_task_success(result, channel_id_int, start_time, rally_id)
+
+      nil ->
+        handle_final_timeout(channel_id_int, start_time)
+    end
+  end
+
+  defp log_timeout_warning(channel_id_int, start_time, timeout_ms) do
+    Logger.warning("Discord API call still pending after #{timeout_ms / 1000}s",
+      channel_id: channel_id_int,
+      nostrum_state: get_nostrum_state(),
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+  end
+
+  defp log_extended_completion(start_time) do
+    Logger.info("Discord API call completed after extended wait",
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+  end
+
+  defp handle_final_timeout(channel_id_int, start_time) do
+    Logger.error("Discord API timeout after 15s total",
+      channel_id: channel_id_int,
+      nostrum_state: get_nostrum_state(),
+      elapsed: System.monotonic_time(:millisecond) - start_time,
+      category: :discord_api
+    )
+
+    log_system_diagnostics()
+    {:error, :timeout}
   end
 
   defp handle_discord_result({:ok, _response}, start_time, rally_id) do
     handle_success(start_time, rally_id, 0)
-    :ok
+    {:ok, :sent}
   end
 
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
     Logger.error("Discord API call failed after all attempts",
       reason: inspect(reason),
-      category: :api
+      category: :discord_api
     )
 
-    {:error, :discord_timeout}
+    {:error, reason}
   end
 
   defp log_retry_attempt(attempt, error, delay, elapsed, rally_id, channel_id) do
     error_msg =
       case error do
-        :timeout -> "timed out after 30 seconds"
-        {:rate_limited, _} -> "rate limited"
+        :timeout -> "timed out after 15 seconds"
+        %{status_code: 429} -> "rate limited (429)"
         other -> inspect(other)
       end
 
     Logger.warning(
-      "[RALLY_TIMING] Discord API #{error_msg} on attempt #{attempt + 1} after #{elapsed}ms, retrying in #{delay}ms...",
+      "Discord API #{error_msg} on attempt #{attempt + 1} after #{elapsed}ms, retrying in #{delay}ms...",
       rally_id: rally_id,
       channel_id: channel_id,
-      category: :api
+      category: :discord_api
     )
   end
 
@@ -243,12 +282,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     end
   end
 
-  defp log_api_attempt(channel_id, has_content, rally_id, attempt) do
-    Logger.info("[RALLY_TIMING] Starting Discord API call attempt #{attempt + 1}",
+  defp log_api_attempt(channel_id, has_content, rally_id, _attempt) do
+    Logger.info("Starting Discord API call",
       channel_id: channel_id,
       has_content: has_content,
       rally_id: rally_id,
-      category: :api
+      category: :discord_api
     )
   end
 
@@ -259,36 +298,36 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       # Log Nostrum connection state
       ws_state = get_nostrum_state()
 
-      Logger.info("[RALLY_TIMING] Pre-send state check",
+      Logger.debug("Pre-send state check",
         rally_id: rally_id,
         nostrum_connected: ws_state,
         channel_id: channel_id_int,
-        category: :api
+        category: :discord_api
       )
 
       # Log embed size for diagnostics
       embed_size = calculate_embed_size(discord_embed)
 
-      Logger.info("[RALLY_TIMING] Embed size",
+      Logger.debug("Embed size",
         rally_id: rally_id,
         embed_size_bytes: embed_size,
         has_content: content != nil,
         content_length: if(content, do: String.length(content), else: 0),
-        category: :api
+        category: :discord_api
       )
 
-      Logger.info("[RALLY_TIMING] Calling Message.create",
+      Logger.debug("Calling Message.create",
         rally_id: rally_id,
-        category: :api
+        category: :discord_api
       )
 
       result = call_discord_api(channel_id_int, discord_embed, content)
 
-      Logger.info(
-        "[RALLY_TIMING] Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
+      Logger.debug(
+        "Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
         rally_id: rally_id,
-        result: inspect(elem(result, 0)),
-        category: :api
+        result_type: elem(result, 0),
+        category: :discord_api
       )
 
       result
@@ -304,18 +343,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         "none"
       end
 
-    Logger.info(
-      "Discord API call starting - Channel: #{channel_id_int}, Content: #{content_info}"
+    Logger.debug("Discord API call starting",
+      channel_id: channel_id_int,
+      content_preview: content_info,
+      category: :discord_api
     )
 
     # Check current rate limit status before making the call
     rate_limit_info = check_rate_limit_status(channel_id_int)
 
     if rate_limit_info[:limited] do
-      Logger.warning("[RALLY_TIMING] Rate limit active",
+      Logger.warning("Rate limit active",
         channel_id: channel_id_int,
         retry_after: rate_limit_info[:retry_after],
-        category: :api
+        category: :discord_api
       )
     end
 
@@ -334,10 +375,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         end
       rescue
         exception ->
-          Logger.error("[RALLY_TIMING] Exception during Discord API call",
-            error: inspect(exception),
-            stacktrace: inspect(__STACKTRACE__),
-            category: :api
+          Logger.error("Exception during Discord API call",
+            error: Exception.message(exception),
+            stacktrace: __STACKTRACE__,
+            category: :discord_api
           )
 
           {:error, exception}
@@ -347,11 +388,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
     case result do
       {:ok, _} = success ->
-        Logger.info("Discord API call completed successfully in #{duration}ms")
+        Logger.debug("Discord API call completed successfully",
+          duration_ms: duration,
+          category: :discord_api
+        )
+
         success
 
       {:error, reason} = error ->
-        Logger.error("Discord API call failed after #{duration}ms - Reason: #{inspect(reason)}")
+        Logger.error("Discord API call failed",
+          duration_ms: duration,
+          reason: inspect(reason),
+          category: :discord_api
+        )
+
         error
     end
   end
@@ -361,31 +411,31 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
     if attempt > 0 do
       Logger.info(
-        "[RALLY_TIMING] Discord API call succeeded on attempt #{attempt + 1} after #{elapsed}ms",
+        "Discord API call succeeded on attempt #{attempt + 1} after #{elapsed}ms",
         rally_id: rally_id,
-        category: :api
+        category: :discord_api
       )
     else
-      Logger.info("[RALLY_TIMING] Discord API call succeeded after #{elapsed}ms",
+      Logger.info("Discord API call succeeded after #{elapsed}ms",
         rally_id: rally_id,
-        category: :api
+        category: :discord_api
       )
     end
 
-    :ok
+    {:ok, :sent}
   end
 
   defp handle_rate_limit(response, _channel_id_int, start_time, rally_id) do
     elapsed = System.monotonic_time(:millisecond) - start_time
+    retry_after = get_retry_after(Map.get(response, :response))
 
-    Logger.warning("[RALLY_TIMING] Discord rate limited after #{elapsed}ms",
+    Logger.warning("Discord rate limited after #{elapsed}ms",
       rally_id: rally_id,
-      category: :api
+      retry_after: retry_after,
+      category: :discord_api
     )
 
-    retry_after = get_retry_after(Map.get(response, :response))
-    Logger.error("Discord rate limit hit via Nostrum", retry_after: retry_after, category: :api)
-    {:error, {:rate_limited, retry_after}}
+    {:error, %{status_code: 429, retry_after: retry_after}}
   end
 
   # Handle exceptions during message sending
@@ -393,7 +443,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     Logger.error("Exception in send_embed_to_channel",
       error: Exception.message(e),
       channel_id: channel_id,
-      category: :api
+      category: :discord_api
     )
 
     {:error, {:exception, Exception.message(e)}}
@@ -425,15 +475,15 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     Logger.info("TEST MODE: Would send message with components via Nostrum",
       embed: inspect(embed),
       components: inspect(components),
-      category: :api
+      category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Send message with components to the specified channel
   defp send_message_with_components_to_channel(_embed, _components, nil) do
-    Logger.error("Failed to send message with components: nil channel ID", category: :api)
+    Logger.error("Failed to send message with components: nil channel ID", category: :discord_api)
     {:error, :nil_channel_id}
   end
 
@@ -445,30 +495,30 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     Logger.debug("Sending message with components via Nostrum",
       channel_id: target_channel,
       embed_type: typeof(discord_embed),
-      category: :api
+      category: :discord_api
     )
 
     case Message.create(target_channel,
-           embed: discord_embed,
+           embeds: [discord_embed],
            components: discord_components
          ) do
       {:ok, _message} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
 
         Logger.error("Discord rate limit hit via Nostrum",
           retry_after: retry_after,
-          category: :api
+          category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
         Logger.error("Failed to send message with components via Nostrum",
           error: inspect(error),
-          category: :api
+          category: :discord_api
         )
 
         {:error, error}
@@ -497,13 +547,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log test mode message without sending
   defp log_test_message(message) do
-    Logger.info("TEST MODE: Would send message via Nostrum", message: message, category: :api)
-    :ok
+    Logger.info("TEST MODE: Would send message via Nostrum",
+      message: message,
+      category: :discord_api
+    )
+
+    {:ok, :sent}
   end
 
   # Send message to the specified channel
   defp send_message_to_channel(_message, nil) do
-    Logger.error("Failed to send message: nil channel ID", category: :api)
+    Logger.error("Failed to send message: nil channel ID", category: :discord_api)
     {:error, :nil_channel_id}
   end
 
@@ -511,23 +565,23 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     Logger.debug("Sending text message via Nostrum",
       channel_id: target_channel,
       message_length: String.length(message),
-      category: :api
+      category: :discord_api
     )
 
     # target_channel is already an integer from resolve_target_channel
     case Message.create(target_channel, content: message) do
       {:ok, _response} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
 
         Logger.error("Discord rate limit hit via Nostrum",
           retry_after: retry_after,
-          category: :api
+          category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
         Logger.error("Failed to send message via Nostrum")
@@ -560,11 +614,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         override_channel_id \\ nil,
         custom_embed \\ nil
       ) do
-    Logger.info("Sending file to Discord via Nostrum", filename: filename, category: :api)
-
     if env() == :test do
       log_test_file(filename, title, description)
     else
+      Logger.debug("Sending file to Discord via Nostrum",
+        filename: filename,
+        category: :discord_api
+      )
+
       target_channel = resolve_target_channel(override_channel_id)
       send_file_to_channel(filename, file_data, title, description, target_channel, custom_embed)
     end
@@ -576,15 +633,15 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       filename: filename,
       title: title,
       description: description,
-      category: :api
+      category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Send file to the specified channel
   defp send_file_to_channel(_filename, _file_data, _title, _description, nil, _custom_embed) do
-    Logger.error("Failed to send file: nil channel ID", category: :api)
+    Logger.error("Failed to send file: nil channel ID", category: :discord_api)
     {:error, :nil_channel_id}
   end
 
@@ -596,7 +653,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       channel_id: target_channel,
       filename: filename,
       embed: inspect(embed),
-      category: :api
+      category: :discord_api
     )
 
     case Message.create(target_channel,
@@ -604,20 +661,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
            embeds: [embed]
          ) do
       {:ok, _message} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
 
         Logger.error("Discord rate limit hit via Nostrum",
           retry_after: retry_after,
-          category: :api
+          category: :discord_api
         )
 
-        {:error, {:rate_limited, retry_after}}
+        {:error, %{status_code: 429, retry_after: retry_after}}
 
       {:error, error} ->
-        Logger.error("Failed to send file via Nostrum")
+        Logger.error("Failed to send file via Nostrum", category: :discord_api)
         {:error, error}
     end
   end
@@ -650,7 +707,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       type: interaction.type,
       guild_id: interaction.guild_id,
       channel_id: interaction.channel_id,
-      category: :api
+      category: :discord_api
     )
 
     :noop
@@ -697,12 +754,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       end
 
     # Extract fields safely
-    fields =
+    fields_raw =
       cond do
         Map.has_key?(embed_map, :fields) -> Map.get(embed_map, :fields)
         Map.has_key?(embed_map, "fields") -> Map.get(embed_map, "fields")
         true -> []
       end
+
+    fields = if is_list(fields_raw), do: fields_raw, else: []
 
     # Create the Nostrum embed
     discord_embed = %Embed{
@@ -764,6 +823,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       icon_url: get_field_with_fallback(author_map, :icon_url, "icon_url")
     }
   end
+
+  # Extract content safely using pattern matching
+  defp extract_content_safely(%{content: content}) when is_binary(content), do: content
+  defp extract_content_safely(%{"content" => content}) when is_binary(content), do: content
+  defp extract_content_safely(_), do: ""
 
   # Get a field with fallback from atom or string keys
   defp get_field_with_fallback(map, atom_key, string_key, default \\ nil) do
@@ -872,8 +936,52 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp extract_image_from_map(_), do: {:error, "Data is not a map"}
 
+  defp get_retry_after(%{headers: headers}) when is_list(headers) do
+    # Prefer Discord's X-RateLimit-Reset-After (seconds, can be fractional), fallback to Retry-After
+    lower_headers = normalize_headers(headers)
+
+    # Try X-RateLimit-Reset-After first
+    case parse_retry_header(lower_headers, "x-ratelimit-reset-after") do
+      {:ok, ms} ->
+        clamp_ms(ms)
+
+      :error ->
+        # Fallback to Retry-After
+        case parse_retry_header(lower_headers, "retry-after") do
+          {:ok, ms} -> clamp_ms(ms)
+          :error -> 5_000
+        end
+    end
+  rescue
+    _ -> 5_000
+  end
+
   defp get_retry_after(_) do
-    5000
+    5_000
+  end
+
+  defp normalize_headers(headers) do
+    Enum.into(headers, %{}, fn {k, v} -> {String.downcase(to_string(k)), to_string(v)} end)
+  end
+
+  defp parse_retry_header(headers, header_name) do
+    case Map.get(headers, header_name) do
+      nil ->
+        :error
+
+      v ->
+        case Float.parse(v) do
+          {sec, _} -> {:ok, trunc(sec * 1000)}
+          :error -> :error
+        end
+    end
+  end
+
+  # Clamp retry-after milliseconds to reasonable bounds (0 to 120 seconds)
+  defp clamp_ms(ms) when is_integer(ms) do
+    ms
+    |> max(0)
+    |> min(120_000)
   end
 
   # Helper function to check Nostrum WebSocket state
@@ -891,7 +999,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp check_nostrum_supervisor_state(pid) do
     if Process.alive?(pid) do
       # Check if we have any active shards
-      case Supervisor.which_children(Nostrum.Shard.Supervisor) do
+      case Supervisor.which_children(pid) do
         [] -> :no_shards
         children -> check_shard_connections(children)
       end
@@ -931,21 +1039,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Log Gun connection pool status for diagnostics
   defp log_gun_pool_status do
-    # Try to get Gun connection info from Nostrum
-    # This is approximate since Nostrum manages Gun internally
-    try do
-      # Check for Gun processes
-      gun_processes =
-        Process.list()
-        |> Enum.filter(&gun_process?/1)
-        |> length()
+    # Only run expensive diagnostics at debug level
+    if Logger.compare_levels(Logger.level(), :debug) != :gt do
+      # Try to get Gun connection info from Nostrum
+      # This is approximate since Nostrum manages Gun internally
+      try do
+        # Check for Gun processes
+        gun_processes =
+          Process.list()
+          |> Enum.filter(&gun_process?/1)
+          |> length()
 
-      Logger.info("[RALLY_TIMING] Gun connection pool status",
-        gun_processes: gun_processes,
-        category: :api
-      )
-    rescue
-      _ -> :ok
+        Logger.debug("Gun connection pool status",
+          gun_processes: gun_processes,
+          category: :discord_api
+        )
+      rescue
+        _ -> :ok
+      end
     end
   end
 
@@ -976,11 +1087,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       # Get scheduler info
       schedulers_online = :erlang.system_info(:schedulers_online)
 
-      Logger.warning("[RALLY_TIMING] System diagnostics at timeout",
+      Logger.warning("System diagnostics at timeout",
         process_count: process_count,
         memory_mb: div(memory_info[:total], 1_048_576),
         schedulers_online: schedulers_online,
-        category: :api
+        category: :discord_api
       )
     rescue
       _ -> :ok

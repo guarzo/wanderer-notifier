@@ -95,7 +95,7 @@ missing_vars = Enum.filter(required_vars, &is_nil(System.get_env(&1)))
 if length(missing_vars) > 0 do
   IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
 
-  if Mix.env() == :prod do
+  if config_env() == :prod do
     System.halt(1)
   end
 end
@@ -107,6 +107,29 @@ end
 config :nostrum,
   token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
   gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
+
+# Configure Gun HTTP client used by Nostrum - runtime configuration
+config :gun,
+  # Top-level connection timeout
+  connect_timeout: RuntimeConfig.get_integer("GUN_CONNECT_TIMEOUT", 10_000),
+  # Protocol selection (HTTP/1.1 only to avoid HTTP/2 issues)
+  protocols: [:http],
+  # HTTP-specific options
+  http_opts: %{
+    # Keep connections alive to avoid reconnection overhead
+    keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000),
+    # HTTP version
+    version: :"HTTP/1.1"
+  },
+  # TCP options for connection handling
+  tcp_opts: [
+    # Force IPv4 address family
+    :inet,
+    # TCP keepalive to detect dead connections
+    keepalive: true,
+    # Disable Nagle's algorithm for lower latency
+    nodelay: true
+  ]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Application Configuration

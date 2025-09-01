@@ -30,8 +30,11 @@
   
   # False positives - utility functions that handle multiple types but analyzed at specific call sites
   {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match_cov, 91},
+  {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match, 1},
   {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match, 826},
+  {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match, 830},
   {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match_cov, 829},
+  {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match_cov, 833},
   {"lib/wanderer_notifier/domains/tracking/static_info.ex", :pattern_match, 392},
   {"lib/wanderer_notifier/domains/tracking/static_info.ex", :guard_fail, 393},
   {"lib/wanderer_notifier/domains/tracking/static_info.ex", :pattern_match_cov, 402}

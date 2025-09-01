@@ -297,7 +297,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     )
 
     case NeoClient.send_embed(notification, channel_id) do
-      :ok ->
+      {:ok, :sent} ->
         log_rally_success(rally_point, rally_id, start_time)
         {:ok, :sent}
 
@@ -425,7 +425,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       end
 
     case result do
-      :ok -> :ok
+      {:ok, :sent} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
@@ -435,7 +435,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     result = NeoClient.send_message(message, channel_id)
 
     case result do
-      :ok -> :ok
+      {:ok, :sent} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
