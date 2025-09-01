@@ -455,20 +455,22 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp get_system_display_name(%Killmail{} = killmail) do
-    # Check if this is a character-based kill (tracked character involved)
-    if killmail_has_tracked_character?(killmail) do
-      # For character-based kills, use the normal EVE system name
-      get_fallback_system_name(killmail) || "Unknown System"
-    else
-      # For system-based kills, use the custom system name if available
-      # Guard against nil system_id to prevent crashes
-      if is_nil(killmail.system_id) do
+    case get_tracked_character_role(killmail) do
+      role when role in [:victim, :attacker] ->
+        # For character-based kills, use the normal EVE system name
         get_fallback_system_name(killmail) || "Unknown System"
-      else
-        get_custom_system_name(killmail.system_id, killmail) ||
-          get_fallback_system_name(killmail) ||
-          "Unknown System"
-      end
+
+      :unknown ->
+        # For system-based kills, use the custom system name if available
+        case killmail.system_id do
+          nil ->
+            get_fallback_system_name(killmail) || "Unknown System"
+
+          id ->
+            get_custom_system_name(id, killmail) ||
+              get_fallback_system_name(killmail) ||
+              "Unknown System"
+        end
     end
   end
 
@@ -528,13 +530,4 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp capitalize_name(name), do: name
-
-  defp killmail_has_tracked_character?(%Killmail{} = killmail) do
-    # Use get_tracked_character_role to avoid duplicate logic and cache lookups
-    case get_tracked_character_role(killmail) do
-      :victim -> true
-      :attacker -> true
-      :unknown -> false
-    end
-  end
 end
