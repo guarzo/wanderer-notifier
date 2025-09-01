@@ -55,7 +55,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Resolve the target channel ID
@@ -244,7 +244,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp handle_discord_result({:ok, _response}, start_time, rally_id) do
     handle_success(start_time, rally_id, 0)
-    :ok
+    {:ok, :sent}
   end
 
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
@@ -326,7 +326,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       Logger.debug(
         "Message.create returned after #{System.monotonic_time(:millisecond) - api_start}ms",
         rally_id: rally_id,
-        result: inspect(elem(result, 0)),
+        result_type: elem(result, 0),
         category: :discord_api
       )
 
@@ -422,7 +422,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       )
     end
 
-    :ok
+    {:ok, :sent}
   end
 
   defp handle_rate_limit(response, _channel_id_int, start_time, rally_id) do
@@ -478,7 +478,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Send message with components to the specified channel
@@ -503,7 +503,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
            components: discord_components
          ) do
       {:ok, _message} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
@@ -552,7 +552,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Send message to the specified channel
@@ -571,7 +571,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     # target_channel is already an integer from resolve_target_channel
     case Message.create(target_channel, content: message) do
       {:ok, _response} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
@@ -636,7 +636,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       category: :discord_api
     )
 
-    :ok
+    {:ok, :sent}
   end
 
   # Send file to the specified channel
@@ -661,7 +661,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
            embeds: [embed]
          ) do
       {:ok, _message} ->
-        :ok
+        {:ok, :sent}
 
       {:error, %{status_code: 429, response: response}} ->
         retry_after = get_retry_after(response)
@@ -754,12 +754,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       end
 
     # Extract fields safely
-    fields =
+    fields_raw =
       cond do
         Map.has_key?(embed_map, :fields) -> Map.get(embed_map, :fields)
         Map.has_key?(embed_map, "fields") -> Map.get(embed_map, "fields")
         true -> []
       end
+
+    fields = if is_list(fields_raw), do: fields_raw, else: []
 
     # Create the Nostrum embed
     discord_embed = %Embed{
