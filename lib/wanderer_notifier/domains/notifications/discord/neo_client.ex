@@ -92,7 +92,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     discord_embed = convert_to_nostrum_embed(embed)
 
     # Check if there's content to send with the embed
-    content = get_field_with_fallback(embed, :content, "content", "")
+    content = extract_content_safely(embed)
 
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     try do
@@ -823,6 +823,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       icon_url: get_field_with_fallback(author_map, :icon_url, "icon_url")
     }
   end
+
+  # Extract content safely using pattern matching
+  defp extract_content_safely(%{content: content}) when is_binary(content), do: content
+  defp extract_content_safely(%{"content" => content}) when is_binary(content), do: content
+  defp extract_content_safely(_), do: ""
 
   # Get a field with fallback from atom or string keys
   defp get_field_with_fallback(map, atom_key, string_key, default \\ nil) do
