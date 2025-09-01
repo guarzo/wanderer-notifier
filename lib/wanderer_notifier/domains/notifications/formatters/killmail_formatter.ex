@@ -455,9 +455,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp get_system_display_name(%Killmail{} = killmail) do
-    get_custom_system_name(killmail.system_id, killmail) ||
-      get_fallback_system_name(killmail) ||
-      "Unknown System"
+    # Check if this is a character-based kill (tracked character involved)
+    if killmail_has_tracked_character?(killmail) do
+      # For character-based kills, use the normal EVE system name
+      get_fallback_system_name(killmail) || "Unknown System"
+    else
+      # For system-based kills, use the custom system name if available
+      get_custom_system_name(killmail.system_id, killmail) ||
+        get_fallback_system_name(killmail) ||
+        "Unknown System"
+    end
   end
 
   defp get_custom_system_name(system_id, killmail) when is_integer(system_id) do
@@ -516,4 +523,20 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp capitalize_name(name), do: name
+
+  defp killmail_has_tracked_character?(%Killmail{} = killmail) do
+    # Check if victim is tracked
+    victim_tracked = character_tracked?(killmail.victim_character_id)
+
+    if victim_tracked do
+      true
+    else
+      # Check if any attacker is tracked
+      (killmail.attackers || [])
+      |> Enum.any?(fn attacker ->
+        char_id = Map.get(attacker, "character_id")
+        character_tracked?(char_id)
+      end)
+    end
+  end
 end
