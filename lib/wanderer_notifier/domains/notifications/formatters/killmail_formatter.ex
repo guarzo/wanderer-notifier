@@ -455,9 +455,23 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp get_system_display_name(%Killmail{} = killmail) do
-    get_custom_system_name(killmail.system_id, killmail) ||
-      get_fallback_system_name(killmail) ||
-      "Unknown System"
+    case get_tracked_character_role(killmail) do
+      role when role in [:victim, :attacker] ->
+        # For character-based kills, use the normal EVE system name
+        get_fallback_system_name(killmail) || "Unknown System"
+
+      :unknown ->
+        # For system-based kills, use the custom system name if available
+        case killmail.system_id do
+          nil ->
+            get_fallback_system_name(killmail) || "Unknown System"
+
+          id ->
+            get_custom_system_name(id, killmail) ||
+              get_fallback_system_name(killmail) ||
+              "Unknown System"
+        end
+    end
   end
 
   defp get_custom_system_name(system_id, killmail) when is_integer(system_id) do
