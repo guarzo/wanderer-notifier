@@ -148,29 +148,16 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   defp integration_phase do
     Logger.debug("Initializing integration phase", category: :startup)
 
-    is_test = Application.get_env(:wanderer_notifier, :env) == :test
+    case Application.get_env(:wanderer_notifier, :env) do
+      :test ->
+        # Test environment: only Phoenix endpoint (skip Discord and ConnectionMonitor)
+        [{WandererNotifierWeb.Endpoint, []}]
 
-    # Base integrations - Phoenix web endpoint is always included
-    base_integrations = [
-      # Phoenix web endpoint
-      {WandererNotifierWeb.Endpoint, []}
-    ]
-
-    # Discord Consumer uses Nostrum which requires a valid Discord token
-    # Skip in test environment to prevent authentication errors
-    integrations_with_discord =
-      if is_test do
-        base_integrations
-      else
-        [{WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []} | base_integrations]
-      end
-
-    # Add real-time integration if not in test environment
-    if is_test do
-      integrations_with_discord
-    else
-      integrations_with_discord ++
+      _env ->
+        # Production/dev: Discord Consumer, Phoenix endpoint, and ConnectionMonitor
         [
+          {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
+          {WandererNotifierWeb.Endpoint, []},
           {WandererNotifier.Infrastructure.Messaging.ConnectionMonitor, []}
         ]
     end

@@ -242,12 +242,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp send_system_notification_impl(system) do
-    if LicenseLimiter.should_send_rich?(:system) do
-      send_rich_system_notification(system)
-    else
-      message = NotificationFormatter.format_plain_text(system)
-      NeoClient.send_message(message)
-    end
+    rich? = LicenseLimiter.should_send_rich?(:system)
+    send_system_notification_impl(system, rich?)
+  end
+
+  defp send_system_notification_impl(system, true) do
+    send_rich_system_notification(system)
+  end
+
+  defp send_system_notification_impl(system, false) do
+    message = NotificationFormatter.format_plain_text(system)
+    NeoClient.send_message(message)
   end
 
   defp send_rich_system_notification(system) do
@@ -282,17 +287,22 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       fn ->
         log_rally_start(rally_id)
 
-        notification = format_rally_notification(rally_point, rally_id, start_time)
-        channel_id = get_rally_channel_id(rally_id, start_time)
-        notification_with_content = add_rally_content(notification, rally_point)
+        case format_rally_notification(rally_point, rally_id, start_time) do
+          {:ok, notification} ->
+            channel_id = get_rally_channel_id(rally_id, start_time)
+            notification_with_content = add_rally_content(notification, rally_point)
 
-        send_rally_to_discord(
-          notification_with_content,
-          channel_id,
-          rally_point,
-          rally_id,
-          start_time
-        )
+            send_rally_to_discord(
+              notification_with_content,
+              channel_id,
+              rally_point,
+              rally_id,
+              start_time
+            )
+
+          {:error, _reason} = error ->
+            error
+        end
       end,
       fallback: fn error ->
         handle_rally_exception(error, rally_id, start_time)
@@ -322,15 +332,18 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
           category: :rally
         )
 
-        notification
+        {:ok, notification}
 
       {:error, reason} ->
-        Logger.error("[RALLY_TIMING] Formatting failed: #{inspect(reason)}",
+        elapsed_ms = System.monotonic_time(:millisecond) - start_time
+
+        Logger.error("[RALLY_TIMING] Formatting failed after #{elapsed_ms}ms: #{inspect(reason)}",
           rally_id: rally_id,
+          elapsed_ms: elapsed_ms,
           category: :rally
         )
 
-        raise "Rally notification formatting failed: #{inspect(reason)}"
+        {:error, {:formatting_failed, reason}}
     end
   end
 
