@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
 
-  describe "format_notification/1 with rally points" do
+  describe "format_notification/2 with rally points" do
     test "formats rally point notification correctly" do
       rally_point = %{
         id: "rally-123",
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         corporation_name: "Test Corp"
       }
 
-      result = NotificationFormatter.format_notification(rally_point)
+      assert {:ok, result} = NotificationFormatter.format_notification(rally_point)
 
       assert result.title == "⚔️ Rally Point Created"
       assert result.description =~ "Test Pilot"
@@ -40,9 +40,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         character_name: "Solo Pilot"
       }
 
-      result = NotificationFormatter.format_notification(rally_point)
+      assert {:ok, result} = NotificationFormatter.format_notification(rally_point)
 
-      refute result == {:error, :unknown_notification_type}
       assert is_map(result)
       assert result.title == "⚔️ Rally Point Created"
     end

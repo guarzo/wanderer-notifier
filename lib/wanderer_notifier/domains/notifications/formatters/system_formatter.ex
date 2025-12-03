@@ -170,7 +170,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemFormatter do
       "[Formatter] add_statics_field - is_wormhole: #{is_wormhole}, statics: #{inspect(system.statics)}"
     )
 
-    if is_wormhole && system.statics && length(system.statics) > 0 do
+    if is_wormhole && system.statics && not Enum.empty?(system.statics) do
       statics_text = format_statics(system.statics)
       [Utils.build_field("Static Wormholes", statics_text, true) | fields]
     else

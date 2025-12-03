@@ -82,6 +82,9 @@ defmodule WandererNotifier.Application do
     # Ensure critical configuration exists to prevent startup failures
     ensure_critical_configuration()
 
+    # Configure logger backends dynamically (required for Elixir 1.19+)
+    configure_logger_backends()
+
     # Set application start time for uptime calculation
     Application.put_env(:wanderer_notifier, :start_time, System.monotonic_time(:second))
 
@@ -92,6 +95,77 @@ defmodule WandererNotifier.Application do
     log_environment_variables()
 
     Logger.debug("Application environment prepared successfully", category: :startup)
+  end
+
+  # Configures logger backends dynamically (Elixir 1.19+ compatible)
+  defp configure_logger_backends do
+    env = get_env()
+
+    if should_configure_file_backend?(env) do
+      case add_file_backends(env) do
+        {:ok, count} ->
+          Logger.debug("Added #{count} file backend(s) successfully", category: :startup)
+          :ok
+
+        {:error, errors} ->
+          error_count = length(errors)
+
+          Logger.warning(
+            "Failed to add #{error_count} file backend(s): #{inspect(errors)}",
+            category: :startup
+          )
+
+          :ok
+      end
+    end
+  rescue
+    exception ->
+      # Log the failure but continue without file logging to avoid blocking startup
+      Logger.warning(
+        "Failed to configure logger backends: #{inspect(exception)}. Continuing without file logging."
+      )
+
+      :ok
+  end
+
+  defp should_configure_file_backend?(env) do
+    Code.ensure_loaded?(LoggerFileBackend) and
+      Code.ensure_loaded?(LoggerBackends) and
+      env != :test
+  end
+
+  defp add_file_backends(env) do
+    backends =
+      if env == :dev do
+        [{LoggerFileBackend, :file_log}, {LoggerFileBackend, :debug_log}]
+      else
+        [{LoggerFileBackend, :file_log}]
+      end
+
+    results =
+      Enum.map(backends, fn backend ->
+        result = LoggerBackends.add(backend)
+
+        case result do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error("Failed to add logger backend #{inspect(backend)}: #{inspect(reason)}",
+              category: :startup
+            )
+
+            {:error, reason}
+        end
+      end)
+
+    errors = Enum.filter(results, &match?({:error, _}, &1))
+
+    if errors == [] do
+      {:ok, length(backends)}
+    else
+      {:error, errors}
+    end
   end
 
   # Validates critical configuration on startup

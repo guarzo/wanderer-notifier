@@ -36,7 +36,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # Main Formatting Functions
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp format_killmail_notification(%Killmail{} = killmail, _opts) do
+  defp format_killmail_notification(%Killmail{} = killmail, opts) do
     # Determine color based on tracked character role
     tracked_as = get_tracked_character_role(killmail)
 
@@ -50,12 +50,19 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
         _ -> FormatterUtils.get_isk_color(killmail.value || 0)
       end
 
-    full_description = build_full_kill_description(killmail)
+    # Build title with system name (displays in larger font)
+    # Use custom name if explicitly requested via opts (for system kill channel)
+    use_custom_name = Keyword.get(opts, :use_custom_system_name, false)
+    system_name = get_system_display_name(killmail, use_custom_name) |> capitalize_name()
+    title = "Ship destroyed in #{system_name}"
+
+    # Build description without the system line (it's now in title)
+    description = build_kill_description_body(killmail)
 
     %{
       type: :kill_notification,
-      title: nil,
-      description: full_description,
+      title: title,
+      description: description,
       color: embed_color,
       url: Utils.zkillboard_url(killmail.killmail_id),
       author: build_kill_author_icon(killmail),
@@ -66,25 +73,16 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     }
   end
 
-  defp build_killmail_embed(%Killmail{} = killmail, _opts) do
-    format_killmail_notification(killmail, [])
+  defp build_killmail_embed(%Killmail{} = killmail, opts) do
+    format_killmail_notification(killmail, opts)
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Kill Description Building
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp build_full_kill_description(%Killmail{} = killmail) do
-    # System line - use custom name if available
-    system_name = get_system_display_name(killmail) |> capitalize_name()
-
-    system_link =
-      if killmail.system_id do
-        "[#{system_name}](https://zkillboard.com/system/#{killmail.system_id}/)"
-      else
-        system_name
-      end
-
+  # Build description body without system line (system is now in title)
+  defp build_kill_description_body(%Killmail{} = killmail) do
     # Main kill description
     victim_part = build_victim_description_part(killmail)
     attacker_part = build_attacker_description_part(killmail)
@@ -103,8 +101,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
     # Combine all parts with blank lines
     """
-    Ship destroyed in #{system_link}
-
     #{main_line}#{notable_loot_section}
 
     #{value_time_line}
@@ -293,11 +289,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     items = notable_items || items_dropped || []
     filtered_items = filter_notable_items(items)
 
-    if length(filtered_items) > 0 do
+    if Enum.empty?(filtered_items) do
+      ""
+    else
       notable_list = build_notable_items_list(filtered_items)
       "\n\n**Notable Items:**\n#{notable_list}"
-    else
-      ""
     end
   end
 
@@ -454,24 +450,22 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     Cache.is_character_tracked?(character_id)
   end
 
-  defp get_system_display_name(%Killmail{} = killmail) do
-    case get_tracked_character_role(killmail) do
-      role when role in [:victim, :attacker] ->
-        # For character-based kills, use the normal EVE system name
+  # When use_custom_name is true (system kill channel), always try to use custom name
+  defp get_system_display_name(%Killmail{} = killmail, true = _use_custom_name) do
+    case killmail.system_id do
+      nil ->
         get_fallback_system_name(killmail) || "Unknown System"
 
-      :unknown ->
-        # For system-based kills, use the custom system name if available
-        case killmail.system_id do
-          nil ->
-            get_fallback_system_name(killmail) || "Unknown System"
-
-          id ->
-            get_custom_system_name(id, killmail) ||
-              get_fallback_system_name(killmail) ||
-              "Unknown System"
-        end
+      id ->
+        get_custom_system_name(id, killmail) ||
+          get_fallback_system_name(killmail) ||
+          "Unknown System"
     end
+  end
+
+  # When use_custom_name is false (character kill channel or default), use EVE system name
+  defp get_system_display_name(%Killmail{} = killmail, false = _use_custom_name) do
+    get_fallback_system_name(killmail) || "Unknown System"
   end
 
   defp get_custom_system_name(system_id, killmail) when is_integer(system_id) do
@@ -485,17 +479,80 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp fetch_system_name(system_id_string, killmail) do
     case Cache.get_tracked_system(system_id_string) do
       {:ok, system_data} when is_map(system_data) ->
-        custom_name = Map.get(system_data, "custom_name")
+        extract_system_name_from_cache(system_data, system_id_string, killmail)
 
-        if custom_name && custom_name != "" do
-          custom_name
-        else
-          Map.get(system_data, "name") || Map.get(system_data, "system_name")
-        end
+      {:ok, nil} ->
+        log_cache_nil(system_id_string, killmail)
+        nil
 
-      _ ->
-        get_fallback_system_name(killmail)
+      {:error, reason} ->
+        log_cache_error(system_id_string, reason, killmail)
+        nil
     end
+  end
+
+  defp extract_system_name_from_cache(system_data, system_id_string, killmail) do
+    custom_name = Map.get(system_data, "custom_name")
+    temp_name = Map.get(system_data, "temporary_name")
+
+    cond do
+      custom_name && custom_name != "" ->
+        log_custom_name(system_id_string, custom_name, killmail)
+        custom_name
+
+      temp_name && temp_name != "" ->
+        log_temp_name(system_id_string, temp_name, killmail)
+        temp_name
+
+      true ->
+        log_no_custom_name(system_id_string, system_data, killmail)
+        nil
+    end
+  end
+
+  defp log_custom_name(system_id_string, custom_name, killmail) do
+    Logger.debug("Using custom system name for tracked system",
+      system_id: system_id_string,
+      custom_name: custom_name,
+      killmail_id: killmail.killmail_id,
+      category: :notifications
+    )
+  end
+
+  defp log_temp_name(system_id_string, temp_name, killmail) do
+    Logger.debug("Using temporary system name for tracked system",
+      system_id: system_id_string,
+      temporary_name: temp_name,
+      killmail_id: killmail.killmail_id,
+      category: :notifications
+    )
+  end
+
+  defp log_no_custom_name(system_id_string, system_data, killmail) do
+    Logger.debug("No custom/temporary name found for tracked system, using fallback",
+      system_id: system_id_string,
+      cached_keys: Map.keys(system_data),
+      solar_system_name: Map.get(system_data, "solar_system_name"),
+      killmail_id: killmail.killmail_id,
+      category: :notifications
+    )
+  end
+
+  defp log_cache_nil(system_id_string, killmail) do
+    Logger.debug("Tracked system cache returned nil",
+      system_id: system_id_string,
+      killmail_id: killmail.killmail_id,
+      category: :notifications
+    )
+  end
+
+  defp log_cache_error(system_id_string, reason, killmail) do
+    Logger.debug("Tracked system not found in cache",
+      system_id: system_id_string,
+      reason: inspect(reason),
+      killmail_id: killmail.killmail_id,
+      category: :notifications
+    )
   end
 
   defp get_fallback_system_name(killmail) do

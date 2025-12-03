@@ -2,8 +2,7 @@ import Config
 
 # Production logger configuration - optimized for performance and structured logging
 config :logger,
-  level: :info,
-  backends: [:console]
+  level: :info
 
 # Console logger configuration with structured format for production
 config :logger, :console,

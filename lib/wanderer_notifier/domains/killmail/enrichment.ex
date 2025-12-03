@@ -27,7 +27,7 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   # Process system kills request and format response
   defp process_system_kills_request(system_id, limit) do
     case get_system_kills(system_id, limit) do
-      {:ok, kills} when is_list(kills) and length(kills) > 0 ->
+      {:ok, kills} when is_list(kills) and kills != [] ->
         format_kills_list(kills)
 
       {:ok, []} ->

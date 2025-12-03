@@ -212,7 +212,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       is_integer(value) ->
         value * 1000
 
-      is_list(value) and length(value) > 0 ->
+      is_list(value) and value != [] ->
         parse_list_retry_after(value)
 
       is_atom(value) and not is_nil(value) ->
@@ -516,7 +516,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
     end
   end
 
-  defp parse_int(value, default) when is_list(value) and length(value) > 0 do
+  defp parse_int(value, default) when is_list(value) and value != [] do
     # Handle list case - parse first element
     case List.first(value) do
       val when is_binary(val) -> parse_int(val, default)

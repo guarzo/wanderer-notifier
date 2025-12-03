@@ -104,9 +104,13 @@ end
 # Discord Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
-config :nostrum,
-  token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
-  gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
+# Skip nostrum configuration in test environment - tests use config/test.exs settings
+# and nostrum is not started as an application in test mode (see mix.exs extra_applications)
+if config_env() != :test do
+  config :nostrum,
+    token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
+    gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
+end
 
 # Configure Gun HTTP client used by Nostrum - runtime configuration
 config :gun,
@@ -251,11 +255,8 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 config :logger,
   level: :info
 
-# Configure file logger if LoggerFileBackend is available
+# File logger configuration (backend is added dynamically in application.ex)
 if Code.ensure_loaded?(LoggerFileBackend) do
-  config :logger,
-    backends: [:console, {LoggerFileBackend, :file_log}]
-
   cache_dir = RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache")
 
   config :logger, :file_log,

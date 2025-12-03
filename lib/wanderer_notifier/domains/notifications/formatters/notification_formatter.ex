@@ -25,63 +25,69 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   @doc """
   Format any notification based on its type.
+
+  ## Options for killmail notifications
+    - `:use_custom_system_name` - When true, uses Wanderer custom/temporary name for system.
+      When false, uses EVE system name. Defaults to false.
   """
-  def format_notification(%Killmail{} = killmail) do
-    KillmailFormatter.format(killmail)
+  def format_notification(notification, opts \\ [])
+
+  def format_notification(%Killmail{} = killmail, opts) do
+    {:ok, KillmailFormatter.format(killmail, opts)}
   end
 
   # Handle killmail notifications that have been converted to maps (e.g., from cache)
-  def format_notification(%{killmail_id: _} = killmail_map)
+  def format_notification(%{killmail_id: _} = killmail_map, opts)
       when is_map_key(killmail_map, :victim_character_id) do
     Logger.debug("NotificationFormatter received killmail as map, converting to struct")
     killmail = struct(Killmail, killmail_map)
-    KillmailFormatter.format(killmail)
+    {:ok, KillmailFormatter.format(killmail, opts)}
   end
 
-  def format_notification(%Character{} = character) do
-    CharacterFormatter.format_embed(character)
+  def format_notification(%Character{} = character, opts) do
+    {:ok, CharacterFormatter.format_embed(character, opts)}
   end
 
   # Handle character notifications that have been converted to maps (e.g., from cache)
-  def format_notification(%{character_id: _} = character_map)
+  def format_notification(%{character_id: _} = character_map, opts)
       when is_map_key(character_map, :character_name) and is_map_key(character_map, :tracked) do
     Logger.debug("NotificationFormatter received character as map, converting to struct")
     character = struct(Character, character_map)
-    CharacterFormatter.format_embed(character)
+    {:ok, CharacterFormatter.format_embed(character, opts)}
   end
 
-  def format_notification(%System{} = system) do
+  def format_notification(%System{} = system, opts) do
     Logger.debug(
       "NotificationFormatter received System struct with keys: #{inspect(Map.keys(system))}"
     )
 
-    SystemFormatter.format_embed(system)
+    {:ok, SystemFormatter.format_embed(system, opts)}
   end
 
   # Handle system notifications that have been converted to maps (e.g., from cache)
-  def format_notification(%{solar_system_id: _} = system_map)
+  def format_notification(%{solar_system_id: _} = system_map, opts)
       when is_map_key(system_map, :name) and is_map_key(system_map, :tracked) do
     Logger.debug("NotificationFormatter received system as map, converting to struct")
     system = struct(System, system_map)
-    SystemFormatter.format_embed(system)
+    {:ok, SystemFormatter.format_embed(system, opts)}
   end
 
   # Handle rally point notifications
-  def format_notification(%{id: _, system_id: _, character_eve_id: _} = rally_point) do
+  def format_notification(%{id: _, system_id: _, character_eve_id: _} = rally_point, _opts) do
     Logger.debug("NotificationFormatter received rally point: #{inspect(rally_point)}")
-    RallyFormatter.format_embed(rally_point)
+    {:ok, RallyFormatter.format_embed(rally_point)}
   end
 
   # Also handle the original format for backwards compatibility
-  def format_notification(%{id: _, system_name: _, character_name: _} = rally_point) do
+  def format_notification(%{id: _, system_name: _, character_name: _} = rally_point, _opts) do
     Logger.debug(
       "NotificationFormatter received rally point (legacy format): #{inspect(rally_point)}"
     )
 
-    RallyFormatter.format_embed(rally_point)
+    {:ok, RallyFormatter.format_embed(rally_point)}
   end
 
-  def format_notification(notification) do
+  def format_notification(notification, _opts) do
     Logger.error("Unknown notification type: #{inspect(notification)}")
     {:error, :unknown_notification_type}
   end

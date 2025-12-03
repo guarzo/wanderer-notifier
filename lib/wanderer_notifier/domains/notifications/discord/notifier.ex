@@ -129,13 +129,18 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         enriched_killmail = enrich_with_system_name(killmail)
 
         # Format the notification
-        notification = NotificationFormatter.format_notification(enriched_killmail)
+        case NotificationFormatter.format_notification(enriched_killmail) do
+          {:ok, notification} ->
+            # Check if this is a system kill and add voice mentions
+            notification = maybe_add_voice_mentions(notification, killmail, channel_id)
 
-        # Check if this is a system kill and add voice mentions
-        notification = maybe_add_voice_mentions(notification, killmail, channel_id)
+            # Send to channel
+            NeoClient.send_embed(notification, channel_id)
 
-        # Send to channel
-        NeoClient.send_embed(notification, channel_id)
+          {:error, reason} ->
+            Logger.error("Failed to format kill notification: #{inspect(reason)}")
+            {:error, reason}
+        end
       end,
       context: %{
         operation: :send_kill_notification_to_channel,
@@ -155,15 +160,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_tracked_character_notification(character) do
     ErrorHandler.safe_execute(
       fn ->
-        if LicenseLimiter.should_send_rich?(:character) do
-          notification = NotificationFormatter.format_notification(character)
-          channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
-          NeoClient.send_embed(notification, channel_id)
-          LicenseLimiter.increment(:character)
-        else
-          message = NotificationFormatter.format_plain_text(character)
-          NeoClient.send_message(message)
-        end
+        send_character_notification_impl(character)
 
         WandererNotifier.Shared.Metrics.increment(:characters)
 
@@ -181,6 +178,41 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     )
   end
 
+  defp send_character_notification_impl(character) do
+    rich? = LicenseLimiter.should_send_rich?(:character)
+    send_character_notification_impl(character, rich?)
+  end
+
+  defp send_character_notification_impl(character, true) do
+    send_rich_character_notification(character)
+  end
+
+  defp send_character_notification_impl(character, false) do
+    message = NotificationFormatter.format_plain_text(character)
+    NeoClient.send_message(message)
+  end
+
+  defp send_rich_character_notification(character) do
+    case NotificationFormatter.format_notification(character) do
+      {:ok, notification} ->
+        channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
+
+        case NeoClient.send_embed(notification, channel_id) do
+          {:ok, _} = success ->
+            LicenseLimiter.increment(:character)
+            success
+
+          {:error, reason} = error ->
+            Logger.error("Failed to send character notification to Discord: #{inspect(reason)}")
+            error
+        end
+
+      {:error, reason} ->
+        Logger.error("Failed to format character notification: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
   # ═══════════════════════════════════════════════════════════════════════════════
   # System Notifications
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -191,15 +223,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_system_notification(system) do
     ErrorHandler.safe_execute(
       fn ->
-        if LicenseLimiter.should_send_rich?(:system) do
-          notification = NotificationFormatter.format_notification(system)
-          channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
-          NeoClient.send_embed(notification, channel_id)
-          LicenseLimiter.increment(:system)
-        else
-          message = NotificationFormatter.format_plain_text(system)
-          NeoClient.send_message(message)
-        end
+        send_system_notification_impl(system)
 
         WandererNotifier.Shared.Metrics.increment(:systems)
 
@@ -217,6 +241,41 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     )
   end
 
+  defp send_system_notification_impl(system) do
+    rich? = LicenseLimiter.should_send_rich?(:system)
+    send_system_notification_impl(system, rich?)
+  end
+
+  defp send_system_notification_impl(system, true) do
+    send_rich_system_notification(system)
+  end
+
+  defp send_system_notification_impl(system, false) do
+    message = NotificationFormatter.format_plain_text(system)
+    NeoClient.send_message(message)
+  end
+
+  defp send_rich_system_notification(system) do
+    case NotificationFormatter.format_notification(system) do
+      {:ok, notification} ->
+        channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
+
+        case NeoClient.send_embed(notification, channel_id) do
+          {:ok, _} = success ->
+            LicenseLimiter.increment(:system)
+            success
+
+          {:error, reason} = error ->
+            Logger.error("Failed to send system notification to Discord: #{inspect(reason)}")
+            error
+        end
+
+      {:error, reason} ->
+        Logger.error("Failed to format system notification: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
   @doc """
   Send a rally point notification.
   """
@@ -228,17 +287,22 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       fn ->
         log_rally_start(rally_id)
 
-        notification = format_rally_notification(rally_point, rally_id, start_time)
-        channel_id = get_rally_channel_id(rally_id, start_time)
-        notification_with_content = add_rally_content(notification, rally_point)
+        case format_rally_notification(rally_point, rally_id, start_time) do
+          {:ok, notification} ->
+            channel_id = get_rally_channel_id(rally_id, start_time)
+            notification_with_content = add_rally_content(notification, rally_point)
 
-        send_rally_to_discord(
-          notification_with_content,
-          channel_id,
-          rally_point,
-          rally_id,
-          start_time
-        )
+            send_rally_to_discord(
+              notification_with_content,
+              channel_id,
+              rally_point,
+              rally_id,
+              start_time
+            )
+
+          {:error, _reason} = error ->
+            error
+        end
       end,
       fallback: fn error ->
         handle_rally_exception(error, rally_id, start_time)
@@ -260,15 +324,27 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       category: :rally
     )
 
-    notification = NotificationFormatter.format_notification(rally_point)
+    case NotificationFormatter.format_notification(rally_point) do
+      {:ok, notification} ->
+        Logger.info(
+          "[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
+          rally_id: rally_id,
+          category: :rally
+        )
 
-    Logger.info(
-      "[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
-      rally_id: rally_id,
-      category: :rally
-    )
+        {:ok, notification}
 
-    notification
+      {:error, reason} ->
+        elapsed_ms = System.monotonic_time(:millisecond) - start_time
+
+        Logger.error("[RALLY_TIMING] Formatting failed after #{elapsed_ms}ms: #{inspect(reason)}",
+          rally_id: rally_id,
+          elapsed_ms: elapsed_ms,
+          category: :rally
+        )
+
+        {:error, {:formatting_failed, reason}}
+    end
   end
 
   defp get_rally_channel_id(rally_id, start_time) do
@@ -403,30 +479,40 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
 
   defp send_rich_kill_notification(killmail) do
     enriched_killmail = enrich_with_system_name(killmail)
-    notification = NotificationFormatter.format_notification(enriched_killmail)
 
-    # Add components if feature is enabled
-    notification =
-      if Config.features()[:discord_components] do
-        Map.put(notification, :components, [
-          ComponentBuilder.kill_action_row(killmail.killmail_id)
-        ])
-      else
-        notification
-      end
+    case NotificationFormatter.format_notification(enriched_killmail) do
+      {:ok, notification} ->
+        # Add components if feature is enabled
+        notification =
+          if Config.features()[:discord_components] do
+            Map.put(notification, :components, [
+              ComponentBuilder.kill_action_row(killmail.killmail_id)
+            ])
+          else
+            notification
+          end
 
-    channel_id = Config.discord_channel_id()
+        channel_id = Config.discord_channel_id()
 
-    result =
-      if FeatureFlags.components_enabled?() and Map.has_key?(notification, :components) do
-        NeoClient.send_message_with_components(notification, notification.components, channel_id)
-      else
-        NeoClient.send_embed(notification, channel_id)
-      end
+        result =
+          if FeatureFlags.components_enabled?() and Map.has_key?(notification, :components) do
+            NeoClient.send_message_with_components(
+              notification,
+              notification.components,
+              channel_id
+            )
+          else
+            NeoClient.send_embed(notification, channel_id)
+          end
 
-    case result do
-      {:ok, :sent} -> :ok
-      {:error, reason} -> {:error, reason}
+        case result do
+          {:ok, :sent} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, reason} ->
+        Logger.error("Failed to format kill notification: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 

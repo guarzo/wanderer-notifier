@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: "3.4.0",
+      version: "3.4.1",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -13,13 +13,6 @@ defmodule WandererNotifier.MixProject do
       aliases: aliases(),
       validate_compile_env: false,
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.html": :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.json": :test
-      ],
       dialyzer: [ignore_warnings: ".dialyzer_ignore.exs"]
     ]
   end
@@ -27,9 +20,25 @@ defmodule WandererNotifier.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  @doc """
+  Mix CLI callback for setting preferred environments for specific tasks.
+  This is the modern approach (Mix 1.12+) replacing the deprecated preferred_cli_env option.
+  """
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.html": :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.json": :test
+      ]
+    ]
+  end
+
   def application do
     [
-      extra_applications: [:logger, :nostrum],
+      extra_applications: extra_applications(Mix.env()),
       mod: {WandererNotifier.Application, []},
       included_applications: [],
       env: [],
@@ -38,13 +47,17 @@ defmodule WandererNotifier.MixProject do
     ]
   end
 
+  # Don't start Nostrum in test mode - it tries to connect to Discord gateway
+  defp extra_applications(:test), do: [:logger]
+  defp extra_applications(_), do: [:logger, :nostrum]
+
   defp deps do
     [
       {:dotenvy, "~> 1.1"},
       {:httpoison, "~> 2.2"},
       {:req, "~> 0.4"},
       {:cachex, "~> 4.1"},
-      {:nostrum, "~> 0.10"},
+      {:nostrum, "~> 0.10", runtime: Mix.env() != :test},
       {:websockex, "~> 0.4"},
       {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},
@@ -54,6 +67,7 @@ defmodule WandererNotifier.MixProject do
       {:mime, "~> 2.0"},
       {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
+      {:logger_backends, "~> 1.0"},
       # Phoenix & Ecto
       {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.0"},

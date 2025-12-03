@@ -2,6 +2,9 @@
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 
+# Stop Nostrum if it was started (prevents Discord gateway connection errors in tests)
+Application.stop(:nostrum)
+
 # Start ExUnit
 ExUnit.start()
 

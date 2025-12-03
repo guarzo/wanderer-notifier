@@ -501,7 +501,7 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
       {:error, _} = error ->
         error
 
-      results when is_list(results) and length(results) > 0 ->
+      results when is_list(results) and results != [] ->
         {:ok, Enum.reverse(results)}
 
       [] ->

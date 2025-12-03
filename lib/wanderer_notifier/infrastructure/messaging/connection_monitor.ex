@@ -424,7 +424,7 @@ defmodule WandererNotifier.Infrastructure.Messaging.ConnectionMonitor do
   end
 
   defp update_disconnect_events(connection, now) do
-    if connection.last_disconnect_at && length(connection.disconnect_events) > 0 do
+    if connection.last_disconnect_at && not Enum.empty?(connection.disconnect_events) do
       [last_event | rest] = connection.disconnect_events
       disconnect_duration = DateTime.diff(now, connection.last_disconnect_at, :second)
       updated_event = Map.put(last_event, :disconnect_duration, disconnect_duration)
