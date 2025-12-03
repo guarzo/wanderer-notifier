@@ -7,8 +7,11 @@ config :wanderer_notifier,
   disable_status_messages: true,
   chart_service_dir: System.get_env("CHART_SERVICE_DIR", "/workspace/chart-service")
 
-# Test mode configuration
-config :nostrum, token: "test_discord_token"
+# Test mode configuration - disable Nostrum gateway connection
+# Use :manual shard mode to prevent automatic gateway connection attempts
+config :nostrum,
+  token: "test_discord_token",
+  num_shards: :manual
 
 # WandererNotifier test configuration
 config :wanderer_notifier,

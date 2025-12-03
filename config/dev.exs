@@ -1,5 +1,8 @@
 import Config
 
+# Set environment for dev mode license handling
+config :wanderer_notifier, environment: :dev
+
 # Enable hot code reloading
 config :exsync,
   reload_timeout: 150,
@@ -14,9 +17,7 @@ config :wanderer_notifier,
 # Set a higher log level in development to see more details
 config :logger, level: :info
 
-# Configure both console and file logging
-config :logger,
-  backends: [:console, {LoggerFileBackend, :debug_log}]
+# File logging is configured using LoggerBackends in application.ex
 
 # Include more metadata in development logs
 config :logger, :console,

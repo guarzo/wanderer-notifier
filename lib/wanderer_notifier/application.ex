@@ -82,6 +82,9 @@ defmodule WandererNotifier.Application do
     # Ensure critical configuration exists to prevent startup failures
     ensure_critical_configuration()
 
+    # Configure logger backends dynamically (required for Elixir 1.19+)
+    configure_logger_backends()
+
     # Set application start time for uptime calculation
     Application.put_env(:wanderer_notifier, :start_time, System.monotonic_time(:second))
 
@@ -92,6 +95,26 @@ defmodule WandererNotifier.Application do
     log_environment_variables()
 
     Logger.debug("Application environment prepared successfully", category: :startup)
+  end
+
+  # Configures logger backends dynamically (Elixir 1.19+ compatible)
+  defp configure_logger_backends do
+    # Add file backend if LoggerFileBackend is available and we're not in test
+    if Code.ensure_loaded?(LoggerFileBackend) and get_env() != :test do
+      # Use LoggerBackends to add the file backend dynamically
+      if Code.ensure_loaded?(LoggerBackends) do
+        # Add file backend for production/dev
+        LoggerBackends.add({LoggerFileBackend, :file_log})
+
+        # Add debug log backend in dev mode
+        if get_env() == :dev do
+          LoggerBackends.add({LoggerFileBackend, :debug_log})
+        end
+      end
+    end
+  rescue
+    # If anything fails, just continue without file logging
+    _ -> :ok
   end
 
   # Validates critical configuration on startup

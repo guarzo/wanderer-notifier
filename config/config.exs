@@ -84,8 +84,7 @@ config :hammer,
 # Configure the logger
 config :logger,
   level: :info,
-  format: "$time [$level] $message\n",
-  backends: [:console]
+  format: "$time [$level] $message\n"
 
 # Console logger configuration
 config :logger, :console,

@@ -50,12 +50,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
         _ -> FormatterUtils.get_isk_color(killmail.value || 0)
       end
 
-    full_description = build_full_kill_description(killmail)
+    # Build title with system name (displays in larger font)
+    system_name = get_system_display_name(killmail) |> capitalize_name()
+    title = "Ship destroyed in #{system_name}"
+
+    # Build description without the system line (it's now in title)
+    description = build_kill_description_body(killmail)
 
     %{
       type: :kill_notification,
-      title: nil,
-      description: full_description,
+      title: title,
+      description: description,
       color: embed_color,
       url: Utils.zkillboard_url(killmail.killmail_id),
       author: build_kill_author_icon(killmail),
@@ -74,17 +79,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # Kill Description Building
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp build_full_kill_description(%Killmail{} = killmail) do
-    # System line - use custom name if available
-    system_name = get_system_display_name(killmail) |> capitalize_name()
-
-    system_link =
-      if killmail.system_id do
-        "[#{system_name}](https://zkillboard.com/system/#{killmail.system_id}/)"
-      else
-        system_name
-      end
-
+  # Build description body without system line (system is now in title)
+  defp build_kill_description_body(%Killmail{} = killmail) do
     # Main kill description
     victim_part = build_victim_description_part(killmail)
     attacker_part = build_attacker_description_part(killmail)
@@ -103,8 +99,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
     # Combine all parts with blank lines
     """
-    Ship destroyed in #{system_link}
-
     #{main_line}#{notable_loot_section}
 
     #{value_time_line}
@@ -486,15 +480,62 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     case Cache.get_tracked_system(system_id_string) do
       {:ok, system_data} when is_map(system_data) ->
         custom_name = Map.get(system_data, "custom_name")
+        temp_name = Map.get(system_data, "temporary_name")
 
-        if custom_name && custom_name != "" do
-          custom_name
-        else
-          Map.get(system_data, "name") || Map.get(system_data, "system_name")
-        end
+        result =
+          cond do
+            custom_name && custom_name != "" ->
+              Logger.info("Using custom system name for tracked system",
+                system_id: system_id_string,
+                custom_name: custom_name,
+                killmail_id: killmail.killmail_id,
+                category: :notifications
+              )
 
-      _ ->
-        get_fallback_system_name(killmail)
+              custom_name
+
+            temp_name && temp_name != "" ->
+              Logger.info("Using temporary system name for tracked system",
+                system_id: system_id_string,
+                temporary_name: temp_name,
+                killmail_id: killmail.killmail_id,
+                category: :notifications
+              )
+
+              temp_name
+
+            true ->
+              Logger.info("No custom/temporary name found for tracked system, using fallback",
+                system_id: system_id_string,
+                cached_keys: Map.keys(system_data),
+                solar_system_name: Map.get(system_data, "solar_system_name"),
+                killmail_id: killmail.killmail_id,
+                category: :notifications
+              )
+
+              nil
+          end
+
+        result
+
+      {:ok, nil} ->
+        Logger.info("Tracked system cache returned nil",
+          system_id: system_id_string,
+          killmail_id: killmail.killmail_id,
+          category: :notifications
+        )
+
+        nil
+
+      {:error, reason} ->
+        Logger.info("Tracked system not found in cache",
+          system_id: system_id_string,
+          reason: inspect(reason),
+          killmail_id: killmail.killmail_id,
+          category: :notifications
+        )
+
+        nil
     end
   end
 

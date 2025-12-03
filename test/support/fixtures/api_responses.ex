@@ -5,24 +5,61 @@ defmodule WandererNotifier.Test.Fixtures.ApiResponses do
 
   def map_systems_response do
     %{
-      "systems" => [
-        %{
-          "id" => "J123456",
-          "name" => "Test System",
-          "security_status" => -1.0,
-          "region_id" => 10_000_001,
-          "tracked" => true,
-          "activity" => 25
-        },
-        %{
-          "id" => "J654321",
-          "name" => "Another System",
-          "security_status" => -0.9,
-          "region_id" => 10_000_002,
-          "tracked" => false,
-          "activity" => 5
-        }
-      ]
+      "data" => %{
+        "systems" => [
+          %{
+            "id" => "sys-uuid-1",
+            "solar_system_id" => 30_000_142,
+            "solar_system_name" => "Jita",
+            "custom_name" => "Trade Hub Central",
+            "temporary_name" => nil,
+            "description" => "Main trade hub",
+            "region_name" => "The Forge",
+            "locked" => false,
+            "visible" => true,
+            "position_x" => 100.5,
+            "position_y" => 200.3,
+            "status" => "active",
+            "tag" => "HQ",
+            "labels" => ["market", "hub"],
+            "map_id" => "map-uuid-1"
+          },
+          %{
+            "id" => "sys-uuid-2",
+            "solar_system_id" => 31_000_001,
+            "solar_system_name" => "J123456",
+            "custom_name" => "Home System",
+            "temporary_name" => nil,
+            "description" => "Our wormhole home",
+            "region_name" => "A-R00001",
+            "locked" => false,
+            "visible" => true,
+            "position_x" => 150.0,
+            "position_y" => 250.0,
+            "status" => "active",
+            "tag" => nil,
+            "labels" => [],
+            "map_id" => "map-uuid-1"
+          },
+          %{
+            "id" => "sys-uuid-3",
+            "solar_system_id" => 31_000_002,
+            "solar_system_name" => "J654321",
+            "custom_name" => nil,
+            "temporary_name" => nil,
+            "description" => nil,
+            "region_name" => "B-R00002",
+            "locked" => false,
+            "visible" => true,
+            "position_x" => 200.0,
+            "position_y" => 300.0,
+            "status" => "active",
+            "tag" => nil,
+            "labels" => [],
+            "map_id" => "map-uuid-1"
+          }
+        ]
+      }
     }
   end
 

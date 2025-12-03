@@ -251,11 +251,8 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 config :logger,
   level: :info
 
-# Configure file logger if LoggerFileBackend is available
+# File logger configuration (backend is added dynamically in application.ex)
 if Code.ensure_loaded?(LoggerFileBackend) do
-  config :logger,
-    backends: [:console, {LoggerFileBackend, :file_log}]
-
   cache_dir = RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache")
 
   config :logger, :file_log,
