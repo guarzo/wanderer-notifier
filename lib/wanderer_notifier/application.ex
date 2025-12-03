@@ -99,22 +99,33 @@ defmodule WandererNotifier.Application do
 
   # Configures logger backends dynamically (Elixir 1.19+ compatible)
   defp configure_logger_backends do
-    # Add file backend if LoggerFileBackend is available and we're not in test
-    if Code.ensure_loaded?(LoggerFileBackend) and get_env() != :test do
-      # Use LoggerBackends to add the file backend dynamically
-      if Code.ensure_loaded?(LoggerBackends) do
-        # Add file backend for production/dev
-        LoggerBackends.add({LoggerFileBackend, :file_log})
+    env = get_env()
 
-        # Add debug log backend in dev mode
-        if get_env() == :dev do
-          LoggerBackends.add({LoggerFileBackend, :debug_log})
-        end
-      end
+    if should_configure_file_backend?(env) do
+      add_file_backends(env)
     end
   rescue
-    # If anything fails, just continue without file logging
-    _ -> :ok
+    exception ->
+      # Log the failure but continue without file logging to avoid blocking startup
+      Logger.warning(
+        "Failed to configure logger backends: #{inspect(exception)}. Continuing without file logging."
+      )
+
+      :ok
+  end
+
+  defp should_configure_file_backend?(env) do
+    Code.ensure_loaded?(LoggerFileBackend) and
+      Code.ensure_loaded?(LoggerBackends) and
+      env != :test
+  end
+
+  defp add_file_backends(env) do
+    LoggerBackends.add({LoggerFileBackend, :file_log})
+
+    if env == :dev do
+      LoggerBackends.add({LoggerFileBackend, :debug_log})
+    end
   end
 
   # Validates critical configuration on startup

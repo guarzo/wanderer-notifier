@@ -94,15 +94,24 @@ defmodule WandererNotifier.DiscordNotifier do
     try do
       # Check if notifications are enabled
       if notifications_enabled?() and kill_notifications_enabled?() do
-        # Format the notification
-        case format_notification(killmail) do
+        # Determine channel first so we can pass context to formatter
+        channel_id = determine_kill_channel(killmail)
+        use_custom_name = system_kill_channel?(channel_id)
+
+        Logger.info("Kill notification channel routing",
+          killmail_id: Map.get(killmail, :killmail_id),
+          channel_id: channel_id,
+          use_custom_name: use_custom_name,
+          category: :notifications
+        )
+
+        # Format the notification with channel context
+        case format_notification(killmail, use_custom_system_name: use_custom_name) do
           nil ->
             Logger.error("Failed to format kill notification")
             :error
 
           formatted_notification ->
-            # Determine channel and send
-            channel_id = determine_kill_channel(killmail)
             send_to_discord(formatted_notification, channel_id)
             Logger.debug("Kill notification sent successfully")
             :sent
@@ -270,14 +279,19 @@ defmodule WandererNotifier.DiscordNotifier do
   # Helper Functions
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  defp format_notification(data) do
+  defp format_notification(data, opts \\ []) do
     try do
-      NotificationFormatter.format_notification(data)
+      NotificationFormatter.format_notification(data, opts)
     rescue
       e ->
         Logger.error("Notification formatting failed: #{Exception.message(e)}")
         nil
     end
+  end
+
+  defp system_kill_channel?(channel_id) do
+    system_kill_channel = Config.discord_system_kill_channel_id()
+    channel_id == system_kill_channel and system_kill_channel != nil
   end
 
   defp determine_kill_channel(killmail) do

@@ -259,7 +259,7 @@ defmodule WandererNotifier.Test.ConfigTestHelpers do
     for {field, expected_error} <- expected_field_errors do
       field_errors = Enum.filter(errors, &(&1.field == field))
 
-      assert length(field_errors) > 0, "No errors found for field #{field}"
+      assert not Enum.empty?(field_errors), "No errors found for field #{field}"
 
       if expected_error do
         assert Enum.any?(field_errors, &(&1.error == expected_error)),

@@ -20,6 +20,10 @@ defmodule WandererNotifier.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  @doc """
+  Mix CLI callback for setting preferred environments for specific tasks.
+  This is the modern approach (Mix 1.12+) replacing the deprecated preferred_cli_env option.
+  """
   def cli do
     [
       preferred_envs: [

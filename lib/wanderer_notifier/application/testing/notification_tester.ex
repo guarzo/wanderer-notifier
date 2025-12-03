@@ -138,7 +138,7 @@ defmodule WandererNotifier.Application.Testing.NotificationTester do
   end
 
   defp log_sample_character(character_list) do
-    if length(character_list) > 0 do
+    if not Enum.empty?(character_list) do
       first_char = Enum.at(character_list, 0)
       Logger.debug("[TEST] Sample character structure: #{inspect(first_char)}")
     end

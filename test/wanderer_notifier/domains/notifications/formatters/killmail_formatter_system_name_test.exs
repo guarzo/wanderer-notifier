@@ -4,6 +4,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
 
   These tests ensure that tracked systems display their Wanderer custom names
   instead of generic EVE system names (J-sigs for wormholes).
+
+  The behavior is controlled by the `use_custom_system_name` option:
+  - When `true` (system kill channel): Uses Wanderer custom/temporary name
+  - When `false` (character kill channel or default): Uses EVE system name
   """
 
   use ExUnit.Case, async: false
@@ -50,7 +54,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
         %{
           "character_id" => 88_888_888,
           "corporation_id" => 98_000_002,
-          "ship_type_id" => 11567,
+          "ship_type_id" => 11_567,
           "final_blow" => true,
           "damage_done" => 1000
         }
@@ -73,7 +77,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
         %{
           "character_id" => 88_888_888,
           "corporation_id" => 98_000_002,
-          "ship_type_id" => 11567,
+          "ship_type_id" => 11_567,
           "final_blow" => true,
           "damage_done" => 1000
         }
@@ -103,7 +107,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
           "character_id" => attacker_id,
           "character_name" => attacker_name,
           "corporation_id" => 98_000_002,
-          "ship_type_id" => 11567,
+          "ship_type_id" => 11_567,
           "final_blow" => true,
           "damage_done" => 1000
         }
@@ -113,22 +117,25 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
     }
   end
 
-  describe "custom system name in notifications" do
+  describe "system kill channel (use_custom_system_name: true)" do
     test "uses custom_name when system is tracked and has custom name" do
       system_id = 31_000_001
 
       # Cache system with custom name (simulating API/SSE data)
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J123456",
         "custom_name" => "Home System",
         "temporary_name" => nil
       })
 
-      killmail = build_killmail(system_id, "J123456", 12345)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J123456", 12_345)
+      # Simulate system kill channel by passing use_custom_system_name: true
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
-      # Verify custom name is used in title (system name is now in title)
+      # Verify custom name is used in title
       assert result.title =~ "Home System"
       refute result.title =~ "J123456"
     end
@@ -137,15 +144,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       system_id = 31_000_002
 
       # Cache system with temporary name but no custom name
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J234567",
         "custom_name" => nil,
         "temporary_name" => "Temp Staging"
       })
 
-      killmail = build_killmail(system_id, "J234567", 12346)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J234567", 12_346)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
       # Verify temporary name is used in title
       assert result.title =~ "Temp Staging"
@@ -156,15 +165,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       system_id = 31_000_003
 
       # Cache system without custom or temporary name
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J345678",
         "custom_name" => nil,
         "temporary_name" => nil
       })
 
-      killmail = build_killmail(system_id, "J345678", 12347)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J345678", 12_347)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
       # Should use the killmail's system_name as fallback in title
       assert result.title =~ "J345678"
@@ -174,8 +185,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       # Don't cache anything for this system
       system_id = 31_000_004
 
-      killmail = build_killmail(system_id, "J456789", 12348)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J456789", 12_348)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
       # Should use the killmail's system_name in title
       assert result.title =~ "J456789"
@@ -185,15 +196,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       system_id = 31_000_005
 
       # Cache system with empty string custom name
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J567890",
         "custom_name" => "",
         "temporary_name" => nil
       })
 
-      killmail = build_killmail(system_id, "J567890", 12349)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J567890", 12_349)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
       # Should use the killmail's system_name (not empty string) in title
       assert result.title =~ "J567890"
@@ -203,15 +216,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       system_id = 31_000_006
 
       # Cache system with both names
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J678901",
         "custom_name" => "Primary Name",
         "temporary_name" => "Secondary Name"
       })
 
-      killmail = build_killmail(system_id, "J678901", 12350)
-      result = KillmailFormatter.format(killmail)
+      killmail = build_killmail(system_id, "J678901", 12_350)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
       # Should use custom_name, not temporary_name, in title
       assert result.title =~ "Primary Name"
@@ -219,16 +234,60 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
     end
   end
 
-  describe "character-tracked kills use EVE system name" do
-    test "uses EVE system name when victim is tracked character" do
+  describe "character kill channel (use_custom_system_name: false or default)" do
+    test "uses EVE system name even when custom_name exists" do
       system_id = 31_000_007
-      tracked_victim_id = 95_000_001
 
-      # Cache the system with custom name
-      Cache.put_tracked_system(to_string(system_id), %{
+      # Cache system with custom name
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J789012",
         "custom_name" => "Should Not Appear",
+        "temporary_name" => nil
+      })
+
+      killmail = build_killmail(system_id, "J789012", 12_351)
+      # Default behavior (no option) should use EVE name
+      result = KillmailFormatter.format(killmail)
+
+      # Should use EVE system name, not custom
+      assert result.title =~ "J789012"
+      refute result.title =~ "Should Not Appear"
+    end
+
+    test "uses EVE system name with explicit use_custom_system_name: false" do
+      system_id = 31_000_008
+
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
+        "solar_system_id" => system_id,
+        "solar_system_name" => "J890123",
+        "custom_name" => "Also Should Not Appear",
+        "temporary_name" => nil
+      })
+
+      killmail = build_killmail(system_id, "J890123", 12_352)
+      result = KillmailFormatter.format(killmail, use_custom_system_name: false)
+
+      # Should use EVE system name, not custom
+      assert result.title =~ "J890123"
+      refute result.title =~ "Also Should Not Appear"
+    end
+
+    test "uses EVE system name when victim is tracked character" do
+      system_id = 31_000_009
+      tracked_victim_id = 95_000_001
+
+      # Cache the system with custom name
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
+        "solar_system_id" => system_id,
+        "solar_system_name" => "J901234",
+        "custom_name" => "Character Kill Custom Name",
         "temporary_name" => nil
       })
 
@@ -240,28 +299,31 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       killmail =
         build_killmail_with_victim(
           system_id,
-          "J789012",
-          12351,
+          "J901234",
+          12_353,
           tracked_victim_id,
           "Tracked Pilot"
         )
 
+      # Default for character-tracked kills is EVE name
       result = KillmailFormatter.format(killmail)
 
-      # For character-tracked kills, should use EVE system name in title, not custom
-      assert result.title =~ "J789012"
-      refute result.title =~ "Should Not Appear"
+      # Should use EVE system name in title
+      assert result.title =~ "J901234"
+      refute result.title =~ "Character Kill Custom Name"
     end
 
     test "uses EVE system name when attacker is tracked character" do
-      system_id = 31_000_008
+      system_id = 31_000_010
       tracked_attacker_id = 95_000_002
 
       # Cache the system with custom name
-      Cache.put_tracked_system(to_string(system_id), %{
+      system_id
+      |> to_string()
+      |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
-        "solar_system_name" => "J890123",
-        "custom_name" => "Should Not Appear Either",
+        "solar_system_name" => "J012345",
+        "custom_name" => "Attacker Kill Custom Name",
         "temporary_name" => nil
       })
 
@@ -273,17 +335,18 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       killmail =
         build_killmail_with_attacker(
           system_id,
-          "J890123",
-          12352,
+          "J012345",
+          12_354,
           tracked_attacker_id,
           "Tracked Hunter"
         )
 
+      # Default for character-tracked kills is EVE name
       result = KillmailFormatter.format(killmail)
 
-      # For character-tracked kills, should use EVE system name in title, not custom
-      assert result.title =~ "J890123"
-      refute result.title =~ "Should Not Appear Either"
+      # Should use EVE system name in title
+      assert result.title =~ "J012345"
+      refute result.title =~ "Attacker Kill Custom Name"
     end
   end
 end

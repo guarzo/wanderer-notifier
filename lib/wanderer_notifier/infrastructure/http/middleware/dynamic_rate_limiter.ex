@@ -410,7 +410,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter do
     end
   end
 
-  defp parse_integer(value, default) when is_list(value) and length(value) > 0 do
+  defp parse_integer(value, default) when is_list(value) and value != [] do
     case List.first(value) do
       val when is_binary(val) -> parse_integer(val, default)
       val when is_integer(val) -> {:ok, val}

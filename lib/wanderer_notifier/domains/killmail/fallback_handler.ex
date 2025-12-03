@@ -145,7 +145,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
       {:ok, %{loaded: count, errors: errors}} ->
         Logger.info("Bulk load completed: #{count} killmails loaded, #{length(errors)} errors")
 
-        if length(errors) > 0 do
+        if not Enum.empty?(errors) do
           Logger.info("Bulk load errors", errors: inspect(errors))
         end
     end
