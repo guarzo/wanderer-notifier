@@ -128,14 +128,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         # Enrich with system name if needed
         enriched_killmail = enrich_with_system_name(killmail)
 
-        # Format the notification
+        # Format and send the notification
         case NotificationFormatter.format_notification(enriched_killmail) do
           {:ok, notification} ->
-            # Check if this is a system kill and add voice mentions
             notification = maybe_add_voice_mentions(notification, killmail, channel_id)
-
-            # Send to channel
-            NeoClient.send_embed(notification, channel_id)
+            send_kill_embed_to_channel(notification, channel_id)
 
           {:error, reason} ->
             Logger.error("Failed to format kill notification: #{inspect(reason)}")
@@ -148,6 +145,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         category: :api
       }
     )
+  end
+
+  defp send_kill_embed_to_channel(notification, channel_id) do
+    case NeoClient.send_embed(notification, channel_id) do
+      {:ok, _} ->
+        {:ok, :sent}
+
+      {:error, reason} ->
+        Logger.error("Failed to send kill notification to Discord: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -287,7 +295,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
       fn ->
         log_rally_start(rally_id)
 
-        case format_rally_notification(rally_point, rally_id, start_time) do
+        # Enrich with custom system name if available
+        enriched_rally_point = enrich_rally_with_system_name(rally_point)
+
+        case format_rally_notification(enriched_rally_point, rally_id, start_time) do
           {:ok, notification} ->
             channel_id = get_rally_channel_id(rally_id, start_time)
             notification_with_content = add_rally_content(notification, rally_point)
@@ -555,6 +566,22 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     |> case do
       {:ok, %{name: name}} when is_binary(name) -> name
       _ -> nil
+    end
+  end
+
+  defp enrich_rally_with_system_name(rally_point) do
+    system_id = rally_point[:system_id]
+
+    case system_id do
+      id when is_integer(id) ->
+        # Check if tracked system has a custom name
+        case get_tracked_system_name(id) do
+          nil -> rally_point
+          custom_name -> Map.put(rally_point, :system_name, custom_name)
+        end
+
+      _ ->
+        rally_point
     end
   end
 

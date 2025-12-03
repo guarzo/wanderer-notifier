@@ -394,15 +394,19 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     killmail_to_notify =
       case maybe_process_items(killmail) do
         {:ok, enriched} ->
-          Logger.debug(
-            "Item processing completed successfully - killmail_id: #{killmail.killmail_id}"
+          notable_count = length(enriched.notable_items || [])
+          dropped_count = length(enriched.items_dropped || [])
+
+          Logger.info(
+            "[NotableLoot] Item processing completed - killmail_id: #{killmail.killmail_id}, " <>
+              "items_dropped: #{dropped_count}, notable_items: #{notable_count}"
           )
 
           enriched
 
         {:error, reason} ->
           Logger.warning(
-            "Item processing failed, continuing without items - killmail_id: #{killmail.killmail_id}, reason: #{inspect(reason)}"
+            "[NotableLoot] Item processing failed, continuing without items - killmail_id: #{killmail.killmail_id}, reason: #{inspect(reason)}"
           )
 
           killmail
@@ -476,23 +480,29 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     enabled = Config.notable_items_enabled?()
     token_present = Config.janice_api_token() != nil
 
-    Logger.debug(
-      "Item processing status - killmail_id: #{killmail.killmail_id}, notable_items_enabled: #{enabled}, janice_token_present: #{token_present}"
+    Logger.info(
+      "[NotableLoot] Item processing check - killmail_id: #{killmail.killmail_id}, " <>
+        "notable_items_enabled: #{enabled}, janice_token_present: #{token_present}"
     )
 
     if enabled and token_present do
-      Logger.debug("Starting item processing", killmail_id: killmail.killmail_id)
+      Logger.info(
+        "[NotableLoot] Starting item processing for killmail_id: #{killmail.killmail_id}"
+      )
+
       ItemProcessor.process_killmail_items(killmail)
     else
       # Skip item processing if feature is disabled or Janice API token not configured
       reason =
         cond do
-          not enabled -> "notable items feature disabled"
-          not token_present -> "no Janice API token configured"
+          not enabled -> "notable items feature disabled (set NOTABLE_ITEMS_ENABLED=true)"
+          not token_present -> "no Janice API token configured (set JANICE_API_TOKEN)"
           true -> "unknown reason"
         end
 
-      Logger.debug("Item processing skipped - #{reason} (killmail_id: #{killmail.killmail_id})")
+      Logger.info(
+        "[NotableLoot] Item processing skipped - #{reason} (killmail_id: #{killmail.killmail_id})"
+      )
 
       {:ok, killmail}
     end

@@ -282,16 +282,31 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp build_notable_loot_section(%Killmail{
+         killmail_id: killmail_id,
          items_dropped: items_dropped,
          notable_items: notable_items
        }) do
     # Use notable_items if available, otherwise fall back to items_dropped
     items = notable_items || items_dropped || []
+
+    Logger.info(
+      "[NotableLoot] Formatting notable loot section - killmail_id: #{killmail_id}, " <>
+        "notable_items_count: #{length(notable_items || [])}, items_dropped_count: #{length(items_dropped || [])}"
+    )
+
     filtered_items = filter_notable_items(items)
 
     if Enum.empty?(filtered_items) do
+      Logger.info(
+        "[NotableLoot] No items passed threshold filter for killmail_id: #{killmail_id}"
+      )
+
       ""
     else
+      Logger.info(
+        "[NotableLoot] Displaying #{length(filtered_items)} notable items for killmail_id: #{killmail_id}"
+      )
+
       notable_list = build_notable_items_list(filtered_items)
       "\n\n**Notable Items:**\n#{notable_list}"
     end
@@ -303,7 +318,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
     items
     |> Enum.filter(fn item ->
-      value = Map.get(item, "value", 0)
+      # ItemProcessor uses "total_value", but we also check "value" for backwards compatibility
+      value = Map.get(item, "total_value") || Map.get(item, "value", 0)
       value > threshold
     end)
     |> Enum.take(limit)
@@ -312,8 +328,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp build_notable_items_list(items) do
     items
     |> Enum.map(fn item ->
-      name = Map.get(item, "type_name", "Unknown Item")
-      value = Map.get(item, "value", 0)
+      # ItemProcessor uses "name", but we also check "type_name" for backwards compatibility
+      name = Map.get(item, "name") || Map.get(item, "type_name", "Unknown Item")
+      # ItemProcessor uses "total_value", but we also check "value" for backwards compatibility
+      value = Map.get(item, "total_value") || Map.get(item, "value", 0)
       quantity = Map.get(item, "quantity", 1)
 
       if quantity > 1 do
