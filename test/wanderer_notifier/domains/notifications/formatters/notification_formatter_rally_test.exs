@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
 
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
 
-  describe "format_notification/1 with rally points" do
+  describe "format_notification/2 with rally points" do
     test "formats rally point notification correctly" do
       rally_point = %{
         id: "rally-123",

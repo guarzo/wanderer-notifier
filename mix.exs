@@ -57,7 +57,7 @@ defmodule WandererNotifier.MixProject do
       {:httpoison, "~> 2.2"},
       {:req, "~> 0.4"},
       {:cachex, "~> 4.1"},
-      {:nostrum, "~> 0.10"},
+      {:nostrum, "~> 0.10", runtime: Mix.env() != :test},
       {:websockex, "~> 0.4"},
       {:slipstream, "~> 1.1"},
       {:jason, "~> 1.4"},

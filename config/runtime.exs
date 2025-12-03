@@ -104,9 +104,13 @@ end
 # Discord Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
-config :nostrum,
-  token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
-  gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
+# Skip nostrum configuration in test environment - tests use config/test.exs settings
+# and nostrum is not started as an application in test mode (see mix.exs extra_applications)
+if config_env() != :test do
+  config :nostrum,
+    token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
+    gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
+end
 
 # Configure Gun HTTP client used by Nostrum - runtime configuration
 config :gun,

@@ -102,7 +102,21 @@ defmodule WandererNotifier.Application do
     env = get_env()
 
     if should_configure_file_backend?(env) do
-      add_file_backends(env)
+      case add_file_backends(env) do
+        {:ok, count} ->
+          Logger.debug("Added #{count} file backend(s) successfully", category: :startup)
+          :ok
+
+        {:error, errors} ->
+          error_count = length(errors)
+
+          Logger.warning(
+            "Failed to add #{error_count} file backend(s): #{inspect(errors)}",
+            category: :startup
+          )
+
+          :ok
+      end
     end
   rescue
     exception ->

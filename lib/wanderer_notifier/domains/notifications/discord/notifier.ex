@@ -179,20 +179,33 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp send_character_notification_impl(character) do
-    if LicenseLimiter.should_send_rich?(:character) do
-      send_rich_character_notification(character)
-    else
-      message = NotificationFormatter.format_plain_text(character)
-      NeoClient.send_message(message)
-    end
+    rich? = LicenseLimiter.should_send_rich?(:character)
+    send_character_notification_impl(character, rich?)
+  end
+
+  defp send_character_notification_impl(character, true) do
+    send_rich_character_notification(character)
+  end
+
+  defp send_character_notification_impl(character, false) do
+    message = NotificationFormatter.format_plain_text(character)
+    NeoClient.send_message(message)
   end
 
   defp send_rich_character_notification(character) do
     case NotificationFormatter.format_notification(character) do
       {:ok, notification} ->
         channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
-        NeoClient.send_embed(notification, channel_id)
-        LicenseLimiter.increment(:character)
+
+        case NeoClient.send_embed(notification, channel_id) do
+          {:ok, _} = success ->
+            LicenseLimiter.increment(:character)
+            success
+
+          {:error, reason} = error ->
+            Logger.error("Failed to send character notification to Discord: #{inspect(reason)}")
+            error
+        end
 
       {:error, reason} ->
         Logger.error("Failed to format character notification: #{inspect(reason)}")
@@ -241,8 +254,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     case NotificationFormatter.format_notification(system) do
       {:ok, notification} ->
         channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
-        NeoClient.send_embed(notification, channel_id)
-        LicenseLimiter.increment(:system)
+
+        case NeoClient.send_embed(notification, channel_id) do
+          {:ok, _} = success ->
+            LicenseLimiter.increment(:system)
+            success
+
+          {:error, reason} = error ->
+            Logger.error("Failed to send system notification to Discord: #{inspect(reason)}")
+            error
+        end
 
       {:error, reason} ->
         Logger.error("Failed to format system notification: #{inspect(reason)}")

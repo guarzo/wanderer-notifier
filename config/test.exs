@@ -9,8 +9,9 @@ config :wanderer_notifier,
 
 # Test mode configuration - disable Nostrum gateway connection
 # Use :manual shard mode to prevent automatic gateway connection attempts
+# Token must be in valid format: base64_user_id.timestamp.hmac (nostrum validates format on startup)
 config :nostrum,
-  token: "test_discord_token",
+  token: "MTIzNDU2Nzg5.AAAAAA.fake_hmac_signature_here_for_testing",
   num_shards: :manual
 
 # WandererNotifier test configuration
