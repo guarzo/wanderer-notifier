@@ -14,7 +14,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         corporation_name: "Test Corp"
       }
 
-      result = NotificationFormatter.format_notification(rally_point)
+      assert {:ok, result} = NotificationFormatter.format_notification(rally_point)
 
       assert result.title == "⚔️ Rally Point Created"
       assert result.description =~ "Test Pilot"
@@ -40,9 +40,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
         character_name: "Solo Pilot"
       }
 
-      result = NotificationFormatter.format_notification(rally_point)
+      assert {:ok, result} = NotificationFormatter.format_notification(rally_point)
 
-      refute result == {:error, :unknown_notification_type}
       assert is_map(result)
       assert result.title == "⚔️ Rally Point Created"
     end

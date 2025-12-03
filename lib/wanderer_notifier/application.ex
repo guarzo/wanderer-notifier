@@ -121,10 +121,36 @@ defmodule WandererNotifier.Application do
   end
 
   defp add_file_backends(env) do
-    LoggerBackends.add({LoggerFileBackend, :file_log})
+    backends =
+      if env == :dev do
+        [{LoggerFileBackend, :file_log}, {LoggerFileBackend, :debug_log}]
+      else
+        [{LoggerFileBackend, :file_log}]
+      end
 
-    if env == :dev do
-      LoggerBackends.add({LoggerFileBackend, :debug_log})
+    results =
+      Enum.map(backends, fn backend ->
+        result = LoggerBackends.add(backend)
+
+        case result do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error("Failed to add logger backend #{inspect(backend)}: #{inspect(reason)}",
+              category: :startup
+            )
+
+            {:error, reason}
+        end
+      end)
+
+    errors = Enum.filter(results, &match?({:error, _}, &1))
+
+    if errors == [] do
+      {:ok, length(backends)}
+    else
+      {:error, errors}
     end
   end
 

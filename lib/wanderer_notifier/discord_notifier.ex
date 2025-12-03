@@ -107,14 +107,14 @@ defmodule WandererNotifier.DiscordNotifier do
 
         # Format the notification with channel context
         case format_notification(killmail, use_custom_system_name: use_custom_name) do
-          nil ->
-            Logger.error("Failed to format kill notification")
-            :error
-
-          formatted_notification ->
+          {:ok, formatted_notification} ->
             send_to_discord(formatted_notification, channel_id)
             Logger.debug("Kill notification sent successfully")
             :sent
+
+          {:error, reason} ->
+            Logger.error("Failed to format kill notification: #{inspect(reason)}")
+            :error
         end
       else
         Logger.debug("Kill notifications disabled, skipping")
@@ -133,11 +133,7 @@ defmodule WandererNotifier.DiscordNotifier do
     try do
       if notifications_enabled?() and rally_notifications_enabled?() do
         case format_notification(rally_point) do
-          nil ->
-            Logger.error("Failed to format rally point notification")
-            :error
-
-          formatted_notification ->
+          {:ok, formatted_notification} ->
             channel_id = Config.discord_rally_channel_id() || Config.discord_channel_id()
 
             # Add @group mention if configured
@@ -147,6 +143,10 @@ defmodule WandererNotifier.DiscordNotifier do
             send_to_discord(formatted_with_content, channel_id)
             Logger.debug("Rally point notification sent successfully")
             :sent
+
+          {:error, reason} ->
+            Logger.error("Failed to format rally point notification: #{inspect(reason)}")
+            :error
         end
       else
         Logger.debug("Rally point notifications disabled, skipping")
@@ -167,15 +167,15 @@ defmodule WandererNotifier.DiscordNotifier do
     try do
       if notifications_enabled?() and system_notifications_enabled?() do
         case format_notification(system) do
-          nil ->
-            Logger.error("Failed to format system notification")
-            :error
-
-          formatted_notification ->
+          {:ok, formatted_notification} ->
             channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
             send_to_discord(formatted_notification, channel_id)
             Logger.debug("System notification sent successfully")
             :sent
+
+          {:error, reason} ->
+            Logger.error("Failed to format system notification: #{inspect(reason)}")
+            :error
         end
       else
         Logger.debug("System notifications disabled, skipping")
@@ -196,15 +196,15 @@ defmodule WandererNotifier.DiscordNotifier do
     try do
       if notifications_enabled?() and character_notifications_enabled?() do
         case format_notification(character) do
-          nil ->
-            Logger.error("Failed to format character notification")
-            :error
-
-          formatted_notification ->
+          {:ok, formatted_notification} ->
             channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
             send_to_discord(formatted_notification, channel_id)
             Logger.debug("Character notification sent successfully")
             :sent
+
+          {:error, reason} ->
+            Logger.error("Failed to format character notification: #{inspect(reason)}")
+            :error
         end
       else
         Logger.debug("Character notifications disabled, skipping")
@@ -285,13 +285,13 @@ defmodule WandererNotifier.DiscordNotifier do
     rescue
       e ->
         Logger.error("Notification formatting failed: #{Exception.message(e)}")
-        nil
+        {:error, {:format_exception, Exception.message(e)}}
     end
   end
 
   defp system_kill_channel?(channel_id) do
     system_kill_channel = Config.discord_system_kill_channel_id()
-    channel_id == system_kill_channel and system_kill_channel != nil
+    system_kill_channel != nil and channel_id == system_kill_channel
   end
 
   defp determine_kill_channel(killmail) do

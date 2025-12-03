@@ -35,7 +35,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
     # Clear relevant cache entries before each test
     on_exit(fn ->
       # Clean up any cached data after each test
-      Cachex.clear(Cache.cache_name())
+      Cache.clear()
     end)
 
     :ok

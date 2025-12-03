@@ -32,7 +32,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(wormhole_system)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(wormhole_system)
 
       # Basic structure validation
       assert formatted.type == :system_notification
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(kspace_system)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(kspace_system)
 
       field_names = Enum.map(formatted.fields, & &1.name)
 
@@ -131,7 +131,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(shattered_system)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(shattered_system)
       field_names = Enum.map(formatted.fields, & &1.name)
 
       # Should include Shattered field
@@ -153,7 +153,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(system_with_empty_statics)
+      assert {:ok, formatted} =
+               NotificationFormatter.format_notification(system_with_empty_statics)
+
       field_names = Enum.map(formatted.fields, & &1.name)
 
       # Should NOT include Static Wormholes field when empty
@@ -172,7 +174,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(system_with_nil_statics)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(system_with_nil_statics)
       field_names = Enum.map(formatted.fields, & &1.name)
 
       # Should NOT include Static Wormholes field when nil
@@ -202,7 +204,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
           tracked: true
         }
 
-        formatted = NotificationFormatter.format_notification(system)
+        assert {:ok, formatted} = NotificationFormatter.format_notification(system)
 
         assert is_integer(formatted.color) and formatted.color > 0,
                "Invalid color for #{sys_type} system. Got #{formatted.color}"
@@ -218,7 +220,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(wormhole_system)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(wormhole_system)
 
       # Should have proper thumbnail URL
       assert is_binary(formatted.thumbnail.url)
@@ -233,7 +235,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(system)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(system)
 
       # System link validation
       system_field = get_field_by_name(formatted.fields, "System")
@@ -259,7 +261,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.SystemNotificationFi
         tracked: true
       }
 
-      formatted = NotificationFormatter.format_notification(minimal_wormhole)
+      assert {:ok, formatted} = NotificationFormatter.format_notification(minimal_wormhole)
 
       # CRITICAL: Must have at least 4 fields to prevent regression
       # System, Class, Static Wormholes, Region (minimum for wormhole)
