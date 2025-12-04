@@ -132,10 +132,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
         case NotificationFormatter.format_notification(enriched_killmail) do
           {:ok, notification} ->
             notification = maybe_add_voice_mentions(notification, killmail, channel_id)
-            send_kill_embed_to_channel(notification, channel_id)
+            send_kill_embed_to_channel(notification, channel_id, killmail.killmail_id)
 
           {:error, reason} ->
-            Logger.error("Failed to format kill notification: #{inspect(reason)}")
+            Logger.error("Failed to format kill notification",
+              category: :discord_notify,
+              channel_id: channel_id,
+              killmail_id: killmail.killmail_id,
+              reason: inspect(reason)
+            )
+
             {:error, reason}
         end
       end,
@@ -147,13 +153,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     )
   end
 
-  defp send_kill_embed_to_channel(notification, channel_id) do
+  defp send_kill_embed_to_channel(notification, channel_id, killmail_id) do
     case NeoClient.send_embed(notification, channel_id) do
       {:ok, _} ->
         {:ok, :sent}
 
       {:error, reason} ->
-        Logger.error("Failed to send kill notification to Discord: #{inspect(reason)}")
+        Logger.error("Failed to send kill notification to Discord",
+          category: :discord_notify,
+          channel_id: channel_id,
+          killmail_id: killmail_id,
+          reason: inspect(reason)
+        )
+
         {:error, reason}
     end
   end
