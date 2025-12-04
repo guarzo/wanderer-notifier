@@ -94,28 +94,31 @@ defmodule WandererNotifier.DiscordNotifier do
     try do
       # Check if notifications are enabled
       if notifications_enabled?() and kill_notifications_enabled?() do
-        # Determine channel first so we can pass context to formatter
-        channel_id = determine_kill_channel(killmail)
-        use_custom_name = system_kill_channel?(channel_id)
+        # Determine all channels to send to (may be multiple if both system and character are tracked)
+        channels = determine_kill_channels(killmail)
 
         Logger.info("Kill notification channel routing",
           killmail_id: Map.get(killmail, :killmail_id),
-          channel_id: channel_id,
-          use_custom_name: use_custom_name,
+          channels: inspect(channels),
           category: :notifications
         )
 
-        # Format the notification with channel context
-        case format_notification(killmail, use_custom_system_name: use_custom_name) do
-          {:ok, formatted_notification} ->
-            send_to_discord(formatted_notification, channel_id)
-            Logger.debug("Kill notification sent successfully")
-            :sent
+        # Send to each channel
+        Enum.each(channels, fn channel_id ->
+          use_custom_name = system_kill_channel?(channel_id)
 
-          {:error, reason} ->
-            Logger.error("Failed to format kill notification: #{inspect(reason)}")
-            :error
-        end
+          # Format the notification with channel context
+          case format_notification(killmail, use_custom_system_name: use_custom_name) do
+            {:ok, formatted_notification} ->
+              send_to_discord(formatted_notification, channel_id)
+              Logger.debug("Kill notification sent to channel #{channel_id}")
+
+            {:error, reason} ->
+              Logger.error("Failed to format kill notification: #{inspect(reason)}")
+          end
+        end)
+
+        :sent
       else
         Logger.debug("Kill notifications disabled, skipping")
         :skipped
@@ -294,22 +297,37 @@ defmodule WandererNotifier.DiscordNotifier do
     system_kill_channel != nil and channel_id == system_kill_channel
   end
 
-  defp determine_kill_channel(killmail) do
-    # Simple channel selection logic
+  defp determine_kill_channels(killmail) do
+    # Determine all channels to send to - may be multiple if both system and character are tracked
     system_id = Map.get(killmail, :system_id)
     has_tracked_system = tracked_system?(system_id)
     has_tracked_character = tracked_character?(killmail)
 
-    cond do
-      has_tracked_character ->
-        Config.discord_character_kill_channel_id() || Config.discord_channel_id()
+    default_channel = Config.discord_channel_id()
+    system_channel = Config.discord_system_kill_channel_id()
+    character_channel = Config.discord_character_kill_channel_id()
 
-      has_tracked_system ->
-        Config.discord_system_kill_channel_id() || Config.discord_channel_id()
+    channels =
+      []
+      |> maybe_add_channel(has_tracked_system, system_channel, default_channel)
+      |> maybe_add_channel(has_tracked_character, character_channel, default_channel)
 
-      true ->
-        Config.discord_channel_id()
+    # If no channels were added (neither system nor character tracked), use default
+    if Enum.empty?(channels) do
+      [default_channel]
+    else
+      # Return unique channels to avoid sending duplicates if both channels are the same
+      Enum.uniq(channels)
     end
+  end
+
+  defp maybe_add_channel(channels, true, specific_channel, default_channel) do
+    channel = specific_channel || default_channel
+    [channel | channels]
+  end
+
+  defp maybe_add_channel(channels, false, _specific_channel, _default_channel) do
+    channels
   end
 
   defp build_rally_content do
