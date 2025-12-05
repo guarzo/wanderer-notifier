@@ -12,11 +12,11 @@ ExUnit.start()
 Application.ensure_all_started(:mox)
 
 # Load test mock infrastructure (with guards to prevent redefinition)
-unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestMocks) do
+if !Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestMocks) do
   Code.require_file("support/mocks/test_mocks.ex", __DIR__)
 end
 
-unless Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestDataFactory) do
+if !Code.ensure_loaded?(WandererNotifier.Test.Support.Mocks.TestDataFactory) do
   Code.require_file("support/mocks/test_data_factory.ex", __DIR__)
 end
 
@@ -100,7 +100,7 @@ Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
 Application.put_env(:wanderer_notifier, :cache_name, :wanderer_cache_test)
 
 # Initialize RateLimiter ETS table for tests
-unless :ets.whereis(WandererNotifier.RateLimiter) == :undefined do
+if :ets.whereis(WandererNotifier.RateLimiter) != :undefined do
   :ets.delete(WandererNotifier.RateLimiter)
 end
 

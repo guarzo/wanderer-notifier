@@ -145,7 +145,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     }
 
     # Only load data if not in test mode
-    unless Application.get_env(:wanderer_notifier, :env) == :test do
+    if Application.get_env(:wanderer_notifier, :env) != :test do
       # Schedule initial load
       send(self(), :load_data)
 

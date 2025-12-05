@@ -623,7 +623,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   end
 
   defp maybe_log_bot_assignment_warning(bot_assigned) do
-    unless bot_assigned do
+    if !bot_assigned do
       Logger.debug(
         "License is valid but no bot is assigned. Please assign a bot to your license.",
         category: :config

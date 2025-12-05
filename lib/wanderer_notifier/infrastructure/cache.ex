@@ -192,7 +192,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   defp evict_single_key(cache_name, key) do
-    unless key == @namespace_index_key do
+    if key != @namespace_index_key do
       Cachex.del(cache_name, key)
       remove_from_namespace_index(key)
     end

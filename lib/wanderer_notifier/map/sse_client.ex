@@ -550,7 +550,7 @@ defmodule WandererNotifier.Map.SSEClient do
     Enum.each(events, fn event ->
       event_type = Map.get(event, "type", "unknown")
 
-      unless chunk =~ ": keepalive" do
+      if !(chunk =~ ": keepalive") do
         Logger.debug("[SSE] Event: #{event_type} (#{map_slug})")
       end
     end)

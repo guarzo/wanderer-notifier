@@ -154,7 +154,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp check_character_in_list(characters, character_id) do
     tracked = Enum.any?(characters, &character_matches?(character_id, &1))
 
-    unless tracked do
+    if !tracked do
       handle_untracked_character(characters, character_id)
     end
 

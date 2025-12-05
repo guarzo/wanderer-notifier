@@ -97,7 +97,7 @@ defmodule WandererNotifier.Domains.Universe.Services.FuzzworksService do
   end
 
   defp ensure_data_directory(data_dir) do
-    unless File.exists?(data_dir) do
+    if !File.exists?(data_dir) do
       File.mkdir_p!(data_dir)
       Logger.debug("Created data directory: #{data_dir}")
     end
