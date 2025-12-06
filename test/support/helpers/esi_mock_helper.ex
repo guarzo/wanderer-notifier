@@ -6,11 +6,13 @@ defmodule WandererNotifier.Test.Support.Helpers.ESIMockHelper do
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
+  alias WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
 
   @doc """
   Sets up common ESI service mocks for testing.
   """
   def setup_esi_mocks do
+    # Setup ServiceMock
     ServiceMock
     |> setup_character_mocks()
     |> setup_corporation_mocks()
@@ -18,6 +20,20 @@ defmodule WandererNotifier.Test.Support.Helpers.ESIMockHelper do
     |> setup_type_mocks()
     |> setup_system_mocks()
     |> setup_killmail_mocks()
+
+    # Also setup ClientMock since ESIService uses esi_client() internally
+    setup_client_mocks()
+  end
+
+  defp setup_client_mocks do
+    stub(ClientMock, :get_killmail, &get_killmail/3)
+    stub(ClientMock, :get_character_info, &get_character_info/2)
+    stub(ClientMock, :get_corporation_info, &get_corporation_info/2)
+    stub(ClientMock, :get_alliance_info, &get_alliance_info/2)
+    stub(ClientMock, :get_universe_type, &get_type_info/2)
+    stub(ClientMock, :get_system, &get_system/2)
+    stub(ClientMock, :get_system_kills, fn _id, _limit, _opts -> {:ok, []} end)
+    stub(ClientMock, :search_inventory_type, fn _query, _strict -> {:ok, %{}} end)
   end
 
   defp setup_character_mocks(mock) do

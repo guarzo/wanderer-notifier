@@ -113,6 +113,20 @@ defmodule WandererNotifier.Shared.Config do
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
+  # Exclusion Lists
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @doc "Get list of corporation IDs to exclude from kill notifications"
+  def corporation_exclude_list do
+    Application.get_env(:wanderer_notifier, :corporation_exclude_list, [])
+  end
+
+  @doc "Check if corporation exclusion is configured (has at least one ID)"
+  def corporation_exclusion_enabled? do
+    corporation_exclude_list() != []
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
   # Notable Items Configuration
   # ──────────────────────────────────────────────────────────────────────────────
 
