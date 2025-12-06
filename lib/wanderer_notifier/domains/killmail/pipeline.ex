@@ -357,6 +357,19 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp send_notification(%Killmail{} = killmail) do
     Logger.info("[Pipeline] Starting notification process for killmail #{killmail.killmail_id}")
 
+    # Check corporation exclusion first
+    case check_corporation_exclusion(killmail) do
+      {:ok, false} ->
+        handle_skipped(killmail.killmail_id, :corporation_excluded)
+
+      {:ok, true} ->
+        # Continue with existing logic
+        check_timing_and_notify(killmail)
+    end
+  end
+
+  @spec check_timing_and_notify(Killmail.t()) :: result()
+  defp check_timing_and_notify(%Killmail{} = killmail) do
     # Check if we're in startup suppression period
     in_suppression = in_startup_suppression_period?()
     Logger.info("[Pipeline] Startup suppression check: #{in_suppression}")
@@ -507,6 +520,60 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       {:ok, killmail}
     end
   end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Corporation Exclusion Check
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @spec check_corporation_exclusion(Killmail.t()) :: {:ok, boolean()}
+  defp check_corporation_exclusion(%Killmail{} = killmail) do
+    exclude_list = Config.corporation_exclude_list()
+
+    if exclude_list == [] do
+      # No exclusion configured, allow all
+      {:ok, true}
+    else
+      excluded = corporation_excluded?(killmail, exclude_list)
+
+      if excluded do
+        Logger.info(
+          "[Pipeline] Killmail #{killmail.killmail_id} excluded - corporation in exclusion list"
+        )
+      end
+
+      {:ok, not excluded}
+    end
+  end
+
+  @spec corporation_excluded?(Killmail.t(), list(integer())) :: boolean()
+  defp corporation_excluded?(%Killmail{} = killmail, exclude_list) do
+    victim_corp_excluded?(killmail.victim_corporation_id, exclude_list) or
+      any_attacker_corp_excluded?(killmail.attackers, exclude_list)
+  end
+
+  @spec victim_corp_excluded?(integer() | nil, list(integer())) :: boolean()
+  defp victim_corp_excluded?(nil, _exclude_list), do: false
+
+  defp victim_corp_excluded?(victim_corp_id, exclude_list) when is_integer(victim_corp_id) do
+    Enum.member?(exclude_list, victim_corp_id)
+  end
+
+  @spec any_attacker_corp_excluded?(list(map()) | nil, list(integer())) :: boolean()
+  defp any_attacker_corp_excluded?(nil, _exclude_list), do: false
+
+  defp any_attacker_corp_excluded?(attackers, exclude_list) when is_list(attackers) do
+    Enum.any?(attackers, fn attacker ->
+      attacker_corp_excluded?(attacker, exclude_list)
+    end)
+  end
+
+  @spec attacker_corp_excluded?(map(), list(integer())) :: boolean()
+  defp attacker_corp_excluded?(%{"corporation_id" => corp_id}, exclude_list)
+       when is_integer(corp_id) do
+    Enum.member?(exclude_list, corp_id)
+  end
+
+  defp attacker_corp_excluded?(_, _exclude_list), do: false
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Startup Suppression Check

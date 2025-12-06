@@ -346,6 +346,10 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
 - `WORMHOLE_ONLY_KILL_NOTIFICATIONS` - Only send kill notifications for wormhole systems (default: false)
 
+### Exclusion Lists
+
+- `CORPORATION_EXCLUDE_LIST` - Comma-separated list of corporation IDs to exclude from kill notifications. Any killmail involving these corporations (as victim or attacker) will be skipped.
+
 ### Notification Timing Configuration
 
 Control when notifications are sent based on timing:
