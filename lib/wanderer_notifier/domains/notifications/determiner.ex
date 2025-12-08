@@ -13,6 +13,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Shared.Utils.Startup
+  alias WandererNotifier.PersistentValues
 
   @type notification_type :: :character | :system | :kill
   @type entity_id :: String.t() | integer()
@@ -62,7 +63,9 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     end
   end
 
-  def should_notify?(:system, system_id, _system_data) do
+  def should_notify?(:system, system_id, system_data) do
+    is_priority = priority_system?(system_data)
+
     cond do
       Startup.in_suppression_period?() ->
         Logger.debug("System notification suppressed during startup period",
@@ -72,17 +75,41 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
 
         false
 
-      not Config.system_notifications_enabled?() ->
+      not Config.system_notifications_enabled?() and not is_priority ->
+        Logger.debug("System notification skipped - notifications disabled and not priority",
+          system_id: system_id,
+          category: :notification
+        )
+
         false
 
       true ->
-        case Deduplication.check(:system, system_id) do
-          {:ok, :new} -> true
-          {:ok, :duplicate} -> false
-          {:error, _reason} -> true
-        end
+        check_system_deduplication(system_id, is_priority)
     end
   end
+
+  defp check_system_deduplication(system_id, is_priority) do
+    case Deduplication.check(:system, system_id) do
+      {:ok, :new} ->
+        log_priority_system_notification(system_id, is_priority)
+        true
+
+      {:ok, :duplicate} ->
+        false
+
+      {:error, _reason} ->
+        true
+    end
+  end
+
+  defp log_priority_system_notification(system_id, true) do
+    Logger.info("Priority system notification will be sent",
+      system_id: system_id,
+      category: :notification
+    )
+  end
+
+  defp log_priority_system_notification(_system_id, false), do: :ok
 
   def should_notify?(:kill, _killmail_id, killmail_data) do
     # For killmails, we delegate to the specialized killmail logic
@@ -321,6 +348,39 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   # ══════════════════════════════════════════════════════════════════════════════
   # Private Helper Functions
   # ══════════════════════════════════════════════════════════════════════════════
+
+  # Checks if a system is marked as a priority system.
+  # Priority systems are identified by hashing the system name and checking against
+  # the stored priority system list. This allows priority system notifications to
+  # bypass the system_notifications_enabled? check.
+  defp priority_system?(nil), do: false
+
+  defp priority_system?(system_data) when is_map(system_data) do
+    # Extract system name from various possible structures
+    system_name = extract_system_name(system_data)
+
+    case system_name do
+      nil ->
+        false
+
+      name when is_binary(name) ->
+        system_hash = :erlang.phash2(name)
+        priority_systems = PersistentValues.get(:priority_systems)
+        system_hash in priority_systems
+    end
+  end
+
+  defp priority_system?(_), do: false
+
+  # Extract system name from various data structures
+  defp extract_system_name(%{name: name}) when is_binary(name), do: name
+  defp extract_system_name(%{"name" => name}) when is_binary(name), do: name
+
+  defp extract_system_name(%{solar_system_name: name}) when is_binary(name), do: name
+
+  defp extract_system_name(%{"solar_system_name" => name}) when is_binary(name), do: name
+
+  defp extract_system_name(_), do: nil
 
   defp check_killmail_notification(killmail_id, system_id, victim_character_id) do
     cond do
