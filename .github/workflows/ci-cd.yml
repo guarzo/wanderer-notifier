@@ -3,20 +3,9 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    tags:
-      - "v*"
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      update_latest:
-        description: 'Update the "latest" Docker tag'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   test:
@@ -102,8 +91,8 @@ jobs:
     name: Auto Tag Version
     needs: test
     runs-on: ubuntu-latest
-    # Only run on main branch pushes (not tags or workflow_dispatch)
-    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
+    # Only run on main branch pushes (not PRs or workflow_dispatch)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
     outputs:
@@ -114,7 +103,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract version and create tags
+      - name: Extract version and create tag
         id: version_and_tags
         run: |
           # Extract version from mix.exs
@@ -122,45 +111,20 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Found version: $VERSION"
           TAG="v$VERSION"
-          # Parse semantic version (e.g., "2.0.1" -> major=2, minor=0, patch=1)
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          MAJOR_TAG="v$MAJOR"
-          MINOR_TAG="v$MAJOR.$MINOR"
+
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Version tag $TAG already exists, creating dated tag"
-            # Create a dated tag when version hasn't changed
-            DATE=$(date +%Y%m%d%H%M%S)
-            DATED_TAG="${TAG}.${DATE}"
-            echo "Creating dated tag: $DATED_TAG"
-            git tag -a "$DATED_TAG" -m "Release $DATED_TAG - Build from $TAG at $(date)"
-            git push origin "$DATED_TAG"
-            echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
-            echo "TAG=$DATED_TAG" >> $GITHUB_OUTPUT
-            echo "BASE_TAG=$TAG" >> $GITHUB_OUTPUT
+            echo "Version tag $TAG already exists, skipping tag creation"
+            echo "NEW_TAG_CREATED=false" >> $GITHUB_OUTPUT
+            echo "TAG=$TAG" >> $GITHUB_OUTPUT
           else
             echo "Tag $TAG does not exist, creating it"
             echo "NEW_TAG_CREATED=true" >> $GITHUB_OUTPUT
-            # Create the main version tag
             git tag -a "$TAG" -m "Release $TAG - Auto-tagged from mix.exs version"
-            # Force update major tag (delete if exists, then create)
-            if git rev-parse "$MAJOR_TAG" >/dev/null 2>&1; then
-              git tag -d "$MAJOR_TAG"
-              git push origin ":refs/tags/$MAJOR_TAG" || true
-            fi
-            git tag -a "$MAJOR_TAG" -m "Release $MAJOR_TAG (latest $TAG)"
-            # Force update minor tag (delete if exists, then create)
-            if git rev-parse "$MINOR_TAG" >/dev/null 2>&1; then
-              git tag -d "$MINOR_TAG"
-              git push origin ":refs/tags/$MINOR_TAG" || true
-            fi
-            git tag -a "$MINOR_TAG" -m "Release $MINOR_TAG (latest $TAG)"
-            # Push all tags
-            git push origin "$TAG" "$MAJOR_TAG" "$MINOR_TAG"
+            git push origin "$TAG"
             echo "TAG=$TAG" >> $GITHUB_OUTPUT
-            echo "BASE_TAG=$TAG" >> $GITHUB_OUTPUT
           fi
 
   docker:
@@ -169,22 +133,12 @@ jobs:
       - test
       - auto-tag
     runs-on: ubuntu-latest
-    # Run when: new tag created on main OR manual tag push OR workflow_dispatch
+    # Only run when a new version tag was created
     if: |
       always() &&
       needs.test.result == 'success' &&
-      (needs.auto-tag.result == 'skipped' || needs.auto-tag.result == 'success') &&
-      (
-        (needs.auto-tag.outputs.new_tag_created == 'true') ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        github.event_name == 'workflow_dispatch'
-      )
-    env:
-      # Named conditions for clarity
-      IS_NEW_TAG_FROM_MAIN: ${{ needs.auto-tag.outputs.new_tag_created == 'true' }}
-      IS_VERSION_TAG_PUSH: ${{ startsWith(github.ref, 'refs/tags/v') }}
-      IS_WORKFLOW_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
-      UPDATE_LATEST: ${{ github.event.inputs.update_latest || 'false' }}
+      needs.auto-tag.result == 'success' &&
+      needs.auto-tag.outputs.new_tag_created == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -207,49 +161,15 @@ jobs:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Get version information
-        id: get_version_info
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # We're running on a tag push
-            VERSION_TAG="${GITHUB_REF#refs/tags/}"
-            echo "Running on tag: $VERSION_TAG"
-          else
-            # We're running after auto-tag created new tags
-            VERSION_TAG="${{ needs.auto-tag.outputs.TAG }}"
-            echo "Using auto-created tag: $VERSION_TAG"
-            # Fetch the newly created tags
-            git fetch --tags
-          fi
-          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
-          echo "Final version tag: $VERSION_TAG"
-
       - name: Prepare Docker tags
         id: prepare_tags
         run: |
-          VERSION_TAG="${{ steps.get_version_info.outputs.VERSION_TAG }}"
-          BASE_TAG="${{ needs.auto-tag.outputs.BASE_TAG }}"
-          
-          # Start with the main version tag
-          DOCKER_TAGS="guarzo/wanderer-notifier:$VERSION_TAG"
-          
-          # Always parse and add semantic version tags for any version tag
-          if [[ $VERSION_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
-            
-            echo "Adding semantic version tags for $VERSION_TAG"
-            # Add semantic version tags
-            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR.$MINOR"
-            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:v$MAJOR"
-          fi
-          
-          # Add latest tag if requested
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.update_latest }}" = "true" ]; then
-            DOCKER_TAGS="$DOCKER_TAGS,guarzo/wanderer-notifier:latest"
-          fi
-          
+          VERSION_TAG="${{ needs.auto-tag.outputs.TAG }}"
+          echo "Building Docker image for version: $VERSION_TAG"
+
+          # Tag with version and latest
+          DOCKER_TAGS="guarzo/wanderer-notifier:$VERSION_TAG,guarzo/wanderer-notifier:latest"
+
           echo "DOCKER_TAGS=$DOCKER_TAGS" >> $GITHUB_OUTPUT
           echo "Docker tags: $DOCKER_TAGS"
 
@@ -317,14 +237,8 @@ jobs:
     name: Create Release
     needs: [docker, auto-tag]
     runs-on: ubuntu-latest
-    # Run when auto-tag creates a new tag OR when a version tag is pushed manually
-    if: |
-      (github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true') ||
-      (startsWith(github.ref, 'refs/tags/v'))
-    env:
-      # Named conditions for clarity
-      IS_NEW_TAG_ON_MAIN: ${{ github.ref == 'refs/heads/main' && needs.auto-tag.outputs.new_tag_created == 'true' }}
-      IS_MANUAL_VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    # Only run when a new version tag was created and docker build succeeded
+    if: needs.auto-tag.outputs.new_tag_created == 'true' && needs.docker.result == 'success'
 
     permissions:
       contents: write
@@ -337,13 +251,7 @@ jobs:
       - name: Get version from tag
         id: get_version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # We're running on a tag
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            # We're running because auto-tag created a new tag
-            VERSION="${{ needs.auto-tag.outputs.TAG }}"
-          fi
+          VERSION="${{ needs.auto-tag.outputs.TAG }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Creating release for version: $VERSION"
 
