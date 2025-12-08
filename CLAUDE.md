@@ -348,7 +348,7 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 
 ### Exclusion Lists
 
-- `CORPORATION_EXCLUDE_LIST` - Comma-separated list of corporation IDs to exclude from kill notifications. Any killmail involving these corporations (as victim or attacker) will be skipped.
+- `CORPORATION_EXCLUDE_LIST` - Comma-separated list of corporation IDs to exclude from system kill channel notifications. Any killmail where the victim OR any attacker belongs to these corporations will be excluded from the system kill channel (if configured). This exclusion only applies when `DISCORD_SYSTEM_KILL_CHANNEL_ID` is set; character kill notifications are not affected.
 
 ### Notification Timing Configuration
 

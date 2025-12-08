@@ -88,6 +88,28 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     end
   end
 
+  def should_notify?(:kill, _killmail_id, killmail_data) do
+    # For killmails, we delegate to the specialized killmail logic
+    should_notify_killmail?(killmail_data)
+  end
+
+  def should_notify?(:rally_point, rally_id, _rally_data) do
+    cond do
+      Startup.in_suppression_period?() ->
+        false
+
+      not Config.rally_notifications_enabled?() ->
+        false
+
+      true ->
+        case Deduplication.check(:rally_point, rally_id) do
+          {:ok, :new} -> true
+          {:ok, :duplicate} -> false
+          {:error, _reason} -> true
+        end
+    end
+  end
+
   defp check_system_deduplication(system_id, is_priority) do
     case Deduplication.check(:system, system_id) do
       {:ok, :new} ->
@@ -110,28 +132,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   defp log_priority_system_notification(_system_id, false), do: :ok
-
-  def should_notify?(:kill, _killmail_id, killmail_data) do
-    # For killmails, we delegate to the specialized killmail logic
-    should_notify_killmail?(killmail_data)
-  end
-
-  def should_notify?(:rally_point, rally_id, _rally_data) do
-    cond do
-      Startup.in_suppression_period?() ->
-        false
-
-      not Config.rally_notifications_enabled?() ->
-        false
-
-      true ->
-        case Deduplication.check(:rally_point, rally_id) do
-          {:ok, :new} -> true
-          {:ok, :duplicate} -> false
-          {:error, _reason} -> true
-        end
-    end
-  end
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Killmail-Specific Logic (from Kill determiner)

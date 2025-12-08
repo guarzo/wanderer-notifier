@@ -431,7 +431,14 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
   end
 
   describe "corporation exclusion" do
-    test "process_killmail/1 excludes kills when victim corporation is in exclusion list" do
+    # NOTE: Corporation exclusion is now handled at the Discord channel routing level
+    # in DiscordNotifier, not in the pipeline. The pipeline processes all killmails
+    # and exclusion only affects which Discord channels receive the notification.
+    # These tests verify that the pipeline still processes killmails regardless of
+    # corporation exclusion settings.
+
+    test "process_killmail/1 processes kills even when victim corporation is in exclusion list" do
+      # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Save original config
       original_value = Application.get_env(:wanderer_notifier, :corporation_exclude_list)
       original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
@@ -447,7 +454,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
         "victim" => %{
           "character_id" => 100,
-          # This corp is excluded
+          # This corp is in exclusion list but pipeline still processes
           "corporation_id" => 98_000_001,
           "ship_type_id" => 670
         },
@@ -470,15 +477,17 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       Cachex.put(cache_name, "map:systems", [system_data])
       Cachex.put(cache_name, "map:character_list", [])
 
+      # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
-      assert {:ok, :skipped} = result
+      assert {:ok, "90001"} = result
 
       # Restore original config
       Application.put_env(:wanderer_notifier, :corporation_exclude_list, original_value)
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, original_suppression)
     end
 
-    test "process_killmail/1 excludes kills when attacker corporation is in exclusion list" do
+    test "process_killmail/1 processes kills even when attacker corporation is in exclusion list" do
+      # Corporation exclusion now happens at Discord channel routing level, not pipeline
       original_value = Application.get_env(:wanderer_notifier, :corporation_exclude_list)
       original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
 
@@ -497,7 +506,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
           "ship_type_id" => 670
         },
         "attackers" => [
-          # This corp is excluded
+          # This corp is in exclusion list but pipeline still processes
           %{"character_id" => 200, "corporation_id" => 98_000_002}
         ]
       }
@@ -516,8 +525,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       Cachex.put(cache_name, "map:systems", [system_data])
       Cachex.put(cache_name, "map:character_list", [])
 
+      # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
-      assert {:ok, :skipped} = result
+      assert {:ok, "90002"} = result
 
       # Restore original config
       Application.put_env(:wanderer_notifier, :corporation_exclude_list, original_value)
@@ -614,7 +624,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, original_suppression)
     end
 
-    test "process_killmail/1 excludes when any attacker in list matches" do
+    test "process_killmail/1 processes kills even when any attacker in exclusion list matches" do
+      # Corporation exclusion now happens at Discord channel routing level, not pipeline
       original_value = Application.get_env(:wanderer_notifier, :corporation_exclude_list)
       original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
 
@@ -634,7 +645,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         },
         "attackers" => [
           %{"character_id" => 200, "corporation_id" => 98_000_002},
-          # Second attacker matches
+          # Second attacker is in exclusion list but pipeline still processes
           %{"character_id" => 201, "corporation_id" => 98_000_003},
           %{"character_id" => 202, "corporation_id" => 98_000_004}
         ]
@@ -654,8 +665,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       Cachex.put(cache_name, "map:systems", [system_data])
       Cachex.put(cache_name, "map:character_list", [])
 
+      # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
-      assert {:ok, :skipped} = result
+      assert {:ok, "90005"} = result
 
       # Restore original config
       Application.put_env(:wanderer_notifier, :corporation_exclude_list, original_value)
