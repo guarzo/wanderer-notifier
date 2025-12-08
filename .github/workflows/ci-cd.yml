@@ -238,7 +238,7 @@ jobs:
     needs: [docker, auto-tag]
     runs-on: ubuntu-latest
     # Only run when a new version tag was created and docker build succeeded
-    if: needs.auto-tag.outputs.new_tag_created == 'true'
+    if: needs.auto-tag.outputs.new_tag_created == 'true' && needs.docker.result == 'success'
 
     permissions:
       contents: write

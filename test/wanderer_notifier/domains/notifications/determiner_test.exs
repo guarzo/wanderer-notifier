@@ -26,7 +26,9 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
     # Store original values
     original_system_notifications = System.get_env("SYSTEM_NOTIFICATIONS_ENABLED")
     original_start_time = Application.get_env(:wanderer_notifier, :start_time)
-    original_suppression_seconds = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
+
+    original_suppression_seconds =
+      Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
 
     # Disable startup suppression by clearing start_time and setting suppression to 0
     Application.put_env(:wanderer_notifier, :start_time, nil)
@@ -47,7 +49,11 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       end
 
       if original_suppression_seconds do
-        Application.put_env(:wanderer_notifier, :startup_suppression_seconds, original_suppression_seconds)
+        Application.put_env(
+          :wanderer_notifier,
+          :startup_suppression_seconds,
+          original_suppression_seconds
+        )
       else
         Application.delete_env(:wanderer_notifier, :startup_suppression_seconds)
       end
