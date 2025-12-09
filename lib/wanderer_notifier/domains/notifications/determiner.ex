@@ -119,7 +119,14 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
       {:ok, :duplicate} ->
         false
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.warning("System deduplication check failed",
+          system_id: system_id,
+          is_priority: is_priority,
+          reason: inspect(reason),
+          category: :notification
+        )
+
         true
     end
   end
