@@ -67,7 +67,7 @@ jobs:
             priv/plts
 
       - name: Compile for dev (for Dialyzer)
-        run: MIX_ENV=dev mix compile
+        run: MIX_ENV=dev mix compile --force
 
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
