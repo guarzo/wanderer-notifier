@@ -308,7 +308,13 @@ defmodule WandererNotifier.DiscordNotifier do
     character_channel = Config.discord_character_kill_channel_id()
 
     # Check if corporation exclusion applies (only affects system kill channel)
-    corp_excluded = corporation_excluded?(killmail)
+    # Only compute when system-based routing is actually in use
+    corp_excluded =
+      if has_tracked_system and system_channel != nil do
+        corporation_excluded?(killmail)
+      else
+        false
+      end
 
     channels =
       []
