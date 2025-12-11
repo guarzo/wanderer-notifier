@@ -5,7 +5,7 @@ defmodule WandererNotifier.MixProject do
     [
       app: :wanderer_notifier,
       version: "5.0.2",
-      elixir: "~> 1.18",
+      elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases(),
@@ -54,15 +54,15 @@ defmodule WandererNotifier.MixProject do
   defp deps do
     [
       {:dotenvy, "~> 1.1"},
-      {:httpoison, "~> 2.2"},
-      {:req, "~> 0.4"},
+      {:httpoison, "~> 2.3"},
+      {:req, "~> 0.5"},
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10", runtime: Mix.env() != :test},
-      {:websockex, "~> 0.4"},
-      {:slipstream, "~> 1.1"},
+      {:websockex, "~> 0.5"},
+      {:slipstream, "~> 1.2"},
       {:jason, "~> 1.4"},
-      {:nimble_csv, "~> 1.2"},
-      {:plug, "~> 1.18"},
+      {:nimble_csv, "~> 1.3"},
+      {:plug, "~> 1.19"},
       {:plug_cowboy, "~> 2.7"},
       {:mime, "~> 2.0"},
       {:decimal, "~> 2.3"},
@@ -70,23 +70,23 @@ defmodule WandererNotifier.MixProject do
       {:logger_backends, "~> 1.0"},
       # Phoenix & Ecto
       {:phoenix, "~> 1.8"},
-      {:phoenix_html, "~> 4.0"},
-      {:phoenix_pubsub, "~> 2.1"},
-      {:ecto, "~> 3.12"},
+      {:phoenix_html, "~> 4.3"},
+      {:phoenix_pubsub, "~> 2.2"},
+      {:ecto, "~> 3.13"},
       {:mint_web_socket, "~> 1.0"},
       # Rate limiting
-      {:hammer, "~> 7.0"},
+      {:hammer, "~> 7.1"},
       # Development & Testing
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4.3", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:bunt, "~> 1.0"},
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},
-      {:stream_data, "~> 1.0", only: [:dev, :test]},
-      {:crontab, "~> 1.1"},
+      {:stream_data, "~> 1.2", only: [:dev, :test]},
+      {:crontab, "~> 1.2"},
       {:excoveralls, "~> 0.18", only: :test},
       {:benchfella, "~> 0.3", only: :dev},
-      {:mix_version, "~> 2.4", only: [:dev, :test], runtime: false}
+      {:mix_version, "~> 2.5", only: [:dev, :test], runtime: false}
     ]
   end
 
