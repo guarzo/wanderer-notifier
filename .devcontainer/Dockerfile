@@ -1,4 +1,4 @@
-FROM elixir:otp-27
+FROM elixir:1.19.4-otp-28
 
 # Define ARGs for customization
 ARG USERNAME=elixir

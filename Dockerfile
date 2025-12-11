@@ -3,7 +3,7 @@
 ###############################################################################
 # 1. Build Dependencies Stage with enhanced caching and optimization
 ###############################################################################
-FROM elixir:1.18.3-otp-27-slim AS deps
+FROM elixir:1.19.4-otp-28-slim AS deps
 
 WORKDIR /app
 
