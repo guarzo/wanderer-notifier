@@ -410,22 +410,25 @@ defmodule WandererNotifier.DiscordNotifier do
     if exclude_list == [] do
       false
     else
-      victim_corp_excluded?(killmail, exclude_list) or
-        any_attacker_corp_excluded?(killmail, exclude_list)
+      # Convert to MapSet once for O(1) lookups
+      exclude_set = MapSet.new(exclude_list)
+
+      victim_corp_excluded?(killmail, exclude_set) or
+        any_attacker_corp_excluded?(killmail, exclude_set)
     end
   end
 
-  defp victim_corp_excluded?(killmail, exclude_list) do
+  defp victim_corp_excluded?(killmail, exclude_set) do
     victim_corp_id = Map.get(killmail, :victim_corporation_id)
 
     case victim_corp_id do
       nil -> false
-      id when is_integer(id) -> Enum.member?(exclude_list, id)
+      id when is_integer(id) -> MapSet.member?(exclude_set, id)
       _ -> false
     end
   end
 
-  defp any_attacker_corp_excluded?(killmail, exclude_list) do
+  defp any_attacker_corp_excluded?(killmail, exclude_set) do
     attackers = Map.get(killmail, :attackers, []) || []
 
     Enum.any?(attackers, fn attacker ->
@@ -433,7 +436,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
       case corp_id do
         nil -> false
-        id when is_integer(id) -> Enum.member?(exclude_list, id)
+        id when is_integer(id) -> MapSet.member?(exclude_set, id)
         _ -> false
       end
     end)

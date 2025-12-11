@@ -245,7 +245,7 @@ Environment variables now use simplified naming without redundant prefixes for c
 3. **License Configuration**
    - `LICENSE_KEY`: Your license key for premium features (optional, see License section below)
    - `LICENSE_MANAGER_API_KEY`: API token for license validation (optional)
-   - `LICENSE_MANAGER_API_URL`: License manager endpoint (default: "https://lm.wanderer.ltd/api")
+   - `LICENSE_MANAGER_API_URL`: License manager endpoint (default: "[https://lm.wanderer.ltd/api](https://lm.wanderer.ltd/api)")
 
 4. **Feature Control Flags**
    - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)
