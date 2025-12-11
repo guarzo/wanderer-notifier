@@ -13,7 +13,7 @@ Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-t
 - **Discord Slash Commands:** Full Discord bot integration with slash commands to manage priority systems and check bot status
 - **Priority Systems:** Mark critical systems for special notifications with targeted mentions, with priority-only mode support
 - **Voice Participant Notifications:** Target only active voice channel users instead of @here mentions for better notification targeting
-- **License-Based Features:** Premium subscribers get rich embed notifications; free tier gets text-based alerts
+- **License-Based Features:** Premium subscribers get unlimited rich embed notifications; free tier gets 5 rich embeds per notification type before switching to text-based alerts
 - **Simplified Cache System:** Direct Cachex integration with domain-specific helpers and consistent key generation
 - **Data Enrichment:** Integrates with EVE's ESI API for additional enrichment when needed (most data comes pre-enriched)
 - **Map Integration:** Real-time SSE connection to Wanderer map API for immediate system and character tracking updates
@@ -109,6 +109,41 @@ For more targeted notifications, the system can now notify only users actively i
 - **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
 - **Configurable**: Disabled by default, requires Discord Guild ID to enable
 
+## License Tiers
+
+Wanderer Notifier operates with two tiers based on license status:
+
+### Without a License (Free Tier)
+
+All core functionality is fully available, with the following limitation:
+
+- **Rich Embed Notifications**: Limited to **5 rich embeds per notification type** (killmail, character, system)
+- After the limit is reached, notifications switch to **plain text format** for the remainder of the session
+- Notifications are still sent, they are just formatted as simple text instead of rich Discord embeds
+
+**Features available without a license:**
+- All notification types (kills, characters, systems, rally points)
+- Unlimited character and system tracking
+- Discord slash commands (`/notifier status`, `/notifier system`)
+- Priority system management
+- Voice participant notifications
+- Multi-channel routing
+- Real-time SSE/WebSocket connections
+- All configuration options and feature flags
+
+### With a Valid License (Premium)
+
+- **Unlimited rich embed notifications** for all notification types
+- All features from the free tier
+- Rich embeds include ship thumbnails, character portraits, corporation icons, and formatted details
+
+### How Licensing Works
+
+1. The system validates your license against the license manager on startup
+2. License status is refreshed periodically (default: every 1 hour)
+3. If license validation fails or no license is configured, the free tier limits apply
+4. In development/test environments, full features are automatically enabled
+
 ## Requirements
 
 - Elixir (>= 1.18 required)
@@ -116,7 +151,7 @@ For more targeted notifications, the system can now notify only users actively i
 - [Docker](https://www.docker.com/) (recommended for deployment)
 - Discord Bot Token (with proper permissions)
 - Wanderer map access and API token
-- Valid license key for premium features
+- License key (optional, for unlimited rich notifications)
 
 ## Quick Start with Docker
 
@@ -208,7 +243,9 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `MAP_API_KEY`: Authentication token for map API access (required)
 
 3. **License Configuration**
-   - `LICENSE_KEY`: Your license key for accessing premium features (required)
+   - `LICENSE_KEY`: Your license key for premium features (optional, see License section below)
+   - `LICENSE_MANAGER_API_KEY`: API token for license validation (optional)
+   - `LICENSE_MANAGER_API_URL`: License manager endpoint (default: "[https://lm.wanderer.ltd/api](https://lm.wanderer.ltd/api)")
 
 4. **Feature Control Flags**
    - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)

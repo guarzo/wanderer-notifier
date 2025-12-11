@@ -307,9 +307,23 @@ defmodule WandererNotifier.DiscordNotifier do
     system_channel = Config.discord_system_kill_channel_id()
     character_channel = Config.discord_character_kill_channel_id()
 
+    # Check if corporation exclusion applies (only affects system kill channel)
+    # Only compute when system-based routing is actually in use
+    corp_excluded =
+      if has_tracked_system and system_channel != nil do
+        corporation_excluded?(killmail)
+      else
+        false
+      end
+
     channels =
       []
-      |> maybe_add_channel(has_tracked_system, system_channel, default_channel)
+      |> maybe_add_system_channel(
+        has_tracked_system,
+        corp_excluded,
+        system_channel,
+        default_channel
+      )
       |> maybe_add_channel(has_tracked_character, character_channel, default_channel)
 
     # If no channels were added (neither system nor character tracked), use default
@@ -319,6 +333,40 @@ defmodule WandererNotifier.DiscordNotifier do
       # Return unique channels to avoid sending duplicates if both channels are the same
       Enum.uniq(channels)
     end
+  end
+
+  # For system channel, check corporation exclusion - only add if not excluded
+  defp maybe_add_system_channel(channels, true, false, specific_channel, default_channel) do
+    # System is tracked and corporation is NOT excluded - add the channel
+    channel = specific_channel || default_channel
+    [channel | channels]
+  end
+
+  defp maybe_add_system_channel(channels, true, true, specific_channel, _default_channel) do
+    # System is tracked but corporation IS excluded
+    # Only skip if there's a dedicated system kill channel configured
+    if specific_channel != nil do
+      Logger.info(
+        "Kill notification excluded from system kill channel - corporation in exclusion list"
+      )
+
+      channels
+    else
+      # No dedicated system channel, so exclusion doesn't apply (falls back to default)
+      # In this case, we don't add the channel here - let the default logic handle it
+      channels
+    end
+  end
+
+  defp maybe_add_system_channel(
+         channels,
+         false,
+         _corp_excluded,
+         _specific_channel,
+         _default_channel
+       ) do
+    # System not tracked - don't add system channel
+    channels
   end
 
   defp maybe_add_channel(channels, true, specific_channel, default_channel) do
@@ -357,4 +405,46 @@ defmodule WandererNotifier.DiscordNotifier do
   defp rally_notifications_enabled?, do: Config.rally_notifications_enabled?()
   defp system_notifications_enabled?, do: Config.system_notifications_enabled?()
   defp character_notifications_enabled?, do: Config.character_notifications_enabled?()
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Corporation Exclusion - Only applies to system kill channel
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp corporation_excluded?(killmail) do
+    exclude_list = Config.corporation_exclude_list()
+
+    if exclude_list == [] do
+      false
+    else
+      # Convert to MapSet once for O(1) lookups
+      exclude_set = MapSet.new(exclude_list)
+
+      victim_corp_excluded?(killmail, exclude_set) or
+        any_attacker_corp_excluded?(killmail, exclude_set)
+    end
+  end
+
+  defp victim_corp_excluded?(killmail, exclude_set) do
+    victim_corp_id = Map.get(killmail, :victim_corporation_id)
+
+    case victim_corp_id do
+      nil -> false
+      id when is_integer(id) -> MapSet.member?(exclude_set, id)
+      _ -> false
+    end
+  end
+
+  defp any_attacker_corp_excluded?(killmail, exclude_set) do
+    attackers = Map.get(killmail, :attackers, []) || []
+
+    Enum.any?(attackers, fn attacker ->
+      corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
+
+      case corp_id do
+        nil -> false
+        id when is_integer(id) -> MapSet.member?(exclude_set, id)
+        _ -> false
+      end
+    end)
+  end
 end

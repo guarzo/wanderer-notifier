@@ -357,6 +357,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp send_notification(%Killmail{} = killmail) do
     Logger.info("[Pipeline] Starting notification process for killmail #{killmail.killmail_id}")
 
+    # Corporation exclusion is now handled at the channel routing level in DiscordNotifier
+    # to only exclude from system kill channel, not all notifications
+    check_timing_and_notify(killmail)
+  end
+
+  @spec check_timing_and_notify(Killmail.t()) :: result()
+  defp check_timing_and_notify(%Killmail{} = killmail) do
     # Check if we're in startup suppression period
     in_suppression = in_startup_suppression_period?()
     Logger.info("[Pipeline] Startup suppression check: #{in_suppression}")
