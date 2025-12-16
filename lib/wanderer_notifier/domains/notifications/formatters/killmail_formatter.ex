@@ -46,8 +46,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
         :victim -> 0xE74C3C
         # Green for kills
         :attacker -> 0x2ECC71
-        # Default ISK-based color for system kills
-        _ -> FormatterUtils.get_isk_color(killmail.value || 0)
+        # ISK-based color for system kills - prefer dropped value (lootable) over total value
+        _ -> FormatterUtils.get_isk_color(killmail.dropped_value || killmail.value || 0)
       end
 
     # Build title with system name (displays in larger font)
@@ -334,13 +334,30 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
       value = Map.get(item, "total_value") || Map.get(item, "value", 0)
       quantity = Map.get(item, "quantity", 1)
 
-      if quantity > 1 do
-        "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)} ISK)"
-      else
-        "• #{name} (~#{FormatterUtils.format_isk(value)} ISK)"
-      end
+      # Don't show price for Abyssal items as prices are generally inaccurate
+      is_abyssal = String.downcase(name) |> String.starts_with?("abyssal")
+
+      format_notable_item(name, quantity, value, is_abyssal)
     end)
     |> Enum.join("\n")
+  end
+
+  defp format_notable_item(name, quantity, _value, true = _is_abyssal) do
+    # Abyssal items: don't show price (prices are inaccurate)
+    if quantity > 1 do
+      "• #{name} x#{quantity}"
+    else
+      "• #{name}"
+    end
+  end
+
+  defp format_notable_item(name, quantity, value, false = _is_abyssal) do
+    # Regular items: show price
+    if quantity > 1 do
+      "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)} ISK)"
+    else
+      "• #{name} (~#{FormatterUtils.format_isk(value)} ISK)"
+    end
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

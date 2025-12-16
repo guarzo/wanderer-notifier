@@ -17,7 +17,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Shared.Utils.EntityUtils
-  alias WandererNotifier.Domains.Tracking.Entities.System
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -265,33 +264,12 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     system_id_str = Integer.to_string(system_id)
     Logger.info("[Pipeline] Checking if system #{system_id_str} is tracked")
 
+    # Note: wormhole_only_kill_notifications filtering is handled at channel routing level
+    # in DiscordNotifier.determine_kill_channels/1, not here
     with {:ok, tracked} <-
            WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
       Logger.info("[Pipeline] System #{system_id_str} tracked check result: #{tracked}")
-
-      wormhole_only = WandererNotifier.Shared.Config.wormhole_only_kill_notifications?()
-      Logger.info("[Pipeline] Wormhole-only kill notifications enabled: #{wormhole_only}")
-
-      if tracked and wormhole_only do
-        # Check if system is a wormhole
-        case System.get_system(system_id_str) do
-          {:ok, system} ->
-            is_wormhole = System.wormhole?(system)
-            Logger.info("[Pipeline] System #{system_id_str} wormhole check: #{is_wormhole}")
-            {:ok, is_wormhole}
-
-          {:error, reason} ->
-            Logger.warning("[Pipeline] Failed to get system info for wormhole check",
-              system_id: system_id_str,
-              reason: inspect(reason)
-            )
-
-            # If we can't determine system type, don't send notification
-            {:ok, false}
-        end
-      else
-        {:ok, tracked}
-      end
+      {:ok, tracked}
     end
   end
 
