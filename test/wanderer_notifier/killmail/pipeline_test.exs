@@ -256,7 +256,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       assert {:error, :missing_system_id} = result
     end
 
-    test "process_killmail/1 filters k-space kills when wormhole_only_kill_notifications is true" do
+    test "process_killmail/1 processes k-space kills when wormhole_only_kill_notifications is true (filtering at channel level)" do
+      # Note: wormhole_only_kill_notifications filtering now happens at channel routing level
+      # in DiscordNotifier, not at the pipeline level. K-space kills from tracked systems
+      # are still processed, but excluded from the system kill channel.
+
       # Set config environment variables temporarily
       original_wormhole_value =
         Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications)
@@ -269,12 +273,13 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
 
       zkb_data = %{
         "killmail_id" => 78_910,
-        "zkb" => %{"hash" => "kspace_hash"},
+        "zkb" => %{"hash" => "kspace_hash", "totalValue" => 1_000_000},
         "solar_system_id" => 30_000_142,
         "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
         "victim" => %{
           "character_id" => 100,
-          "corporation_id" => 200
+          "corporation_id" => 200,
+          "ship_type_id" => 670
         },
         "attackers" => []
       }
@@ -297,7 +302,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       Cachex.put(cache_name, "map:character_list", [])
 
       result = Pipeline.process_killmail(zkb_data)
-      assert {:ok, :skipped} = result
+      # Kill should be processed (not skipped) - channel filtering happens in DiscordNotifier
+      assert {:ok, "78910"} = result
 
       # Restore original configs
       Application.put_env(

@@ -32,6 +32,7 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
     # Metadata
     :zkb,
     :value,
+    :dropped_value,
     :points,
     :esi_data,
     :enriched?,
@@ -58,6 +59,7 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
           attackers: list(map()) | nil,
           zkb: map() | nil,
           value: number() | nil,
+          dropped_value: number() | nil,
           points: integer() | nil,
           esi_data: map() | nil,
           enriched?: boolean(),
@@ -72,8 +74,18 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
   """
   @spec from_websocket_data(String.t(), integer(), map()) :: t()
   def from_websocket_data(killmail_id, system_id, data) do
+    require Logger
     victim = Map.get(data, "victim", %{})
     zkb_data = Map.get(data, "zkb", %{})
+
+    # Log zkb data structure for debugging color logic
+    Logger.info(
+      "[Killmail] zkb data received - killmail_id: #{killmail_id}, " <>
+        "keys: #{inspect(Map.keys(zkb_data))}, " <>
+        "totalValue: #{inspect(Map.get(zkb_data, "totalValue"))}, " <>
+        "droppedValue: #{inspect(Map.get(zkb_data, "droppedValue"))}, " <>
+        "destroyedValue: #{inspect(Map.get(zkb_data, "destroyedValue"))}"
+    )
 
     %__MODULE__{
       killmail_id: killmail_id,
@@ -98,6 +110,7 @@ defmodule WandererNotifier.Domains.Killmail.Killmail do
       # Metadata
       zkb: zkb_data,
       value: Map.get(zkb_data, "totalValue", 0),
+      dropped_value: Map.get(zkb_data, "droppedValue"),
       points: Map.get(zkb_data, "points", 0),
       esi_data: build_esi_data(killmail_id, system_id, data),
       enriched?: true

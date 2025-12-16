@@ -316,11 +316,20 @@ defmodule WandererNotifier.DiscordNotifier do
         false
       end
 
+    # Check if wormhole-only filter applies (only affects system kill channel)
+    # Only compute when system-based routing is actually in use
+    wormhole_excluded =
+      if has_tracked_system and system_channel != nil do
+        wormhole_excluded?(system_id)
+      else
+        false
+      end
+
     channels =
       []
       |> maybe_add_system_channel(
         has_tracked_system,
-        corp_excluded,
+        corp_excluded or wormhole_excluded,
         system_channel,
         default_channel
       )
@@ -407,8 +416,46 @@ defmodule WandererNotifier.DiscordNotifier do
   defp character_notifications_enabled?, do: Config.character_notifications_enabled?()
 
   # ═══════════════════════════════════════════════════════════════════════════════
-  # Corporation Exclusion - Only applies to system kill channel
+  # System Kill Channel Exclusions
   # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Checks if system should be excluded from system kill channel due to wormhole-only filter
+  defp wormhole_excluded?(system_id) do
+    wormhole_only = Config.wormhole_only_kill_notifications?()
+
+    if wormhole_only do
+      # Use system ID range to reliably detect wormhole systems
+      # J-space (wormhole) systems have IDs in range 31000000-31999999
+      is_wormhole = wormhole_system?(system_id)
+
+      if not is_wormhole do
+        Logger.info(
+          "Kill notification excluded from system kill channel - non-wormhole system",
+          system_id: system_id,
+          wormhole_only: wormhole_only
+        )
+      end
+
+      not is_wormhole
+    else
+      false
+    end
+  end
+
+  # Detects wormhole systems by EVE system ID range
+  # J-space (wormhole) systems: 31000000-31999999
+  defp wormhole_system?(system_id) when is_integer(system_id) do
+    system_id >= 31_000_000 and system_id <= 31_999_999
+  end
+
+  defp wormhole_system?(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, ""} -> wormhole_system?(id)
+      _ -> false
+    end
+  end
+
+  defp wormhole_system?(_), do: false
 
   defp corporation_excluded?(killmail) do
     exclude_list = Config.corporation_exclude_list()
