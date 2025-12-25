@@ -190,7 +190,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp remove_system_from_cache(payload) do
     cache_key = Cache.Keys.map_systems()
-    system_id = Map.get(payload, "id")
+
+    # IMPORTANT: Use solar_system_id for cache operations, falling back to id
+    # The individual cache is keyed by solar_system_id (EVE system ID like 30000142),
+    # not by the map-internal "id" field (which may be a UUID or database ID).
+    system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
+
+    Logger.debug("Removing system from cache",
+      solar_system_id: Map.get(payload, "solar_system_id"),
+      id: Map.get(payload, "id"),
+      resolved_system_id: system_id,
+      category: :cache
+    )
 
     # Remove from main systems list
     result =

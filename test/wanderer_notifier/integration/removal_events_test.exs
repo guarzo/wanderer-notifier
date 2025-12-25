@@ -154,14 +154,73 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         }
       }
 
-      # Process event
-      # Due to the bug in system handler, this might return an error
-      # but it shouldn't crash
-      EventProcessor.process_event(event, "test-map")
+      # Process event - should handle gracefully
+      assert :ok = EventProcessor.process_event(event, "test-map")
 
       # Cache should still be empty
       cache_result = Cache.get(Cache.Keys.map_systems())
       assert cache_result == {:ok, nil} or cache_result == {:error, :not_found}
+    end
+
+    test "deleted_system removes system when id differs from solar_system_id" do
+      # This tests the real production scenario where the map API sends:
+      # - "id" = map-internal UUID or database ID
+      # - "solar_system_id" = EVE Online system ID
+      # The cache key uses solar_system_id, so removal must prioritize that field
+
+      system = %WandererNotifier.Domains.Tracking.Entities.System{
+        solar_system_id: 31_000_005,
+        name: "J555555",
+        class_title: "C5",
+        statics: ["H296"],
+        region_name: "W-Space"
+      }
+
+      assert_cache_put(Cache.Keys.map_systems(), [system])
+
+      # Individual cache keyed by solar_system_id
+      Cache.put_tracked_system("31000005", %{
+        "id" => "uuid-different-from-eve-id",
+        "solar_system_id" => 31_000_005,
+        "name" => "J555555",
+        "custom_name" => "Staging"
+      })
+
+      # Verify system is tracked before removal
+      assert Cache.is_system_tracked?("31000005") == true
+
+      # Create SSE event with different id vs solar_system_id
+      event = %{
+        "id" => "event-002",
+        "type" => "deleted_system",
+        "map_id" => "test-map-id",
+        "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "payload" => %{
+          "id" => "uuid-different-from-eve-id",
+          "solar_system_id" => 31_000_005
+        }
+      }
+
+      # Process event
+      assert :ok = EventProcessor.process_event(event, "test-map")
+
+      # Verify system was removed from main cache
+      cache_result = Cache.get(Cache.Keys.map_systems())
+
+      case cache_result do
+        {:ok, systems} when is_list(systems) ->
+          assert Enum.empty?(systems)
+
+        {:ok, nil} ->
+          :ok
+
+        {:error, :not_found} ->
+          :ok
+      end
+
+      # Verify individual cache was removed - this is the critical check
+      assert {:error, :not_found} = Cache.get_tracked_system("31000005")
+      assert Cache.is_system_tracked?("31000005") == false
     end
   end
 
