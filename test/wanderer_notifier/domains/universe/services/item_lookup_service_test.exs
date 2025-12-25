@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
   import Mox
 
   alias WandererNotifier.Domains.Universe.Services.ItemLookupService
-  alias WandererNotifier.Domains.Universe.Services.FuzzworksService
+  alias WandererNotifier.Domains.Universe.Services.WandererSdeService
   alias WandererNotifier.Infrastructure.Cache
 
   setup :verify_on_exit!
@@ -157,14 +157,14 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
     end
   end
 
-  describe "FuzzworksService functionality" do
+  describe "WandererSdeService functionality" do
     test "csv_files_exist?/0 returns boolean" do
-      result = FuzzworksService.csv_files_exist?()
+      result = WandererSdeService.csv_files_exist?()
       assert is_boolean(result)
     end
 
     test "get_csv_file_paths/0 returns map with paths" do
-      paths = FuzzworksService.get_csv_file_paths()
+      paths = WandererSdeService.get_csv_file_paths()
 
       assert is_map(paths)
       assert Map.has_key?(paths, :types_path)
@@ -174,12 +174,13 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupServiceTest do
     end
 
     test "get_csv_file_info/0 returns info map" do
-      info = FuzzworksService.get_csv_file_info()
+      info = WandererSdeService.get_csv_file_info()
 
       assert is_map(info)
       assert Map.has_key?(info, :types_file)
       assert Map.has_key?(info, :groups_file)
       assert Map.has_key?(info, :all_present)
+      assert Map.has_key?(info, :local_version)
       assert is_boolean(info.all_present)
     end
   end

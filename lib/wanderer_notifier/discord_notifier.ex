@@ -466,31 +466,55 @@ defmodule WandererNotifier.DiscordNotifier do
       # Convert to MapSet once for O(1) lookups
       exclude_set = MapSet.new(exclude_list)
 
-      victim_corp_excluded?(killmail, exclude_set) or
-        any_attacker_corp_excluded?(killmail, exclude_set)
+      victim_excluded = victim_corp_excluded?(killmail, exclude_set)
+      attacker_excluded = any_attacker_corp_excluded?(killmail, exclude_set)
+
+      if victim_excluded or attacker_excluded do
+        Logger.debug(
+          "Corporation exclusion matched - killmail_id: #{Map.get(killmail, :killmail_id)}, " <>
+            "victim_corp: #{inspect(Map.get(killmail, :victim_corporation_id))}, " <>
+            "victim_excluded: #{victim_excluded}, attacker_excluded: #{attacker_excluded}"
+        )
+      end
+
+      victim_excluded or attacker_excluded
     end
   end
 
   defp victim_corp_excluded?(killmail, exclude_set) do
     victim_corp_id = Map.get(killmail, :victim_corporation_id)
+    normalized_id = normalize_corp_id(victim_corp_id)
 
-    case victim_corp_id do
+    case normalized_id do
       nil -> false
-      id when is_integer(id) -> MapSet.member?(exclude_set, id)
-      _ -> false
+      id -> MapSet.member?(exclude_set, id)
     end
   end
+
+  # Normalizes corporation ID to integer for consistent comparison
+  # Handles both integer and string IDs from different data sources
+  defp normalize_corp_id(nil), do: nil
+  defp normalize_corp_id(id) when is_integer(id), do: id
+
+  defp normalize_corp_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {num, ""} -> num
+      _ -> nil
+    end
+  end
+
+  defp normalize_corp_id(_), do: nil
 
   defp any_attacker_corp_excluded?(killmail, exclude_set) do
     attackers = Map.get(killmail, :attackers, []) || []
 
     Enum.any?(attackers, fn attacker ->
       corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
+      normalized_id = normalize_corp_id(corp_id)
 
-      case corp_id do
+      case normalized_id do
         nil -> false
-        id when is_integer(id) -> MapSet.member?(exclude_set, id)
-        _ -> false
+        id -> MapSet.member?(exclude_set, id)
       end
     end)
   end
