@@ -39,6 +39,8 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
   @metadata_url "#{@sde_base_url}/sde_metadata.json"
   @required_files ["invTypes.csv", "invGroups.csv"]
   @download_timeout 60_000
+  # Allow extra time for task coordination beyond individual HTTP timeouts
+  @task_await_timeout @download_timeout + 5_000
 
   # Expected CSV headers for validation
   @expected_headers %{
@@ -254,7 +256,7 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
       |> Enum.map(fn file_name ->
         Task.async(fn -> download_single_file(file_name, data_dir) end)
       end)
-      |> Task.await_many(@download_timeout)
+      |> Task.await_many(@task_await_timeout)
 
     case Enum.find(results, &match?({:error, _}, &1)) do
       nil ->
@@ -331,8 +333,21 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
     case get_sde_version() do
       {:ok, %{"sde_version" => version}} ->
         version_path = Path.join(data_dir, "sde_version.txt")
-        File.write(version_path, version)
-        Logger.debug("Saved SDE version: #{version}")
+
+        # Ensure the directory exists before writing
+        version_path
+        |> Path.dirname()
+        |> File.mkdir_p()
+
+        case File.write(version_path, version) do
+          :ok ->
+            Logger.debug("Saved SDE version #{version} to #{version_path}")
+
+          {:error, reason} ->
+            Logger.error(
+              "Failed to write SDE version file to #{version_path}: #{inspect(reason)}"
+            )
+        end
 
       {:error, _} ->
         Logger.warning("Could not fetch SDE version info")
@@ -353,16 +368,20 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
   end
 
   defp get_file_info(file_path) do
-    if File.exists?(file_path) do
-      stat = File.stat!(file_path)
+    case File.stat(file_path) do
+      {:ok, stat} ->
+        %{
+          exists: true,
+          size: stat.size,
+          modified: stat.mtime
+        }
 
-      %{
-        exists: true,
-        size: stat.size,
-        modified: stat.mtime
-      }
-    else
-      %{exists: false}
+      {:error, :enoent} ->
+        %{exists: false}
+
+      {:error, reason} ->
+        Logger.warning("Could not stat file #{file_path}: #{inspect(reason)}")
+        %{exists: false}
     end
   end
 end

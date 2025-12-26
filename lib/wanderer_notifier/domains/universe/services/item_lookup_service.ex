@@ -353,7 +353,16 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     Process.send_after(self(), :periodic_refresh, :timer.hours(1))
 
     # Mark refresh as in progress and check for updates in background
-    Task.start(fn -> check_and_refresh_if_needed() end)
+    # Use supervised task with try/after to ensure flag is always reset
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      try do
+        check_and_refresh_if_needed()
+      rescue
+        error ->
+          Logger.error("Background SDE refresh crashed: #{inspect(error)}")
+          GenServer.cast(__MODULE__, :background_refresh_complete)
+      end
+    end)
 
     {:noreply, %{state | background_refresh_in_progress: true}}
   end
