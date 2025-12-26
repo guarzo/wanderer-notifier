@@ -3,16 +3,25 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   High-performance item and ship name lookup service.
 
   This service provides fast lookups for EVE Online item names and ship types
-  using cached CSV data from Fuzzworks with ESI fallback for missing items.
+  using cached CSV data from Wanderer SDE with ESI fallback for missing items.
 
   The service maintains an in-memory cache of all items and ships for O(1) lookups.
+
+  ## Data Source
+
+  Item data is loaded from CSV files downloaded from the Wanderer SDE repository:
+  `https://github.com/wanderer-industries/wanderer-assets/tree/main/sde-files`
+
+  ## Version Tracking
+
+  The service tracks the SDE version and can check for updates via `check_for_updates/0`.
   """
 
   use GenServer
   require Logger
 
   alias WandererNotifier.Domains.Universe.Entities.ItemType
-  alias WandererNotifier.Domains.Universe.Services.{FuzzworksService, CsvProcessor}
+  alias WandererNotifier.Domains.Universe.Services.{WandererSdeService, CsvProcessor}
   alias WandererNotifier.Infrastructure.{Cache, Http}
 
   # Use centralized TTL functions from Cache module
@@ -23,7 +32,9 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     :ships,
     :stats,
     :loaded_at,
-    :loading
+    :loading,
+    :sde_version,
+    :background_refresh_in_progress
   ]
 
   @type state :: %__MODULE__{
@@ -31,7 +42,9 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
           ships: %{integer() => ItemType.t()} | nil,
           stats: map() | nil,
           loaded_at: DateTime.t() | nil,
-          loading: boolean()
+          loading: boolean(),
+          sde_version: String.t() | nil,
+          background_refresh_in_progress: boolean()
         }
 
   # Public API
@@ -132,6 +145,27 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     GenServer.call(__MODULE__, :refresh, 300_000)
   end
 
+  @doc """
+  Checks if a new SDE version is available.
+
+  Returns:
+  - `{:update_available, version}` if a newer version exists
+  - `:up_to_date` if local version matches remote
+  - `:check_failed` if unable to determine
+  """
+  @spec check_for_updates() :: {:update_available, String.t()} | :up_to_date | :check_failed
+  def check_for_updates do
+    WandererSdeService.check_for_updates()
+  end
+
+  @doc """
+  Gets the currently loaded SDE version.
+  """
+  @spec get_sde_version() :: String.t() | nil
+  def get_sde_version do
+    GenServer.call(__MODULE__, :get_sde_version)
+  end
+
   # GenServer callbacks
 
   @impl GenServer
@@ -141,7 +175,9 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
       ships: nil,
       stats: nil,
       loaded_at: nil,
-      loading: false
+      loading: false,
+      sde_version: nil,
+      background_refresh_in_progress: false
     }
 
     # Only load data if not in test mode
@@ -208,22 +244,30 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
       loaded: not is_nil(state.items),
       loading: state.loading,
       loaded_at: state.loaded_at,
-      stats: state.stats || %{}
+      stats: state.stats || %{},
+      sde_version: state.sde_version
     }
 
     {:reply, status, state}
   end
 
+  def handle_call(:get_sde_version, _from, state) do
+    {:reply, state.sde_version, state}
+  end
+
   def handle_call(:reload, _from, state) do
     case load_csv_data() do
       {:ok, items, ships, stats} ->
+        sde_version = get_local_sde_version()
+
         new_state = %{
           state
           | items: items,
             ships: ships,
             stats: stats,
             loaded_at: DateTime.utc_now(),
-            loading: false
+            loading: false,
+            sde_version: sde_version
         }
 
         {:reply, :ok, new_state}
@@ -239,13 +283,16 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
 
     case refresh_csv_data() do
       {:ok, items, ships, stats} ->
+        sde_version = get_local_sde_version()
+
         final_state = %{
           new_state
           | items: items,
             ships: ships,
             stats: stats,
             loaded_at: DateTime.utc_now(),
-            loading: false
+            loading: false,
+            sde_version: sde_version
         }
 
         {:reply, :ok, final_state}
@@ -262,9 +309,12 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
 
     case load_csv_data() do
       {:ok, items, ships, stats} ->
+        sde_version = get_local_sde_version()
+
         Logger.info("Loaded item lookup data",
           items: map_size(items),
-          ships: map_size(ships)
+          ships: map_size(ships),
+          sde_version: sde_version
         )
 
         final_state = %{
@@ -273,7 +323,8 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
             ships: ships,
             stats: stats,
             loaded_at: DateTime.utc_now(),
-            loading: false
+            loading: false,
+            sde_version: sde_version
         }
 
         {:noreply, final_state}
@@ -286,58 +337,81 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     end
   end
 
-  def handle_info(:periodic_refresh, state) do
-    Logger.debug("Running periodic CSV data refresh")
+  def handle_info(:periodic_refresh, %{background_refresh_in_progress: true} = state) do
+    Logger.debug("Skipping periodic SDE update check - refresh already in progress")
 
     # Schedule next refresh
     Process.send_after(self(), :periodic_refresh, :timer.hours(1))
 
-    # Refresh in background - don't block if it fails
-    Task.start(fn ->
-      case refresh_csv_data() do
-        {:ok, items, ships, stats} ->
-          GenServer.cast(__MODULE__, {:update_data, items, ships, stats})
-
-        {:error, reason} ->
-          Logger.warning("Periodic refresh failed: #{inspect(reason)}")
-      end
-    end)
-
     {:noreply, state}
   end
 
+  def handle_info(:periodic_refresh, state) do
+    Logger.debug("Running periodic SDE update check")
+
+    # Schedule next refresh
+    Process.send_after(self(), :periodic_refresh, :timer.hours(1))
+
+    # Mark refresh as in progress and check for updates in background
+    # Use supervised task with try/after to ensure flag is always reset
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      try do
+        check_and_refresh_if_needed()
+      rescue
+        error ->
+          Logger.error("Background SDE refresh crashed: #{inspect(error)}")
+          GenServer.cast(__MODULE__, :background_refresh_complete)
+      end
+    end)
+
+    {:noreply, %{state | background_refresh_in_progress: true}}
+  end
+
   @impl GenServer
-  def handle_cast({:update_data, items, ships, stats}, state) do
+  def handle_cast({:update_data, items, ships, stats, sde_version}, state) do
     Logger.info("Updated item lookup data from periodic refresh",
       items: map_size(items),
-      ships: map_size(ships)
+      ships: map_size(ships),
+      sde_version: sde_version
     )
 
-    new_state = %{state | items: items, ships: ships, stats: stats, loaded_at: DateTime.utc_now()}
+    new_state = %{
+      state
+      | items: items,
+        ships: ships,
+        stats: stats,
+        loaded_at: DateTime.utc_now(),
+        sde_version: sde_version,
+        background_refresh_in_progress: false
+    }
 
     {:noreply, new_state}
+  end
+
+  def handle_cast(:background_refresh_complete, state) do
+    {:noreply, %{state | background_refresh_in_progress: false}}
   end
 
   # Private functions
 
   defp load_csv_data do
-    if FuzzworksService.csv_files_exist?() do
+    if WandererSdeService.csv_files_exist?() do
       load_from_csv()
     else
-      Logger.info("CSV files don't exist, downloading from Fuzzworks")
+      Logger.info("CSV files don't exist, downloading from Wanderer SDE")
       refresh_csv_data()
     end
   end
 
   defp refresh_csv_data do
-    with {:ok, _paths} <- FuzzworksService.download_csv_files(force_download: true),
+    with {:ok, _paths} <- WandererSdeService.download_csv_files(force_download: true),
          {:ok, items, ships, stats} <- load_from_csv() do
       {:ok, items, ships, stats}
     end
   end
 
   defp load_from_csv do
-    file_paths = FuzzworksService.get_csv_file_paths()
+    file_paths = WandererSdeService.get_csv_file_paths()
 
     case CsvProcessor.process_csv_files(file_paths.types_path, file_paths.groups_path) do
       {:ok, %{items: items, ships: ships, stats: stats}} ->
@@ -346,6 +420,40 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
       {:error, reason} = error ->
         Logger.error("Failed to process CSV files: #{inspect(reason)}")
         error
+    end
+  end
+
+  defp get_local_sde_version do
+    file_info = WandererSdeService.get_csv_file_info()
+    file_info[:local_version]
+  end
+
+  defp check_and_refresh_if_needed do
+    case WandererSdeService.check_for_updates() do
+      {:update_available, new_version} ->
+        perform_periodic_refresh(new_version)
+
+      :up_to_date ->
+        Logger.debug("SDE data is up to date")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
+
+      :check_failed ->
+        Logger.warning("Failed to check for SDE updates")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
+    end
+  end
+
+  defp perform_periodic_refresh(new_version) do
+    Logger.info("New SDE version available: #{new_version}, refreshing data")
+
+    case refresh_csv_data() do
+      {:ok, items, ships, stats} ->
+        # background_refresh_in_progress is reset in the :update_data handler
+        GenServer.cast(__MODULE__, {:update_data, items, ships, stats, new_version})
+
+      {:error, reason} ->
+        Logger.warning("Periodic refresh failed: #{inspect(reason)}")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
     end
   end
 

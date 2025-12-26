@@ -81,7 +81,7 @@ defmodule WandererNotifier.Shared.Config do
   def rally_notifications_enabled?, do: get_boolean("RALLY_NOTIFICATIONS_ENABLED", true)
 
   @doc "Check if status messages are enabled"
-  def enable_status_messages?, do: get_boolean("ENABLE_STATUS_MESSAGES", false)
+  def status_messages_enabled?, do: get_boolean("STATUS_MESSAGES_ENABLED", false)
 
   @doc "Check if K-space tracking is enabled"
   def track_kspace_enabled?, do: get_boolean("TRACK_KSPACE_ENABLED", true)

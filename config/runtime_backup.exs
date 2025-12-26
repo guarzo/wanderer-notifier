@@ -105,7 +105,8 @@ config :wanderer_notifier,
           Utils.parse_bool(System.get_env("SYSTEM_NOTIFICATIONS_ENABLED"), true),
         character_notifications_enabled:
           Utils.parse_bool(System.get_env("CHARACTER_NOTIFICATIONS_ENABLED"), true),
-        status_messages_enabled: Utils.parse_bool(System.get_env("ENABLE_STATUS_MESSAGES"), false)
+        status_messages_enabled:
+          Utils.parse_bool(System.get_env("STATUS_MESSAGES_ENABLED"), false)
       },
       feature_env_vars
     ),

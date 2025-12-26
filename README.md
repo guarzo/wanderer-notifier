@@ -253,7 +253,7 @@ Environment variables now use simplified naming without redundant prefixes for c
    - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
    - `RALLY_NOTIFICATIONS_ENABLED`: Enable rally point notifications (default: true)
-   - `ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: false)
+   - `STATUS_MESSAGES_ENABLED`: Enable startup and status notifications (default: false)
    - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
 
 5. **Voice Participant Notifications**

@@ -206,6 +206,82 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       # Verify individual cache was deleted
       assert {:error, :not_found} = Cache.get_tracked_system("31000001")
     end
+
+    test "removes system when id and solar_system_id are different values" do
+      # This tests the real-world scenario where the map API sends:
+      # - "id" = map-internal identifier (e.g., UUID or database ID)
+      # - "solar_system_id" = EVE Online system ID (e.g., 31000001)
+      # The cache is keyed by solar_system_id, so removal must use that field
+
+      # Setup: Add system to both caches
+      # The individual cache is keyed by solar_system_id (as string)
+      system = %System{
+        solar_system_id: 31_000_001,
+        name: "J123456",
+        class_title: "C3",
+        statics: ["D845"],
+        region_name: "W-Space"
+      }
+
+      assert_cache_put(Cache.Keys.map_systems(), [system])
+
+      # Individual cache uses solar_system_id as key
+      Cache.put_tracked_system("31000001", %{
+        "id" => "map-uuid-abc123",
+        "solar_system_id" => 31_000_001,
+        "name" => "J123456",
+        "custom_name" => "Home"
+      })
+
+      # Create removal event with DIFFERENT id vs solar_system_id
+      # This simulates what the real Wanderer map API sends
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "id" => "map-uuid-abc123",
+          "solar_system_id" => 31_000_001
+        }
+      }
+
+      # Execute removal
+      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+
+      # Verify system was removed from main cache
+      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      assert Enum.empty?(updated_systems)
+
+      # Verify individual cache was also deleted (keyed by solar_system_id)
+      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+    end
+
+    test "removes system using id fallback when solar_system_id not in payload" do
+      # Backward compatibility: if solar_system_id is not in the payload,
+      # fall back to using id (for older API versions or edge cases)
+
+      system = %System{
+        solar_system_id: 31_000_001,
+        name: "J123456",
+        class_title: "C3"
+      }
+
+      assert_cache_put(Cache.Keys.map_systems(), [system])
+      Cache.put_tracked_system("31000001", %{"id" => 31_000_001, "name" => "J123456"})
+
+      # Event only has "id", no "solar_system_id"
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "id" => 31_000_001
+        }
+      }
+
+      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+
+      # Should still remove correctly using id as fallback
+      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      assert Enum.empty?(updated_systems)
+      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+    end
   end
 
   describe "handle_entity_added/2" do

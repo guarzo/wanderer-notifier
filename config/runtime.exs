@@ -185,7 +185,7 @@ config :wanderer_notifier,
   janice_api_token: RuntimeConfig.get_env("JANICE_API_TOKEN"),
   janice_api_url: RuntimeConfig.get_env("JANICE_API_URL", "https://janice.e-351.com"),
   notable_item_threshold: RuntimeConfig.get_integer("NOTABLE_ITEM_THRESHOLD", 50_000_000),
-  notable_items_enabled: RuntimeConfig.get_env("JANICE_API_TOKEN") != nil,
+  notable_items_enabled: RuntimeConfig.get_boolean("NOTABLE_ITEMS_ENABLED", false),
 
   # Cache settings
   cache_dir: RuntimeConfig.get_env("CACHE_DIR", "/app/data/cache"),

@@ -15,7 +15,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `:janice` - Janice price evaluation API with moderate rate limits
   - `:map` - Internal map API with extended timeouts
   - `:streaming` - Special configuration for streaming endpoints
-  - `:fuzzworks` - Fuzzworks data dump API for static EVE data
+  - `:wanderer_sde` - Wanderer SDE static data from GitHub
 
   ## Usage Examples
 
@@ -59,7 +59,7 @@ defmodule WandererNotifier.Infrastructure.Http do
           | :map
           | :discord
           | :streaming
-          | :fuzzworks
+          | :wanderer_sde
           | nil
   @type middleware :: module()
   @type request :: %{
@@ -95,7 +95,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `opts` - Request options (see below)
 
   ## Options
-  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :discord, :streaming, :fuzzworks)
+  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :discord, :streaming, :wanderer_sde)
   - `:timeout` - Request timeout in milliseconds
   - `:retry_count` - Number of retries
   - `:decode_json` - Automatically decode JSON responses (default: true)
@@ -418,17 +418,18 @@ defmodule WandererNotifier.Infrastructure.Http do
       follow_redirects: false,
       decode_json: false
     ],
-    fuzzworks: [
+    wanderer_sde: [
       timeout: 60_000,
-      retry_count: 2,
+      retry_count: 3,
       retry_delay: 2_000,
       retryable_status_codes: [429, 500, 502, 503, 504],
       rate_limit: [
-        service: :fuzzworks,
-        requests_per_second: 5,
-        burst_capacity: 10,
+        service: :wanderer_sde,
+        requests_per_second: 10,
+        burst_capacity: 20,
         per_host: true
       ],
+      middlewares: [Retry, RateLimiter],
       decode_json: false
     ]
   }
@@ -628,15 +629,18 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   @doc """
-  Makes a GET request to Fuzzworks API with extended timeout.
+  Makes a GET request to Wanderer SDE on GitHub with retry logic.
+
+  Used to download static data files (CSV) and metadata from the
+  wanderer-assets repository.
 
   ## Parameters
-    - url: The Fuzzworks endpoint URL
+    - url: The Wanderer SDE file URL
     - headers: Optional headers (defaults to [])
     - opts: Additional options
   """
-  @spec fuzzworks_get(url(), headers(), opts()) :: response()
-  def fuzzworks_get(url, headers \\ [], opts \\ []) do
-    request(:get, url, nil, headers, Keyword.put(opts, :service, :fuzzworks))
+  @spec wanderer_sde_get(url(), headers(), opts()) :: response()
+  def wanderer_sde_get(url, headers \\ [], opts \\ []) do
+    request(:get, url, nil, headers, Keyword.put(opts, :service, :wanderer_sde))
   end
 end

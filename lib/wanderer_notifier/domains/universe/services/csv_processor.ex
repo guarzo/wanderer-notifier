@@ -1,9 +1,26 @@
 defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   @moduledoc """
-  Processes CSV files from Fuzzworks to extract item types and ship data.
+  Processes CSV files to extract item types and ship data.
 
   This module handles parsing the invTypes.csv and invGroups.csv files
   to build a comprehensive database of EVE Online items and ships.
+
+  ## Supported Formats
+
+  Supports both Wanderer SDE and legacy Fuzzworks CSV formats:
+
+  **Wanderer SDE format (6 columns):**
+  ```
+  typeID,groupID,typeName,mass,volume,capacity
+  ```
+
+  **Fuzzworks format (14 columns):**
+  ```
+  typeID,groupID,typeName,description,mass,volume,capacity,portionSize,
+  raceID,basePrice,published,marketGroupID,iconID,soundID,graphicID
+  ```
+
+  The parser automatically detects the format based on column count.
   """
 
   require Logger
@@ -189,21 +206,86 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   end
 
   defp parse_type_row(row, groups_map) do
-    case row do
-      [type_id_str, group_id_str, name, _description | rest] ->
-        with {type_id, ""} <- Integer.parse(type_id_str, 10),
-             {group_id, ""} <- Integer.parse(group_id_str, 10),
-             true <- valid_item?(name, type_id, group_id) do
-          parse_full_type_data(type_id, group_id, name, rest, groups_map)
-        else
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
+    dispatch_row_parser(row, groups_map)
   rescue
     _ -> nil
+  end
+
+  # Dispatch to appropriate parser based on column count
+  defp dispatch_row_parser(row, groups_map) when length(row) == 6 do
+    # Wanderer SDE format: typeID,groupID,typeName,mass,volume,capacity
+    parse_wanderer_sde_row(row, groups_map)
+  end
+
+  defp dispatch_row_parser([type_id_str, group_id_str, name, _description | rest], groups_map)
+       when length(rest) >= 7 do
+    # Fuzzworks format: typeID,groupID,typeName,description,mass,volume,...
+    parse_fuzzworks_row(type_id_str, group_id_str, name, rest, groups_map)
+  end
+
+  defp dispatch_row_parser(_row, _groups_map), do: nil
+
+  # Parse Wanderer SDE simplified format (6 columns)
+  defp parse_wanderer_sde_row(row, groups_map) do
+    [type_id_str, group_id_str, name, mass_str, volume_str, capacity_str] = row
+
+    with {:ok, type_id, group_id} <- parse_ids(type_id_str, group_id_str),
+         true <- valid_item?(name, type_id, group_id) do
+      raw_data = %{
+        name: name,
+        mass_str: mass_str,
+        volume_str: volume_str,
+        capacity_str: capacity_str
+      }
+
+      build_wanderer_sde_item(type_id, group_id, raw_data, groups_map)
+    else
+      _ -> nil
+    end
+  end
+
+  defp build_wanderer_sde_item(type_id, group_id, raw_data, groups_map) do
+    csv_data = %{
+      type_id: type_id,
+      name: String.trim(raw_data.name),
+      group_id: group_id,
+      mass: parse_float(raw_data.mass_str),
+      volume: parse_float(raw_data.volume_str),
+      capacity: parse_float(raw_data.capacity_str),
+      # Fields not in Wanderer SDE - set defaults
+      portion_size: 1,
+      race_id: nil,
+      base_price: 0.0,
+      published: true,
+      market_group_id: nil,
+      icon_id: nil,
+      sound_id: nil,
+      graphic_id: nil
+    }
+
+    group_name = Map.get(groups_map, group_id)
+    is_ship = group_id in @ship_group_ids
+
+    ItemType.from_csv_data(csv_data, group_name, is_ship)
+  end
+
+  # Parse Fuzzworks format row
+  defp parse_fuzzworks_row(type_id_str, group_id_str, name, rest, groups_map) do
+    with {:ok, type_id, group_id} <- parse_ids(type_id_str, group_id_str),
+         true <- valid_item?(name, type_id, group_id) do
+      parse_fuzzworks_type_data(type_id, group_id, name, rest, groups_map)
+    else
+      _ -> nil
+    end
+  end
+
+  defp parse_ids(type_id_str, group_id_str) do
+    with {type_id, ""} <- Integer.parse(type_id_str, 10),
+         {group_id, ""} <- Integer.parse(group_id_str, 10) do
+      {:ok, type_id, group_id}
+    else
+      _ -> :error
+    end
   end
 
   defp valid_item?(name, type_id, group_id) do
@@ -215,7 +297,8 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
       group_id > 0
   end
 
-  defp parse_full_type_data(type_id, group_id, name, rest, groups_map) do
+  # Parse legacy Fuzzworks format (14+ columns)
+  defp parse_fuzzworks_type_data(type_id, group_id, name, rest, groups_map) do
     # Extract additional fields from the CSV row
     [
       mass_str,

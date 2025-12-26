@@ -73,7 +73,7 @@ LICENSE_KEY=your_license_key  # Provided with your map subscription
 # Feature Flags (default values shown below)
 # General Settings
 # NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
-# ENABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
+# STATUS_MESSAGES_ENABLED=false  # Controls startup/status notifications
 
 # Notification Control
 # KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
