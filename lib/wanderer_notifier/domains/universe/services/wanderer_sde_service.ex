@@ -194,50 +194,70 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
   # Private functions
 
   defp do_download_csv_files(data_dir, force_download) do
-    ensure_data_directory(data_dir)
+    case ensure_data_directory(data_dir) do
+      {:ok, _} ->
+        files_to_download =
+          if force_download do
+            cleanup_existing_files(data_dir)
+            @required_files
+          else
+            get_missing_files(data_dir)
+          end
 
-    files_to_download =
-      if force_download do
-        cleanup_existing_files(data_dir)
-        @required_files
-      else
-        get_missing_files(data_dir)
-      end
+        case files_to_download do
+          [] ->
+            Logger.info("All CSV files already exist")
+            {:ok, get_csv_file_paths()}
 
-    case files_to_download do
-      [] ->
-        Logger.info("All CSV files already exist")
-        {:ok, get_csv_file_paths()}
+          missing_files ->
+            Logger.info("Downloading #{length(missing_files)} CSV files from Wanderer SDE")
+            download_missing_files(missing_files, data_dir)
+        end
 
-      missing_files ->
-        Logger.info("Downloading #{length(missing_files)} CSV files from Wanderer SDE")
-        download_missing_files(missing_files, data_dir)
+      {:error, reason} ->
+        {:error, {:directory_creation_failed, reason}}
     end
   end
 
   defp ensure_data_directory(data_dir) do
-    unless File.exists?(data_dir) do
-      File.mkdir_p!(data_dir)
-      Logger.debug("Created data directory: #{data_dir}")
+    if File.exists?(data_dir) do
+      {:ok, data_dir}
+    else
+      case File.mkdir_p(data_dir) do
+        :ok ->
+          Logger.debug("Created data directory: #{data_dir}")
+          {:ok, data_dir}
+
+        {:error, reason} ->
+          Logger.warning("Failed to create data directory: #{data_dir} - #{inspect(reason)}")
+          {:error, reason}
+      end
     end
   end
 
   defp cleanup_existing_files(data_dir) do
-    @required_files
-    |> Enum.each(fn file ->
-      file_path = Path.join(data_dir, file)
-
-      if File.exists?(file_path) do
-        File.rm!(file_path)
-        Logger.debug("Removed existing file: #{file}")
-      end
+    Enum.each(@required_files, fn file ->
+      data_dir
+      |> Path.join(file)
+      |> remove_file_if_exists(file)
     end)
 
     # Also remove local version file
-    version_path = Path.join(data_dir, "sde_version.txt")
+    data_dir
+    |> Path.join("sde_version.txt")
+    |> remove_file_if_exists("sde_version.txt")
+  end
 
-    if File.exists?(version_path) do
-      File.rm!(version_path)
+  defp remove_file_if_exists(file_path, display_name) do
+    case File.rm(file_path) do
+      :ok ->
+        Logger.debug("Removed existing file: #{display_name}")
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to remove file #{file_path}: #{inspect(reason)}")
     end
   end
 
@@ -333,12 +353,18 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
     case get_sde_version() do
       {:ok, %{"sde_version" => version}} ->
         version_path = Path.join(data_dir, "sde_version.txt")
+        write_version_file(version_path, version)
 
-        # Ensure the directory exists before writing
-        version_path
-        |> Path.dirname()
-        |> File.mkdir_p()
+      {:error, _} ->
+        Logger.warning("Could not fetch SDE version info")
+    end
+  end
 
+  defp write_version_file(version_path, version) do
+    dir_path = Path.dirname(version_path)
+
+    case File.mkdir_p(dir_path) do
+      {:ok, _} ->
         case File.write(version_path, version) do
           :ok ->
             Logger.debug("Saved SDE version #{version} to #{version_path}")
@@ -349,8 +375,10 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
             )
         end
 
-      {:error, _} ->
-        Logger.warning("Could not fetch SDE version info")
+      {:error, reason} ->
+        Logger.error(
+          "Failed to create directory #{dir_path} for SDE version file: #{inspect(reason)}"
+        )
     end
   end
 
