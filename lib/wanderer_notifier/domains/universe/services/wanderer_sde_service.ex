@@ -175,7 +175,10 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
         current_version = get_local_version()
 
         if remote_version != current_version do
-          Logger.info("New SDE version available: #{remote_version} (current: #{current_version})")
+          Logger.info(
+            "New SDE version available: #{remote_version} (current: #{current_version})"
+          )
+
           {:update_available, remote_version}
         else
           :up_to_date
