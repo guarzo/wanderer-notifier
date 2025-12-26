@@ -364,7 +364,7 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
     dir_path = Path.dirname(version_path)
 
     case File.mkdir_p(dir_path) do
-      {:ok, _} ->
+      :ok ->
         case File.write(version_path, version) do
           :ok ->
             Logger.debug("Saved SDE version #{version} to #{version_path}")
