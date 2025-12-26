@@ -335,21 +335,41 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   end
 
   defp call_discord_api(channel_id_int, discord_embed, content) do
-    # Add debugging for Discord API calls
-    content_info =
-      if content do
-        "\"#{String.slice(content, 0, 50)}#{if String.length(content) > 50, do: "...", else: ""}\""
-      else
-        "none"
-      end
+    log_pre_api_state(channel_id_int, content)
+    start_time = System.monotonic_time(:millisecond)
 
-    Logger.debug("Discord API call starting",
+    log_api_call_start(channel_id_int)
+
+    result = execute_message_create(channel_id_int, discord_embed, content)
+    duration = System.monotonic_time(:millisecond) - start_time
+
+    log_api_call_result(channel_id_int, duration, result)
+    finalize_api_result(result, duration)
+  end
+
+  defp log_pre_api_state(channel_id_int, content) do
+    content_info = format_content_preview(content)
+    ratelimiter_state = get_ratelimiter_state()
+
+    Logger.info("[DiagnosticLog] Pre-API call state",
       channel_id: channel_id_int,
       content_preview: content_info,
+      ratelimiter: ratelimiter_state,
       category: :discord_api
     )
 
-    # Check current rate limit status before making the call
+    log_rate_limit_warning(channel_id_int)
+  end
+
+  defp format_content_preview(nil), do: "none"
+
+  defp format_content_preview(content) do
+    preview = String.slice(content, 0, 50)
+    suffix = if String.length(content) > 50, do: "...", else: ""
+    "\"#{preview}#{suffix}\""
+  end
+
+  defp log_rate_limit_warning(channel_id_int) do
     rate_limit_info = check_rate_limit_status(channel_id_int)
 
     if rate_limit_info[:limited] do
@@ -359,51 +379,56 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         category: :discord_api
       )
     end
+  end
 
-    # Log timestamp before call for precise timing
-    start_time = System.monotonic_time(:millisecond)
+  defp log_api_call_start(channel_id_int) do
+    Logger.info("[DiagnosticLog] Calling Message.create NOW",
+      channel_id: channel_id_int,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      category: :discord_api
+    )
+  end
 
-    result =
-      try do
-        # Log Gun connection pool status if available
-        log_gun_pool_status()
+  defp execute_message_create(channel_id_int, discord_embed, content) do
+    try do
+      log_gun_pool_status()
 
-        if content do
-          Message.create(channel_id_int, content: content, embeds: [discord_embed])
-        else
-          Message.create(channel_id_int, embeds: [discord_embed])
-        end
-      rescue
-        exception ->
-          Logger.error("Exception during Discord API call",
-            error: Exception.message(exception),
-            stacktrace: __STACKTRACE__,
-            category: :discord_api
-          )
-
-          {:error, exception}
+      if content do
+        Message.create(channel_id_int, content: content, embeds: [discord_embed])
+      else
+        Message.create(channel_id_int, embeds: [discord_embed])
       end
-
-    duration = System.monotonic_time(:millisecond) - start_time
-
-    case result do
-      {:ok, _} = success ->
-        Logger.debug("Discord API call completed successfully",
-          duration_ms: duration,
+    rescue
+      exception ->
+        Logger.error("Exception during Discord API call",
+          error: Exception.message(exception),
+          stacktrace: __STACKTRACE__,
           category: :discord_api
         )
 
-        success
-
-      {:error, reason} = error ->
-        Logger.error("Discord API call failed",
-          duration_ms: duration,
-          reason: inspect(reason),
-          category: :discord_api
-        )
-
-        error
+        {:error, exception}
     end
+  end
+
+  defp log_api_call_result(channel_id_int, duration, result) do
+    Logger.info("[DiagnosticLog] Message.create returned",
+      channel_id: channel_id_int,
+      duration_ms: duration,
+      result_type: elem(result, 0),
+      category: :discord_api
+    )
+  end
+
+  defp finalize_api_result({:ok, _} = success, _duration), do: success
+
+  defp finalize_api_result({:error, reason} = error, duration) do
+    Logger.error("Discord API call failed",
+      duration_ms: duration,
+      reason: inspect(reason),
+      category: :discord_api
+    )
+
+    error
   end
 
   defp handle_success(start_time, rally_id, attempt) do
@@ -982,6 +1007,30 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     ms
     |> max(0)
     |> min(120_000)
+  end
+
+  # Helper function to check Nostrum API Ratelimiter state
+  defp get_ratelimiter_state do
+    try do
+      case Process.whereis(Nostrum.Api.Ratelimiter) do
+        nil ->
+          %{status: :not_started, pid: nil}
+
+        pid when is_pid(pid) ->
+          # Get process info for diagnostics
+          info = Process.info(pid, [:message_queue_len, :status, :memory])
+
+          %{
+            status: :running,
+            pid: inspect(pid),
+            message_queue_len: info[:message_queue_len],
+            process_status: info[:status],
+            memory_kb: div(info[:memory] || 0, 1024)
+          }
+      end
+    rescue
+      _ -> %{status: :unknown, error: "failed to get state"}
+    end
   end
 
   # Helper function to check Nostrum WebSocket state

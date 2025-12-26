@@ -157,6 +157,9 @@ config :nostrum,
   caches: [],
   # Disable ffmpeg warnings since we're not using voice features
   ffmpeg: false,
+  # Force HTTP/1.1 to avoid HTTP/2 connection issues with Discord API
+  # See: https://hexdocs.pm/nostrum/intro.html
+  force_http1: true,
   # HTTP timeout configuration - set to 30s (neo_client.ex uses 15s total: 10s + 5s)
   gun_timeout: 30_000,
   gun_connect_timeout: 5_000
