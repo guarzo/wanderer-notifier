@@ -33,7 +33,8 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     :stats,
     :loaded_at,
     :loading,
-    :sde_version
+    :sde_version,
+    :background_refresh_in_progress
   ]
 
   @type state :: %__MODULE__{
@@ -42,7 +43,8 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
           stats: map() | nil,
           loaded_at: DateTime.t() | nil,
           loading: boolean(),
-          sde_version: String.t() | nil
+          sde_version: String.t() | nil,
+          background_refresh_in_progress: boolean()
         }
 
   # Public API
@@ -174,7 +176,8 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
       stats: nil,
       loaded_at: nil,
       loading: false,
-      sde_version: nil
+      sde_version: nil,
+      background_refresh_in_progress: false
     }
 
     # Only load data if not in test mode
@@ -334,16 +337,25 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
     end
   end
 
+  def handle_info(:periodic_refresh, %{background_refresh_in_progress: true} = state) do
+    Logger.debug("Skipping periodic SDE update check - refresh already in progress")
+
+    # Schedule next refresh
+    Process.send_after(self(), :periodic_refresh, :timer.hours(1))
+
+    {:noreply, state}
+  end
+
   def handle_info(:periodic_refresh, state) do
     Logger.debug("Running periodic SDE update check")
 
     # Schedule next refresh
     Process.send_after(self(), :periodic_refresh, :timer.hours(1))
 
-    # Check for updates in background - only refresh if new version available
+    # Mark refresh as in progress and check for updates in background
     Task.start(fn -> check_and_refresh_if_needed() end)
 
-    {:noreply, state}
+    {:noreply, %{state | background_refresh_in_progress: true}}
   end
 
   @impl GenServer
@@ -360,10 +372,15 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
         ships: ships,
         stats: stats,
         loaded_at: DateTime.utc_now(),
-        sde_version: sde_version
+        sde_version: sde_version,
+        background_refresh_in_progress: false
     }
 
     {:noreply, new_state}
+  end
+
+  def handle_cast(:background_refresh_complete, state) do
+    {:noreply, %{state | background_refresh_in_progress: false}}
   end
 
   # Private functions
@@ -409,9 +426,11 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
 
       :up_to_date ->
         Logger.debug("SDE data is up to date")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
 
       :check_failed ->
         Logger.warning("Failed to check for SDE updates")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
     end
   end
 
@@ -420,10 +439,12 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
 
     case refresh_csv_data() do
       {:ok, items, ships, stats} ->
+        # background_refresh_in_progress is reset in the :update_data handler
         GenServer.cast(__MODULE__, {:update_data, items, ships, stats, new_version})
 
       {:error, reason} ->
         Logger.warning("Periodic refresh failed: #{inspect(reason)}")
+        GenServer.cast(__MODULE__, :background_refresh_complete)
     end
   end
 

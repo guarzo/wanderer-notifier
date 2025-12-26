@@ -40,6 +40,12 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
   @required_files ["invTypes.csv", "invGroups.csv"]
   @download_timeout 60_000
 
+  # Expected CSV headers for validation
+  @expected_headers %{
+    "invTypes.csv" => "typeID,groupID,typeName",
+    "invGroups.csv" => "groupID,categoryID,groupName"
+  }
+
   @doc """
   Downloads the required CSV files from Wanderer SDE.
 
@@ -205,7 +211,7 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
   end
 
   defp ensure_data_directory(data_dir) do
-    if !File.exists?(data_dir) do
+    unless File.exists?(data_dir) do
       File.mkdir_p!(data_dir)
       Logger.debug("Created data directory: #{data_dir}")
     end
@@ -255,7 +261,7 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
         {:ok, get_csv_file_paths()}
 
       {:error, _} = error ->
-        Logger.error("Failed to download some CSV files from Wanderer SDE")
+        # Specific error already logged in download_single_file
         error
     end
   end
@@ -266,23 +272,44 @@ defmodule WandererNotifier.Domains.Universe.Services.WandererSdeService do
 
     Logger.info("Downloading #{file_name} from Wanderer SDE")
 
-    case fetch_file(url) do
-      {:ok, data} ->
-        case File.write(output_path, data) do
-          :ok ->
-            Logger.info("Successfully downloaded and saved #{file_name}")
-            :ok
-
-          {:error, reason} ->
-            Logger.error("Failed to write #{file_name}: #{inspect(reason)}")
-            {:error, {:file_write_error, reason}}
-        end
+    with {:ok, data} <- fetch_file(url),
+         :ok <- validate_csv_content(file_name, data),
+         :ok <- File.write(output_path, data) do
+      Logger.info("Successfully downloaded and saved #{file_name}")
+      :ok
+    else
+      {:error, :invalid_csv_content} = error ->
+        Logger.error("Downloaded #{file_name} has invalid CSV content")
+        error
 
       {:error, reason} = error ->
-        Logger.error("Failed to download #{file_name}: #{inspect(reason)}")
+        Logger.error("Failed to download/write #{file_name}: #{inspect(reason)}")
         error
     end
   end
+
+  defp validate_csv_content(file_name, data) when is_binary(data) do
+    expected_header = Map.get(@expected_headers, file_name)
+
+    if expected_header do
+      first_line =
+        data
+        |> String.split("\n", parts: 2)
+        |> List.first()
+        |> String.trim()
+
+      if String.starts_with?(first_line, expected_header) do
+        :ok
+      else
+        {:error, :invalid_csv_content}
+      end
+    else
+      # No validation defined for this file
+      :ok
+    end
+  end
+
+  defp validate_csv_content(_file_name, _data), do: {:error, :invalid_csv_content}
 
   defp fetch_file(url) do
     case Http.wanderer_sde_get(url, [], timeout: @download_timeout) do

@@ -103,7 +103,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   end
 
   defp maybe_send_status_report do
-    if WandererNotifier.Shared.Config.enable_status_messages?() do
+    if WandererNotifier.Shared.Config.status_messages_enabled?() do
       send_status_report_if_new()
     else
       Logger.info("📊 Status report skipped - disabled by config")

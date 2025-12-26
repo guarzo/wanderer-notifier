@@ -214,8 +214,7 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   # Dispatch to appropriate parser based on column count
   defp dispatch_row_parser(row, groups_map) when length(row) == 6 do
     # Wanderer SDE format: typeID,groupID,typeName,mass,volume,capacity
-    [type_id_str, group_id_str, name, mass_str, volume_str, capacity_str] = row
-    parse_wanderer_sde_row(type_id_str, group_id_str, name, mass_str, volume_str, capacity_str, groups_map)
+    parse_wanderer_sde_row(row, groups_map)
   end
 
   defp dispatch_row_parser([type_id_str, group_id_str, name, _description | rest], groups_map)
@@ -227,23 +226,32 @@ defmodule WandererNotifier.Domains.Universe.Services.CsvProcessor do
   defp dispatch_row_parser(_row, _groups_map), do: nil
 
   # Parse Wanderer SDE simplified format (6 columns)
-  defp parse_wanderer_sde_row(type_id_str, group_id_str, name, mass_str, volume_str, capacity_str, groups_map) do
+  defp parse_wanderer_sde_row(row, groups_map) do
+    [type_id_str, group_id_str, name, mass_str, volume_str, capacity_str] = row
+
     with {:ok, type_id, group_id} <- parse_ids(type_id_str, group_id_str),
          true <- valid_item?(name, type_id, group_id) do
-      build_wanderer_sde_item(type_id, group_id, name, mass_str, volume_str, capacity_str, groups_map)
+      raw_data = %{
+        name: name,
+        mass_str: mass_str,
+        volume_str: volume_str,
+        capacity_str: capacity_str
+      }
+
+      build_wanderer_sde_item(type_id, group_id, raw_data, groups_map)
     else
       _ -> nil
     end
   end
 
-  defp build_wanderer_sde_item(type_id, group_id, name, mass_str, volume_str, capacity_str, groups_map) do
+  defp build_wanderer_sde_item(type_id, group_id, raw_data, groups_map) do
     csv_data = %{
       type_id: type_id,
-      name: String.trim(name),
+      name: String.trim(raw_data.name),
       group_id: group_id,
-      mass: parse_float(mass_str),
-      volume: parse_float(volume_str),
-      capacity: parse_float(capacity_str),
+      mass: parse_float(raw_data.mass_str),
+      volume: parse_float(raw_data.volume_str),
+      capacity: parse_float(raw_data.capacity_str),
       # Fields not in Wanderer SDE - set defaults
       portion_size: 1,
       race_id: nil,

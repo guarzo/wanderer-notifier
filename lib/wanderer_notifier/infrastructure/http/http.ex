@@ -95,7 +95,7 @@ defmodule WandererNotifier.Infrastructure.Http do
   - `opts` - Request options (see below)
 
   ## Options
-  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :discord, :streaming, :fuzzworks)
+  - `:service` - Pre-configured service (:esi, :wanderer_kills, :license, :map, :discord, :streaming, :wanderer_sde)
   - `:timeout` - Request timeout in milliseconds
   - `:retry_count` - Number of retries
   - `:decode_json` - Automatically decode JSON responses (default: true)

@@ -197,7 +197,7 @@ config :wanderer_notifier,
   character_notifications_enabled:
     RuntimeConfig.get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true),
   rally_notifications_enabled: RuntimeConfig.get_boolean("RALLY_NOTIFICATIONS_ENABLED", true),
-  status_messages_enabled: RuntimeConfig.get_boolean("ENABLE_STATUS_MESSAGES", false),
+  status_messages_enabled: RuntimeConfig.get_boolean("STATUS_MESSAGES_ENABLED", false),
   priority_systems_only: RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY", false),
   wormhole_only_kill_notifications:
     RuntimeConfig.get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false),

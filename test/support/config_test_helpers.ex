@@ -37,7 +37,7 @@ defmodule WandererNotifier.Test.ConfigTestHelpers do
       kill_notifications_enabled: true,
       system_notifications_enabled: true,
       character_notifications_enabled: true,
-      enable_status_messages: false,
+      status_messages_enabled: false,
       track_kspace_enabled: true,
       priority_systems_only: false,
       port: 4000,
