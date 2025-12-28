@@ -1,2 +1,49 @@
 groupID,categoryID,groupName
-1,2,Test
+25,6,Frigate
+26,6,Cruiser
+27,6,Battleship
+28,6,Hauler
+29,6,Capsule
+30,6,Titan
+31,6,Shuttle
+237,6,Corvette
+324,6,Assault Frigate
+358,6,Heavy Assault Cruiser
+380,6,Deep Space Transport
+381,6,Elite Battleship
+419,6,Combat Battlecruiser
+420,6,Destroyer
+463,6,Mining Barge
+485,6,Dreadnought
+513,6,Freighter
+540,6,Command Ship
+541,6,Interdictor
+543,6,Exhumer
+547,6,Carrier
+659,6,Supercarrier
+830,6,Covert Ops
+831,6,Interceptor
+832,6,Logistics
+833,6,Force Recon Ship
+834,6,Stealth Bomber
+883,6,Capital Industrial Ship
+893,6,Electronic Attack Ship
+894,6,Heavy Interdiction Cruiser
+898,6,Black Ops
+900,6,Marauder
+902,6,Jump Freighter
+906,6,Combat Recon Ship
+941,6,Industrial Command Ship
+963,6,Strategic Cruiser
+1022,6,Prototype Exploration Ship
+1201,6,Attack Battlecruiser
+1202,6,Blockade Runner
+1283,6,Expedition Frigate
+1305,6,Tactical Destroyer
+1527,6,Logistics Frigate
+1534,6,Command Destroyer
+1538,6,Force Auxiliary
+1972,6,Flag Cruiser
+2001,6,Citizen Ships
+4594,6,Lancer Dreadnought
+4902,6,Expedition Command Ship

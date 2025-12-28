@@ -393,6 +393,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     try do
       log_gun_pool_status()
 
+      # Deep diagnostic: check ratelimiter state machine
+      rl_state = get_ratelimiter_deep_state()
+
+      Logger.info("[DiagnosticLog] Ratelimiter deep state before Message.create",
+        state: rl_state,
+        category: :discord_api
+      )
+
       if content do
         Message.create(channel_id_int, content: content, embeds: [discord_embed])
       else
@@ -407,6 +415,45 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
         )
 
         {:error, exception}
+    end
+  end
+
+  defp get_ratelimiter_deep_state do
+    try do
+      case Process.whereis(Nostrum.Api.Ratelimiter) do
+        nil ->
+          %{exists: false}
+
+        pid ->
+          # Get gen_statem state (current state name)
+          case :sys.get_state(pid, 1000) do
+            {state_name, state_data} when is_atom(state_name) ->
+              # Extract key info from state_data without exposing tokens
+              conn_info =
+                case Map.get(state_data, :conn) do
+                  nil -> :no_connection
+                  conn_pid when is_pid(conn_pid) -> if Process.alive?(conn_pid), do: :alive, else: :dead
+                  _ -> :unknown
+                end
+
+              %{
+                exists: true,
+                state_name: state_name,
+                connection: conn_info,
+                outstanding_count: state_data |> Map.get(:outstanding, %{}) |> map_size(),
+                running_count: state_data |> Map.get(:running, %{}) |> map_size(),
+                inflight_count: state_data |> Map.get(:inflight, %{}) |> map_size()
+              }
+
+            other ->
+              %{exists: true, state: inspect(other) |> String.slice(0, 100)}
+          end
+      end
+    rescue
+      e -> %{error: Exception.message(e)}
+    catch
+      :exit, {:timeout, _} -> %{error: "sys.get_state timeout - ratelimiter blocked"}
+      :exit, reason -> %{error: "exit: #{inspect(reason)}"}
     end
   end
 
