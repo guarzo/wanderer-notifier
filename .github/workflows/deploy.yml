@@ -57,7 +57,7 @@ jobs:
       - name: Determine deployment parameters
         id: params
         run: |
-          # Set environment (default to production for auto-deploy)
+          # Set environment and action based on trigger type
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ENVIRONMENT="${{ github.event.inputs.environment }}"
             ACTION="${{ github.event.inputs.action }}"
@@ -65,15 +65,31 @@ jobs:
           else
             ENVIRONMENT="production"
             ACTION="deploy"
-            # Get the most recent tag by creation time
+            VERSION=""
+          fi
+
+          # If no version specified, get the latest tag
+          if [ -z "$VERSION" ]; then
             VERSION=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags | grep -E "^v[0-9]+" | head -1)
             echo "Using most recent tag by creation time: $VERSION"
           fi
-          
-          # If no version found, exit with error
+
+          # If still no version found, try to get version from mix.exs as fallback
           if [ -z "$VERSION" ]; then
-            echo "❌ No version tag found! Cannot deploy without a version tag."
-            echo "Please ensure the CI/CD pipeline has created version tags."
+            MIX_VERSION=$(grep -oP '@version "\K[^"]+' mix.exs 2>/dev/null || true)
+            if [ -n "$MIX_VERSION" ]; then
+              VERSION="v$MIX_VERSION"
+              echo "Using version from mix.exs: $VERSION"
+            fi
+          fi
+
+          # If still no version found, exit with error
+          if [ -z "$VERSION" ]; then
+            echo "❌ No version found! Cannot deploy without a version."
+            echo "Please either:"
+            echo "  1. Specify a version when triggering manually"
+            echo "  2. Ensure the CI/CD pipeline has created version tags"
+            echo "  3. Check that mix.exs has a valid @version"
             exit 1
           fi
           

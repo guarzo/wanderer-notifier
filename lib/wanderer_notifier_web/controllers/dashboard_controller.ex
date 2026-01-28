@@ -492,11 +492,11 @@ defmodule WandererNotifierWeb.DashboardController do
                     </div>
                     <div class="metric">
                         <span class="label">Last Kill Received:</span>
-                        <span class="value">#{data.killmail_activity.last_received_ago || "never"}</span>
+                        <span class="value">#{data.killmail_activity.last_received_ago}</span>
                     </div>
                     <div class="metric">
                         <span class="label">Last Notification:</span>
-                        <span class="value">#{data.killmail_activity.last_notified_ago || "never"}</span>
+                        <span class="value">#{data.killmail_activity.last_notified_ago}</span>
                     </div>
                 </div>
                 
