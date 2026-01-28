@@ -282,16 +282,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
     case redisq[:last_message] do
       nil -> "never"
-      dt -> format_time_ago(dt)
-    end
-  end
-
-  defp format_time_ago(datetime) do
-    case WandererNotifier.Shared.Utils.TimeUtils.elapsed_seconds(datetime) do
-      seconds when seconds < 60 -> "#{seconds}s ago"
-      seconds when seconds < 3_600 -> "#{div(seconds, 60)}m ago"
-      seconds when seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
-      seconds -> "#{div(seconds, 86_400)}d ago"
+      dt -> TimeUtils.format_time_ago(dt)
     end
   end
 
@@ -300,11 +291,11 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
     %{
       last_received_at: format_datetime(activity[:last_received_at]),
-      last_received_ago: format_time_ago_safe(activity[:last_received_at]),
+      last_received_ago: TimeUtils.format_time_ago(activity[:last_received_at]),
       last_received_id: activity[:last_received_id],
       received_count: activity[:received_count] || 0,
       last_notified_at: format_datetime(activity[:last_notified_at]),
-      last_notified_ago: format_time_ago_safe(activity[:last_notified_at]),
+      last_notified_ago: TimeUtils.format_time_ago(activity[:last_notified_at]),
       last_notified_id: activity[:last_notified_id],
       notified_count: activity[:notified_count] || 0
     }
@@ -312,9 +303,6 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp format_datetime(nil), do: "never"
   defp format_datetime(datetime), do: DateTime.to_iso8601(datetime)
-
-  defp format_time_ago_safe(nil), do: "never"
-  defp format_time_ago_safe(datetime), do: format_time_ago(datetime)
 
   defp extract_recent_activity do
     # Get recent activity from various sources
@@ -344,7 +332,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
         type: type,
         message: message,
         timestamp: timestamp,
-        time_ago: format_time_ago(timestamp)
+        time_ago: TimeUtils.format_time_ago(timestamp)
       }
     end)
   end

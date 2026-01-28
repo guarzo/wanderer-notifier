@@ -148,6 +148,38 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   def format_relative_time(nil), do: "never"
 
   @doc """
+  Formats a DateTime as a compact relative time string.
+  Returns a short format like "30s ago", "5m ago", "2h ago", "3d ago".
+  Returns the default value (default: "never") for nil input.
+
+  ## Examples
+
+      iex> TimeUtils.format_time_ago(DateTime.add(DateTime.utc_now(), -30, :second))
+      "30s ago"
+
+      iex> TimeUtils.format_time_ago(nil)
+      "never"
+
+      iex> TimeUtils.format_time_ago(nil, "n/a")
+      "n/a"
+  """
+  @spec format_time_ago(DateTime.t() | nil, String.t()) :: String.t()
+  def format_time_ago(datetime, default \\ "never")
+
+  def format_time_ago(nil, default), do: default
+
+  def format_time_ago(%DateTime{} = datetime, _default) do
+    seconds = elapsed_seconds(datetime)
+
+    cond do
+      seconds < 60 -> "#{seconds}s ago"
+      seconds < 3_600 -> "#{div(seconds, 60)}m ago"
+      seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
+      true -> "#{div(seconds, 86_400)}d ago"
+    end
+  end
+
+  @doc """
   Converts a Unix timestamp to DateTime.
   """
   @spec from_unix(integer()) :: {:ok, DateTime.t()} | {:error, atom()}

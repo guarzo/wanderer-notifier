@@ -12,6 +12,15 @@ defmodule WandererNotifier.Shared.Metrics do
   @type metric_type :: atom()
   @type notification_type :: :kill | :character | :system
 
+  @default_killmail_activity %{
+    last_received_at: nil,
+    last_received_id: nil,
+    received_count: 0,
+    last_notified_at: nil,
+    last_notified_id: nil,
+    notified_count: 0
+  }
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Public API
   # ──────────────────────────────────────────────────────────────────────────────
@@ -157,14 +166,7 @@ defmodule WandererNotifier.Shared.Metrics do
   @spec get_killmail_activity() :: map()
   def get_killmail_activity do
     Agent.get(__MODULE__, fn state ->
-      Map.get(state, :killmail_activity, %{
-        last_received_at: nil,
-        last_received_id: nil,
-        received_count: 0,
-        last_notified_at: nil,
-        last_notified_id: nil,
-        notified_count: 0
-      })
+      Map.get(state, :killmail_activity, @default_killmail_activity)
     end)
   end
 
@@ -179,14 +181,7 @@ defmodule WandererNotifier.Shared.Metrics do
       notifications_sent: %{kill: false, character: false, system: false},
       systems_count: 0,
       characters_count: 0,
-      killmail_activity: %{
-        last_received_at: nil,
-        last_received_id: nil,
-        received_count: 0,
-        last_notified_at: nil,
-        last_notified_id: nil,
-        notified_count: 0
-      }
+      killmail_activity: @default_killmail_activity
     }
   end
 end

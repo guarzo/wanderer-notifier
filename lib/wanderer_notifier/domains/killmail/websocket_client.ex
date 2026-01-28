@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   alias WandererNotifier.Domains.Tracking.MapTrackingClient
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
-  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry}
+  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry, TimeUtils}
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -366,8 +366,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     activity = WandererNotifier.Shared.Metrics.get_killmail_activity()
     uptime = calculate_connection_uptime(state)
 
-    last_received_ago = format_time_ago_for_log(activity[:last_received_at])
-    last_notified_ago = format_time_ago_for_log(activity[:last_notified_at])
+    last_received_ago = TimeUtils.format_time_ago(activity[:last_received_at])
+    last_notified_ago = TimeUtils.format_time_ago(activity[:last_notified_at])
 
     Logger.info(
       "[Killmail Status] uptime=#{div(uptime, 60)}m, " <>
@@ -376,19 +376,6 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
         "received=#{activity[:received_count] || 0} (last: #{last_received_ago}), " <>
         "notified=#{activity[:notified_count] || 0} (last: #{last_notified_ago})"
     )
-  end
-
-  defp format_time_ago_for_log(nil), do: "never"
-
-  defp format_time_ago_for_log(datetime) do
-    seconds = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      seconds < 60 -> "#{seconds}s ago"
-      seconds < 3_600 -> "#{div(seconds, 60)}m ago"
-      seconds < 86_400 -> "#{div(seconds, 3_600)}h ago"
-      true -> "#{div(seconds, 86_400)}d ago"
-    end
   end
 
   defp calculate_connection_uptime(%{connected_at: %DateTime{} = connected_at}) do
