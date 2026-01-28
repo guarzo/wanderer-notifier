@@ -483,12 +483,20 @@ defmodule WandererNotifierWeb.DashboardController do
                 <div class="card">
                     <h2 class="icon-status">Processing Stats</h2>
                     <div class="metric">
-                        <span class="label">Kills Processed:</span>
-                        <span class="value">#{data.processing.kills_processed}</span>
+                        <span class="label">Kills Received:</span>
+                        <span class="value">#{data.killmail_activity.received_count}</span>
                     </div>
                     <div class="metric">
                         <span class="label">Notifications Sent:</span>
-                        <span class="value">#{data.processing.notifications_sent}</span>
+                        <span class="value">#{data.killmail_activity.notified_count}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Last Kill Received:</span>
+                        <span class="value">#{data.killmail_activity.last_received_ago || "never"}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Last Notification:</span>
+                        <span class="value">#{data.killmail_activity.last_notified_ago || "never"}</span>
                     </div>
                 </div>
                 
