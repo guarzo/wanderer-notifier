@@ -92,48 +92,8 @@ defmodule WandererNotifier.DiscordNotifier do
     )
 
     try do
-      # Check if notifications are enabled
       if notifications_enabled?() and kill_notifications_enabled?() do
-        # Determine all channels to send to (may be multiple if both system and character are tracked)
-        channels = determine_kill_channels(killmail)
-
-        Logger.info("Kill notification channel routing",
-          killmail_id: Map.get(killmail, :killmail_id),
-          channels: inspect(channels),
-          category: :notifications
-        )
-
-        # Send to each channel
-        killmail_id = Map.get(killmail, :killmail_id)
-
-        notifications_sent =
-          Enum.reduce(channels, 0, fn channel_id, sent_count ->
-            use_custom_name = system_kill_channel?(channel_id)
-
-            # Format the notification with channel context
-            case format_notification(killmail, use_custom_system_name: use_custom_name) do
-              {:ok, formatted_notification} ->
-                send_to_discord(formatted_notification, channel_id)
-                Logger.debug("Kill notification sent to channel #{channel_id}")
-                sent_count + 1
-
-              {:error, reason} ->
-                Logger.error("Failed to format kill notification: #{inspect(reason)}")
-                sent_count
-            end
-          end)
-
-        # Record that we sent notification(s) for this killmail
-        if notifications_sent > 0 do
-          WandererNotifier.Shared.Metrics.record_killmail_notified(killmail_id)
-
-          Logger.info("Kill notification sent",
-            killmail_id: killmail_id,
-            channels_count: notifications_sent
-          )
-        end
-
-        :sent
+        do_send_kill_notification(killmail)
       else
         Logger.debug("Kill notifications disabled, skipping")
         :skipped
@@ -143,6 +103,57 @@ defmodule WandererNotifier.DiscordNotifier do
         Logger.error("Exception in send_kill_notification: #{Exception.message(e)}")
         :error
     end
+  end
+
+  defp do_send_kill_notification(killmail) do
+    killmail_id = Map.get(killmail, :killmail_id)
+    channels = determine_kill_channels(killmail)
+
+    Logger.info("Kill notification channel routing",
+      killmail_id: killmail_id,
+      channels: inspect(channels),
+      category: :notifications
+    )
+
+    notifications_sent = send_to_channels(killmail, channels)
+    record_notifications_sent(killmail_id, notifications_sent)
+
+    :sent
+  end
+
+  defp send_to_channels(killmail, channels) do
+    Enum.reduce(channels, 0, fn channel_id, sent_count ->
+      case send_kill_to_channel(killmail, channel_id) do
+        :ok -> sent_count + 1
+        :error -> sent_count
+      end
+    end)
+  end
+
+  defp send_kill_to_channel(killmail, channel_id) do
+    use_custom_name = system_kill_channel?(channel_id)
+
+    case format_notification(killmail, use_custom_system_name: use_custom_name) do
+      {:ok, formatted_notification} ->
+        send_to_discord(formatted_notification, channel_id)
+        Logger.debug("Kill notification sent to channel #{channel_id}")
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to format kill notification: #{inspect(reason)}")
+        :error
+    end
+  end
+
+  defp record_notifications_sent(_killmail_id, 0), do: :ok
+
+  defp record_notifications_sent(killmail_id, count) do
+    WandererNotifier.Shared.Metrics.record_killmail_notified(killmail_id)
+
+    Logger.info("Kill notification sent",
+      killmail_id: killmail_id,
+      channels_count: count
+    )
   end
 
   defp send_rally_point_notification(rally_point) do
