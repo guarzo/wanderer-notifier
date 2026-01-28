@@ -4,7 +4,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Map.EventProcessor
 
+  import Mox
   import WandererNotifier.Test.Helpers.CacheTestHelper
+
+  setup :verify_on_exit!
 
   setup do
     # Clear cache before each test
@@ -15,6 +18,9 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
     for i <- 30_000_000..31_000_010 do
       i |> to_string() |> Cache.Keys.tracked_system() |> Cache.delete()
     end
+
+    # Stub deduplication mock to allow notifications
+    stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
 
     :ok
   end

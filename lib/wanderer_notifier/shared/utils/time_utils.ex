@@ -169,7 +169,7 @@ defmodule WandererNotifier.Shared.Utils.TimeUtils do
   def format_time_ago(nil, default), do: default
 
   def format_time_ago(%DateTime{} = datetime, _default) do
-    seconds = elapsed_seconds(datetime)
+    seconds = max(elapsed_seconds(datetime), 0)
 
     cond do
       seconds < 60 -> "#{seconds}s ago"

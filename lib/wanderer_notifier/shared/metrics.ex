@@ -128,7 +128,7 @@ defmodule WandererNotifier.Shared.Metrics do
     now = DateTime.utc_now()
 
     Agent.update(__MODULE__, fn state ->
-      killmail_activity = Map.get(state, :killmail_activity, %{})
+      killmail_activity = Map.get(state, :killmail_activity, @default_killmail_activity)
 
       updated_activity =
         killmail_activity
@@ -148,7 +148,7 @@ defmodule WandererNotifier.Shared.Metrics do
     now = DateTime.utc_now()
 
     Agent.update(__MODULE__, fn state ->
-      killmail_activity = Map.get(state, :killmail_activity, %{})
+      killmail_activity = Map.get(state, :killmail_activity, @default_killmail_activity)
 
       updated_activity =
         killmail_activity
