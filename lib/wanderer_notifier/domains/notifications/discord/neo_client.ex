@@ -431,9 +431,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
               # Extract key info from state_data without exposing tokens
               conn_info =
                 case Map.get(state_data, :conn) do
-                  nil -> :no_connection
-                  conn_pid when is_pid(conn_pid) -> if Process.alive?(conn_pid), do: :alive, else: :dead
-                  _ -> :unknown
+                  nil ->
+                    :no_connection
+
+                  conn_pid when is_pid(conn_pid) ->
+                    if Process.alive?(conn_pid), do: :alive, else: :dead
+
+                  _ ->
+                    :unknown
                 end
 
               %{

@@ -54,7 +54,8 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       memory_detailed: extract_detailed_memory_stats(),
       processes: extract_process_stats(),
       cache_stats: extract_cache_stats(),
-      gc_stats: extract_gc_stats()
+      gc_stats: extract_gc_stats(),
+      killmail_activity: extract_killmail_activity()
     }
 
     Map.merge(base_status, extended_data)
@@ -293,6 +294,27 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       seconds -> "#{div(seconds, 86_400)}d ago"
     end
   end
+
+  defp extract_killmail_activity do
+    activity = WandererNotifier.Shared.Metrics.get_killmail_activity()
+
+    %{
+      last_received_at: format_datetime(activity[:last_received_at]),
+      last_received_ago: format_time_ago_safe(activity[:last_received_at]),
+      last_received_id: activity[:last_received_id],
+      received_count: activity[:received_count] || 0,
+      last_notified_at: format_datetime(activity[:last_notified_at]),
+      last_notified_ago: format_time_ago_safe(activity[:last_notified_at]),
+      last_notified_id: activity[:last_notified_id],
+      notified_count: activity[:notified_count] || 0
+    }
+  end
+
+  defp format_datetime(nil), do: "never"
+  defp format_datetime(datetime), do: DateTime.to_iso8601(datetime)
+
+  defp format_time_ago_safe(nil), do: "never"
+  defp format_time_ago_safe(datetime), do: format_time_ago(datetime)
 
   defp extract_recent_activity do
     # Get recent activity from various sources

@@ -111,6 +111,63 @@ defmodule WandererNotifier.Shared.Metrics do
     end)
   end
 
+  @doc """
+  Records that a killmail was received from the WebSocket.
+  """
+  @spec record_killmail_received(String.t() | integer()) :: :ok
+  def record_killmail_received(killmail_id) do
+    now = DateTime.utc_now()
+
+    Agent.update(__MODULE__, fn state ->
+      killmail_activity = Map.get(state, :killmail_activity, %{})
+
+      updated_activity =
+        killmail_activity
+        |> Map.put(:last_received_at, now)
+        |> Map.put(:last_received_id, to_string(killmail_id))
+        |> Map.update(:received_count, 1, &(&1 + 1))
+
+      Map.put(state, :killmail_activity, updated_activity)
+    end)
+  end
+
+  @doc """
+  Records that a killmail notification was sent.
+  """
+  @spec record_killmail_notified(String.t() | integer()) :: :ok
+  def record_killmail_notified(killmail_id) do
+    now = DateTime.utc_now()
+
+    Agent.update(__MODULE__, fn state ->
+      killmail_activity = Map.get(state, :killmail_activity, %{})
+
+      updated_activity =
+        killmail_activity
+        |> Map.put(:last_notified_at, now)
+        |> Map.put(:last_notified_id, to_string(killmail_id))
+        |> Map.update(:notified_count, 1, &(&1 + 1))
+
+      Map.put(state, :killmail_activity, updated_activity)
+    end)
+  end
+
+  @doc """
+  Gets killmail activity statistics.
+  """
+  @spec get_killmail_activity() :: map()
+  def get_killmail_activity do
+    Agent.get(__MODULE__, fn state ->
+      Map.get(state, :killmail_activity, %{
+        last_received_at: nil,
+        last_received_id: nil,
+        received_count: 0,
+        last_notified_at: nil,
+        last_notified_id: nil,
+        notified_count: 0
+      })
+    end)
+  end
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Private Functions
   # ──────────────────────────────────────────────────────────────────────────────
@@ -121,7 +178,15 @@ defmodule WandererNotifier.Shared.Metrics do
       startup_time: DateTime.utc_now(),
       notifications_sent: %{kill: false, character: false, system: false},
       systems_count: 0,
-      characters_count: 0
+      characters_count: 0,
+      killmail_activity: %{
+        last_received_at: nil,
+        last_received_id: nil,
+        received_count: 0,
+        last_notified_at: nil,
+        last_notified_id: nil,
+        notified_count: 0
+      }
     }
   end
 end

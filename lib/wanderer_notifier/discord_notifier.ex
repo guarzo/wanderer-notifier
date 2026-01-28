@@ -104,19 +104,34 @@ defmodule WandererNotifier.DiscordNotifier do
         )
 
         # Send to each channel
-        Enum.each(channels, fn channel_id ->
-          use_custom_name = system_kill_channel?(channel_id)
+        killmail_id = Map.get(killmail, :killmail_id)
 
-          # Format the notification with channel context
-          case format_notification(killmail, use_custom_system_name: use_custom_name) do
-            {:ok, formatted_notification} ->
-              send_to_discord(formatted_notification, channel_id)
-              Logger.debug("Kill notification sent to channel #{channel_id}")
+        notifications_sent =
+          Enum.reduce(channels, 0, fn channel_id, sent_count ->
+            use_custom_name = system_kill_channel?(channel_id)
 
-            {:error, reason} ->
-              Logger.error("Failed to format kill notification: #{inspect(reason)}")
-          end
-        end)
+            # Format the notification with channel context
+            case format_notification(killmail, use_custom_system_name: use_custom_name) do
+              {:ok, formatted_notification} ->
+                send_to_discord(formatted_notification, channel_id)
+                Logger.debug("Kill notification sent to channel #{channel_id}")
+                sent_count + 1
+
+              {:error, reason} ->
+                Logger.error("Failed to format kill notification: #{inspect(reason)}")
+                sent_count
+            end
+          end)
+
+        # Record that we sent notification(s) for this killmail
+        if notifications_sent > 0 do
+          WandererNotifier.Shared.Metrics.record_killmail_notified(killmail_id)
+
+          Logger.info("Kill notification sent",
+            killmail_id: killmail_id,
+            channels_count: notifications_sent
+          )
+        end
 
         :sent
       else
