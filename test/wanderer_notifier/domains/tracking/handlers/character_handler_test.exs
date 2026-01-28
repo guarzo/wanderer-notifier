@@ -13,6 +13,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
   setup do
     # Clear cache before each test
     Cache.delete(Cache.Keys.map_characters())
+
+    # Stub deduplication mock to allow notifications
+    stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
+
     :ok
   end
 
