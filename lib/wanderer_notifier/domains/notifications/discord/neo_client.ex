@@ -420,40 +420,48 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp get_ratelimiter_deep_state do
     try do
-      case Process.whereis(Nostrum.Api.Ratelimiter) do
-        nil ->
-          %{exists: false}
-
-        pid ->
-          # Get gen_statem state (current state name)
-          case :sys.get_state(pid, 1000) do
-            {state_name, state_data} when is_atom(state_name) ->
-              # Extract key info from state_data without exposing tokens
-              conn_info =
-                case Map.get(state_data, :conn) do
-                  nil -> :no_connection
-                  conn_pid when is_pid(conn_pid) -> if Process.alive?(conn_pid), do: :alive, else: :dead
-                  _ -> :unknown
-                end
-
-              %{
-                exists: true,
-                state_name: state_name,
-                connection: conn_info,
-                outstanding_count: state_data |> Map.get(:outstanding, %{}) |> map_size(),
-                running_count: state_data |> Map.get(:running, %{}) |> map_size(),
-                inflight_count: state_data |> Map.get(:inflight, %{}) |> map_size()
-              }
-
-            other ->
-              %{exists: true, state: inspect(other) |> String.slice(0, 100)}
-          end
-      end
+      fetch_ratelimiter_state()
     rescue
       e -> %{error: Exception.message(e)}
     catch
       :exit, {:timeout, _} -> %{error: "sys.get_state timeout - ratelimiter blocked"}
       :exit, reason -> %{error: "exit: #{inspect(reason)}"}
+    end
+  end
+
+  defp fetch_ratelimiter_state do
+    case Process.whereis(Nostrum.Api.Ratelimiter) do
+      nil -> %{exists: false}
+      pid -> extract_ratelimiter_state(pid)
+    end
+  end
+
+  defp extract_ratelimiter_state(pid) do
+    case :sys.get_state(pid, 1000) do
+      {state_name, state_data} when is_atom(state_name) ->
+        build_ratelimiter_info(state_name, state_data)
+
+      other ->
+        %{exists: true, state: inspect(other) |> String.slice(0, 100)}
+    end
+  end
+
+  defp build_ratelimiter_info(state_name, state_data) do
+    %{
+      exists: true,
+      state_name: state_name,
+      connection: get_connection_info(state_data),
+      outstanding_count: state_data |> Map.get(:outstanding, %{}) |> map_size(),
+      running_count: state_data |> Map.get(:running, %{}) |> map_size(),
+      inflight_count: state_data |> Map.get(:inflight, %{}) |> map_size()
+    }
+  end
+
+  defp get_connection_info(state_data) do
+    case Map.get(state_data, :conn) do
+      nil -> :no_connection
+      conn_pid when is_pid(conn_pid) -> if Process.alive?(conn_pid), do: :alive, else: :dead
+      _ -> :unknown
     end
   end
 

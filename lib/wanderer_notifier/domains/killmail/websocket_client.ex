@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   alias WandererNotifier.Domains.Tracking.MapTrackingClient
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
-  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry}
+  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry, TimeUtils}
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -289,6 +289,10 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp truncate_message(message, _message_size), do: message
 
   def handle_info(:heartbeat, state) do
+    # Increment heartbeat count for periodic status logging
+    heartbeat_count = Map.get(state, :heartbeat_count, 0) + 1
+    state = Map.put(state, :heartbeat_count, heartbeat_count)
+
     log_heartbeat_uptime(state)
     record_heartbeat_in_monitoring(state)
     send_phoenix_heartbeat(state)
@@ -348,6 +352,29 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       uptime_seconds: uptime,
       uptime_minutes: div(uptime, 60),
       uptime_seconds_remainder: rem(uptime, 60)
+    )
+
+    # Log killmail activity status every 5 minutes (10 heartbeats at 30s interval)
+    heartbeat_count = Map.get(state, :heartbeat_count, 0)
+
+    if rem(heartbeat_count, 10) == 0 do
+      log_killmail_activity_status(state)
+    end
+  end
+
+  defp log_killmail_activity_status(state) do
+    activity = WandererNotifier.Shared.Metrics.get_killmail_activity()
+    uptime = calculate_connection_uptime(state)
+
+    last_received_ago = TimeUtils.format_time_ago(activity[:last_received_at])
+    last_notified_ago = TimeUtils.format_time_ago(activity[:last_notified_at])
+
+    Logger.info(
+      "[Killmail Status] uptime=#{div(uptime, 60)}m, " <>
+        "subscribed_systems=#{MapSet.size(state.subscribed_systems)}, " <>
+        "subscribed_chars=#{MapSet.size(state.subscribed_characters)}, " <>
+        "received=#{activity[:received_count] || 0} (last: #{last_received_ago}), " <>
+        "notified=#{activity[:notified_count] || 0} (last: #{last_notified_ago})"
     )
   end
 
@@ -621,7 +648,8 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     system_id = payload["system_id"]
     is_preload = payload["preload"] || false
 
-    Logger.debug(
+    # Log at INFO level to track killmail reception
+    Logger.info(
       "Received killmail update",
       system_id: system_id,
       killmails_count: length(killmails),
@@ -631,6 +659,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     # Transform and send each killmail to the pipeline with deduplication
     Enum.each(killmails, fn killmail ->
       killmail_id = killmail["killmail_id"]
+
+      # Record that we received this killmail (for diagnostics)
+      WandererNotifier.Shared.Metrics.record_killmail_received(killmail_id)
 
       if should_process_killmail?(killmail_id) do
         transformed_killmail = transform_killmail(killmail)

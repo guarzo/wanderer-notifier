@@ -96,6 +96,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_non_tracked_killmail(String.t(), killmail_data()) :: result()
   defp handle_non_tracked_killmail(kill_id, killmail_data) do
+    # Log tracking cache state to diagnose why kills are being dropped
+    log_tracking_cache_state(kill_id)
+
     Logger.info("[Pipeline] Killmail #{kill_id} should_notify returned false")
     # Get killmail for logging details even though we're not notifying
     case build_killmail(killmail_data) do
@@ -105,6 +108,29 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       _ ->
         handle_skipped(kill_id, :not_tracked)
     end
+  end
+
+  defp log_tracking_cache_state(kill_id) do
+    # Check what tracking data is available
+    systems_result = Cache.get(Cache.Keys.map_systems())
+    chars_result = Cache.get(Cache.Keys.map_characters())
+
+    systems_count =
+      case systems_result do
+        {:ok, systems} when is_list(systems) -> length(systems)
+        _ -> 0
+      end
+
+    chars_count =
+      case chars_result do
+        {:ok, chars} when is_list(chars) -> length(chars)
+        _ -> 0
+      end
+
+    Logger.warning(
+      "[Pipeline] Kill #{kill_id} NOT TRACKED - Cache state: #{systems_count} systems, #{chars_count} characters tracked. " <>
+        "If both are 0, SSE connection may have failed to populate tracking data."
+    )
   end
 
   @doc """
