@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Utils.Retry
+  alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -239,10 +240,17 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     )
 
     log_system_diagnostics()
+
+    # Record timeout for health monitoring (without killmail_id - that's handled by discord_notifier)
+    ConnectionHealth.record_timeout()
+
     {:error, :timeout}
   end
 
   defp handle_discord_result({:ok, _response}, start_time, rally_id) do
+    # Record success for health monitoring
+    ConnectionHealth.record_success()
+
     handle_success(start_time, rally_id, 0)
     {:ok, :sent}
   end
@@ -252,6 +260,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       reason: inspect(reason),
       category: :discord_api
     )
+
+    # Record failure for health monitoring (without killmail_id - that's handled by discord_notifier)
+    ConnectionHealth.record_failure(reason)
 
     {:error, reason}
   end

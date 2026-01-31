@@ -113,27 +113,39 @@ if config_env() != :test do
 end
 
 # Configure Gun HTTP client used by Nostrum - runtime configuration
+# These settings help prevent connection timeouts and stuck connections
 config :gun,
-  # Top-level connection timeout
+  # Top-level connection timeout (how long to wait for initial connection)
   connect_timeout: RuntimeConfig.get_integer("GUN_CONNECT_TIMEOUT", 10_000),
-  # Protocol selection (HTTP/1.1 only to avoid HTTP/2 issues)
+  # Retry configuration for failed connections
+  retry: RuntimeConfig.get_integer("GUN_RETRY_COUNT", 3),
+  retry_timeout: RuntimeConfig.get_integer("GUN_RETRY_TIMEOUT", 5_000),
+  # Protocol selection (HTTP/1.1 only to avoid HTTP/2 issues with Discord)
   protocols: [:http],
   # HTTP-specific options
   http_opts: %{
     # Keep connections alive to avoid reconnection overhead
     keepalive: RuntimeConfig.get_integer("GUN_KEEPALIVE", 10_000),
     # HTTP version
-    version: :"HTTP/1.1"
+    version: :"HTTP/1.1",
+    # Closing timeout - how long to wait for graceful close
+    closing_timeout: RuntimeConfig.get_integer("GUN_CLOSING_TIMEOUT", 5_000)
   },
   # TCP options for connection handling
   tcp_opts: [
-    # Force IPv4 address family
+    # Force IPv4 address family (avoids IPv6 issues)
     :inet,
     # TCP keepalive to detect dead connections
     keepalive: true,
     # Disable Nagle's algorithm for lower latency
-    nodelay: true
-  ]
+    nodelay: true,
+    # Send buffer size (bytes)
+    sndbuf: RuntimeConfig.get_integer("GUN_SNDBUF", 65536),
+    # Receive buffer size (bytes)
+    recbuf: RuntimeConfig.get_integer("GUN_RECBUF", 65536)
+  ],
+  # Supervise connections for auto-restart on failure
+  supervise: true
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Application Configuration

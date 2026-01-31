@@ -132,17 +132,35 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp send_kill_to_channel(killmail, channel_id) do
     use_custom_name = system_kill_channel?(channel_id)
+    killmail_id = Map.get(killmail, :killmail_id)
 
     case format_notification(killmail, use_custom_system_name: use_custom_name) do
       {:ok, formatted_notification} ->
-        send_to_discord(formatted_notification, channel_id)
-        Logger.debug("Kill notification sent to channel #{channel_id}")
-        :ok
+        case send_to_discord(formatted_notification, channel_id) do
+          :ok ->
+            Logger.debug("Kill notification sent to channel #{channel_id}")
+            :ok
+
+          {:error, reason} ->
+            # Record the failed kill for health monitoring (error already logged in send_to_discord)
+            record_failed_kill(killmail_id, reason)
+            :error
+        end
 
       {:error, reason} ->
         Logger.error("Failed to format kill notification: #{inspect(reason)}")
+        record_failed_kill(killmail_id, {:format_error, reason})
         :error
     end
+  end
+
+  defp record_failed_kill(nil, _reason), do: :ok
+
+  defp record_failed_kill(killmail_id, reason) do
+    alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
+    # Use record_failed_killmail to add to the failed kills list without affecting counters
+    # (NeoClient already records the failure/timeout for health metrics)
+    ConnectionHealth.record_failed_killmail(killmail_id, reason)
   end
 
   defp record_notifications_sent(_killmail_id, 0), do: :ok

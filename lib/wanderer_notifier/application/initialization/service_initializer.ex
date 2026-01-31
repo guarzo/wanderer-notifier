@@ -154,11 +154,12 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
         [{WandererNotifierWeb.Endpoint, []}]
 
       _env ->
-        # Production/dev: Discord Consumer, Phoenix endpoint, and ConnectionMonitor
+        # Production/dev: Discord Consumer, Phoenix endpoint, ConnectionMonitor, and Discord Health
         [
           {WandererNotifier.Infrastructure.Adapters.Discord.Consumer, []},
           {WandererNotifierWeb.Endpoint, []},
-          {WandererNotifier.Infrastructure.Messaging.ConnectionMonitor, []}
+          {WandererNotifier.Infrastructure.Messaging.ConnectionMonitor, []},
+          {WandererNotifier.Domains.Notifications.Discord.ConnectionHealth, []}
         ]
     end
   end

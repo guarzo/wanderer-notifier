@@ -162,14 +162,20 @@ config :nostrum,
   force_http1: true,
   # HTTP timeout configuration - set to 30s (neo_client.ex uses 15s total: 10s + 5s)
   gun_timeout: 30_000,
-  gun_connect_timeout: 5_000
+  gun_connect_timeout: 5_000,
+  # Number of API processes to spawn for handling requests
+  num_api_procs: 2,
+  # Request timeout for individual HTTP requests (ms)
+  request_timeout: 20_000
 
-# Add backoff configuration to help with rate limiting
+# Add backoff configuration to help with rate limiting and reconnection
 config :nostrum, :gateway,
   backoff: [
     initial: 5000,
     max: 300_000
-  ]
+  ],
+  # Reconnect on close (helps recover from dropped connections)
+  reconnect: true
 
 # Gun configuration moved to runtime.exs for runtime tunability
 
