@@ -27,33 +27,43 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   @doc """
   Records a successful Discord API call.
   """
-  @spec record_success() :: :ok
+  @spec record_success() :: {:ok, :queued} | {:error, term()}
   def record_success do
     GenServer.cast(__MODULE__, :record_success)
+    {:ok, :queued}
   catch
-    :exit, _ -> :ok
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to record success: #{inspect(reason)}")
+      {:error, reason}
   end
 
   @doc """
   Records a failed Discord API call.
   Optionally accepts a killmail_id to track which kills failed.
   """
-  @spec record_failure(atom() | term(), String.t() | integer() | nil) :: :ok
+  @spec record_failure(atom() | term(), String.t() | integer() | nil) ::
+          {:ok, :queued} | {:error, term()}
   def record_failure(reason, killmail_id \\ nil) do
     GenServer.cast(__MODULE__, {:record_failure, reason, killmail_id})
+    {:ok, :queued}
   catch
-    :exit, _ -> :ok
+    :exit, exit_reason ->
+      Logger.error("[Discord Health] Failed to record failure: #{inspect(exit_reason)}")
+      {:error, exit_reason}
   end
 
   @doc """
   Records a timeout in Discord API call.
   Optionally accepts a killmail_id to track which kills failed.
   """
-  @spec record_timeout(String.t() | integer() | nil) :: :ok
+  @spec record_timeout(String.t() | integer() | nil) :: {:ok, :queued} | {:error, term()}
   def record_timeout(killmail_id \\ nil) do
     GenServer.cast(__MODULE__, {:record_timeout, killmail_id})
+    {:ok, :queued}
   catch
-    :exit, _ -> :ok
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to record timeout: #{inspect(reason)}")
+      {:error, reason}
   end
 
   @doc """
@@ -61,21 +71,28 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   Use this when the failure is already recorded by NeoClient but you want to
   track the specific killmail_id.
   """
-  @spec record_failed_killmail(String.t() | integer(), atom() | term()) :: :ok
+  @spec record_failed_killmail(String.t() | integer(), atom() | term()) ::
+          {:ok, :queued} | {:error, term()}
   def record_failed_killmail(killmail_id, reason) do
     GenServer.cast(__MODULE__, {:record_failed_killmail, killmail_id, reason})
+    {:ok, :queued}
   catch
-    :exit, _ -> :ok
+    :exit, exit_reason ->
+      Logger.error("[Discord Health] Failed to record failed killmail: #{inspect(exit_reason)}")
+      {:error, exit_reason}
   end
 
   @doc """
   Gets current health status and diagnostics.
   """
-  @spec get_health_status() :: map()
+  @spec get_health_status() :: {:ok, map()} | {:error, term()}
   def get_health_status do
-    GenServer.call(__MODULE__, :get_health_status, 5_000)
+    result = GenServer.call(__MODULE__, :get_health_status, 5_000)
+    {:ok, result}
   catch
-    :exit, _ -> %{error: "Health monitor not available"}
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to get health status: #{inspect(reason)}")
+      {:error, reason}
   end
 
   @doc """
@@ -94,11 +111,14 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   @doc """
   Attempts to recover from a stuck connection state.
   """
-  @spec attempt_recovery() :: :ok | {:error, term()}
+  @spec attempt_recovery() :: {:ok, :ok | {:error, term()}} | {:error, term()}
   def attempt_recovery do
-    GenServer.call(__MODULE__, :attempt_recovery, 30_000)
+    result = GenServer.call(__MODULE__, :attempt_recovery, 30_000)
+    {:ok, result}
   catch
-    :exit, reason -> {:error, reason}
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to attempt recovery: #{inspect(reason)}")
+      {:error, reason}
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -139,23 +159,38 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     {:noreply, new_state}
   end
 
+  # Handle timeout when threshold is first crossed - trigger recovery
   @impl true
-  def handle_cast({:record_timeout, killmail_id}, state) do
+  def handle_cast({:record_timeout, killmail_id}, state)
+      when state.consecutive_timeouts == @timeout_threshold - 1 do
     new_consecutive = state.consecutive_timeouts + 1
 
-    if new_consecutive >= @timeout_threshold do
-      Logger.error(
-        "[Discord Health] #{new_consecutive} consecutive timeouts detected - connection may be stuck",
-        diagnostics: get_diagnostics()
-      )
+    Logger.error(
+      "[Discord Health] #{new_consecutive} consecutive timeouts detected - connection may be stuck",
+      diagnostics: get_diagnostics()
+    )
 
-      # Auto-attempt recovery after threshold
-      spawn(fn -> attempt_recovery() end)
-    end
+    # Auto-attempt recovery when threshold is first crossed
+    spawn(fn -> attempt_recovery() end)
 
     new_state = %{
       state
       | consecutive_timeouts: new_consecutive,
+        last_failure_at: DateTime.utc_now(),
+        last_failure_reason: :timeout,
+        total_timeouts: state.total_timeouts + 1,
+        failed_kills: add_failed_kill(state.failed_kills, killmail_id, :timeout)
+    }
+
+    {:noreply, new_state}
+  end
+
+  # Handle timeout for all other cases - just update counters without triggering recovery
+  @impl true
+  def handle_cast({:record_timeout, killmail_id}, state) do
+    new_state = %{
+      state
+      | consecutive_timeouts: state.consecutive_timeouts + 1,
         last_failure_at: DateTime.utc_now(),
         last_failure_reason: :timeout,
         total_timeouts: state.total_timeouts + 1,
@@ -288,26 +323,32 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   end
 
   defp get_connection_status(state_data) do
-    case Map.get(state_data, :conn) do
-      nil ->
-        :no_connection
+    state_data
+    |> Map.get(:conn)
+    |> do_get_connection_status()
+  end
 
-      conn_pid when is_pid(conn_pid) ->
-        if Process.alive?(conn_pid) do
-          # Try to get more info about the connection
-          try do
-            info = Process.info(conn_pid, [:message_queue_len, :status])
-            %{status: :alive, queue_len: info[:message_queue_len], process_status: info[:status]}
-          catch
-            _, _ -> :alive
-          end
-        else
-          :dead
-        end
+  # No connection present
+  defp do_get_connection_status(nil), do: :no_connection
 
-      _ ->
-        :unknown
+  # Connection is a pid - check if alive and get info
+  defp do_get_connection_status(conn_pid) when is_pid(conn_pid) do
+    if Process.alive?(conn_pid) do
+      get_alive_connection_info(conn_pid)
+    else
+      :dead
     end
+  end
+
+  # Unknown connection type
+  defp do_get_connection_status(_), do: :unknown
+
+  # Get detailed info for an alive connection process
+  defp get_alive_connection_info(conn_pid) do
+    info = Process.info(conn_pid, [:message_queue_len, :status])
+    %{status: :alive, queue_len: info[:message_queue_len], process_status: info[:status]}
+  catch
+    _, _ -> :alive
   end
 
   defp get_queue_lengths(state_data) do

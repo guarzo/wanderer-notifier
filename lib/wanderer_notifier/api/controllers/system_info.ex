@@ -308,32 +308,29 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp extract_discord_health do
     alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
 
-    try do
-      health = ConnectionHealth.get_health_status()
-
-      %{
-        healthy: health[:healthy],
-        consecutive_timeouts: health[:consecutive_timeouts],
-        consecutive_failures: health[:consecutive_failures],
-        last_success_at: format_datetime(health[:last_success_at]),
-        last_success_ago: TimeUtils.format_time_ago(health[:last_success_at]),
-        last_failure_at: format_datetime(health[:last_failure_at]),
-        last_failure_ago: TimeUtils.format_time_ago(health[:last_failure_at]),
-        last_failure_reason: health[:last_failure_reason],
-        total_successes: health[:total_successes],
-        total_failures: health[:total_failures],
-        total_timeouts: health[:total_timeouts],
-        recovery_attempts: health[:recovery_attempts],
-        failed_kills: format_failed_kills(health[:failed_kills]),
-        ratelimiter: extract_ratelimiter_info(health[:diagnostics])
-      }
-    catch
-      :exit, _ ->
-        %{
-          healthy: :unknown,
-          error: "Discord health monitor not available"
-        }
+    case ConnectionHealth.get_health_status() do
+      {:ok, health} -> build_discord_health_map(health)
+      {:error, _reason} -> %{healthy: :unknown, error: "Discord health monitor not available"}
     end
+  end
+
+  defp build_discord_health_map(health) do
+    %{
+      healthy: health[:healthy],
+      consecutive_timeouts: health[:consecutive_timeouts],
+      consecutive_failures: health[:consecutive_failures],
+      last_success_at: format_datetime(health[:last_success_at]),
+      last_success_ago: TimeUtils.format_time_ago(health[:last_success_at]),
+      last_failure_at: format_datetime(health[:last_failure_at]),
+      last_failure_ago: TimeUtils.format_time_ago(health[:last_failure_at]),
+      last_failure_reason: health[:last_failure_reason],
+      total_successes: health[:total_successes],
+      total_failures: health[:total_failures],
+      total_timeouts: health[:total_timeouts],
+      recovery_attempts: health[:recovery_attempts],
+      failed_kills: format_failed_kills(health[:failed_kills]),
+      ratelimiter: extract_ratelimiter_info(health[:diagnostics])
+    }
   end
 
   defp format_failed_kills(nil), do: []
