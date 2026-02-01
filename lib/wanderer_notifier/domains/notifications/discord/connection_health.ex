@@ -509,15 +509,22 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
             false
         end
       end)
-      |> Enum.map(fn pid ->
-        info = Process.info(pid, [:message_queue_len, :status, :memory])
+      |> Enum.flat_map(fn pid ->
+        case Process.info(pid, [:message_queue_len, :status, :memory]) do
+          nil ->
+            # Process died between filter and map - skip it
+            []
 
-        %{
-          pid: inspect(pid),
-          queue_len: info[:message_queue_len],
-          status: info[:status],
-          memory: info[:memory]
-        }
+          info ->
+            [
+              %{
+                pid: inspect(pid),
+                queue_len: info[:message_queue_len],
+                status: info[:status],
+                memory: info[:memory]
+              }
+            ]
+        end
       end)
     catch
       kind, reason ->
