@@ -361,14 +361,16 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   end
 
   defp build_ratelimiter_state_info(state_name, state_data) do
+    queue_lengths = get_queue_lengths(state_data)
+
     %{
       exists: true,
       state_name: state_name,
       connection: get_connection_status(state_data),
-      outstanding_count: state_data |> Map.get(:outstanding, %{}) |> map_size(),
-      running_count: state_data |> Map.get(:running, %{}) |> map_size(),
-      inflight_count: state_data |> Map.get(:inflight, %{}) |> map_size(),
-      queue_lengths: get_queue_lengths(state_data)
+      outstanding_count: queue_lengths.outstanding,
+      running_count: queue_lengths.running,
+      inflight_count: queue_lengths.inflight,
+      queue_lengths: queue_lengths
     }
   end
 
