@@ -161,10 +161,12 @@ config :nostrum,
   # See: https://hexdocs.pm/nostrum/intro.html
   force_http1: true,
   # HTTP timeout configuration - set to 30s (neo_client.ex uses 15s total: 10s + 5s)
+  # Nostrum v0.10.4 handles timeouts internally via Nostrum.Api.Ratelimiter
   gun_timeout: 30_000,
   gun_connect_timeout: 5_000
 
-# Add backoff configuration to help with rate limiting
+# Gateway configuration for reconnection behavior
+# Nostrum v0.10.4 handles reconnection internally - backoff is the only configurable option
 config :nostrum, :gateway,
   backoff: [
     initial: 5000,

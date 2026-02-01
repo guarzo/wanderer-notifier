@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Utils.Retry
+  alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -239,12 +240,25 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     )
 
     log_system_diagnostics()
+
+    # Record timeout for health monitoring (without killmail_id - that's handled by discord_notifier)
+    ConnectionHealth.record_timeout()
+
     {:error, :timeout}
   end
 
   defp handle_discord_result({:ok, _response}, start_time, rally_id) do
+    # Record success for health monitoring
+    ConnectionHealth.record_success()
+
     handle_success(start_time, rally_id, 0)
     {:ok, :sent}
+  end
+
+  defp handle_discord_result({:error, :timeout}, _start_time, _rally_id) do
+    # Timeout already recorded in handle_final_timeout/2
+    # Don't call record_failure here as it would reset consecutive_timeouts
+    {:error, :timeout}
   end
 
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
@@ -252,6 +266,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       reason: inspect(reason),
       category: :discord_api
     )
+
+    # Record failure for health monitoring (without killmail_id - that's handled by discord_notifier)
+    ConnectionHealth.record_failure(reason)
 
     {:error, reason}
   end
@@ -1164,18 +1181,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     end
   end
 
+  # Checks if a process is a Gun connection process.
+  # Delegates to the shared ProcessInspection helper for consistent diagnostics.
+  # Returns true only on {:ok, true}, false for {:ok, false} or {:error, _}.
   defp gun_process?(pid) do
-    case Process.info(pid, :registered_name) do
-      {:registered_name, name} when is_atom(name) ->
-        name
-        |> Atom.to_string()
-        |> String.contains?("gun")
+    alias WandererNotifier.Infrastructure.ProcessInspection
 
-      _ ->
-        case Process.info(pid, :initial_call) do
-          {:initial_call, {:gun, _, _}} -> true
-          _ -> false
-        end
+    case ProcessInspection.detect_gun_process(pid) do
+      {:ok, true} -> true
+      {:ok, false} -> false
+      {:error, _reason} -> false
     end
   end
 

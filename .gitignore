@@ -13,6 +13,7 @@ repomix.*
 /doc/
 /.fetch
 chart-service/node_modules/
+priv/data/invGroups.csv
 .claude
 # Crash dumps and archives
 erl_crash.dump

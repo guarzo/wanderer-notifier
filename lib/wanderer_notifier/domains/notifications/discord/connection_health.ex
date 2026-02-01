@@ -1,0 +1,673 @@
+defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
+  @moduledoc """
+  Monitors Discord/Nostrum connection health and provides recovery mechanisms.
+
+  This module:
+  - Tracks consecutive timeouts and failures
+  - Provides detailed diagnostics about Nostrum/Gun state
+  - Can trigger recovery actions when connection appears stuck
+  - Logs periodic health status
+  """
+
+  use GenServer
+  require Logger
+
+  @health_check_interval :timer.minutes(1)
+  @timeout_threshold 3
+  @max_failed_kills 5
+  # Interval for refreshing the expensive Gun pools scan (default: 5 minutes)
+  @gun_pools_refresh_interval :timer.minutes(5)
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Public API
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @doc """
+  Records a successful Discord API call.
+  """
+  @spec record_success() :: {:ok, :queued} | {:error, term()}
+  def record_success do
+    GenServer.cast(__MODULE__, :record_success)
+    {:ok, :queued}
+  catch
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to record success: #{inspect(reason)}")
+      {:error, reason}
+  end
+
+  @doc """
+  Records a failed Discord API call.
+  Optionally accepts a killmail_id to track which kills failed.
+  """
+  @spec record_failure(atom() | term(), String.t() | integer() | nil) ::
+          {:ok, :queued} | {:error, term()}
+  def record_failure(reason, killmail_id \\ nil) do
+    GenServer.cast(__MODULE__, {:record_failure, reason, killmail_id})
+    {:ok, :queued}
+  catch
+    :exit, exit_reason ->
+      Logger.error("[Discord Health] Failed to record failure: #{inspect(exit_reason)}")
+      {:error, exit_reason}
+  end
+
+  @doc """
+  Records a timeout in Discord API call.
+  Optionally accepts a killmail_id to track which kills failed.
+  """
+  @spec record_timeout(String.t() | integer() | nil) :: {:ok, :queued} | {:error, term()}
+  def record_timeout(killmail_id \\ nil) do
+    GenServer.cast(__MODULE__, {:record_timeout, killmail_id})
+    {:ok, :queued}
+  catch
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to record timeout: #{inspect(reason)}")
+      {:error, reason}
+  end
+
+  @doc """
+  Records a failed killmail notification without affecting health counters.
+  Use this when the failure is already recorded by NeoClient but you want to
+  track the specific killmail_id.
+  """
+  @spec record_failed_killmail(String.t() | integer(), atom() | term()) ::
+          {:ok, :queued} | {:error, term()}
+  def record_failed_killmail(killmail_id, reason) do
+    GenServer.cast(__MODULE__, {:record_failed_killmail, killmail_id, reason})
+    {:ok, :queued}
+  catch
+    :exit, exit_reason ->
+      Logger.error("[Discord Health] Failed to record failed killmail: #{inspect(exit_reason)}")
+      {:error, exit_reason}
+  end
+
+  @doc """
+  Gets current health status and diagnostics.
+  """
+  @spec get_health_status() :: {:ok, map()} | {:error, term()}
+  def get_health_status do
+    result = GenServer.call(__MODULE__, :get_health_status, 5_000)
+    {:ok, result}
+  catch
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to get health status: #{inspect(reason)}")
+      {:error, reason}
+  end
+
+  @doc """
+  Gets comprehensive Nostrum/Gun diagnostics.
+  """
+  @spec get_diagnostics() :: {:ok, map()}
+  def get_diagnostics do
+    {:ok, get_diagnostics_map()}
+  end
+
+  # Public API version - fetches cached gun pools via GenServer.call
+  defp get_diagnostics_map do
+    cached_pools = get_gun_pools_from_server()
+    get_diagnostics_map(cached_pools)
+  end
+
+  # Internal version - uses pre-fetched cached pools to avoid GenServer self-calls
+  defp get_diagnostics_map(cached_gun_pools) do
+    %{
+      nostrum: get_nostrum_diagnostics(),
+      gun: get_gun_diagnostics(cached_gun_pools),
+      ratelimiter: get_ratelimiter_diagnostics(),
+      timestamp: DateTime.utc_now()
+    }
+  end
+
+  @doc """
+  Attempts to recover from a stuck connection state.
+
+  Returns `{:ok, result}` on successful recovery check, where result indicates
+  the connection status (e.g., `:healthy`, `:no_connection`, `:dead_connection`).
+  Returns `{:error, reason}` if recovery cannot be attempted.
+  """
+  @spec attempt_recovery() :: {:ok, term()} | {:error, term()}
+  def attempt_recovery do
+    GenServer.call(__MODULE__, :attempt_recovery, 30_000)
+  catch
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to attempt recovery: #{inspect(reason)}")
+      {:error, reason}
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # GenServer Callbacks
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  @impl true
+  def init(_opts) do
+    Logger.info("[Discord Health] Connection health monitor started")
+    schedule_health_check()
+    schedule_gun_pools_refresh()
+
+    {:ok,
+     %{
+       consecutive_timeouts: 0,
+       consecutive_failures: 0,
+       last_success_at: nil,
+       last_failure_at: nil,
+       last_failure_reason: nil,
+       total_successes: 0,
+       total_failures: 0,
+       total_timeouts: 0,
+       recovery_attempts: 0,
+       last_recovery_at: nil,
+       failed_kills: [],
+       # Cached Gun pools data to avoid expensive Process.list() scans
+       cached_gun_pools: [],
+       gun_pools_last_refreshed_at: nil
+     }}
+  end
+
+  @impl true
+  def handle_cast(:record_success, state) do
+    new_state = %{
+      state
+      | consecutive_timeouts: 0,
+        consecutive_failures: 0,
+        last_success_at: DateTime.utc_now(),
+        total_successes: state.total_successes + 1
+    }
+
+    {:noreply, new_state}
+  end
+
+  # Handle timeout when threshold is first crossed - trigger recovery
+  @impl true
+  def handle_cast({:record_timeout, killmail_id}, state)
+      when state.consecutive_timeouts == @timeout_threshold - 1 do
+    new_consecutive = state.consecutive_timeouts + 1
+
+    Logger.error(
+      "[Discord Health] #{new_consecutive} consecutive timeouts detected - connection may be stuck",
+      diagnostics: get_diagnostics_map(state.cached_gun_pools)
+    )
+
+    # Auto-attempt recovery when threshold is first crossed
+    spawn(fn -> attempt_recovery() end)
+
+    new_state = %{
+      state
+      | consecutive_timeouts: new_consecutive,
+        last_failure_at: DateTime.utc_now(),
+        last_failure_reason: :timeout,
+        total_timeouts: state.total_timeouts + 1,
+        failed_kills: add_failed_kill(state.failed_kills, killmail_id, :timeout)
+    }
+
+    {:noreply, new_state}
+  end
+
+  # Handle timeout for all other cases - just update counters without triggering recovery
+  @impl true
+  def handle_cast({:record_timeout, killmail_id}, state) do
+    new_state = %{
+      state
+      | consecutive_timeouts: state.consecutive_timeouts + 1,
+        last_failure_at: DateTime.utc_now(),
+        last_failure_reason: :timeout,
+        total_timeouts: state.total_timeouts + 1,
+        failed_kills: add_failed_kill(state.failed_kills, killmail_id, :timeout)
+    }
+
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:record_failure, reason, killmail_id}, state) do
+    # Non-timeout failures reset the consecutive timeout streak
+    new_state = %{
+      state
+      | consecutive_timeouts: 0,
+        consecutive_failures: state.consecutive_failures + 1,
+        last_failure_at: DateTime.utc_now(),
+        last_failure_reason: reason,
+        total_failures: state.total_failures + 1,
+        failed_kills: add_failed_kill(state.failed_kills, killmail_id, reason)
+    }
+
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:record_failed_killmail, killmail_id, reason}, state) do
+    # Only add to failed_kills list, don't affect counters (NeoClient handles those)
+    new_state = %{
+      state
+      | failed_kills: add_failed_kill(state.failed_kills, killmail_id, reason)
+    }
+
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_call(:get_health_status, _from, state) do
+    status = %{
+      healthy: healthy?(state),
+      consecutive_timeouts: state.consecutive_timeouts,
+      consecutive_failures: state.consecutive_failures,
+      last_success_at: state.last_success_at,
+      last_failure_at: state.last_failure_at,
+      last_failure_reason: state.last_failure_reason,
+      total_successes: state.total_successes,
+      total_failures: state.total_failures,
+      total_timeouts: state.total_timeouts,
+      recovery_attempts: state.recovery_attempts,
+      failed_kills: state.failed_kills,
+      diagnostics: get_diagnostics_map(state.cached_gun_pools)
+    }
+
+    {:reply, status, state}
+  end
+
+  @impl true
+  def handle_call(:attempt_recovery, _from, state) do
+    Logger.warning("[Discord Health] Attempting connection recovery")
+
+    result = do_recovery(state.cached_gun_pools)
+
+    new_state = %{
+      state
+      | recovery_attempts: state.recovery_attempts + 1,
+        last_recovery_at: DateTime.utc_now()
+    }
+
+    {:reply, result, new_state}
+  end
+
+  @impl true
+  def handle_call(:get_cached_gun_pools, _from, state) do
+    {:reply, state.cached_gun_pools, state}
+  end
+
+  @impl true
+  def handle_info(:health_check, state) do
+    log_health_status(state, state.cached_gun_pools)
+    schedule_health_check()
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:refresh_gun_pools, state) do
+    pools = do_scan_gun_pools()
+    schedule_gun_pools_refresh()
+
+    new_state = %{
+      state
+      | cached_gun_pools: pools,
+        gun_pools_last_refreshed_at: DateTime.utc_now()
+    }
+
+    {:noreply, new_state}
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Private Functions - Diagnostics
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp get_nostrum_diagnostics do
+    %{
+      consumer_alive: consumer_alive?(),
+      gateway_alive: gateway_alive?(),
+      ratelimiter_alive: ratelimiter_alive?(),
+      shard_status: get_shard_status()
+    }
+  end
+
+  # Accepts cached gun pools to avoid GenServer self-calls when invoked from callbacks
+  defp get_gun_diagnostics(cached_gun_pools) do
+    %{
+      pools_count: length(cached_gun_pools),
+      pools: cached_gun_pools
+    }
+  end
+
+  defp get_ratelimiter_diagnostics do
+    case Process.whereis(Nostrum.Api.Ratelimiter) do
+      nil -> %{exists: false, status: :not_running}
+      pid -> fetch_ratelimiter_state(pid)
+    end
+  end
+
+  defp fetch_ratelimiter_state(pid) do
+    case :sys.get_state(pid, 2_000) do
+      {state_name, state_data} when is_atom(state_name) ->
+        build_ratelimiter_state_info(state_name, state_data)
+
+      other ->
+        Logger.warning("[Discord Health] Unexpected ratelimiter state format",
+          raw: inspect(other) |> String.slice(0, 100)
+        )
+
+        %{exists: true, state: :unexpected, raw: inspect(other) |> String.slice(0, 100)}
+    end
+  catch
+    :exit, {:timeout, _} ->
+      Logger.error("[Discord Health] Timeout fetching ratelimiter state via sys.get_state")
+      %{exists: true, status: :blocked, error: "sys.get_state timeout"}
+
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to fetch ratelimiter state",
+        error: inspect(reason)
+      )
+
+      %{exists: true, status: :error, error: inspect(reason)}
+  end
+
+  defp build_ratelimiter_state_info(state_name, state_data) do
+    queue_lengths = get_queue_lengths(state_data)
+
+    %{
+      exists: true,
+      state_name: state_name,
+      connection: get_connection_status(state_data),
+      outstanding_count: queue_lengths.outstanding,
+      running_count: queue_lengths.running,
+      inflight_count: queue_lengths.inflight,
+      queue_lengths: queue_lengths
+    }
+  end
+
+  defp get_connection_status(state_data) do
+    state_data
+    |> Map.get(:conn)
+    |> do_get_connection_status()
+  end
+
+  # No connection present
+  defp do_get_connection_status(nil), do: :no_connection
+
+  # Connection is a pid - check if alive and get info
+  defp do_get_connection_status(conn_pid) when is_pid(conn_pid) do
+    case Process.alive?(conn_pid) do
+      true -> get_alive_connection_info(conn_pid)
+      false -> :dead
+    end
+  end
+
+  # Unknown connection type
+  defp do_get_connection_status(_), do: :unknown
+
+  # Get detailed info for an alive connection process
+  defp get_alive_connection_info(conn_pid) do
+    case Process.info(conn_pid, [:message_queue_len, :status]) do
+      nil ->
+        # Process died between the alive? check and this call
+        Logger.debug("[Discord Health] Connection process died during inspection",
+          conn_pid: inspect(conn_pid)
+        )
+
+        :dead
+
+      info when is_list(info) ->
+        %{
+          status: :alive,
+          queue_len: info[:message_queue_len],
+          process_status: info[:status]
+        }
+    end
+  catch
+    kind, reason ->
+      Logger.error(
+        "[Discord Health] Error in get_alive_connection_info/1 calling Process.info",
+        conn_pid: inspect(conn_pid),
+        kind: kind,
+        error: inspect(reason),
+        stacktrace: inspect(__STACKTRACE__)
+      )
+
+      :dead
+  end
+
+  defp get_queue_lengths(state_data) do
+    %{
+      outstanding: state_data |> Map.get(:outstanding, %{}) |> map_size(),
+      running: state_data |> Map.get(:running, %{}) |> map_size(),
+      inflight: state_data |> Map.get(:inflight, %{}) |> map_size()
+    }
+  end
+
+  defp consumer_alive? do
+    # Check if NeoClient process is alive
+    case Process.whereis(WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient) do
+      nil -> false
+      pid -> Process.alive?(pid)
+    end
+  end
+
+  defp gateway_alive? do
+    # Check if Nostrum gateway is running
+    case Process.whereis(Nostrum.Shard.Supervisor) do
+      nil -> false
+      pid -> Process.alive?(pid)
+    end
+  end
+
+  defp ratelimiter_alive? do
+    case Process.whereis(Nostrum.Api.Ratelimiter) do
+      nil -> false
+      pid -> Process.alive?(pid)
+    end
+  end
+
+  defp get_shard_status do
+    try do
+      # Try to get shard information from Nostrum
+      case Process.whereis(Nostrum.Shard.Supervisor) do
+        nil ->
+          :not_running
+
+        _pid ->
+          # Get children of shard supervisor
+          children = Supervisor.which_children(Nostrum.Shard.Supervisor)
+          %{shard_count: length(children), status: :running}
+      end
+    catch
+      kind, reason ->
+        Logger.error(
+          "[Discord Health] Error in get_shard_status/0 fetching shard information",
+          kind: kind,
+          error: inspect(reason),
+          stacktrace: inspect(__STACKTRACE__)
+        )
+
+        :unknown
+    end
+  end
+
+  # Fetches cached Gun pools from the GenServer. Only use from outside callbacks
+  # to avoid self-call deadlocks. Inside callbacks, use state.cached_gun_pools directly.
+  defp get_gun_pools_from_server do
+    GenServer.call(__MODULE__, :get_cached_gun_pools, 5_000)
+  catch
+    :exit, reason ->
+      Logger.warning("[Discord Health] Failed to get cached gun pools: #{inspect(reason)}")
+      []
+  end
+
+  # Performs the expensive Process.list() scan to find Gun connection processes.
+  # Called periodically by handle_info(:refresh_gun_pools, ...) on a configurable interval.
+  defp do_scan_gun_pools do
+    try do
+      Process.list()
+      |> Enum.filter(&gun_process?/1)
+      |> Enum.flat_map(&extract_pool_info/1)
+    catch
+      kind, reason ->
+        Logger.error(
+          "[Discord Health] Error in do_scan_gun_pools/0 scanning Process.list()",
+          kind: kind,
+          error: inspect(reason),
+          stacktrace: inspect(__STACKTRACE__)
+        )
+
+        []
+    end
+  end
+
+  # Checks if a process is a Gun connection process.
+  # Delegates to the shared ProcessInspection helper for consistent diagnostics.
+  # Returns true only on {:ok, true}, false for {:ok, false} or {:error, _}.
+  defp gun_process?(pid) do
+    alias WandererNotifier.Infrastructure.ProcessInspection
+
+    case ProcessInspection.detect_gun_process(pid) do
+      {:ok, true} -> true
+      {:ok, false} -> false
+      {:error, _reason} -> false
+    end
+  end
+
+  # Extracts pool information from a Gun process.
+  defp extract_pool_info(pid) do
+    case Process.info(pid, [:message_queue_len, :status, :memory]) do
+      nil ->
+        # Process died between filter and map - skip it
+        []
+
+      info ->
+        [
+          %{
+            pid: inspect(pid),
+            queue_len: info[:message_queue_len],
+            status: info[:status],
+            memory: info[:memory]
+          }
+        ]
+    end
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Private Functions - Recovery
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp do_recovery(cached_gun_pools) do
+    Logger.warning("[Discord Health] Starting recovery sequence")
+
+    # Step 1: Log current state for diagnostics
+    diagnostics = get_diagnostics_map(cached_gun_pools)
+    Logger.info("[Discord Health] Pre-recovery diagnostics", diagnostics: diagnostics)
+
+    # Step 2: Try to restart the ratelimiter connection if it's stuck
+    recovery_result = try_ratelimiter_recovery()
+
+    Logger.info("[Discord Health] Recovery completed", result: recovery_result)
+
+    recovery_result
+  end
+
+  defp try_ratelimiter_recovery do
+    case Process.whereis(Nostrum.Api.Ratelimiter) do
+      nil ->
+        Logger.error("[Discord Health] Ratelimiter not running - cannot recover")
+        {:error, :ratelimiter_not_running}
+
+      pid ->
+        check_ratelimiter_state(pid)
+    end
+  end
+
+  defp check_ratelimiter_state(pid) do
+    case :sys.get_state(pid, 1_000) do
+      {_state_name, state_data} ->
+        connection_status = get_connection_status(state_data)
+        result = handle_ratelimiter_connection(connection_status)
+        {:ok, result}
+
+      _ ->
+        Logger.warning("[Discord Health] Unexpected ratelimiter state")
+        {:ok, :unexpected_state}
+    end
+  catch
+    :exit, {:timeout, _} ->
+      Logger.error("[Discord Health] Ratelimiter blocked - cannot get state")
+      {:error, :ratelimiter_blocked}
+
+    :exit, reason ->
+      Logger.error("[Discord Health] Error checking ratelimiter", error: inspect(reason))
+      {:error, reason}
+  end
+
+  defp handle_ratelimiter_connection(:no_connection) do
+    Logger.warning("[Discord Health] No active connection in ratelimiter")
+    :no_connection
+  end
+
+  defp handle_ratelimiter_connection(:dead) do
+    Logger.warning("[Discord Health] Dead connection detected in ratelimiter")
+    :dead_connection
+  end
+
+  defp handle_ratelimiter_connection(%{status: :alive, queue_len: queue_len})
+       when queue_len > 100 do
+    Logger.warning("[Discord Health] Connection has large queue (#{queue_len}) - may be stuck")
+    :large_queue
+  end
+
+  defp handle_ratelimiter_connection(_) do
+    Logger.info("[Discord Health] Connection appears healthy")
+    :healthy
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Private Functions - Health Checks
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp healthy?(state) do
+    state.consecutive_timeouts < @timeout_threshold and
+      state.consecutive_failures < @timeout_threshold
+  end
+
+  defp schedule_health_check do
+    Process.send_after(self(), :health_check, @health_check_interval)
+  end
+
+  defp schedule_gun_pools_refresh do
+    interval = get_gun_pools_refresh_interval()
+    Process.send_after(self(), :refresh_gun_pools, interval)
+  end
+
+  defp get_gun_pools_refresh_interval do
+    Application.get_env(
+      :wanderer_notifier,
+      :gun_pools_refresh_interval,
+      @gun_pools_refresh_interval
+    )
+  end
+
+  defp log_health_status(state, cached_gun_pools) do
+    diagnostics = get_diagnostics_map(cached_gun_pools)
+    ratelimiter = diagnostics.ratelimiter
+
+    Logger.info(
+      "[Discord Health] Status: timeouts=#{state.consecutive_timeouts}, " <>
+        "failures=#{state.consecutive_failures}, " <>
+        "total_success=#{state.total_successes}, " <>
+        "total_timeout=#{state.total_timeouts}, " <>
+        "failed_kills=#{length(state.failed_kills)}, " <>
+        "ratelimiter=#{inspect(ratelimiter.state_name || ratelimiter.status || :unknown)}, " <>
+        "queues=#{inspect(ratelimiter[:queue_lengths] || %{})}"
+    )
+  end
+
+  # Adds a failed kill to the list, keeping only the last @max_failed_kills entries
+  defp add_failed_kill(failed_kills, nil, _reason), do: failed_kills
+
+  defp add_failed_kill(failed_kills, killmail_id, reason) do
+    entry = %{
+      killmail_id: to_string(killmail_id),
+      reason: reason,
+      failed_at: DateTime.utc_now()
+    }
+
+    [entry | failed_kills]
+    |> Enum.take(@max_failed_kills)
+  end
+end
