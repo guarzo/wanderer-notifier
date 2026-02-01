@@ -105,10 +105,17 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     {:ok, get_diagnostics_map()}
   end
 
+  # Public API version - fetches cached gun pools via GenServer.call
   defp get_diagnostics_map do
+    cached_pools = get_gun_pools_from_server()
+    get_diagnostics_map(cached_pools)
+  end
+
+  # Internal version - uses pre-fetched cached pools to avoid GenServer self-calls
+  defp get_diagnostics_map(cached_gun_pools) do
     %{
       nostrum: get_nostrum_diagnostics(),
-      gun: get_gun_diagnostics(),
+      gun: get_gun_diagnostics(cached_gun_pools),
       ratelimiter: get_ratelimiter_diagnostics(),
       timestamp: DateTime.utc_now()
     }
@@ -179,7 +186,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
     Logger.error(
       "[Discord Health] #{new_consecutive} consecutive timeouts detected - connection may be stuck",
-      diagnostics: get_diagnostics_map()
+      diagnostics: get_diagnostics_map(state.cached_gun_pools)
     )
 
     # Auto-attempt recovery when threshold is first crossed
@@ -251,7 +258,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
       total_timeouts: state.total_timeouts,
       recovery_attempts: state.recovery_attempts,
       failed_kills: state.failed_kills,
-      diagnostics: get_diagnostics_map()
+      diagnostics: get_diagnostics_map(state.cached_gun_pools)
     }
 
     {:reply, status, state}
@@ -261,7 +268,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   def handle_call(:attempt_recovery, _from, state) do
     Logger.warning("[Discord Health] Attempting connection recovery")
 
-    result = do_recovery()
+    result = do_recovery(state.cached_gun_pools)
 
     new_state = %{
       state
@@ -279,7 +286,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   @impl true
   def handle_info(:health_check, state) do
-    log_health_status(state)
+    log_health_status(state, state.cached_gun_pools)
     schedule_health_check()
     {:noreply, state}
   end
@@ -311,13 +318,11 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     }
   end
 
-  defp get_gun_diagnostics do
-    # Check Gun connection pools
-    pools = get_gun_pools()
-
+  # Accepts cached gun pools to avoid GenServer self-calls when invoked from callbacks
+  defp get_gun_diagnostics(cached_gun_pools) do
     %{
-      pools_count: length(pools),
-      pools: pools
+      pools_count: length(cached_gun_pools),
+      pools: cached_gun_pools
     }
   end
 
@@ -446,13 +451,21 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
           %{shard_count: length(children), status: :running}
       end
     catch
-      _, _ -> :unknown
+      kind, reason ->
+        Logger.error(
+          "[Discord Health] Error in get_shard_status/0 fetching shard information",
+          kind: kind,
+          error: inspect(reason),
+          stacktrace: inspect(__STACKTRACE__)
+        )
+
+        :unknown
     end
   end
 
-  # Returns cached Gun pools data. The expensive scan runs on a configurable
-  # interval (default: 5 minutes) rather than on every health check.
-  defp get_gun_pools do
+  # Fetches cached Gun pools from the GenServer. Only use from outside callbacks
+  # to avoid self-call deadlocks. Inside callbacks, use state.cached_gun_pools directly.
+  defp get_gun_pools_from_server do
     GenServer.call(__MODULE__, :get_cached_gun_pools, 5_000)
   catch
     :exit, reason ->
@@ -519,11 +532,11 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   # Private Functions - Recovery
   # ──────────────────────────────────────────────────────────────────────────────
 
-  defp do_recovery do
+  defp do_recovery(cached_gun_pools) do
     Logger.warning("[Discord Health] Starting recovery sequence")
 
     # Step 1: Log current state for diagnostics
-    diagnostics = get_diagnostics_map()
+    diagnostics = get_diagnostics_map(cached_gun_pools)
     Logger.info("[Discord Health] Pre-recovery diagnostics", diagnostics: diagnostics)
 
     # Step 2: Try to restart the ratelimiter connection if it's stuck
@@ -611,8 +624,8 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     )
   end
 
-  defp log_health_status(state) do
-    diagnostics = get_diagnostics_map()
+  defp log_health_status(state, cached_gun_pools) do
+    diagnostics = get_diagnostics_map(cached_gun_pools)
     ratelimiter = diagnostics.ratelimiter
 
     Logger.info(
