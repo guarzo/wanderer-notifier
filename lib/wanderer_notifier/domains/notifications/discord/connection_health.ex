@@ -15,6 +15,8 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   @health_check_interval :timer.minutes(1)
   @timeout_threshold 3
   @max_failed_kills 5
+  # Interval for refreshing the expensive Gun pools scan (default: 5 minutes)
+  @gun_pools_refresh_interval :timer.minutes(5)
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Public API
@@ -115,10 +117,12 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   @doc """
   Attempts to recover from a stuck connection state.
   """
-  @spec attempt_recovery() :: {:ok, :ok | {:error, term()}} | {:error, term()}
+  @spec attempt_recovery() :: {:ok, term()} | {:error, term()}
   def attempt_recovery do
-    result = GenServer.call(__MODULE__, :attempt_recovery, 30_000)
-    {:ok, result}
+    case GenServer.call(__MODULE__, :attempt_recovery, 30_000) do
+      {:error, reason} -> {:error, reason}
+      other -> {:ok, other}
+    end
   catch
     :exit, reason ->
       Logger.error("[Discord Health] Failed to attempt recovery: #{inspect(reason)}")
@@ -133,6 +137,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   def init(_opts) do
     Logger.info("[Discord Health] Connection health monitor started")
     schedule_health_check()
+    schedule_gun_pools_refresh()
 
     {:ok,
      %{
@@ -146,7 +151,10 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
        total_timeouts: 0,
        recovery_attempts: 0,
        last_recovery_at: nil,
-       failed_kills: []
+       failed_kills: [],
+       # Cached Gun pools data to avoid expensive Process.list() scans
+       cached_gun_pools: [],
+       gun_pools_last_refreshed_at: nil
      }}
   end
 
@@ -265,10 +273,29 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   end
 
   @impl true
+  def handle_call(:get_cached_gun_pools, _from, state) do
+    {:reply, state.cached_gun_pools, state}
+  end
+
+  @impl true
   def handle_info(:health_check, state) do
     log_health_status(state)
     schedule_health_check()
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:refresh_gun_pools, state) do
+    pools = do_scan_gun_pools()
+    schedule_gun_pools_refresh()
+
+    new_state = %{
+      state
+      | cached_gun_pools: pools,
+        gun_pools_last_refreshed_at: DateTime.utc_now()
+    }
+
+    {:noreply, new_state}
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -363,7 +390,16 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     info = Process.info(conn_pid, [:message_queue_len, :status])
     %{status: :alive, queue_len: info[:message_queue_len], process_status: info[:status]}
   catch
-    _, _ -> :alive
+    kind, reason ->
+      Logger.error(
+        "[Discord Health] Error in get_alive_connection_info/1 calling Process.info",
+        conn_pid: inspect(conn_pid),
+        kind: kind,
+        error: inspect(reason),
+        stacktrace: inspect(__STACKTRACE__)
+      )
+
+      :alive
   end
 
   defp get_queue_lengths(state_data) do
@@ -414,8 +450,19 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     end
   end
 
+  # Returns cached Gun pools data. The expensive scan runs on a configurable
+  # interval (default: 5 minutes) rather than on every health check.
   defp get_gun_pools do
-    # Try to find Gun connection processes
+    GenServer.call(__MODULE__, :get_cached_gun_pools, 5_000)
+  catch
+    :exit, reason ->
+      Logger.warning("[Discord Health] Failed to get cached gun pools: #{inspect(reason)}")
+      []
+  end
+
+  # Performs the expensive Process.list() scan to find Gun connection processes.
+  # Called periodically by handle_info(:refresh_gun_pools, ...) on a configurable interval.
+  defp do_scan_gun_pools do
     try do
       Process.list()
       |> Enum.filter(fn pid ->
@@ -532,6 +579,19 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   defp schedule_health_check do
     Process.send_after(self(), :health_check, @health_check_interval)
+  end
+
+  defp schedule_gun_pools_refresh do
+    interval = get_gun_pools_refresh_interval()
+    Process.send_after(self(), :refresh_gun_pools, interval)
+  end
+
+  defp get_gun_pools_refresh_interval do
+    Application.get_env(
+      :wanderer_notifier,
+      :gun_pools_refresh_interval,
+      @gun_pools_refresh_interval
+    )
   end
 
   defp log_health_status(state) do
