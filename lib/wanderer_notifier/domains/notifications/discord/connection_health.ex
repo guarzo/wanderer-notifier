@@ -349,10 +349,9 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   # Connection is a pid - check if alive and get info
   defp do_get_connection_status(conn_pid) when is_pid(conn_pid) do
-    if Process.alive?(conn_pid) do
-      get_alive_connection_info(conn_pid)
-    else
-      :dead
+    case Process.alive?(conn_pid) do
+      true -> get_alive_connection_info(conn_pid)
+      false -> :dead
     end
   end
 
