@@ -480,7 +480,16 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
                 match?({:gun, _, _}, Keyword.get(dict, :"$initial_call"))
           end
         catch
-          _, _ -> false
+          kind, reason ->
+            Logger.error(
+              "[Discord Health] Error inspecting process in do_scan_gun_pools/0",
+              pid: inspect(pid),
+              kind: kind,
+              error: inspect(reason),
+              stacktrace: inspect(__STACKTRACE__)
+            )
+
+            false
         end
       end)
       |> Enum.map(fn pid ->
@@ -494,7 +503,15 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
         }
       end)
     catch
-      _, _ -> []
+      kind, reason ->
+        Logger.error(
+          "[Discord Health] Error in do_scan_gun_pools/0 scanning Process.list()",
+          kind: kind,
+          error: inspect(reason),
+          stacktrace: inspect(__STACKTRACE__)
+        )
+
+        []
     end
   end
 
