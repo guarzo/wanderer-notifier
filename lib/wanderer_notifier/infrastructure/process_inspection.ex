@@ -18,6 +18,8 @@ defmodule WandererNotifier.Infrastructure.ProcessInspection do
   Returns `{:ok, true}` if the process is a Gun process, `{:ok, false}` otherwise.
   Returns `{:error, reason}` if an exception occurs during inspection.
 
+  Note: Dead or missing PIDs return `{:ok, false}` since we cannot determine their type.
+
   ## Examples
 
       iex> ProcessInspection.detect_gun_process(some_pid)
@@ -27,7 +29,7 @@ defmodule WandererNotifier.Infrastructure.ProcessInspection do
       {:ok, false}
 
       iex> ProcessInspection.detect_gun_process(dead_pid)
-      {:error, :process_not_found}
+      {:ok, false}
   """
   @spec detect_gun_process(pid()) :: {:ok, boolean()} | {:error, term()}
   def detect_gun_process(pid) when is_pid(pid) do

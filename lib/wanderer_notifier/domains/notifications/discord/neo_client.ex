@@ -255,6 +255,12 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     {:ok, :sent}
   end
 
+  defp handle_discord_result({:error, :timeout}, _start_time, _rally_id) do
+    # Timeout already recorded in handle_final_timeout/2
+    # Don't call record_failure here as it would reset consecutive_timeouts
+    {:error, :timeout}
+  end
+
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
     Logger.error("Discord API call failed after all attempts",
       reason: inspect(reason),
