@@ -98,8 +98,12 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   @doc """
   Gets comprehensive Nostrum/Gun diagnostics.
   """
-  @spec get_diagnostics() :: map()
+  @spec get_diagnostics() :: {:ok, map()}
   def get_diagnostics do
+    {:ok, get_diagnostics_map()}
+  end
+
+  defp get_diagnostics_map do
     %{
       nostrum: get_nostrum_diagnostics(),
       gun: get_gun_diagnostics(),
@@ -167,7 +171,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
     Logger.error(
       "[Discord Health] #{new_consecutive} consecutive timeouts detected - connection may be stuck",
-      diagnostics: get_diagnostics()
+      diagnostics: get_diagnostics_map()
     )
 
     # Auto-attempt recovery when threshold is first crossed
@@ -239,7 +243,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
       total_timeouts: state.total_timeouts,
       recovery_attempts: state.recovery_attempts,
       failed_kills: state.failed_kills,
-      diagnostics: get_diagnostics()
+      diagnostics: get_diagnostics_map()
     }
 
     {:reply, status, state}
@@ -303,11 +307,23 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
         build_ratelimiter_state_info(state_name, state_data)
 
       other ->
+        Logger.warning("[Discord Health] Unexpected ratelimiter state format",
+          raw: inspect(other) |> String.slice(0, 100)
+        )
+
         %{exists: true, state: :unexpected, raw: inspect(other) |> String.slice(0, 100)}
     end
   catch
-    :exit, {:timeout, _} -> %{exists: true, status: :blocked, error: "sys.get_state timeout"}
-    :exit, reason -> %{exists: true, status: :error, error: inspect(reason)}
+    :exit, {:timeout, _} ->
+      Logger.error("[Discord Health] Timeout fetching ratelimiter state via sys.get_state")
+      %{exists: true, status: :blocked, error: "sys.get_state timeout"}
+
+    :exit, reason ->
+      Logger.error("[Discord Health] Failed to fetch ratelimiter state",
+        error: inspect(reason)
+      )
+
+      %{exists: true, status: :error, error: inspect(reason)}
   end
 
   defp build_ratelimiter_state_info(state_name, state_data) do
@@ -444,7 +460,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     Logger.warning("[Discord Health] Starting recovery sequence")
 
     # Step 1: Log current state for diagnostics
-    diagnostics = get_diagnostics()
+    diagnostics = get_diagnostics_map()
     Logger.info("[Discord Health] Pre-recovery diagnostics", diagnostics: diagnostics)
 
     # Step 2: Try to restart the ratelimiter connection if it's stuck
@@ -520,7 +536,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   end
 
   defp log_health_status(state) do
-    diagnostics = get_diagnostics()
+    diagnostics = get_diagnostics_map()
     ratelimiter = diagnostics.ratelimiter
 
     Logger.info(

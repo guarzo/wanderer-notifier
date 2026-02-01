@@ -162,8 +162,18 @@ defmodule WandererNotifier.DiscordNotifier do
     # Use record_failed_killmail to add to the failed kills list without affecting counters
     # (NeoClient already records the failure/timeout for health metrics)
     case ConnectionHealth.record_failed_killmail(killmail_id, reason) do
-      {:ok, _} -> {:ok, :recorded}
-      {:error, err} -> {:error, err}
+      {:ok, _} ->
+        {:ok, :recorded}
+
+      {:error, err} ->
+        Logger.error(
+          "Failed to record failed killmail in ConnectionHealth",
+          killmail_id: killmail_id,
+          reason: inspect(reason),
+          error: inspect(err)
+        )
+
+        {:error, err}
     end
   end
 
