@@ -221,9 +221,11 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   @impl true
   def handle_cast({:record_failure, reason, killmail_id}, state) do
+    # Non-timeout failures reset the consecutive timeout streak
     new_state = %{
       state
-      | consecutive_failures: state.consecutive_failures + 1,
+      | consecutive_timeouts: 0,
+        consecutive_failures: state.consecutive_failures + 1,
         last_failure_at: DateTime.utc_now(),
         last_failure_reason: reason,
         total_failures: state.total_failures + 1,
