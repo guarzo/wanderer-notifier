@@ -6,6 +6,8 @@ defmodule WandererNotifier.Infrastructure.ProcessInspection do
   (e.g., Gun connection processes) used by multiple modules for diagnostics.
   """
 
+  require Logger
+
   @doc """
   Detects if a process is a Gun connection process.
 
@@ -13,26 +15,40 @@ defmodule WandererNotifier.Infrastructure.ProcessInspection do
   1. First checks `:registered_name` - if it contains "gun" (case-insensitive), returns true
   2. Falls back to checking the process dictionary for `:"$initial_call"` matching `{:gun, _, _}`
 
-  Returns `true` if the process is a Gun process, `false` otherwise.
-  If the process no longer exists or cannot be inspected, returns `false`.
+  Returns `{:ok, true}` if the process is a Gun process, `{:ok, false}` otherwise.
+  Returns `{:error, reason}` if an exception occurs during inspection.
 
   ## Examples
 
       iex> ProcessInspection.detect_gun_process(some_pid)
-      true
+      {:ok, true}
 
       iex> ProcessInspection.detect_gun_process(non_gun_pid)
-      false
+      {:ok, false}
+
+      iex> ProcessInspection.detect_gun_process(dead_pid)
+      {:error, :process_not_found}
   """
-  @spec detect_gun_process(pid()) :: boolean()
+  @spec detect_gun_process(pid()) :: {:ok, boolean()} | {:error, term()}
   def detect_gun_process(pid) when is_pid(pid) do
-    case check_registered_name(pid) do
-      {:found, true} -> true
-      {:found, false} -> check_initial_call(pid)
-      :not_found -> check_initial_call(pid)
-    end
+    result =
+      case check_registered_name(pid) do
+        {:found, true} -> true
+        {:found, false} -> check_initial_call(pid)
+        :not_found -> check_initial_call(pid)
+      end
+
+    {:ok, result}
   catch
-    _kind, _reason -> false
+    kind, reason ->
+      Logger.error(
+        "[ProcessInspection] Error detecting Gun process",
+        pid: inspect(pid),
+        kind: kind,
+        reason: inspect(reason)
+      )
+
+      {:error, reason}
   end
 
   # Check if the registered name contains "gun"
