@@ -1175,19 +1175,11 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     end
   end
 
+  # Checks if a process is a Gun connection process.
+  # Delegates to the shared ProcessInspection helper for consistent diagnostics.
   defp gun_process?(pid) do
-    case Process.info(pid, :registered_name) do
-      {:registered_name, name} when is_atom(name) ->
-        name
-        |> Atom.to_string()
-        |> String.contains?("gun")
-
-      _ ->
-        case Process.info(pid, :initial_call) do
-          {:initial_call, {:gun, _, _}} -> true
-          _ -> false
-        end
-    end
+    alias WandererNotifier.Infrastructure.ProcessInspection
+    ProcessInspection.detect_gun_process(pid)
   end
 
   # Log system diagnostics when timeout occurs

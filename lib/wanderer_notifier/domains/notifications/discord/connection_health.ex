@@ -123,13 +123,14 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   @doc """
   Attempts to recover from a stuck connection state.
+
+  Returns `{:ok, result}` on successful recovery check, where result indicates
+  the connection status (e.g., `:healthy`, `:no_connection`, `:dead_connection`).
+  Returns `{:error, reason}` if recovery cannot be attempted.
   """
   @spec attempt_recovery() :: {:ok, term()} | {:error, term()}
   def attempt_recovery do
-    case GenServer.call(__MODULE__, :attempt_recovery, 30_000) do
-      {:error, reason} -> {:error, reason}
-      other -> {:ok, other}
-    end
+    GenServer.call(__MODULE__, :attempt_recovery, 30_000)
   catch
     :exit, reason ->
       Logger.error("[Discord Health] Failed to attempt recovery: #{inspect(reason)}")
@@ -396,8 +397,22 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   # Get detailed info for an alive connection process
   defp get_alive_connection_info(conn_pid) do
-    info = Process.info(conn_pid, [:message_queue_len, :status])
-    %{status: :alive, queue_len: info[:message_queue_len], process_status: info[:status]}
+    case Process.info(conn_pid, [:message_queue_len, :status]) do
+      nil ->
+        # Process died between the alive? check and this call
+        Logger.debug("[Discord Health] Connection process died during inspection",
+          conn_pid: inspect(conn_pid)
+        )
+
+        :dead
+
+      info when is_list(info) ->
+        %{
+          status: :alive,
+          queue_len: info[:message_queue_len],
+          process_status: info[:status]
+        }
+    end
   catch
     kind, reason ->
       Logger.error(
@@ -408,7 +423,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
         stacktrace: inspect(__STACKTRACE__)
       )
 
-      :alive
+      :dead
   end
 
   defp get_queue_lengths(state_data) do
@@ -497,31 +512,11 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
     end
   end
 
-  # Checks if a process is a Gun connection process by inspecting its dictionary.
+  # Checks if a process is a Gun connection process.
+  # Delegates to the shared ProcessInspection helper for consistent diagnostics.
   defp gun_process?(pid) do
-    info = Process.info(pid, [:registered_name, :dictionary])
-
-    case info do
-      nil ->
-        false
-
-      info_list ->
-        dict = Keyword.get(info_list, :dictionary, [])
-        # Gun processes often have specific dictionary entries
-        Keyword.has_key?(dict, :"$initial_call") and
-          match?({:gun, _, _}, Keyword.get(dict, :"$initial_call"))
-    end
-  catch
-    kind, reason ->
-      Logger.error(
-        "[Discord Health] Error inspecting process in gun_process?/1",
-        pid: inspect(pid),
-        kind: kind,
-        error: inspect(reason),
-        stacktrace: inspect(__STACKTRACE__)
-      )
-
-      false
+    alias WandererNotifier.Infrastructure.ProcessInspection
+    ProcessInspection.detect_gun_process(pid)
   end
 
   # Extracts pool information from a Gun process.
@@ -576,11 +571,13 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   defp check_ratelimiter_state(pid) do
     case :sys.get_state(pid, 1_000) do
       {_state_name, state_data} ->
-        handle_ratelimiter_connection(get_connection_status(state_data))
+        connection_status = get_connection_status(state_data)
+        result = handle_ratelimiter_connection(connection_status)
+        {:ok, result}
 
       _ ->
         Logger.warning("[Discord Health] Unexpected ratelimiter state")
-        :ok
+        {:ok, :unexpected_state}
     end
   catch
     :exit, {:timeout, _} ->
@@ -594,23 +591,23 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   defp handle_ratelimiter_connection(:no_connection) do
     Logger.warning("[Discord Health] No active connection in ratelimiter")
-    :ok
+    :no_connection
   end
 
   defp handle_ratelimiter_connection(:dead) do
     Logger.warning("[Discord Health] Dead connection detected in ratelimiter")
-    :ok
+    :dead_connection
   end
 
   defp handle_ratelimiter_connection(%{status: :alive, queue_len: queue_len})
        when queue_len > 100 do
     Logger.warning("[Discord Health] Connection has large queue (#{queue_len}) - may be stuck")
-    :ok
+    :large_queue
   end
 
   defp handle_ratelimiter_connection(_) do
     Logger.info("[Discord Health] Connection appears healthy")
-    :ok
+    :healthy
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
