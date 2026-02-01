@@ -482,50 +482,8 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
   defp do_scan_gun_pools do
     try do
       Process.list()
-      |> Enum.filter(fn pid ->
-        try do
-          info = Process.info(pid, [:registered_name, :dictionary])
-
-          case info do
-            nil ->
-              false
-
-            info_list ->
-              dict = Keyword.get(info_list, :dictionary, [])
-              # Gun processes often have specific dictionary entries
-              Keyword.has_key?(dict, :"$initial_call") and
-                match?({:gun, _, _}, Keyword.get(dict, :"$initial_call"))
-          end
-        catch
-          kind, reason ->
-            Logger.error(
-              "[Discord Health] Error inspecting process in do_scan_gun_pools/0",
-              pid: inspect(pid),
-              kind: kind,
-              error: inspect(reason),
-              stacktrace: inspect(__STACKTRACE__)
-            )
-
-            false
-        end
-      end)
-      |> Enum.flat_map(fn pid ->
-        case Process.info(pid, [:message_queue_len, :status, :memory]) do
-          nil ->
-            # Process died between filter and map - skip it
-            []
-
-          info ->
-            [
-              %{
-                pid: inspect(pid),
-                queue_len: info[:message_queue_len],
-                status: info[:status],
-                memory: info[:memory]
-              }
-            ]
-        end
-      end)
+      |> Enum.filter(&gun_process?/1)
+      |> Enum.flat_map(&extract_pool_info/1)
     catch
       kind, reason ->
         Logger.error(
@@ -536,6 +494,52 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
         )
 
         []
+    end
+  end
+
+  # Checks if a process is a Gun connection process by inspecting its dictionary.
+  defp gun_process?(pid) do
+    info = Process.info(pid, [:registered_name, :dictionary])
+
+    case info do
+      nil ->
+        false
+
+      info_list ->
+        dict = Keyword.get(info_list, :dictionary, [])
+        # Gun processes often have specific dictionary entries
+        Keyword.has_key?(dict, :"$initial_call") and
+          match?({:gun, _, _}, Keyword.get(dict, :"$initial_call"))
+    end
+  catch
+    kind, reason ->
+      Logger.error(
+        "[Discord Health] Error inspecting process in gun_process?/1",
+        pid: inspect(pid),
+        kind: kind,
+        error: inspect(reason),
+        stacktrace: inspect(__STACKTRACE__)
+      )
+
+      false
+  end
+
+  # Extracts pool information from a Gun process.
+  defp extract_pool_info(pid) do
+    case Process.info(pid, [:message_queue_len, :status, :memory]) do
+      nil ->
+        # Process died between filter and map - skip it
+        []
+
+      info ->
+        [
+          %{
+            pid: inspect(pid),
+            queue_len: info[:message_queue_len],
+            status: info[:status],
+            memory: info[:memory]
+          }
+        ]
     end
   end
 
