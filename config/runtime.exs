@@ -220,6 +220,10 @@ config :wanderer_notifier,
   system_exclude_list: RuntimeConfig.parse_list(RuntimeConfig.get_env("SYSTEM_EXCLUDE_LIST", "")),
   corporation_exclude_list:
     RuntimeConfig.parse_numeric_id_list(RuntimeConfig.get_env("CORPORATION_EXCLUDE_LIST", "")),
+  character_tracking_corporation_ids:
+    RuntimeConfig.parse_numeric_id_list(
+      RuntimeConfig.get_env("CHARACTER_TRACKING_CORPORATION_IDS", "")
+    ),
 
   # Scheduler intervals (from constants)
   system_update_scheduler_interval:

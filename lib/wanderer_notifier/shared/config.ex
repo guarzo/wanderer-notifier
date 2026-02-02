@@ -126,6 +126,16 @@ defmodule WandererNotifier.Shared.Config do
     corporation_exclude_list() != []
   end
 
+  @doc "Get list of corporation IDs allowed for character kill notifications"
+  def character_tracking_corporation_ids do
+    Application.get_env(:wanderer_notifier, :character_tracking_corporation_ids, [])
+  end
+
+  @doc "Check if character corporation filtering is enabled for kill notifications"
+  def character_tracking_corporation_filter_enabled? do
+    character_tracking_corporation_ids() != []
+  end
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Notable Items Configuration
   # ──────────────────────────────────────────────────────────────────────────────
