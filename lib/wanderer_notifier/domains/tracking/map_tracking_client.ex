@@ -167,7 +167,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     exact_match = find_exact_character_match(characters, character_id)
 
     if exact_match do
-      Logger.error(
+      Logger.warning(
         "[MapTrackingClient] Character WAS found but matching failed! Data: #{inspect(exact_match)}"
       )
     end

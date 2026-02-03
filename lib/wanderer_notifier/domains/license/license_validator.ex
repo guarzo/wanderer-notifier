@@ -22,14 +22,14 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   - `result`: The result map to validate.
 
   ## Returns
-  - `true` if the result is valid.
-  - `{:unexpected, result}` if the result is invalid.
+  - `{:ok, map}` if the result is a map with a :valid key.
+  - `{:error, {:unexpected, value}}` if the result is invalid.
   """
-  @spec valid_result?(any()) :: true | {:unexpected, any()}
+  @spec valid_result?(any()) :: {:ok, map()} | {:error, any()}
   def valid_result?(result) do
     case result do
-      map when is_map(map) and is_map_key(map, :valid) -> true
-      other -> {:unexpected, other}
+      map when is_map(map) and is_map_key(map, :valid) -> {:ok, map}
+      other -> {:error, {:unexpected, other}}
     end
   end
 

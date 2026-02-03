@@ -119,6 +119,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   # Private helpers for status conversion using pattern matching
 
   defp result_to_status({:ok, _}), do: :success
+  defp result_to_status({:error, _}), do: :error
   defp result_to_status(_), do: :error
 
   defp bool_to_status(true), do: :success
@@ -145,6 +146,6 @@ defmodule WandererNotifier.Shared.Telemetry do
   rescue
     error ->
       # Don't let telemetry errors crash the application
-      Logger.debug("Telemetry error: #{inspect(error)}")
+      Logger.warning("Telemetry error: #{inspect(error)}")
   end
 end

@@ -125,10 +125,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # Cache Operations (delegated to GenericEventHandler)
   # ══════════════════════════════════════════════════════════════════════════════
 
+  # Dialyzer reports {:error, reason} clause as unreachable because current implementation
+  # always returns {:ok, _}. Added for defensive programming against future changes.
+  @dialyzer {:nowarn_function, handle_cache_update: 2}
   defp handle_cache_update(enriched_system, payload) do
     # Update main systems cache, then cache individual system data
-    {:ok, _} = update_system_cache(enriched_system)
-    cache_individual_system(enriched_system, payload)
+    case update_system_cache(enriched_system) do
+      {:ok, _result} ->
+        cache_individual_system(enriched_system, payload)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp update_system_cache(system) do
@@ -183,23 +191,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_send_notification(system) do
-    :system
-    |> GenericEventHandler.should_notify?(system.solar_system_id, system)
-    |> handle_notification_decision(system)
-  end
+    case GenericEventHandler.should_notify?(:system, system.solar_system_id, system) do
+      {:ok, true} ->
+        send_system_notification(system)
+        {:ok, :sent}
 
-  defp handle_notification_decision(true, system) do
-    send_system_notification(system)
-  end
+      {:ok, false} ->
+        Logger.info("System notification skipped",
+          system_name: system.name,
+          reason: "determiner_rejected",
+          category: :api
+        )
 
-  defp handle_notification_decision(false, system) do
-    Logger.info("System notification skipped",
-      system_name: system.name,
-      reason: "determiner_rejected",
-      category: :api
-    )
-
-    :ok
+        {:ok, :skipped}
+    end
   end
 
   defp maybe_log_system_removal(payload) do

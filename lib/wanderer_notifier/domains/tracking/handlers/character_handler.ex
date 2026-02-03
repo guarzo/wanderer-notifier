@@ -80,30 +80,31 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     validate_character(character, payload)
   end
 
+  defp validate_character(%{"eve_id" => eve_id, "name" => name} = character, _payload)
+       when eve_id != nil and name != nil do
+    {:ok, character}
+  end
+
+  defp validate_character(%{"name" => name, "id" => id} = character, _payload)
+       when name != nil and id != nil do
+    Logger.debug("Character update without eve_id, will try to find in cache",
+      name: name,
+      id: id,
+      category: :api
+    )
+
+    {:ok, character}
+  end
+
   defp validate_character(character, payload) do
-    cond do
-      character["eve_id"] && character["name"] ->
-        {:ok, character}
+    Logger.error("Missing required fields in character event",
+      eve_id: character["eve_id"],
+      name: character["name"],
+      payload_keys: Map.keys(payload),
+      category: :api
+    )
 
-      character["name"] && character["id"] ->
-        Logger.debug("Character update without eve_id, will try to find in cache",
-          name: character["name"],
-          id: character["id"],
-          category: :api
-        )
-
-        {:ok, character}
-
-      true ->
-        Logger.error("Missing required fields in character event",
-          eve_id: character["eve_id"],
-          name: character["name"],
-          payload_keys: Map.keys(payload),
-          category: :api
-        )
-
-        {:error, :missing_required_fields}
-    end
+    {:error, :missing_required_fields}
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -148,17 +149,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_notify_character_added(character) do
-    character
-    |> should_notify_character?()
-    |> handle_character_notification_decision(character)
-  end
+    case should_notify_character?(character) do
+      {:ok, true} ->
+        send_character_added_notification(character)
+        {:ok, :sent}
 
-  defp handle_character_notification_decision(true, character) do
-    send_character_added_notification(character)
-    :ok
+      {:ok, false} ->
+        {:ok, :skipped}
+    end
   end
-
-  defp handle_character_notification_decision(false, _character), do: :ok
 
   defp maybe_notify_character_removed(character) do
     Logger.debug("Character removed from tracking",
@@ -168,7 +167,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     )
 
     # No notification sent for character removal
-    :ok
+    {:ok, :skipped}
   end
 
   defp maybe_notify_character_updated(character) do
@@ -181,7 +180,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     )
 
     # No notification sent for character updates
-    :ok
+    {:ok, :skipped}
   end
 
   defp should_notify_character?(character) do
@@ -192,6 +191,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   defp send_character_added_notification(character) do
     map_character = Character.from_api_data(character)
     WandererNotifier.DiscordNotifier.send_character_async(map_character)
-    :ok
+    {:ok, :sent}
   end
 end

@@ -223,40 +223,45 @@ defmodule WandererNotifier.Map.EventProcessor do
       category: :rally
     )
 
-    # Validate required fields before constructing rally point
-    required_fields = ["solar_system_id", "system_name"]
-    missing = Enum.filter(required_fields, &(Map.get(payload, &1) == nil))
-
-    if Enum.any?(missing) do
-      Logger.warning("Rally point payload missing required fields",
-        missing_fields: missing,
-        payload: inspect(payload),
-        category: :rally
-      )
-
-      {:error, :missing_required_fields}
-    else
-      rally_point = %{
-        id: Map.get(payload, "rally_point_id"),
-        system_id: Map.get(payload, "solar_system_id"),
-        system_name: Map.get(payload, "system_name"),
-        character_name: Map.get(payload, "character_name"),
-        character_eve_id: Map.get(payload, "character_eve_id"),
-        message: Map.get(payload, "message"),
-        created_at: Map.get(payload, "created_at")
-      }
-
-      # Send rally point notification directly - always returns :ok immediately
-      WandererNotifier.DiscordNotifier.send_rally_point_async(rally_point)
-      # Changed from info to debug since this logs before the async operation completes
-      Logger.debug("Rally point notification queued")
-      :ok
-    end
+    process_rally_point_payload(payload)
   end
 
   defp handle_rally_event("rally_point_removed", _event, _map_slug) do
     # Not handling removed events for now
     :ignored
+  end
+
+  defp process_rally_point_payload(
+         %{"solar_system_id" => system_id, "system_name" => system_name} = payload
+       ) do
+    rally_point = %{
+      id: Map.get(payload, "rally_point_id"),
+      system_id: system_id,
+      system_name: system_name,
+      character_name: Map.get(payload, "character_name"),
+      character_eve_id: Map.get(payload, "character_eve_id"),
+      message: Map.get(payload, "message"),
+      created_at: Map.get(payload, "created_at")
+    }
+
+    # Send rally point notification directly - always returns :ok immediately
+    WandererNotifier.DiscordNotifier.send_rally_point_async(rally_point)
+    # Changed from info to debug since this logs before the async operation completes
+    Logger.debug("Rally point notification queued")
+    :ok
+  end
+
+  defp process_rally_point_payload(payload) do
+    required_fields = ["solar_system_id", "system_name"]
+    missing = Enum.filter(required_fields, &(Map.get(payload, &1) == nil))
+
+    Logger.warning("Rally point payload missing required fields",
+      missing_fields: missing,
+      payload: inspect(payload),
+      category: :rally
+    )
+
+    {:error, :missing_required_fields}
   end
 
   # Special event handlers

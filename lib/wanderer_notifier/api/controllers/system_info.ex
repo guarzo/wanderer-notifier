@@ -278,15 +278,12 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp calculate_processing_efficiency(_, _), do: 0.0
 
-  defp get_last_activity_time(stats) do
-    # Use killmail_activity which is already tracked by Metrics.record_killmail_received/1
-    killmail_activity = stats[:killmail_activity] || %{}
+  defp get_last_activity_time(%{killmail_activity: %{last_received_at: nil}}), do: "never"
 
-    case killmail_activity[:last_received_at] do
-      nil -> "never"
-      dt -> TimeUtils.format_time_ago(dt)
-    end
-  end
+  defp get_last_activity_time(%{killmail_activity: %{last_received_at: dt}}),
+    do: TimeUtils.format_time_ago(dt)
+
+  defp get_last_activity_time(_stats), do: "never"
 
   defp extract_killmail_activity do
     activity = WandererNotifier.Shared.Metrics.get_killmail_activity()

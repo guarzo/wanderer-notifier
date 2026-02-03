@@ -128,8 +128,13 @@ defmodule WandererNotifier.Infrastructure.Http do
     final_headers = apply_auth_headers(headers, final_opts)
 
     # Encode body if needed
-    encoded_body = encode_body(body, final_headers)
+    case encode_body(body, final_headers) do
+      {:error, reason} -> {:error, reason}
+      encoded_body -> execute_request(method, url, encoded_body, final_headers, final_opts)
+    end
+  end
 
+  defp execute_request(method, url, encoded_body, final_headers, final_opts) do
     # Check if using mock client - if so, call directly without middleware
     # This preserves test isolation and simplifies mock setup
     client = http_client()
@@ -141,27 +146,31 @@ defmodule WandererNotifier.Infrastructure.Http do
       client.request(method, url, encoded_body, merged_headers, final_opts)
     else
       # Production path - prepare body and go through middleware chain
-      case prepare_body(encoded_body) do
-        {:ok, prepared_body} ->
-          merged_headers = merge_headers(final_headers, method)
-          middlewares = resolve_middlewares(final_opts)
+      execute_with_middleware(method, url, encoded_body, final_headers, final_opts)
+    end
+  end
 
-          # Create request struct for middleware chain
-          request = %{
-            method: method,
-            url: url,
-            headers: merged_headers,
-            body: prepared_body,
-            opts: final_opts
-          }
+  defp execute_with_middleware(method, url, encoded_body, final_headers, final_opts) do
+    case prepare_body(encoded_body) do
+      {:ok, prepared_body} ->
+        merged_headers = merge_headers(final_headers, method)
+        middlewares = resolve_middlewares(final_opts)
 
-          # Execute middleware chain
-          execute_middleware_chain(request, middlewares)
-          |> transform_response()
+        # Create request struct for middleware chain
+        request = %{
+          method: method,
+          url: url,
+          headers: merged_headers,
+          body: prepared_body,
+          opts: final_opts
+        }
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+        # Execute middleware chain
+        execute_middleware_chain(request, middlewares)
+        |> transform_response()
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -474,7 +483,7 @@ defmodule WandererNotifier.Infrastructure.Http do
     if has_json_content_type?(headers) do
       case Jason.encode(body) do
         {:ok, encoded} -> encoded
-        {:error, _reason} -> body
+        {:error, reason} -> {:error, {:json_encode_failed, reason}}
       end
     else
       body

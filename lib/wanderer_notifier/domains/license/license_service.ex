@@ -84,8 +84,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   """
   def validate do
     with {:ok, result} <- safe_validate_call(),
-         true <- LicenseValidator.valid_result?(result) do
-      result
+         {:ok, validated_result} <- LicenseValidator.valid_result?(result) do
+      validated_result
     else
       {:error, :timeout} ->
         Logger.error("License validation timed out", category: :config)
@@ -99,7 +99,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
           "License validation error: #{inspect(e)}"
         )
 
-      {:unexpected, result} ->
+      {:error, {:unexpected, result}} ->
         Logger.error("Unexpected result from license validation: #{inspect(result)}",
           category: :config
         )
@@ -449,6 +449,11 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       category: :config
     )
 
+    notification_counts =
+      Map.get(state, :notification_counts) || %{system: 0, character: 0, killmail: 0}
+
+    backoff_multiplier = Map.get(state, :backoff_multiplier) || 1
+
     error_state = %State{
       valid: false,
       bot_assigned: false,
@@ -456,7 +461,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       error_message: "License validation error: #{inspect(reason)}",
       details: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: state.notification_counts
+      notification_counts: notification_counts,
+      backoff_multiplier: backoff_multiplier
     }
 
     {:reply, error_state, error_state}

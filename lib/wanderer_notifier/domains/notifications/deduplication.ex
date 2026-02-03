@@ -19,13 +19,22 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
     identifier = to_string(id)
 
     case CacheDedup.check_and_mark(dedup_type, identifier) do
-      :new ->
+      {:ok, :new} ->
         Logger.debug("New notification marked", type: type, id: id)
         {:ok, :new}
 
-      :duplicate ->
+      {:ok, :duplicate} ->
         Logger.debug("Duplicate notification detected", type: type, id: id)
         {:ok, :duplicate}
+
+      {:error, reason} ->
+        Logger.error("Deduplication check failed",
+          type: type,
+          id: id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
@@ -43,9 +52,20 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
     identifier = to_string(id)
     key = build_dedup_key(dedup_type, identifier)
 
-    {:ok, :deleted} = WandererNotifier.Infrastructure.Cache.delete(key)
-    Logger.debug("Cleared deduplication key", type: type, id: id)
-    {:ok, :cleared}
+    case WandererNotifier.Infrastructure.Cache.delete(key) do
+      {:ok, :deleted} ->
+        Logger.debug("Cleared deduplication key", type: type, id: id)
+        {:ok, :cleared}
+
+      {:error, reason} ->
+        Logger.error("Failed to clear deduplication key",
+          type: type,
+          id: id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
   end
 
   def clear_key(type, _id), do: {:error, {:invalid_notification_type, type}}

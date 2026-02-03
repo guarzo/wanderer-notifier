@@ -343,6 +343,27 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     end
   end
 
+  def handle_info({:retry_pipeline_send, killmail, max_attempts, attempt}, state) do
+    case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
+      nil ->
+        # Still not available, schedule another retry
+        schedule_pipeline_retry(killmail, max_attempts, attempt)
+        {:ok, state}
+
+      pid ->
+        killmail_id = Map.get(killmail, "killmail_id", "unknown")
+
+        Logger.debug("PipelineWorker now available, sending killmail",
+          killmail_id: killmail_id,
+          attempt: attempt,
+          category: :processor
+        )
+
+        send(pid, {:websocket_killmail, killmail})
+        {:ok, state}
+    end
+  end
+
   defp log_heartbeat_uptime(state) do
     uptime = calculate_connection_uptime(state)
 
@@ -765,11 +786,20 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp transform_attackers(_), do: []
 
   defp send_to_pipeline(killmail, _state) do
-    # Send to the registered PipelineWorker process with retry mechanism
-    send_to_pipeline_with_retry(killmail, _max_attempts = 3, _attempt = 1)
+    # Send to the registered PipelineWorker process with non-blocking retry mechanism
+    case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
+      nil ->
+        # Schedule async retry - don't block the WebSocket receive loop
+        schedule_pipeline_retry(killmail, _max_attempts = 3, _attempt = 1)
+        :ok
+
+      pid ->
+        send(pid, {:websocket_killmail, killmail})
+        :ok
+    end
   end
 
-  defp send_to_pipeline_with_retry(killmail, max_attempts, attempt) when attempt > max_attempts do
+  defp schedule_pipeline_retry(killmail, max_attempts, attempt) when attempt > max_attempts do
     killmail_id = Map.get(killmail, "killmail_id", "unknown")
 
     Logger.error("PipelineWorker not available after #{max_attempts} attempts, killmail dropped",
@@ -777,31 +807,26 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
       attempts: max_attempts,
       category: :processor
     )
-
-    {:error, :pipeline_worker_unavailable}
   end
 
-  defp send_to_pipeline_with_retry(killmail, max_attempts, attempt) do
-    case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
-      nil ->
-        killmail_id = Map.get(killmail, "killmail_id", "unknown")
-        # Exponential backoff: 100ms, 200ms, 400ms
-        delay = (100 * :math.pow(2, attempt - 1)) |> round()
+  defp schedule_pipeline_retry(killmail, max_attempts, attempt) do
+    killmail_id = Map.get(killmail, "killmail_id", "unknown")
+    # Exponential backoff: 100ms, 200ms, 400ms
+    delay = (100 * :math.pow(2, attempt - 1)) |> round()
 
-        Logger.warning("PipelineWorker not found, retrying in #{delay}ms",
-          killmail_id: killmail_id,
-          attempt: attempt,
-          max_attempts: max_attempts,
-          category: :processor
-        )
+    Logger.warning("PipelineWorker not found, scheduling retry in #{delay}ms",
+      killmail_id: killmail_id,
+      attempt: attempt,
+      max_attempts: max_attempts,
+      category: :processor
+    )
 
-        Process.sleep(delay)
-        send_to_pipeline_with_retry(killmail, max_attempts, attempt + 1)
-
-      pid ->
-        send(pid, {:websocket_killmail, killmail})
-        :ok
-    end
+    # Use Process.send_after to schedule a non-blocking retry
+    Process.send_after(
+      self(),
+      {:retry_pipeline_send, killmail, max_attempts, attempt + 1},
+      delay
+    )
   end
 
   # Get tracked systems from MapTrackingClient directly
@@ -933,8 +958,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     alias WandererNotifier.Infrastructure.Cache.Deduplication
 
     case Deduplication.check_and_mark(:websocket, to_string(killmail_id)) do
-      :new -> true
-      :duplicate -> false
+      {:ok, :new} -> true
+      {:ok, :duplicate} -> false
+      {:error, _reason} -> true
     end
   end
 

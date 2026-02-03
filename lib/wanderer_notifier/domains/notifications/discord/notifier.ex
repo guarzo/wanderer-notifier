@@ -117,18 +117,31 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   """
   def send_kill_notification(kill_data) do
     ErrorHandler.safe_execute(
-      fn ->
-        if LicenseLimiter.should_send_rich?(:killmail) do
-          killmail = ensure_killmail_struct(kill_data)
-          send_rich_kill_notification(killmail)
-          LicenseLimiter.increment(:killmail)
-        else
-          channel_id = Config.discord_channel_id()
-          send_simple_kill_notification(kill_data, channel_id)
-        end
-      end,
+      fn -> do_send_kill_notification(kill_data) end,
       context: %{operation: :send_kill_notification, category: :processor}
     )
+  end
+
+  defp do_send_kill_notification(kill_data) do
+    if LicenseLimiter.should_send_rich?(:killmail) do
+      kill_data
+      |> ensure_killmail_struct()
+      |> send_rich_kill_with_increment()
+    else
+      channel_id = Config.discord_channel_id()
+      send_simple_kill_notification(kill_data, channel_id)
+    end
+  end
+
+  defp send_rich_kill_with_increment(killmail) do
+    case send_rich_kill_notification(killmail) do
+      {:ok, :sent} ->
+        LicenseLimiter.increment(:killmail)
+        {:ok, :sent}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -400,7 +413,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
           end
 
         case result do
-          {:ok, :sent} -> :ok
+          {:ok, :sent} -> {:ok, :sent}
           {:error, reason} -> {:error, reason}
         end
 
@@ -424,7 +437,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     message = NotificationFormatter.format_plain_text(kill_data)
 
     case NeoClient.send_message(message, channel_id) do
-      {:ok, :sent} -> :ok
+      {:ok, :sent} -> {:ok, :sent}
       {:error, reason} -> {:error, reason}
     end
   end

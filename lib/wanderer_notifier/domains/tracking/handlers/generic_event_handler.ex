@@ -192,6 +192,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts)
   end
 
+  # Dialyzer reports this clause as unreachable because current Cache implementation
+  # only returns :not_found errors. Added for defensive programming against future changes.
+  @dialyzer {:nowarn_function, do_update_in_cache: 7}
+  defp do_update_in_cache(
+         {:error, reason},
+         _entity_type,
+         _key,
+         _entity,
+         _entity_identifier,
+         _match_fn,
+         _opts
+       ) do
+    {:error, reason}
+  end
+
   defp maybe_add_entity(list, entity, entity_identifier, false = _matched, true = _add_if_missing)
        when entity_identifier != nil do
     [entity | list]
@@ -231,14 +246,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   - `entity` - The full entity data for context
 
   ## Returns
-  - `true` if notification should be sent
-  - `false` otherwise
+  - `{:ok, true}` if notification should be sent
+  - `{:ok, false}` otherwise
   """
-  @spec should_notify?(entity_type(), term(), map() | struct()) :: boolean()
-  def should_notify?(_entity_type, nil, _entity), do: false
+  @spec should_notify?(entity_type(), term(), map() | struct()) ::
+          {:ok, boolean()} | {:error, term()}
+  def should_notify?(_entity_type, nil, _entity), do: {:ok, false}
 
   def should_notify?(entity_type, entity_identifier, entity) do
-    Determiner.should_notify?(entity_type, entity_identifier, entity)
+    {:ok, Determiner.should_notify?(entity_type, entity_identifier, entity)}
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

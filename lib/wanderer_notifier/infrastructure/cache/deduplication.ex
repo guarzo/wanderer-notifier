@@ -84,18 +84,19 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
 
   @doc """
   Checks and marks in a single atomic operation using Cachex.transaction.
-  Returns :new if this is a new item, :duplicate if already seen.
+  Returns {:ok, :new} if this is a new item, {:ok, :duplicate} if already seen,
+  or {:error, reason} on failure.
 
   Uses Cachex.transaction/3 to ensure atomicity, preventing TOCTOU race conditions.
 
   ## Examples
       iex> Deduplication.check_and_mark(:killmail, "12345")
-      :new
+      {:ok, :new}
 
       iex> Deduplication.check_and_mark(:killmail, "12345")
-      :duplicate
+      {:ok, :duplicate}
   """
-  @spec check_and_mark(dedup_type(), String.t()) :: dedup_result()
+  @spec check_and_mark(dedup_type(), String.t()) :: {:ok, dedup_result()} | {:error, term()}
   def check_and_mark(type, identifier) when is_atom(type) and is_binary(identifier) do
     key = build_dedup_key(type, identifier)
     ttl = get_ttl_for_type(type)
@@ -134,14 +135,15 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
       ttl_seconds: div(ttl, 1000)
     )
 
-    :new
+    {:ok, :new}
   end
 
-  defp handle_check_and_mark_result({:ok, :duplicate}, _type, _identifier, _ttl), do: :duplicate
+  defp handle_check_and_mark_result({:ok, :duplicate}, _type, _identifier, _ttl),
+    do: {:ok, :duplicate}
 
-  defp handle_check_and_mark_result({:error, _reason}, _type, _identifier, _ttl) do
-    # Transaction failed, err on the side of caution
-    :duplicate
+  defp handle_check_and_mark_result({:error, reason}, _type, _identifier, _ttl) do
+    # Transaction failed, propagate the error
+    {:error, reason}
   end
 
   @doc """
@@ -169,7 +171,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
       deletion_results =
         keys_to_delete
         |> Enum.map(&Cache.delete/1)
-        |> Enum.all?(&match?(:ok, &1))
+        |> Enum.all?(&match?({:ok, _}, &1))
 
       if deletion_results do
         Logger.info("Successfully cleared #{length(keys_to_delete)} duplicates for type #{type}",

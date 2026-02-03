@@ -91,7 +91,7 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
 
   def delete(key) do
     Process.delete({:cache, key})
-    :ok
+    {:ok, :deleted}
   end
 
   def clear do

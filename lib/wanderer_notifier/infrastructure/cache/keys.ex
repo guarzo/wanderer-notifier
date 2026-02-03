@@ -147,7 +147,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
 
   @doc "Generates cache key for status report data."
   @spec status_report(integer() | String.t()) :: String.t()
-  def status_report(minute), do: "status_report:#{minute}"
+  def status_report(minute), do: "status:report:#{minute}"
 
   # ============================================================================
   # Janice appraisal keys
