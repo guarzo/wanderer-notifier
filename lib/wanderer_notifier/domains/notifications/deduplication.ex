@@ -50,9 +50,8 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   def clear_key(type, id) when type in [:kill, :system, :character, :rally_point] do
     dedup_type = map_to_dedup_type(type)
     identifier = to_string(id)
-    key = build_dedup_key(dedup_type, identifier)
 
-    case WandererNotifier.Infrastructure.Cache.delete(key) do
+    case CacheDedup.delete(dedup_type, identifier) do
       {:ok, :deleted} ->
         Logger.debug("Cleared deduplication key", type: type, id: id)
         {:ok, :cleared}
@@ -69,18 +68,6 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
   end
 
   def clear_key(type, _id), do: {:error, {:invalid_notification_type, type}}
-
-  defp build_dedup_key(:notification_kill, identifier),
-    do: "notification:dedup:kill:#{identifier}"
-
-  defp build_dedup_key(:notification_system, identifier),
-    do: "notification:dedup:system:#{identifier}"
-
-  defp build_dedup_key(:notification_character, identifier),
-    do: "notification:dedup:character:#{identifier}"
-
-  defp build_dedup_key(:notification_rally, identifier),
-    do: "notification:dedup:rally:#{identifier}"
 
   # Private
 

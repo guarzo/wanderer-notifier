@@ -218,15 +218,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
 
   defp maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts)
        when entity_identifier != nil do
-    if Keyword.get(opts, :add_if_missing, true) do
-      put_cache(entity_type, key, [entity], opts)
-    end
+    case Keyword.get(opts, :add_if_missing, true) do
+      true ->
+        put_cache(entity_type, key, [entity], opts)
+        {:ok, :added}
 
-    {:ok, :added}
+      false ->
+        {:ok, :skipped}
+    end
   end
 
   defp maybe_add_new_entity(_entity_type, _key, _entity, _entity_identifier, _opts) do
-    {:ok, :added}
+    {:ok, :skipped}
   end
 
   defp determine_update_result(true, _was_added), do: {:ok, :updated}
@@ -254,7 +257,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   def should_notify?(_entity_type, nil, _entity), do: {:ok, false}
 
   def should_notify?(entity_type, entity_identifier, entity) do
-    {:ok, Determiner.should_notify?(entity_type, entity_identifier, entity)}
+    Determiner.should_notify?(entity_type, entity_identifier, entity)
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

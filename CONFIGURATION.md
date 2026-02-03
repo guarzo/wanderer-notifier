@@ -86,8 +86,8 @@ Toggle specific features on or off.
 | `RALLY_NOTIFICATIONS_ENABLED` | Enable rally point notifications | `true` |
 | `STATUS_MESSAGES_ENABLED` | Enable startup/status messages | `false` |
 | `TRACK_KSPACE_ENABLED` | Track K-Space systems | `true` |
-| `PRIORITY_SYSTEMS_ONLY` | Only notify for priority systems | `false` |
-| `WORMHOLE_ONLY_KILL_NOTIFICATIONS` | Only notify for wormhole kills | `false` |
+| `PRIORITY_SYSTEMS_ONLY_ENABLED` | Only notify for priority systems | `false` |
+| `WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED` | Only notify for wormhole kills | `false` |
 | `NOTABLE_ITEMS_ENABLED` | Enable notable item detection | `false` |
 
 ---

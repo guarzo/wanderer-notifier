@@ -560,4 +560,36 @@ defmodule WandererNotifier.Infrastructure.Cache do
       {:error, _} -> 0
     end
   end
+
+  # ============================================================================
+  # Transaction Support
+  # ============================================================================
+
+  @doc """
+  Executes a function within a transactional context for atomic operations.
+
+  Wraps Cachex.transaction/3 to ensure atomic read-modify-write operations.
+
+  ## Examples
+      iex> Cache.transaction(["key1", "key2"], fn -> :some_operation end)
+      {:ok, :some_operation}
+  """
+  @spec transaction([cache_key()], (-> term())) :: {:ok, term()} | {:error, term()}
+  def transaction(keys, fun) when is_list(keys) and is_function(fun, 0) do
+    Cachex.transaction(cache_name(), keys, fun)
+  end
+
+  @doc """
+  Streams all keys from the cache.
+
+  Wraps Cachex.stream!/2 with of: :key option.
+
+  ## Examples
+      iex> Cache.stream_keys() |> Enum.take(5)
+      ["key1", "key2", "key3", "key4", "key5"]
+  """
+  @spec stream_keys() :: Enumerable.t()
+  def stream_keys do
+    Cachex.stream!(cache_name(), of: :key)
+  end
 end

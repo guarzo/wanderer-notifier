@@ -124,24 +124,32 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     GenericEventHandler.update_in_cache_list(:character, character, match_fn)
   end
 
-  defp build_character_match_fn(character) do
-    eve_id = character["eve_id"]
-    name = character["name"]
-    id = character["id"]
+  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_integer(eve_id) do
+    fn cached -> cached["eve_id"] == eve_id end
+  end
 
-    cond do
-      eve_id ->
-        fn cached -> cached["eve_id"] == eve_id end
+  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_binary(eve_id) and eve_id != "" do
+    fn cached -> cached["eve_id"] == eve_id end
+  end
 
-      name || id ->
-        fn cached ->
-          (name && cached["name"] == name) || (id && cached["id"] == id)
-        end
-
-      true ->
-        # All identifiers are nil - no match possible
-        fn _cached -> false end
+  defp build_character_match_fn(%{"name" => name, "id" => id})
+       when is_binary(name) and name != "" and id != nil do
+    fn cached ->
+      cached["name"] == name or cached["id"] == id
     end
+  end
+
+  defp build_character_match_fn(%{"name" => name}) when is_binary(name) and name != "" do
+    fn cached -> cached["name"] == name end
+  end
+
+  defp build_character_match_fn(%{"id" => id}) when id != nil do
+    fn cached -> cached["id"] == id end
+  end
+
+  defp build_character_match_fn(_character) do
+    # All identifiers are nil - no match possible
+    fn _cached -> false end
   end
 
   # ══════════════════════════════════════════════════════════════════════════════

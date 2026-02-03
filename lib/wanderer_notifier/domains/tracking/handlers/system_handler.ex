@@ -147,16 +147,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp cache_individual_system(system, payload) do
     system_id = to_string(system.solar_system_id)
-    Cache.put_tracked_system(system_id, payload)
 
-    Logger.debug("Cached individual system data",
-      system_id: system_id,
-      has_custom_name: Map.has_key?(payload, "custom_name"),
-      custom_name: Map.get(payload, "custom_name"),
-      category: :cache
-    )
+    case Cache.put_tracked_system(system_id, payload) do
+      :ok ->
+        Logger.debug("Cached individual system data",
+          system_id: system_id,
+          has_custom_name: Map.has_key?(payload, "custom_name"),
+          custom_name: Map.get(payload, "custom_name"),
+          category: :cache
+        )
 
-    :ok
+        {:ok, :cached}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp remove_system_from_cache(payload) do
@@ -169,7 +174,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       category: :cache
     )
 
-    GenericEventHandler.remove_from_cache_list(:system, payload)
+    # GenericEventHandler.remove_from_cache_list/2 always returns {:ok, _}
+    {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload)
 
     # Also remove individual system cache entry
     if system_id do
@@ -179,7 +185,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       |> Cache.delete()
     end
 
-    :ok
+    {:ok, :removed}
   end
 
   defp system_matches?(%System{solar_system_id: sid}, system_id), do: sid == system_id

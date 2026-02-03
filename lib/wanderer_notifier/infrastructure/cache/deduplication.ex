@@ -100,31 +100,35 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   def check_and_mark(type, identifier) when is_atom(type) and is_binary(identifier) do
     key = build_dedup_key(type, identifier)
     ttl = get_ttl_for_type(type)
-    cache_name = Cache.cache_name()
 
-    # Use Cachex.transaction for atomic check-and-mark operation
+    # Use Cache.transaction for atomic check-and-mark operation
     result =
-      Cachex.transaction(cache_name, [key], fn ->
-        do_atomic_check_and_mark(cache_name, key, ttl)
+      Cache.transaction([key], fn ->
+        do_atomic_check_and_mark(key, ttl)
       end)
 
     handle_check_and_mark_result(result, type, identifier, ttl)
   end
 
-  defp do_atomic_check_and_mark(cache_name, key, ttl) do
-    case Cachex.get(cache_name, key) do
-      {:ok, nil} ->
+  # Dialyzer reports the catch-all error clause as unreachable because current Cache
+  # implementation only returns :not_found errors. Added for defensive programming.
+  @dialyzer {:nowarn_function, do_atomic_check_and_mark: 2}
+  defp do_atomic_check_and_mark(key, ttl) do
+    case Cache.get(key) do
+      {:error, :not_found} ->
         # Not a duplicate, mark as processed
-        Cachex.put(cache_name, key, %{processed_at: DateTime.utc_now()}, ttl: ttl)
-        :new
+        case Cache.put(key, %{processed_at: DateTime.utc_now()}, ttl) do
+          :ok -> :new
+          {:error, reason} -> {:error, reason}
+        end
 
       {:ok, _value} ->
         # Already exists, it's a duplicate
         :duplicate
 
-      {:error, _} ->
-        # Error reading, treat as duplicate to be safe
-        :duplicate
+      {:error, reason} ->
+        # Propagate error
+        {:error, reason}
     end
   end
 
@@ -141,9 +145,27 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   defp handle_check_and_mark_result({:ok, :duplicate}, _type, _identifier, _ttl),
     do: {:ok, :duplicate}
 
+  defp handle_check_and_mark_result({:ok, {:error, reason}}, _type, _identifier, _ttl) do
+    # Error from within transaction, propagate
+    {:error, reason}
+  end
+
   defp handle_check_and_mark_result({:error, reason}, _type, _identifier, _ttl) do
     # Transaction failed, propagate the error
     {:error, reason}
+  end
+
+  @doc """
+  Deletes a specific deduplication key from the cache.
+
+  ## Examples
+      iex> Deduplication.delete(:killmail, "12345")
+      {:ok, :deleted}
+  """
+  @spec delete(dedup_type(), String.t()) :: {:ok, :deleted} | {:error, term()}
+  def delete(type, identifier) when is_atom(type) and is_binary(identifier) do
+    key = build_dedup_key(type, identifier)
+    Cache.delete(key)
   end
 
   @doc """
@@ -162,8 +184,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
     try do
       # Stream all keys from the cache and filter by prefix
       keys_to_delete =
-        Cache.cache_name()
-        |> Cachex.stream!(of: :key)
+        Cache.stream_keys()
         |> Stream.filter(&String.starts_with?(&1, prefix))
         |> Enum.to_list()
 

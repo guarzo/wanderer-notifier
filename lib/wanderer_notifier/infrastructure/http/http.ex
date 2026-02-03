@@ -223,7 +223,7 @@ defmodule WandererNotifier.Infrastructure.Http do
 
   defp sanitize_headers(headers) do
     Enum.map(headers, fn {k, v} ->
-      if k == "authorization", do: {k, "[REDACTED]"}, else: {k, v}
+      if String.downcase(k) == "authorization", do: {k, "[REDACTED]"}, else: {k, v}
     end)
   end
 

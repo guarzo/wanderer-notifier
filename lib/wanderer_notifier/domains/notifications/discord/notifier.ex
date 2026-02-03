@@ -29,7 +29,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     NotificationUtils
   }
 
-  alias WandererNotifier.Domains.Notifications.LicenseLimiter
+  alias WandererNotifier.Domains.Notifications.{Determiner, LicenseLimiter}
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.ErrorHandler
 
@@ -123,15 +123,50 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp do_send_kill_notification(kill_data) do
-    if LicenseLimiter.should_send_rich?(:killmail) do
-      kill_data
-      |> ensure_killmail_struct()
-      |> send_rich_kill_with_increment()
-    else
-      channel_id = Config.discord_channel_id()
-      send_simple_kill_notification(kill_data, channel_id)
+    # Check startup suppression via Determiner before sending any notification
+    killmail_id = get_killmail_id(kill_data)
+
+    case Determiner.should_notify?(:kill, killmail_id, kill_data) do
+      {:ok, false} ->
+        Logger.debug("Kill notification suppressed",
+          killmail_id: killmail_id,
+          category: :notification
+        )
+
+        {:ok, :suppressed}
+
+      {:ok, true} ->
+        do_send_kill_notification_impl(kill_data)
+
+      {:error, reason} ->
+        Logger.warning("Kill notification check failed",
+          killmail_id: killmail_id,
+          reason: inspect(reason),
+          category: :notification
+        )
+
+        # Proceed anyway if check fails
+        do_send_kill_notification_impl(kill_data)
     end
   end
+
+  defp do_send_kill_notification_impl(kill_data) do
+    case LicenseLimiter.should_send_rich?(:killmail) do
+      true ->
+        kill_data
+        |> ensure_killmail_struct()
+        |> send_rich_kill_with_increment()
+
+      false ->
+        channel_id = ChannelResolver.resolve_channel(:kill)
+        send_simple_kill_notification(kill_data, channel_id)
+    end
+  end
+
+  defp get_killmail_id(%Killmail{killmail_id: id}), do: id
+  defp get_killmail_id(%{killmail_id: id}), do: id
+  defp get_killmail_id(%{"killmail_id" => id}), do: id
+  defp get_killmail_id(_), do: nil
 
   defp send_rich_kill_with_increment(killmail) do
     case send_rich_kill_notification(killmail) do
@@ -154,15 +189,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_tracked_character_notification(character) do
     ErrorHandler.safe_execute(
       fn ->
-        send_character_notification_impl(character)
+        case send_character_notification_impl(character) do
+          {:ok, _} ->
+            WandererNotifier.Shared.Metrics.increment(:characters)
 
-        WandererNotifier.Shared.Metrics.increment(:characters)
+            Logger.info("Character #{character.name} (#{character.character_id}) notified",
+              category: :processor
+            )
 
-        Logger.info("Character #{character.name} (#{character.character_id}) notified",
-          category: :processor
-        )
+            {:ok, :sent}
 
-        {:ok, :sent}
+          {:error, _} = error ->
+            error
+        end
       end,
       context: %{
         operation: :send_new_tracked_character_notification,
@@ -217,15 +256,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_system_notification(system) do
     ErrorHandler.safe_execute(
       fn ->
-        send_system_notification_impl(system)
+        case send_system_notification_impl(system) do
+          {:ok, _} ->
+            WandererNotifier.Shared.Metrics.increment(:systems)
 
-        WandererNotifier.Shared.Metrics.increment(:systems)
+            Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
+              category: :processor
+            )
 
-        Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
-          category: :processor
-        )
+            {:ok, :sent}
 
-        {:ok, :sent}
+          {:error, _} = error ->
+            error
+        end
       end,
       context: %{
         operation: :send_new_system_notification,
@@ -424,14 +467,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   end
 
   defp maybe_add_components(notification, killmail_id) do
-    if Config.features()[:discord_components] do
-      Map.put(notification, :components, [
-        ComponentBuilder.kill_action_row(killmail_id)
-      ])
-    else
-      notification
-    end
+    do_add_components(notification, killmail_id, FeatureFlags.components_enabled?())
   end
+
+  defp do_add_components(notification, killmail_id, true) do
+    Map.put(notification, :components, [
+      ComponentBuilder.kill_action_row(killmail_id)
+    ])
+  end
+
+  defp do_add_components(notification, _killmail_id, false), do: notification
 
   defp send_simple_kill_notification(kill_data, channel_id) do
     message = NotificationFormatter.format_plain_text(kill_data)

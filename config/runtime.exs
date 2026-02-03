@@ -210,9 +210,10 @@ config :wanderer_notifier,
     RuntimeConfig.get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true),
   rally_notifications_enabled: RuntimeConfig.get_boolean("RALLY_NOTIFICATIONS_ENABLED", true),
   status_messages_enabled: RuntimeConfig.get_boolean("STATUS_MESSAGES_ENABLED", false),
-  priority_systems_only: RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY", false),
-  wormhole_only_kill_notifications:
-    RuntimeConfig.get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false),
+  priority_systems_only_enabled:
+    RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY_ENABLED", false),
+  wormhole_only_kill_notifications_enabled:
+    RuntimeConfig.get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED", false),
 
   # Lists
   character_exclude_list:

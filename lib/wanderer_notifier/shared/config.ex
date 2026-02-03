@@ -87,12 +87,12 @@ defmodule WandererNotifier.Shared.Config do
   def track_kspace_enabled?, do: get_boolean("TRACK_KSPACE_ENABLED", true)
 
   @doc "Check if only priority systems should be notified"
-  def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
+  def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY_ENABLED", false)
 
   @doc "Check if kill notifications should only be sent for wormhole systems"
   def wormhole_only_kill_notifications? do
-    case Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications) do
-      nil -> get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false)
+    case Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications_enabled) do
+      nil -> get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED", false)
       value -> value
     end
   end

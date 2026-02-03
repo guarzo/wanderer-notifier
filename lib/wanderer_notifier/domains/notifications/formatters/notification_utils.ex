@@ -309,21 +309,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   - >= 10M ISK: Green (0x00FF00) - Low value
   - < 10M ISK: Gray (0x808080) - Very low value
   """
-  def get_isk_color(value) when is_number(value) do
-    cond do
-      # Red for very high value
-      value >= 5_000_000_000 -> 0xFF0000
-      # Orange for high value
-      value >= 1_000_000_000 -> 0xFF6600
-      # Yellow for medium value
-      value >= 100_000_000 -> 0xFFFF00
-      # Green for low value
-      value >= 10_000_000 -> 0x00FF00
-      # Gray for very low value
-      true -> 0x808080
-    end
-  end
-
+  # Red for very high value (>= 5B)
+  def get_isk_color(value) when is_number(value) and value >= 5_000_000_000, do: 0xFF0000
+  # Orange for high value (>= 1B)
+  def get_isk_color(value) when is_number(value) and value >= 1_000_000_000, do: 0xFF6600
+  # Yellow for medium value (>= 100M)
+  def get_isk_color(value) when is_number(value) and value >= 100_000_000, do: 0xFFFF00
+  # Green for low value (>= 10M)
+  def get_isk_color(value) when is_number(value) and value >= 10_000_000, do: 0x00FF00
+  # Gray for very low value (< 10M)
+  def get_isk_color(value) when is_number(value), do: 0x808080
+  # Gray for non-numbers
   def get_isk_color(_), do: 0x808080
 
   @doc """
@@ -436,23 +432,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   """
   def format_timestamp_with_context(datetime) when is_struct(datetime, DateTime) do
     relative_time = TimeUtils.format_relative_time(datetime)
-
-    # For very recent kills (< 1 hour), show relative time
-    # For older kills, show absolute time with EVE context
-    cond do
-      relative_time == "just now" ->
-        relative_time
-
-      String.contains?(relative_time, "seconds ago") or
-          String.contains?(relative_time, "minutes ago") ->
-        relative_time
-
-      String.contains?(relative_time, "hour") ->
-        "#{relative_time} (#{format_eve_time(datetime)})"
-
-      true ->
-        format_absolute_eve_time(datetime)
-    end
+    format_relative_with_context(relative_time, datetime)
   end
 
   def format_timestamp_with_context(timestamp) when is_binary(timestamp) do
@@ -463,6 +443,25 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   end
 
   def format_timestamp_with_context(_), do: "Recently"
+
+  # Pattern-matched helper for relative time formatting
+  defp format_relative_with_context("just now", _datetime), do: "just now"
+
+  defp format_relative_with_context(relative_time, datetime) do
+    cond do
+      String.contains?(relative_time, "seconds ago") ->
+        relative_time
+
+      String.contains?(relative_time, "minutes ago") ->
+        relative_time
+
+      String.contains?(relative_time, "hour") ->
+        "#{relative_time} (#{format_eve_time(datetime)})"
+
+      true ->
+        format_absolute_eve_time(datetime)
+    end
+  end
 
   @doc """
   Formats time with EVE context for recent events.
@@ -486,10 +485,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   def format_absolute_eve_time(datetime) when is_struct(datetime, DateTime) do
     now = TimeUtils.now()
 
-    if same_date?(datetime, now) do
-      "#{format_12_hour_time(datetime)} EVE today"
-    else
-      "#{Calendar.strftime(datetime, "%b %d")} at #{format_12_hour_time(datetime)} EVE"
+    case same_date?(datetime, now) do
+      true -> "#{format_12_hour_time(datetime)} EVE today"
+      false -> "#{Calendar.strftime(datetime, "%b %d")} at #{format_12_hour_time(datetime)} EVE"
     end
   end
 

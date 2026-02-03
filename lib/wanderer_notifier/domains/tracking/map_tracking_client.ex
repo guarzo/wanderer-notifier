@@ -117,25 +117,16 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
   @spec is_character_tracked?(String.t() | integer()) :: {:ok, boolean()}
   def is_character_tracked?(character_id) when is_binary(character_id) do
-    # First try O(1) lookup from individual cache
-    character_id_int = String.to_integer(character_id)
+    case Integer.parse(character_id) do
+      {character_id_int, ""} ->
+        check_character_tracked_by_id(character_id_int, character_id)
 
-    case Cache.is_character_tracked?(character_id_int) do
-      true ->
-        {:ok, true}
+      _ ->
+        Logger.warning("Invalid character_id, expected numeric string",
+          character_id: character_id
+        )
 
-      false ->
-        # Fallback to list lookup for backward compatibility or if individual cache is not populated
-        case Cache.get(Cache.Keys.map_characters()) do
-          {:ok, characters} when is_list(characters) ->
-            check_character_in_list(characters, character_id)
-
-          {:ok, _} ->
-            {:ok, false}
-
-          {:error, :not_found} ->
-            {:ok, false}
-        end
+        {:ok, false}
     end
   end
 
@@ -148,6 +139,29 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
       false ->
         # Fallback to string version
         is_character_tracked?(Integer.to_string(character_id))
+    end
+  end
+
+  defp check_character_tracked_by_id(character_id_int, character_id_str) do
+    case Cache.is_character_tracked?(character_id_int) do
+      true ->
+        {:ok, true}
+
+      false ->
+        check_character_in_cached_list(character_id_str)
+    end
+  end
+
+  defp check_character_in_cached_list(character_id) do
+    case Cache.get(Cache.Keys.map_characters()) do
+      {:ok, characters} when is_list(characters) ->
+        check_character_in_list(characters, character_id)
+
+      {:ok, _} ->
+        {:ok, false}
+
+      {:error, :not_found} ->
+        {:ok, false}
     end
   end
 
@@ -200,7 +214,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Checks if a system is tracked.
   Always returns {:ok, boolean()} - handles cache errors gracefully.
   """
-  @spec is_system_tracked?(String.t()) :: {:ok, boolean()}
+  @spec is_system_tracked?(String.t() | integer()) :: {:ok, boolean()}
   def is_system_tracked?(system_id) when is_binary(system_id) do
     # First try O(1) lookup from individual cache
     case Cache.is_system_tracked?(system_id) do
@@ -212,7 +226,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
         case Cache.get(Cache.Keys.map_systems()) do
           {:ok, systems} when is_list(systems) -> check_system_in_list(systems, system_id)
           {:ok, _} -> {:ok, false}
-          {:error, :not_found} -> {:ok, false}
+          {:error, _reason} -> {:ok, false}
         end
     end
   end
@@ -421,8 +435,23 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     else
       character_id = character["eve_id"]
 
-      if character_id && Determiner.should_notify?(:character, character_id, character) do
-        WandererNotifier.DiscordNotifier.send_character_async(character)
+      case character_id && Determiner.should_notify?(:character, character_id, character) do
+        {:ok, true} ->
+          WandererNotifier.DiscordNotifier.send_character_async(character)
+
+        {:ok, false} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Character notification check failed",
+            character_id: character_id,
+            reason: inspect(reason),
+            category: :notifications
+          )
+
+        # character_id is nil/false
+        _ ->
+          :ok
       end
 
       :ok
@@ -440,13 +469,28 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     else
       system_id = system["solar_system_id"]
 
-      if system_id && Determiner.should_notify?(:system, system_id, system) do
-        # Create System struct and enrich it before sending notification
-        system_struct = System.from_api_data(system)
+      case system_id && Determiner.should_notify?(:system, system_id, system) do
+        {:ok, true} ->
+          # Create System struct and enrich it before sending notification
+          system_struct = System.from_api_data(system)
 
-        # enrich_system always returns {:ok, system}, even on failure
-        {:ok, enriched_system} = StaticInfo.enrich_system(system_struct)
-        WandererNotifier.DiscordNotifier.send_system_async(enriched_system)
+          # enrich_system always returns {:ok, system}, even on failure
+          {:ok, enriched_system} = StaticInfo.enrich_system(system_struct)
+          WandererNotifier.DiscordNotifier.send_system_async(enriched_system)
+
+        {:ok, false} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("System notification check failed",
+            system_id: system_id,
+            reason: inspect(reason),
+            category: :notifications
+          )
+
+        # system_id is nil/false
+        _ ->
+          :ok
       end
 
       :ok

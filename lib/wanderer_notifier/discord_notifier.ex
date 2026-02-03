@@ -124,13 +124,13 @@ defmodule WandererNotifier.DiscordNotifier do
       killmail_id: killmail_id
     )
 
-    :skipped
+    {:ok, :skipped}
   end
 
   defp dispatch_to_channels(killmail, channels, killmail_id) do
     notifications_sent = send_to_channels(killmail, channels)
     record_notifications_sent(killmail_id, notifications_sent)
-    :sent
+    {:ok, :sent}
   end
 
   defp send_to_channels(killmail, channels) do
@@ -544,7 +544,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do
     case {voice_pings_enabled?(), system_kill_channel?(channel_id), pure_system_kill?(killmail)} do
-      {{:ok, true}, true, {:ok, true}} ->
+      {true, true, true} ->
         prepend_voice_mentions(notification)
 
       _ ->
@@ -552,22 +552,18 @@ defmodule WandererNotifier.DiscordNotifier do
     end
   end
 
-  defp voice_pings_enabled? do
-    if Config.voice_participant_notifications_enabled?() do
-      {:ok, true}
-    else
-      {:error, :disabled}
-    end
-  end
+  @spec voice_pings_enabled?() :: boolean()
+  defp voice_pings_enabled?, do: Config.voice_participant_notifications_enabled?()
 
-  # Returns {:ok, true} if the kill is in a tracked system with no tracked characters involved
+  # Returns true if the kill is in a tracked system with no tracked characters involved
+  @spec pure_system_kill?(map()) :: boolean()
   defp pure_system_kill?(killmail) do
-    system_id = Map.get(killmail, :system_id)
+    case Map.get(killmail, :system_id) do
+      nil ->
+        false
 
-    if tracked_system?(system_id) and not tracked_character?(killmail) do
-      {:ok, true}
-    else
-      {:error, :not_pure_system}
+      system_id ->
+        tracked_system?(system_id) and not tracked_character?(killmail)
     end
   end
 

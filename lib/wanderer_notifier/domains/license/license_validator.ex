@@ -125,6 +125,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   Validates the API token from Config.api_token().
   The token should be a non-empty string.
 
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
+
   ## Returns
   - `true` if the token is valid.
   - `false` if the token is invalid.
@@ -153,6 +157,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   @doc """
   Checks if the license key and bot token are both valid.
 
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
+
   ## Returns
   - `true` if both are valid.
   - `false` otherwise.
@@ -165,6 +173,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   @doc """
   Determines if the application should use development mode.
   Returns true in dev/test environments when license key or API token is missing.
+
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
 
   ## Returns
   - `true` if development mode should be used.
@@ -179,6 +191,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   @doc """
   Checks if a Discord bot token is assigned.
 
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
+
   ## Returns
   - `true` if a bot token is present.
   - `false` otherwise.
@@ -192,6 +208,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   @doc """
   Checks if a license key is present.
 
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
+
   ## Returns
   - `true` if a license key is present.
   - `false` otherwise.
@@ -204,6 +224,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
 
   @doc """
   Checks if the notifier API token is valid.
+
+  Note: This is a simple predicate function that intentionally returns a boolean
+  rather than {:ok, result} | {:error, reason} tuples. Boolean predicates are
+  exempt from the tuple-return guideline when used for simple validation checks.
 
   ## Returns
   - `true` if the notifier API token is present.
@@ -222,6 +246,10 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   @doc """
   Extracts the license validity status from a response.
 
+  Checks for the following keys in order: `:license_valid`, `"license_valid"`,
+  `:valid`, `"valid"`. Returns the found value (even if explicitly false),
+  or false if no key is present.
+
   ## Parameters
   - `response`: The response map (with atom or string keys).
 
@@ -230,12 +258,21 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   """
   @spec extract_license_valid(map()) :: boolean()
   def extract_license_valid(response) do
-    response[:license_valid] || response["license_valid"] || response[:valid] ||
-      response["valid"] || false
+    cond do
+      Map.has_key?(response, :license_valid) -> response[:license_valid]
+      Map.has_key?(response, "license_valid") -> response["license_valid"]
+      Map.has_key?(response, :valid) -> response[:valid]
+      Map.has_key?(response, "valid") -> response["valid"]
+      true -> false
+    end
   end
 
   @doc """
   Extracts the bot assignment status from a response.
+
+  Checks for the following keys in order: `:bot_associated`, `"bot_associated"`,
+  `:bot_assigned`, `"bot_assigned"`. Returns the found value (even if explicitly false),
+  or false if no key is present.
 
   ## Parameters
   - `response`: The response map (with atom or string keys).
@@ -245,8 +282,13 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   """
   @spec extract_bot_assigned(map()) :: boolean()
   def extract_bot_assigned(response) do
-    response[:bot_associated] || response["bot_associated"] || response[:bot_assigned] ||
-      response["bot_assigned"] || false
+    cond do
+      Map.has_key?(response, :bot_associated) -> response[:bot_associated]
+      Map.has_key?(response, "bot_associated") -> response["bot_associated"]
+      Map.has_key?(response, :bot_assigned) -> response[:bot_assigned]
+      Map.has_key?(response, "bot_assigned") -> response["bot_assigned"]
+      true -> false
+    end
   end
 
   @doc """

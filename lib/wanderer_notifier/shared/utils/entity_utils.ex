@@ -37,9 +37,12 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   """
   @spec extract_system_id(any()) :: integer() | nil
   def extract_system_id(system) when is_struct(system) do
-    Map.get(system, :solar_system_id) ||
-      Map.get(system, :system_id) ||
-      Map.get(system, :id)
+    value =
+      Map.get(system, :solar_system_id) ||
+        Map.get(system, :system_id) ||
+        Map.get(system, :id)
+
+    normalize_id(value)
   end
 
   def extract_system_id(system) when is_map(system) do
@@ -195,13 +198,23 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   """
   @spec get_value(map(), String.t() | atom()) :: any()
   def get_value(data, key) when is_map(data) and is_binary(key) do
-    Map.get(data, key) || Map.get(data, String.to_existing_atom(key))
+    case Map.fetch(data, key) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        atom_key = String.to_existing_atom(key)
+        Map.get(data, atom_key)
+    end
   rescue
     ArgumentError -> nil
   end
 
   def get_value(data, key) when is_map(data) and is_atom(key) do
-    data[key] || data[Atom.to_string(key)]
+    case Map.fetch(data, key) do
+      {:ok, value} -> value
+      :error -> Map.get(data, Atom.to_string(key))
+    end
   end
 
   def get_value(_, _), do: nil

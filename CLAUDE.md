@@ -296,6 +296,7 @@ The application now represents a mature, production-ready architecture with:
 - Functions return `{:ok, result}` or `{:error, reason}` tuples
 - Use pattern matching for control flow
 - Errors are logged via centralized Logger module
+- **Exception**: Simple boolean predicates (functions ending in `?`) may return `boolean()` directly when used for straightforward validation checks. Examples: `license_key_present?/0`, `bot_token_assigned?/0`, `should_use_dev_mode?/0`
 
 ### HTTP Client Usage (Unified Infrastructure)
 All HTTP requests go through the unified `WandererNotifier.Infrastructure.Http` module which provides:
@@ -373,8 +374,8 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications (default: true)
 - `STATUS_MESSAGES_ENABLED` - Enable/disable startup status messages (default: false)
 - `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
-- `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
-- `WORMHOLE_ONLY_KILL_NOTIFICATIONS` - Only send kill notifications for wormhole systems (default: false)
+- `PRIORITY_SYSTEMS_ONLY_ENABLED` - Only send notifications for priority systems (default: false)
+- `WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED` - Only send kill notifications for wormhole systems (default: false)
 
 ### Corporation Kill Focus
 

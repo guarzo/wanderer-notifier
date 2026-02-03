@@ -70,24 +70,26 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     - entity_data: Optional entity data for additional context
 
   ## Returns
-    - true if a notification should be sent
-    - false otherwise
+    - `{:ok, true}` if a notification should be sent
+    - `{:ok, false}` if a notification should not be sent
+    - `{:error, term()}` if an error occurred during the check
   """
-  @spec should_notify?(notification_type(), entity_id()) :: boolean()
-  @spec should_notify?(notification_type(), entity_id(), entity_data()) :: boolean()
+  @spec should_notify?(notification_type(), entity_id()) :: {:ok, boolean()} | {:error, term()}
+  @spec should_notify?(notification_type(), entity_id(), entity_data()) ::
+          {:ok, boolean()} | {:error, term()}
   def should_notify?(type, entity_id, entity_data \\ nil)
 
   def should_notify?(:character, character_id, _character_data) do
     cond do
       startup_suppressed?() ->
         log_startup_suppression(:character, character_id)
-        false
+        {:ok, false}
 
       not feature_enabled?(:character) ->
-        false
+        {:ok, false}
 
       true ->
-        check_dedup_boolean(:character, character_id)
+        {:ok, check_dedup_boolean(:character, character_id)}
     end
   end
 
@@ -97,7 +99,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     cond do
       startup_suppressed?() ->
         log_startup_suppression(:system, system_id)
-        false
+        {:ok, false}
 
       not feature_enabled?(:system) and not is_priority ->
         Logger.debug("System notification skipped - notifications disabled and not priority",
@@ -105,23 +107,27 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
           category: :notification
         )
 
-        false
+        {:ok, false}
 
       true ->
-        check_system_deduplication(system_id, is_priority)
+        {:ok, check_system_deduplication(system_id, is_priority)}
     end
   end
 
   def should_notify?(:kill, _killmail_id, killmail_data) do
     # For killmails, we delegate to the specialized killmail logic
-    should_notify_killmail?(killmail_data)
+    # Convert the rich format to simple boolean
+    case should_notify_killmail?(killmail_data) do
+      {:ok, %{should_notify: should_notify}} -> {:ok, should_notify}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def should_notify?(:rally_point, rally_id, _rally_data) do
     cond do
-      startup_suppressed?() -> false
-      not feature_enabled?(:rally_point) -> false
-      true -> check_dedup_boolean(:rally_point, rally_id)
+      startup_suppressed?() -> {:ok, false}
+      not feature_enabled?(:rally_point) -> {:ok, false}
+      true -> {:ok, check_dedup_boolean(:rally_point, rally_id)}
     end
   end
 

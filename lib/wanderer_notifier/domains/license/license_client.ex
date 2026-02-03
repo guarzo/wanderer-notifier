@@ -115,23 +115,14 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
       url: url,
       has_token: notifier_api_token != nil && notifier_api_token != "",
       has_license_key: license_key != nil && license_key != "",
-      token_prefix: format_token_prefix(notifier_api_token),
       category: :api
     )
-  end
-
-  defp format_token_prefix(notifier_api_token) do
-    if is_binary(notifier_api_token) && String.length(notifier_api_token) > 8 do
-      String.slice(notifier_api_token, 0, 8) <> "..."
-    else
-      "invalid"
-    end
   end
 
   defp handle_error_response(status, body) do
     Logger.error("License validation HTTP error response",
       status_code: status,
-      body: inspect(body),
+      body_present: body != nil,
       category: :api
     )
 

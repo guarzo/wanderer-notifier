@@ -275,6 +275,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     validation_result =
       case Task.yield(task, 3000) || Task.shutdown(task) do
         {:ok, result} -> result
+        {:exit, reason} -> {:error, reason}
+        {:error, reason} -> {:error, reason}
         nil -> {:error, :timeout}
       end
 
@@ -369,10 +371,9 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
     log_validation_parameters(license_manager_url)
 
-    if LicenseValidator.should_use_dev_mode?() do
-      create_dev_mode_state(state)
-    else
-      validate_with_api(state, notifier_api_token, license_key)
+    case LicenseValidator.should_use_dev_mode?() do
+      true -> create_dev_mode_state(state)
+      false -> validate_with_api(state, notifier_api_token, license_key)
     end
   end
 

@@ -22,9 +22,24 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   @doc """
   Returns the PID of the internal supervisor.
+
+  ## Returns
+  - `{:ok, pid}` if the supervisor is running
+  - `{:error, :not_started}` if the supervisor is not running
   """
+  @spec supervisor_pid() :: {:ok, pid()} | {:error, :not_started}
   def supervisor_pid do
-    GenServer.call(__MODULE__, :get_supervisor_pid)
+    case Process.whereis(__MODULE__) do
+      nil ->
+        {:error, :not_started}
+
+      _pid ->
+        try do
+          GenServer.call(__MODULE__, :get_supervisor_pid)
+        catch
+          :exit, _ -> {:error, :not_started}
+        end
+    end
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
@@ -62,16 +77,30 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   @impl true
   def handle_continue(:start_websocket, state) do
     # Start WebSocket client using TaskSupervisor for proper crash propagation
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-      start_websocket_client()
-    end)
+    case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+           start_websocket_client()
+         end) do
+      {:ok, _pid} ->
+        {:noreply, state}
 
-    {:noreply, state}
+      {:error, reason} ->
+        Logger.error("Failed to start WebSocket client task",
+          reason: inspect(reason),
+          category: :processor
+        )
+
+        # Continue running - the fallback handler will provide HTTP-based access
+        {:noreply, state}
+    end
   end
 
   @impl true
-  def handle_call(:get_supervisor_pid, _from, %{supervisor_pid: pid} = state) do
-    {:reply, pid, state}
+  def handle_call(:get_supervisor_pid, _from, %{supervisor_pid: pid} = state) when is_pid(pid) do
+    {:reply, {:ok, pid}, state}
+  end
+
+  def handle_call(:get_supervisor_pid, _from, state) do
+    {:reply, {:error, :not_started}, state}
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
