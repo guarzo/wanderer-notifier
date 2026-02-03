@@ -83,8 +83,10 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   end
 
   @doc """
-  Checks and marks in a single atomic operation.
+  Checks and marks in a single atomic operation using Cachex.transaction.
   Returns :new if this is a new item, :duplicate if already seen.
+
+  Uses Cachex.transaction/3 to ensure atomicity, preventing TOCTOU race conditions.
 
   ## Examples
       iex> Deduplication.check_and_mark(:killmail, "12345")
@@ -95,15 +97,51 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   """
   @spec check_and_mark(dedup_type(), String.t()) :: dedup_result()
   def check_and_mark(type, identifier) when is_atom(type) and is_binary(identifier) do
-    if is_duplicate?(type, identifier) do
-      :duplicate
-    else
-      case mark_processed(type, identifier) do
-        :ok -> :new
-        # Err on the side of caution
-        {:error, _} -> :duplicate
-      end
+    key = build_dedup_key(type, identifier)
+    ttl = get_ttl_for_type(type)
+    cache_name = Cache.cache_name()
+
+    # Use Cachex.transaction for atomic check-and-mark operation
+    result =
+      Cachex.transaction(cache_name, [key], fn ->
+        do_atomic_check_and_mark(cache_name, key, ttl)
+      end)
+
+    handle_check_and_mark_result(result, type, identifier, ttl)
+  end
+
+  defp do_atomic_check_and_mark(cache_name, key, ttl) do
+    case Cachex.get(cache_name, key) do
+      {:ok, nil} ->
+        # Not a duplicate, mark as processed
+        Cachex.put(cache_name, key, %{processed_at: DateTime.utc_now()}, ttl: ttl)
+        :new
+
+      {:ok, _value} ->
+        # Already exists, it's a duplicate
+        :duplicate
+
+      {:error, _} ->
+        # Error reading, treat as duplicate to be safe
+        :duplicate
     end
+  end
+
+  defp handle_check_and_mark_result({:ok, :new}, type, identifier, ttl) do
+    Logger.debug("Marked #{type} #{identifier} as processed (atomic)",
+      type: type,
+      identifier: identifier,
+      ttl_seconds: div(ttl, 1000)
+    )
+
+    :new
+  end
+
+  defp handle_check_and_mark_result({:ok, :duplicate}, _type, _identifier, _ttl), do: :duplicate
+
+  defp handle_check_and_mark_result({:error, _reason}, _type, _identifier, _ttl) do
+    # Transaction failed, err on the side of caution
+    :duplicate
   end
 
   @doc """

@@ -31,7 +31,8 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
     ]
 
     # Start WebSocket client asynchronously to avoid blocking startup
-    spawn(fn ->
+    # Using Task.start/1 instead of spawn/1 for better observability
+    Task.start(fn ->
       # Wait for application to fully start
       Process.sleep(2000)
       start_websocket_client()

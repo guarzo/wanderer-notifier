@@ -142,13 +142,12 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
       category: :config
     )
 
-    is_valid = !StringUtils.nil_or_empty?(token)
-
-    if !is_valid do
+    if StringUtils.nil_or_empty?(token) do
       Logger.warning("License validation warning: Invalid API token", category: :config)
+      false
+    else
+      true
     end
-
-    is_valid
   end
 
   @doc """

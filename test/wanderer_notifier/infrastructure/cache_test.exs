@@ -26,7 +26,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
 
     # Clear cache before each test if it's running
     if Process.whereis(cache_name) do
-      :ok = Cache.clear()
+      {:ok, :cleared} = Cache.clear()
     end
 
     :ok
@@ -66,7 +66,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert_cache_put(key, value)
 
       # Delete value
-      :ok = Cache.delete(key)
+      {:ok, :deleted} = Cache.delete(key)
       assert {:error, :not_found} = Cache.get(key)
     end
 
@@ -84,7 +84,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert Cache.exists?(key)
 
       # Delete and check again
-      :ok = Cache.delete(key)
+      {:ok, :deleted} = Cache.delete(key)
       refute Cache.exists?(key)
     end
 
@@ -100,7 +100,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert {:ok, "value3"} = Cache.get("test:3")
 
       # Clear cache
-      :ok = Cache.clear()
+      {:ok, :cleared} = Cache.clear()
 
       # Verify they're gone
       assert {:error, :not_found} = Cache.get("test:1")
@@ -209,7 +209,7 @@ defmodule WandererNotifier.Infrastructure.CacheTest do
       assert Cache.Keys.corporation(456) == "esi:corporation:456"
       assert Cache.Keys.alliance(789) == "esi:alliance:789"
       assert Cache.Keys.system(30_000_142) == "esi:system:30000142"
-      assert Cache.Keys.killmail(987_654) == "killmail:987654"
+      assert Cache.Keys.killmail(987_654) == "data:killmail:987654"
       assert Cache.Keys.notification_dedup("test") == "notification:dedup:test"
       assert Cache.Keys.custom("prefix", "suffix") == "prefix:suffix"
     end

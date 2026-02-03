@@ -180,7 +180,10 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @doc """
   Validates a bot by calling the license manager API.
-  Delegates to LicenseClient.
+
+  This function provides a unified API surface for license validation,
+  allowing future instrumentation, logging, or additional processing
+  without changing callers. Delegates to LicenseClient.validate_bot/2.
   """
   def validate_bot(notifier_api_token, license_key) do
     LicenseClient.validate_bot(notifier_api_token, license_key)
@@ -188,10 +191,13 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @doc """
   Validates a license key by calling the license manager API.
-  Delegates to LicenseClient.
+
+  This function provides a unified API surface for license validation,
+  allowing future instrumentation, logging, or additional processing
+  without changing callers. Delegates to LicenseClient.validate_license/2.
   """
-  def validate_license(license_key, notifier_api_token) do
-    LicenseClient.validate_license(license_key, notifier_api_token)
+  def validate_license(notifier_api_token, license_key) do
+    LicenseClient.validate_license(notifier_api_token, license_key)
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -433,7 +439,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       error_message: error_message,
       last_validated: :os.system_time(:second),
       notification_counts:
-        old_state.notification_counts || %{system: 0, character: 0, killmail: 0}
+        old_state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: old_state.backoff_multiplier || 1
     }
   end
 

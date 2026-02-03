@@ -115,7 +115,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   @doc """
   Checks if a character is tracked.
   """
-  @spec is_character_tracked?(String.t()) :: {:ok, boolean()} | {:error, term()}
+  @spec is_character_tracked?(String.t() | integer()) :: {:ok, boolean()}
   def is_character_tracked?(character_id) when is_binary(character_id) do
     # First try O(1) lookup from individual cache
     character_id_int = String.to_integer(character_id)
@@ -198,8 +198,9 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @doc """
   Checks if a system is tracked.
+  Always returns {:ok, boolean()} - handles cache errors gracefully.
   """
-  @spec is_system_tracked?(String.t()) :: {:ok, boolean()} | {:error, term()}
+  @spec is_system_tracked?(String.t()) :: {:ok, boolean()}
   def is_system_tracked?(system_id) when is_binary(system_id) do
     # First try O(1) lookup from individual cache
     case Cache.is_system_tracked?(system_id) do

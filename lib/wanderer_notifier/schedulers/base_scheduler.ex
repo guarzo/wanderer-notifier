@@ -196,10 +196,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       end
 
       defp check_primed_status do
-        __MODULE__
-        |> Cache.Keys.scheduler_primed()
-        |> Cache.get()
-        |> Kernel.==({:ok, true})
+        case Cache.Keys.scheduler_primed(__MODULE__) |> Cache.get() do
+          {:ok, true} -> true
+          _ -> false
+        end
       end
 
       defp get_scheduler_interval(opts) do

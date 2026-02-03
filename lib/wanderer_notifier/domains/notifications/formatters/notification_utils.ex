@@ -380,12 +380,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
       "Hi"
   """
   def truncate_text(text, max_length) when is_binary(text) and is_integer(max_length) do
-    if String.length(text) <= max_length do
-      text
-    else
-      text
-      |> String.slice(0, max_length - 3)
-      |> Kernel.<>("...")
+    cond do
+      String.length(text) <= max_length ->
+        text
+
+      max_length <= 3 ->
+        String.slice(text, 0, max_length)
+
+      true ->
+        text
+        |> String.slice(0, max_length - 3)
+        |> Kernel.<>("...")
     end
   end
 

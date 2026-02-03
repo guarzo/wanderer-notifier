@@ -144,9 +144,7 @@ defmodule WandererNotifier.Infrastructure.Http do
       case prepare_body(encoded_body) do
         {:ok, prepared_body} ->
           merged_headers = merge_headers(final_headers, method)
-
-          # Get middlewares from options or use defaults
-          middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
+          middlewares = resolve_middlewares(final_opts)
 
           # Create request struct for middleware chain
           request = %{
@@ -311,6 +309,16 @@ defmodule WandererNotifier.Infrastructure.Http do
     [Telemetry, RateLimiter, Retry]
   end
 
+  # Resolves which middlewares to use based on options
+  # Honors :disable_middleware flag for streaming and internal services
+  defp resolve_middlewares(opts) do
+    if Keyword.get(opts, :disable_middleware, false) do
+      Keyword.get(opts, :middlewares, [])
+    else
+      Keyword.get(opts, :middlewares, default_middlewares())
+    end
+  end
+
   @doc false
   def apply_service_config(opts) do
     case Keyword.get(opts, :service) do
@@ -464,7 +472,10 @@ defmodule WandererNotifier.Infrastructure.Http do
 
   defp encode_body(body, headers) when is_map(body) do
     if has_json_content_type?(headers) do
-      Jason.encode!(body)
+      case Jason.encode(body) do
+        {:ok, encoded} -> encoded
+        {:error, _reason} -> body
+      end
     else
       body
     end

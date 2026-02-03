@@ -154,12 +154,12 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
   ## Examples
       iex> Cache.delete("user:123")
-      :ok
+      {:ok, :deleted}
   """
-  @spec delete(cache_key()) :: :ok
+  @spec delete(cache_key()) :: {:ok, :deleted}
   def delete(key) when is_binary(key) do
     Cachex.del(cache_name(), key)
-    :ok
+    {:ok, :deleted}
   end
 
   @doc """
@@ -182,12 +182,12 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
   ## Examples
       iex> Cache.clear()
-      :ok
+      {:ok, :cleared}
   """
-  @spec clear() :: :ok
+  @spec clear() :: {:ok, :cleared}
   def clear do
     Cachex.clear(cache_name())
-    :ok
+    {:ok, :cleared}
   end
 
   @doc """

@@ -4,6 +4,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
   alias WandererNotifier.Domains.Tracking.Handlers.SystemHandler
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
 
   import ExUnit.CaptureLog
   import Mox
@@ -20,20 +21,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
 
     # Stub ESI client mock for any notification formatting that might happen
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_corporation_info, fn _id,
-                                                                                            _opts ->
-      {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_alliance_info, fn _id,
-                                                                                         _opts ->
-      {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
-    end)
-
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_character_info, fn _id,
-                                                                                          _opts ->
-      {:ok, %{"name" => "Test Character"}}
-    end)
+    ESIMockHelper.stub_default_esi_client_mocks()
 
     :ok
   end

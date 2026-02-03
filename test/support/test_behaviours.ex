@@ -47,7 +47,6 @@ defmodule WandererNotifier.Domains.Killmail.Cache.Behaviour do
   Behaviour for killmail cache operations
   """
   @callback get_kill(integer()) :: {:ok, map()} | {:error, term()}
-  @callback get_latest_killmails() :: list(map())
   @callback store_kill(integer(), map()) :: :ok | {:error, term()}
   @callback mget(list(integer())) :: {:ok, map()} | {:error, term()}
 end

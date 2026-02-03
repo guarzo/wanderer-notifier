@@ -67,7 +67,7 @@ Configure premium license features.
 |----------|-------------|---------|
 | `LICENSE_KEY` | Your license key for premium features | — |
 | `LICENSE_MANAGER_API_KEY` | API token for license validation | — |
-| `LICENSE_MANAGER_URL` | License manager endpoint | `https://lm.wanderer.ltd` |
+| `LICENSE_MANAGER_URL` | License manager endpoint | `https://lm.wanderer.ltd/api` |
 
 > **Note:** Without a license, the free tier allows 5 rich embed notifications per type before switching to text format.
 
@@ -148,7 +148,7 @@ Configure connections to external services. These have sensible defaults for Doc
 |----------|-------------|---------|
 | `WEBSOCKET_URL` | WebSocket URL for killmail data | `ws://host.docker.internal:4004` |
 | `WANDERER_KILLS_URL` | WandererKills API base URL | `http://host.docker.internal:4004` |
-| `LICENSE_MANAGER_URL` | License validation endpoint | `https://lm.wanderer.ltd` |
+| `LICENSE_MANAGER_URL` | License validation endpoint | `https://lm.wanderer.ltd/api` |
 
 ---
 
@@ -177,7 +177,7 @@ Control notification timing and filtering.
 | `MAX_KILLMAIL_AGE_SECONDS` | Maximum age for killmail notifications | `3600` (1 hour) |
 
 > **Startup Suppression:** Prevents notification spam when the service restarts by ignoring events for the specified duration.
-
+>
 > **Max Killmail Age:** Prevents notifications for old killmails when the service starts or reconnects. Killmails older than this threshold are silently skipped.
 
 ---
@@ -199,7 +199,7 @@ A minimal configuration for getting started:
 ```bash
 # Required
 DISCORD_BOT_TOKEN=your_bot_token
-DISCORD_CHANNEL_ID=123456789012345678
+DISCORD_CHANNEL_ID=YOUR_DISCORD_CHANNEL_ID
 MAP_URL=https://wanderer.ltd
 MAP_NAME=my-map
 MAP_API_KEY=your_map_api_key
@@ -215,20 +215,20 @@ A production configuration with multiple channels:
 # Core
 DISCORD_BOT_TOKEN=your_bot_token
 DISCORD_APPLICATION_ID=your_app_id
-DISCORD_CHANNEL_ID=123456789012345678
+DISCORD_CHANNEL_ID=YOUR_DISCORD_CHANNEL_ID
 MAP_URL=https://wanderer.ltd
 MAP_NAME=my-map
 MAP_API_KEY=your_map_api_key
 LICENSE_KEY=your_license_key
 
 # Separate channels for organization
-DISCORD_SYSTEM_KILL_CHANNEL_ID=234567890123456789
-DISCORD_CHARACTER_KILL_CHANNEL_ID=345678901234567890
-DISCORD_SYSTEM_CHANNEL_ID=456789012345678901
-DISCORD_CHARACTER_CHANNEL_ID=567890123456789012
+DISCORD_SYSTEM_KILL_CHANNEL_ID=YOUR_DISCORD_SYSTEM_KILL_CHANNEL_ID
+DISCORD_CHARACTER_KILL_CHANNEL_ID=YOUR_DISCORD_CHARACTER_KILL_CHANNEL_ID
+DISCORD_SYSTEM_CHANNEL_ID=YOUR_DISCORD_SYSTEM_CHANNEL_ID
+DISCORD_CHARACTER_CHANNEL_ID=YOUR_DISCORD_CHARACTER_CHANNEL_ID
 
 # Voice notifications
-DISCORD_GUILD_ID=678901234567890123
+DISCORD_GUILD_ID=YOUR_DISCORD_GUILD_ID
 VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED=true
 
 # Focus your corporation's kills to character channel

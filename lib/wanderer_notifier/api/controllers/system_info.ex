@@ -279,9 +279,10 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp calculate_processing_efficiency(_, _), do: 0.0
 
   defp get_last_activity_time(stats) do
-    websocket = stats[:websocket] || %{}
+    # Use killmail_activity which is already tracked by Metrics.record_killmail_received/1
+    killmail_activity = stats[:killmail_activity] || %{}
 
-    case websocket[:last_message] do
+    case killmail_activity[:last_received_at] do
       nil -> "never"
       dt -> TimeUtils.format_time_ago(dt)
     end

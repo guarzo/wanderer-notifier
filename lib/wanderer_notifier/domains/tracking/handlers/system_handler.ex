@@ -73,57 +73,48 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp try_create_system(payload) do
-    try do
-      Logger.debug("Creating system from SSE payload",
-        payload: inspect(payload),
-        category: :api
-      )
+    Logger.debug("Creating system from SSE payload",
+      payload: inspect(payload),
+      category: :api
+    )
 
-      system = System.from_api_data(payload)
-      {:ok, system}
-    rescue
-      error ->
+    case System.new_safe(payload) do
+      {:ok, system} ->
+        {:ok, system}
+
+      {:error, reason} ->
         Logger.error("Failed to create system from payload",
           payload: inspect(payload),
           category: :api,
-          error: inspect(error)
+          error: inspect(reason)
         )
 
-        {:error, {:system_creation_failed, error}}
+        {:error, {:system_creation_failed, reason}}
     end
   end
 
   defp enrich_system(system) do
-    try do
-      Logger.debug("Enriching system",
-        system_id: system.solar_system_id,
-        system_name: system.name,
-        before_enrichment: inspect(system),
-        category: :api
-      )
+    Logger.debug("Enriching system",
+      system_id: system.solar_system_id,
+      system_name: system.name,
+      before_enrichment: inspect(system),
+      category: :api
+    )
 
-      {:ok, enriched} = WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
+    # StaticInfo.enrich_system/1 always returns {:ok, _} - it returns the original
+    # system if enrichment fails, so we don't need to handle error cases
+    {:ok, enriched} = WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
 
-      Logger.debug("System enriched successfully",
-        system_id: enriched.solar_system_id,
-        system_name: enriched.name,
-        class_title: enriched.class_title,
-        statics: inspect(enriched.statics),
-        region: enriched.region_name,
-        category: :api
-      )
+    Logger.debug("System enriched successfully",
+      system_id: enriched.solar_system_id,
+      system_name: enriched.name,
+      class_title: enriched.class_title,
+      statics: inspect(enriched.statics),
+      region: enriched.region_name,
+      category: :api
+    )
 
-      {:ok, enriched}
-    rescue
-      error ->
-        Logger.error("Failed to enrich system",
-          system: inspect(system),
-          category: :api,
-          error: inspect(error)
-        )
-
-        {:error, {:enrichment_failed, error}}
-    end
+    {:ok, enriched}
   end
 
   defp extract_system_payload(payload) do
@@ -192,17 +183,23 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_send_notification(system) do
-    if GenericEventHandler.should_notify?(:system, system.solar_system_id, system) do
-      send_system_notification(system)
-    else
-      Logger.info("System notification skipped",
-        system_name: system.name,
-        reason: "determiner_rejected",
-        category: :api
-      )
+    :system
+    |> GenericEventHandler.should_notify?(system.solar_system_id, system)
+    |> handle_notification_decision(system)
+  end
 
-      :ok
-    end
+  defp handle_notification_decision(true, system) do
+    send_system_notification(system)
+  end
+
+  defp handle_notification_decision(false, system) do
+    Logger.info("System notification skipped",
+      system_name: system.name,
+      reason: "determiner_rejected",
+      category: :api
+    )
+
+    :ok
   end
 
   defp maybe_log_system_removal(payload) do

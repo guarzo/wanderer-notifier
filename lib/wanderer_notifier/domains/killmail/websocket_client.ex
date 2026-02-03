@@ -765,13 +765,42 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   defp transform_attackers(_), do: []
 
   defp send_to_pipeline(killmail, _state) do
-    # Send to the registered PipelineWorker process
+    # Send to the registered PipelineWorker process with retry mechanism
+    send_to_pipeline_with_retry(killmail, _max_attempts = 3, _attempt = 1)
+  end
+
+  defp send_to_pipeline_with_retry(killmail, max_attempts, attempt) when attempt > max_attempts do
+    killmail_id = Map.get(killmail, "killmail_id", "unknown")
+
+    Logger.error("PipelineWorker not available after #{max_attempts} attempts, killmail dropped",
+      killmail_id: killmail_id,
+      attempts: max_attempts,
+      category: :processor
+    )
+
+    {:error, :pipeline_worker_unavailable}
+  end
+
+  defp send_to_pipeline_with_retry(killmail, max_attempts, attempt) do
     case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
       nil ->
-        Logger.error("PipelineWorker not found")
+        killmail_id = Map.get(killmail, "killmail_id", "unknown")
+        # Exponential backoff: 100ms, 200ms, 400ms
+        delay = (100 * :math.pow(2, attempt - 1)) |> round()
+
+        Logger.warning("PipelineWorker not found, retrying in #{delay}ms",
+          killmail_id: killmail_id,
+          attempt: attempt,
+          max_attempts: max_attempts,
+          category: :processor
+        )
+
+        Process.sleep(delay)
+        send_to_pipeline_with_retry(killmail, max_attempts, attempt + 1)
 
       pid ->
         send(pid, {:websocket_killmail, killmail})
+        :ok
     end
   end
 

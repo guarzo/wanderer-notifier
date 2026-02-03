@@ -148,12 +148,17 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_notify_character_added(character) do
-    if should_notify_character?(character) do
-      send_character_added_notification(character)
-    end
+    character
+    |> should_notify_character?()
+    |> handle_character_notification_decision(character)
+  end
 
+  defp handle_character_notification_decision(true, character) do
+    send_character_added_notification(character)
     :ok
   end
+
+  defp handle_character_notification_decision(false, _character), do: :ok
 
   defp maybe_notify_character_removed(character) do
     Logger.debug("Character removed from tracking",

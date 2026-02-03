@@ -165,12 +165,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
 
     # Return :updated if matched an existing entity, :added if we added a new one
     was_added = not matched and add_if_missing and entity_identifier != nil
-
-    if matched do
-      {:ok, :updated}
-    else
-      if was_added, do: {:ok, :added}, else: {:ok, :updated}
-    end
+    determine_update_result(matched, was_added)
   end
 
   defp do_update_in_cache(
@@ -206,16 +201,22 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     list
   end
 
-  defp maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts) do
-    add_if_missing = Keyword.get(opts, :add_if_missing, true)
-
-    if add_if_missing and entity_identifier do
+  defp maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts)
+       when entity_identifier != nil do
+    if Keyword.get(opts, :add_if_missing, true) do
       put_cache(entity_type, key, [entity], opts)
-      {:ok, :added}
-    else
-      {:ok, :added}
     end
+
+    {:ok, :added}
   end
+
+  defp maybe_add_new_entity(_entity_type, _key, _entity, _entity_identifier, _opts) do
+    {:ok, :added}
+  end
+
+  defp determine_update_result(true, _was_added), do: {:ok, :updated}
+  defp determine_update_result(false, true), do: {:ok, :added}
+  defp determine_update_result(false, false), do: {:ok, :updated}
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Generic Notification Operations

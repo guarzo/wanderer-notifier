@@ -331,18 +331,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a notification based on type and data.
   """
   def send_notification(:send_discord_embed, [embed]) do
-    NeoClient.send_embed(embed, nil)
-    {:ok, :sent}
+    case NeoClient.send_embed(embed, nil) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_discord_embed_to_channel, [channel_id, embed]) do
-    NeoClient.send_embed(embed, channel_id)
-    {:ok, :sent}
+    case NeoClient.send_embed(embed, channel_id) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_message, [message]) do
-    send_message(message)
-    {:ok, :sent}
+    case send_message(message) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_new_tracked_character_notification, [character]) do

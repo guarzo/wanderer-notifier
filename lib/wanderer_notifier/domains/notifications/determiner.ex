@@ -253,22 +253,10 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     do: tracked_character?(Integer.to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
-           character_id_str
-         ) do
-      {:ok, tracked} ->
-        tracked
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
 
-      {:error, reason} ->
-        require Logger
-
-        Logger.error("Failed to check if character is tracked",
-          character_id: character_id_str,
-          reason: inspect(reason)
-        )
-
-        false
-    end
+    tracked
   end
 
   def tracked_character?(_), do: false
@@ -280,20 +268,12 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     do: tracked_system?(Integer.to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
-      {:ok, tracked} ->
-        tracked
+    # MapTrackingClient.is_system_tracked?/1 always returns {:ok, boolean()}
+    # It handles cache errors internally and returns false on any failure
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str)
 
-      {:error, reason} ->
-        require Logger
-
-        Logger.error("Failed to check if system is tracked",
-          system_id: system_id_str,
-          reason: inspect(reason)
-        )
-
-        false
-    end
+    tracked
   end
 
   def tracked_system?(_), do: false

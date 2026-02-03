@@ -112,28 +112,8 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     {:ok, current_value}
   end
 
-  def get_recent_kills do
-    [
-      %{
-        "killmail_id" => 12_345,
-        "killmail_time" => "2023-01-01T12:00:00Z",
-        "solar_system_id" => 30_000_142,
-        "victim" => %{
-          "character_id" => 93_345_033,
-          "corporation_id" => 98_553_333,
-          "ship_type_id" => 602
-        },
-        "zkb" => %{"hash" => "hash12345"}
-      }
-    ]
-  end
-
   def get_kill(kill_id) do
     get(CacheKeys.killmail(kill_id))
-  end
-
-  def get_latest_killmails do
-    {:ok, []}
   end
 
   def init_batch_logging, do: :ok

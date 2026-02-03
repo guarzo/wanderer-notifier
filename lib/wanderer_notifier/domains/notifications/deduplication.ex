@@ -31,12 +31,36 @@ defmodule WandererNotifier.Domains.Notifications.Deduplication do
 
   def check(type, _id), do: {:error, {:invalid_notification_type, type}}
 
+  @doc """
+  Clears a specific deduplication key from the cache.
+
+  Use this to remove a previously marked notification from the deduplication cache,
+  allowing it to be sent again if it reappears.
+  """
   @spec clear_key(notification_type(), notification_id()) :: {:ok, :cleared} | {:error, term()}
-  def clear_key(type, _id) when type in [:kill, :system, :character, :rally_point] do
+  def clear_key(type, id) when type in [:kill, :system, :character, :rally_point] do
+    dedup_type = map_to_dedup_type(type)
+    identifier = to_string(id)
+    key = build_dedup_key(dedup_type, identifier)
+
+    {:ok, :deleted} = WandererNotifier.Infrastructure.Cache.delete(key)
+    Logger.debug("Cleared deduplication key", type: type, id: id)
     {:ok, :cleared}
   end
 
   def clear_key(type, _id), do: {:error, {:invalid_notification_type, type}}
+
+  defp build_dedup_key(:notification_kill, identifier),
+    do: "notification:dedup:kill:#{identifier}"
+
+  defp build_dedup_key(:notification_system, identifier),
+    do: "notification:dedup:system:#{identifier}"
+
+  defp build_dedup_key(:notification_character, identifier),
+    do: "notification:dedup:character:#{identifier}"
+
+  defp build_dedup_key(:notification_rally, identifier),
+    do: "notification:dedup:rally:#{identifier}"
 
   # Private
 

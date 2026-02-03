@@ -59,7 +59,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
 
   @doc "Generates cache key for killmail data."
   @spec killmail(integer() | String.t()) :: String.t()
-  def killmail(id), do: "killmail:#{id}"
+  def killmail(id), do: "data:killmail:#{id}"
 
   @doc "Generates cache key for WebSocket deduplication."
   @spec websocket_dedup(integer() | String.t()) :: String.t()
@@ -114,20 +114,20 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
   def tracked_characters_list, do: "tracking:characters_list"
 
   # ============================================================================
-  # Domain-specific data keys (using shorter prefixes for better performance)
+  # Domain-specific data keys (using entity namespace for clarity)
   # ============================================================================
 
-  @doc "Generates cache key for corporation data (short prefix)."
+  @doc "Generates cache key for corporation data."
   @spec corporation_data(integer() | String.t()) :: String.t()
-  def corporation_data(id), do: "corporation:#{id}"
+  def corporation_data(id), do: "entity:corporation:#{id}"
 
   @doc "Generates cache key for ship type data."
   @spec ship_type(integer() | String.t()) :: String.t()
-  def ship_type(id), do: "ship_type:#{id}"
+  def ship_type(id), do: "entity:ship_type:#{id}"
 
   @doc "Generates cache key for solar system data."
   @spec solar_system(integer() | String.t()) :: String.t()
-  def solar_system(id), do: "solar_system:#{id}"
+  def solar_system(id), do: "entity:solar_system:#{id}"
 
   # ============================================================================
   # Scheduler keys

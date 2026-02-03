@@ -116,17 +116,21 @@ defmodule WandererNotifier.DiscordNotifier do
       category: :notifications
     )
 
-    if Enum.empty?(channels) do
-      Logger.debug("No channels to send to, kill notification skipped",
-        killmail_id: killmail_id
-      )
+    dispatch_to_channels(killmail, channels, killmail_id)
+  end
 
-      :skipped
-    else
-      notifications_sent = send_to_channels(killmail, channels)
-      record_notifications_sent(killmail_id, notifications_sent)
-      :sent
-    end
+  defp dispatch_to_channels(_killmail, [], killmail_id) do
+    Logger.debug("No channels to send to, kill notification skipped",
+      killmail_id: killmail_id
+    )
+
+    :skipped
+  end
+
+  defp dispatch_to_channels(killmail, channels, killmail_id) do
+    notifications_sent = send_to_channels(killmail, channels)
+    record_notifications_sent(killmail_id, notifications_sent)
+    :sent
   end
 
   defp send_to_channels(killmail, channels) do

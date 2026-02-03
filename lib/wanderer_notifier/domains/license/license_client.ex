@@ -53,8 +53,8 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
   Validates a license key by calling the license manager API.
 
   ## Parameters
-  - `license_key`: The license key to validate.
   - `notifier_api_token`: The API token for the notifier.
+  - `license_key`: The license key to validate.
 
   ## Returns
   - `{:ok, data}` if the license was validated successfully.
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
   """
   @spec validate_license(String.t() | nil, String.t() | nil) ::
           {:ok, map()} | {:error, atom() | tuple()}
-  def validate_license(license_key, notifier_api_token) do
+  def validate_license(notifier_api_token, license_key) do
     url = build_url("validate_license")
     body = %{"license_key" => license_key}
 
@@ -81,20 +81,11 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # URL Building
+  # Private Helpers - URL Building
   # ══════════════════════════════════════════════════════════════════════════════
 
-  @doc """
-  Builds a URL for a license API endpoint.
-
-  ## Parameters
-  - `endpoint`: The endpoint name (e.g., "validate_bot", "validate_license").
-
-  ## Returns
-  - The full URL string.
-  """
   @spec build_url(String.t()) :: String.t()
-  def build_url(endpoint) do
+  defp build_url(endpoint) do
     base_url = Config.license_manager_api_url()
     "#{base_url}/#{endpoint}"
   end
@@ -108,9 +99,9 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
       {:ok, %{status_code: status, body: response_body}} when status in [200, 201] ->
         {:ok, response_body}
 
-      {:ok, %{status_code: status, body: body}} ->
+      {:ok, %{status_code: status, body: response_body}} ->
         error = ErrorHandler.http_error_to_tuple(status)
-        ErrorHandler.enrich_error(error, %{body: body})
+        ErrorHandler.enrich_error(error, %{body: response_body})
 
       {:error, reason} ->
         normalized = ErrorHandler.normalize_error({:error, reason})
