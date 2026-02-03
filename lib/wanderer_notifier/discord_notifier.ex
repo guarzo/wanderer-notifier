@@ -383,6 +383,15 @@ defmodule WandererNotifier.DiscordNotifier do
         false
       end
 
+    # Check if character corporation filter applies (only affects character kill channel)
+    # Only compute when character-based routing is actually in use
+    char_corp_excluded =
+      if has_tracked_character and character_channel != nil do
+        character_corporation_excluded?(killmail)
+      else
+        false
+      end
+
     channels =
       []
       |> maybe_add_system_channel(
@@ -391,7 +400,12 @@ defmodule WandererNotifier.DiscordNotifier do
         system_channel,
         default_channel
       )
-      |> maybe_add_channel(has_tracked_character, character_channel, default_channel)
+      |> maybe_add_character_channel(
+        has_tracked_character,
+        char_corp_excluded,
+        character_channel,
+        default_channel
+      )
 
     # If no channels were added (neither system nor character tracked), use default
     if Enum.empty?(channels) do
@@ -436,12 +450,36 @@ defmodule WandererNotifier.DiscordNotifier do
     channels
   end
 
-  defp maybe_add_channel(channels, true, specific_channel, default_channel) do
+  # For character channel, check corporation allowlist - only add if allowed
+  defp maybe_add_character_channel(channels, true, false, specific_channel, default_channel) do
+    # Character is tracked and corporation IS allowed (or no filter configured)
     channel = specific_channel || default_channel
     [channel | channels]
   end
 
-  defp maybe_add_channel(channels, false, _specific_channel, _default_channel) do
+  defp maybe_add_character_channel(channels, true, true, specific_channel, _default_channel) do
+    # Character is tracked but corporation is NOT in allowed list
+    # Only skip if there's a dedicated character kill channel configured
+    if specific_channel != nil do
+      Logger.info(
+        "Kill notification excluded from character kill channel - corporation not in allowed list"
+      )
+
+      channels
+    else
+      # No dedicated character channel, so filter doesn't apply (falls back to default)
+      channels
+    end
+  end
+
+  defp maybe_add_character_channel(
+         channels,
+         false,
+         _char_corp_excluded,
+         _specific_channel,
+         _default_channel
+       ) do
+    # Character not tracked - don't add character channel
     channels
   end
 
@@ -575,5 +613,82 @@ defmodule WandererNotifier.DiscordNotifier do
         id -> MapSet.member?(exclude_set, id)
       end
     end)
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Character Kill Channel Filtering
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Checks if the kill should be excluded from character kill channel based on
+  # corporation allowlist. Returns true if excluded (no tracked character belongs
+  # to an allowed corporation).
+  defp character_corporation_excluded?(killmail) do
+    allowed_corps = Config.character_tracking_corporation_ids()
+    do_character_corporation_excluded?(killmail, allowed_corps)
+  end
+
+  # No filter configured - allow all
+  defp do_character_corporation_excluded?(_killmail, []), do: false
+
+  defp do_character_corporation_excluded?(killmail, allowed_corps) when is_list(allowed_corps) do
+    # Convert to MapSet once for O(1) lookups
+    allowed_set = MapSet.new(allowed_corps)
+
+    # Check if any tracked character (victim or attacker) belongs to an allowed corporation
+    has_allowed_character = has_allowed_tracked_character?(killmail, allowed_set)
+
+    if not has_allowed_character do
+      Logger.debug(
+        "Kill excluded from character channel - no tracked character in allowed corporations",
+        killmail_id: Map.get(killmail, :killmail_id)
+      )
+    end
+
+    not has_allowed_character
+  end
+
+  # Check if any tracked character in the killmail belongs to an allowed corporation
+  defp has_allowed_tracked_character?(killmail, allowed_set) do
+    victim_allowed?(killmail, allowed_set) or any_attacker_allowed?(killmail, allowed_set)
+  end
+
+  defp victim_allowed?(killmail, allowed_set) do
+    victim_character_id = Map.get(killmail, :victim_character_id)
+
+    # Only check if victim is actually tracked
+    if victim_character_id && tracked_character_id?(victim_character_id) do
+      victim_corp_id = Map.get(killmail, :victim_corporation_id)
+      normalized_id = normalize_corp_id(victim_corp_id)
+
+      case normalized_id do
+        nil -> false
+        id -> MapSet.member?(allowed_set, id)
+      end
+    else
+      false
+    end
+  end
+
+  defp any_attacker_allowed?(killmail, allowed_set) do
+    attackers = Map.get(killmail, :attackers, []) || []
+    Enum.any?(attackers, &attacker_allowed?(&1, allowed_set))
+  end
+
+  defp attacker_allowed?(attacker, allowed_set) do
+    attacker_character_id =
+      Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
+
+    # Only check if attacker is actually tracked
+    if attacker_character_id && tracked_character_id?(attacker_character_id) do
+      corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
+      normalized_id = normalize_corp_id(corp_id)
+      normalized_id != nil and MapSet.member?(allowed_set, normalized_id)
+    else
+      false
+    end
+  end
+
+  defp tracked_character_id?(character_id) do
+    WandererNotifier.Domains.Notifications.Determiner.tracked_character?(character_id)
   end
 end
