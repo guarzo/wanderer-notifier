@@ -35,59 +35,11 @@ defmodule WandererNotifier.Map.EventProcessor do
   @spec process_event(map(), String.t()) :: :ok | {:error, term()}
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
+    log_incoming_event(event_type, event, map_slug)
 
-    # Consolidate log-level and payload-preview selection for rally events
-    {log_level, payload_preview} =
-      case event_type do
-        type when type in ["rally_point_added", "rally_point_removed"] ->
-          {:info, inspect(Map.get(event, "payload", %{}), limit: 200)}
-
-        _ ->
-          {:debug, nil}
-      end
-
-    Logger.log(log_level, "Processing SSE event",
-      map_slug: map_slug,
-      event_type: event_type,
-      event_id: Map.get(event, "id"),
-      payload_preview: payload_preview
-    )
-
-    case route_event(event_type, event, map_slug) do
-      :ok ->
-        Logger.debug("Event processed successfully",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-
-      {:ok, status} when status in [:queued, :ignored] ->
-        Logger.debug("Event processed",
-          map_slug: map_slug,
-          event_type: event_type,
-          status: status
-        )
-
-        :ok
-
-      {:error, reason} = error ->
-        Logger.error("Event processing failed",
-          map_slug: map_slug,
-          event_type: event_type,
-          error: inspect(reason)
-        )
-
-        error
-
-      :ignored ->
-        Logger.debug("Event ignored",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-    end
+    event_type
+    |> route_event(event, map_slug)
+    |> handle_route_result(event_type, map_slug)
   end
 
   def process_event(event, map_slug) do
@@ -97,6 +49,74 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
 
     {:error, :invalid_event_format}
+  end
+
+  # Logs incoming SSE events with appropriate log level
+  @spec log_incoming_event(String.t(), map(), String.t()) :: :ok
+  defp log_incoming_event(event_type, event, map_slug) do
+    {log_level, payload_preview} = event_log_params(event_type, event)
+
+    Logger.log(log_level, "Processing SSE event",
+      map_slug: map_slug,
+      event_type: event_type,
+      event_id: Map.get(event, "id"),
+      payload_preview: payload_preview
+    )
+  end
+
+  # Returns log level and payload preview based on event type
+  @spec event_log_params(String.t(), map()) :: {:info | :debug, String.t() | nil}
+  defp event_log_params(event_type, event)
+       when event_type in ["rally_point_added", "rally_point_removed"] do
+    {:info, inspect(Map.get(event, "payload", %{}), limit: 200)}
+  end
+
+  defp event_log_params(_event_type, _event), do: {:debug, nil}
+
+  # Handles the result of routing an event
+  @spec handle_route_result(
+          :ok | {:ok, atom()} | {:error, term()} | :ignored,
+          String.t(),
+          String.t()
+        ) ::
+          :ok | {:error, term()}
+  defp handle_route_result(:ok, event_type, map_slug) do
+    Logger.debug("Event processed successfully",
+      map_slug: map_slug,
+      event_type: event_type
+    )
+
+    :ok
+  end
+
+  defp handle_route_result({:ok, status}, event_type, map_slug)
+       when status in [:queued, :ignored] do
+    Logger.debug("Event processed",
+      map_slug: map_slug,
+      event_type: event_type,
+      status: status
+    )
+
+    :ok
+  end
+
+  defp handle_route_result({:error, reason} = error, event_type, map_slug) do
+    Logger.error("Event processing failed",
+      map_slug: map_slug,
+      event_type: event_type,
+      error: inspect(reason)
+    )
+
+    error
+  end
+
+  defp handle_route_result(:ignored, event_type, map_slug) do
+    Logger.debug("Event ignored",
+      map_slug: map_slug,
+      event_type: event_type
+    )
+
+    :ok
   end
 
   # Routes an event to the appropriate handler based on event type.

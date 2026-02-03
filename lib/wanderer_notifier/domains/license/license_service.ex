@@ -276,7 +276,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       case Task.yield(task, 3000) || Task.shutdown(task) do
         {:ok, result} -> result
         {:exit, reason} -> {:error, reason}
-        {:error, reason} -> {:error, reason}
         nil -> {:error, :timeout}
       end
 
