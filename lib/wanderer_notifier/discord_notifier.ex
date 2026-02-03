@@ -624,26 +624,27 @@ defmodule WandererNotifier.DiscordNotifier do
   # to an allowed corporation).
   defp character_corporation_excluded?(killmail) do
     allowed_corps = Config.character_tracking_corporation_ids()
+    do_character_corporation_excluded?(killmail, allowed_corps)
+  end
 
-    if allowed_corps == [] do
-      # No filter configured - allow all
-      false
-    else
-      # Convert to MapSet once for O(1) lookups
-      allowed_set = MapSet.new(allowed_corps)
+  # No filter configured - allow all
+  defp do_character_corporation_excluded?(_killmail, []), do: false
 
-      # Check if any tracked character (victim or attacker) belongs to an allowed corporation
-      has_allowed_character = has_allowed_tracked_character?(killmail, allowed_set)
+  defp do_character_corporation_excluded?(killmail, allowed_corps) when is_list(allowed_corps) do
+    # Convert to MapSet once for O(1) lookups
+    allowed_set = MapSet.new(allowed_corps)
 
-      if not has_allowed_character do
-        Logger.debug(
-          "Kill excluded from character channel - no tracked character in allowed corporations",
-          killmail_id: Map.get(killmail, :killmail_id)
-        )
-      end
+    # Check if any tracked character (victim or attacker) belongs to an allowed corporation
+    has_allowed_character = has_allowed_tracked_character?(killmail, allowed_set)
 
-      not has_allowed_character
+    if not has_allowed_character do
+      Logger.debug(
+        "Kill excluded from character channel - no tracked character in allowed corporations",
+        killmail_id: Map.get(killmail, :killmail_id)
+      )
     end
+
+    not has_allowed_character
   end
 
   # Check if any tracked character in the killmail belongs to an allowed corporation
