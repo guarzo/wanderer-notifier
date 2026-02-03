@@ -253,7 +253,9 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     do: tracked_character?(Integer.to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str) do
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
+           character_id_str
+         ) do
       {:ok, tracked} ->
         tracked
 

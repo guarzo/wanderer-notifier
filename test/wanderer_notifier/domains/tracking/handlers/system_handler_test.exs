@@ -20,15 +20,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
 
     # Stub ESI client mock for any notification formatting that might happen
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_corporation_info, fn _id, _opts ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_corporation_info, fn _id,
+                                                                                            _opts ->
       {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_alliance_info, fn _id, _opts ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_alliance_info, fn _id,
+                                                                                         _opts ->
       {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
     end)
 
-    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_character_info, fn _id, _opts ->
+    stub(WandererNotifier.Infrastructure.Adapters.ESI.ClientMock, :get_character_info, fn _id,
+                                                                                          _opts ->
       {:ok, %{"name" => "Test Character"}}
     end)
 

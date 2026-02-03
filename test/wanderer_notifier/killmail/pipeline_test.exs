@@ -148,9 +148,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     ESIMockHelper.setup_esi_mocks()
 
     # Always stub the DiscordNotifier with a default response
-    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail,
-                                                          _type,
-                                                          input_opts ->
+    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail, _type, input_opts ->
       _formatted_opts = if is_map(input_opts), do: Map.to_list(input_opts), else: input_opts
       :ok
     end)
