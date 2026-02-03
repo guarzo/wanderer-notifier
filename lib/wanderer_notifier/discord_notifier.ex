@@ -16,6 +16,7 @@ defmodule WandererNotifier.DiscordNotifier do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
+  alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
 
   @doc """
   Send a kill notification asynchronously.
@@ -136,6 +137,10 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case format_notification(killmail, use_custom_system_name: use_custom_name) do
       {:ok, formatted_notification} ->
+        # Add voice mentions for system kill channel notifications
+        formatted_notification =
+          maybe_add_voice_mentions(formatted_notification, killmail, channel_id)
+
         case send_to_discord(formatted_notification, channel_id) do
           :ok ->
             Logger.debug("Kill notification sent to channel #{channel_id}")
@@ -690,5 +695,48 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp tracked_character_id?(character_id) do
     WandererNotifier.Domains.Notifications.Determiner.tracked_character?(character_id)
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Voice Channel Mentions
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp maybe_add_voice_mentions(notification, killmail, channel_id) do
+    if should_add_voice_mentions?(killmail, channel_id) do
+      add_voice_mentions_to_notification(notification)
+    else
+      notification
+    end
+  end
+
+  defp should_add_voice_mentions?(killmail, channel_id) do
+    system_kill_channel = Config.discord_system_kill_channel_id()
+    voice_pings_enabled = Config.voice_participant_notifications_enabled?()
+
+    # Only add voice mentions for system kill channel notifications
+    is_system_kill_channel = channel_id == system_kill_channel and system_kill_channel != nil
+
+    # Check that this is a system-tracked kill (not a character-tracked kill)
+    system_id = Map.get(killmail, :system_id)
+    has_tracked_system = tracked_system?(system_id)
+    has_tracked_character = tracked_character?(killmail)
+
+    # Add voice mentions only for system kills (tracked system, no tracked character)
+    is_system_kill_channel and has_tracked_system and not has_tracked_character and
+      voice_pings_enabled
+  end
+
+  defp add_voice_mentions_to_notification(notification) do
+    mentions = VoiceParticipants.get_active_voice_mentions()
+
+    case mentions do
+      [] ->
+        notification
+
+      mentions_list ->
+        mention_string = Enum.join(mentions_list, " ")
+        existing_content = Map.get(notification, :content, "")
+        Map.put(notification, :content, "#{mention_string} #{existing_content}")
+    end
   end
 end
