@@ -838,15 +838,10 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   # -- HELPERS --
 
   # Extract a stable type description from result values for logging.
-  # Handles common patterns: tagged tuples, structs, plain tuples/maps/lists.
-  defp extract_result_type({tag, _}) when is_atom(tag), do: to_string(tag)
-  defp extract_result_type({tag, _, _}) when is_atom(tag), do: to_string(tag)
-  defp extract_result_type(%_{} = s), do: inspect(s.__struct__)
-  defp extract_result_type(other) when is_tuple(other), do: "tuple"
-  defp extract_result_type(other) when is_map(other), do: "map"
-  defp extract_result_type(other) when is_list(other), do: "list"
-  defp extract_result_type(other) when is_atom(other), do: to_string(other)
-  defp extract_result_type(other), do: inspect(other)
+  # Used specifically for retry results which are {:ok, _} | {:error, _}.
+  @spec extract_result_type({:ok, term()} | {:error, term()}) :: String.t()
+  defp extract_result_type({:ok, _}), do: "ok"
+  defp extract_result_type({:error, _}), do: "error"
 
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
