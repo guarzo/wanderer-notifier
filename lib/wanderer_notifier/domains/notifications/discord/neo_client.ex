@@ -141,7 +141,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
     result = Retry.http_retry(retry_fn, retry_opts)
 
     # Debug: Log exact result value and type for pattern matching diagnosis
-    result_type = extract_result_type(result)
+    {:ok, result_type} = extract_result_type(result)
 
     Logger.debug("[NeoClient] Retry result for pattern matching",
       result: inspect(result),
@@ -839,9 +839,9 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   # Extract a stable type description from result values for logging.
   # Used specifically for retry results which are {:ok, _} | {:error, _}.
-  @spec extract_result_type({:ok, term()} | {:error, term()}) :: String.t()
-  defp extract_result_type({:ok, _}), do: "ok"
-  defp extract_result_type({:error, _}), do: "error"
+  @spec extract_result_type({:ok, term()} | {:error, term()}) :: {:ok, String.t()}
+  defp extract_result_type({:ok, _}), do: {:ok, "ok"}
+  defp extract_result_type({:error, _}), do: {:ok, "error"}
 
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
