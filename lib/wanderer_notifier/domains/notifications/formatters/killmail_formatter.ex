@@ -317,7 +317,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
     items
     |> Enum.filter(fn item ->
-      # ItemProcessor uses "total_value", but we also check "value" for backwards compatibility
+      # Check both field names for different data sources
       value = Map.get(item, "total_value") || Map.get(item, "value", 0)
       value > threshold
     end)
@@ -327,9 +327,8 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp build_notable_items_list(items) do
     items
     |> Enum.map(fn item ->
-      # ItemProcessor uses "name", but we also check "type_name" for backwards compatibility
+      # Check both field names for different data sources
       name = Map.get(item, "name") || Map.get(item, "type_name", "Unknown Item")
-      # ItemProcessor uses "total_value", but we also check "value" for backwards compatibility
       value = Map.get(item, "total_value") || Map.get(item, "value", 0)
       quantity = Map.get(item, "quantity", 1)
 

@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Shared.Utils.EntityUtils do
   @moduledoc """
-  Centralized entity ID extraction and validation utilities.
+  Entity ID extraction and validation utilities.
 
-  This module consolidates all ID extraction, normalization, and validation logic
-  to ensure consistent handling of EVE Online entity IDs across the application.
+  Provides consistent handling of EVE Online entity IDs (systems, characters,
+  corporations, alliances) across the application.
   """
 
   # EVE Online ID ranges

@@ -127,7 +127,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   The token should be a non-empty string.
   """
   def validate_token do
-    LicenseValidator.validate_token()
+    LicenseValidator.validate_api_token()
   end
 
   @doc """
@@ -151,7 +151,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     if LicenseValidator.license_and_bot_valid?() do
       {:ok, :valid}
     else
-      {:error, :invalid_license}
+      {:ok, :invalid}
     end
   end
 
@@ -275,7 +275,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     new_state =
       validation_result
       |> process_validation_result(state)
-      |> create_new_state(state)
+      |> create_new_state()
 
     {:reply, new_state, new_state}
   catch
@@ -424,7 +424,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     {false, false, nil, :validation_error, "License validation failed: #{inspect(reason)}", state}
   end
 
-  defp create_new_state({valid, bot_assigned, details, error, error_message, old_state}, _state) do
+  defp create_new_state({valid, bot_assigned, details, error, error_message, old_state}) do
     %State{
       valid: valid,
       bot_assigned: bot_assigned,

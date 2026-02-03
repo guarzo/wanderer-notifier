@@ -3,8 +3,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   Centralized deduplication service for consistent duplicate prevention.
 
   Provides type-aware deduplication with appropriate TTLs for different
-  data types across the application. This consolidates multiple deduplication
-  patterns into a single, consistent interface.
+  data types across the application.
   """
 
   alias WandererNotifier.Infrastructure.Cache
@@ -163,8 +162,6 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   """
   @spec get_dedup_stats() :: map()
   def get_dedup_stats do
-    # In a real implementation, this would query actual cache stats
-    # For now, return a structure showing what stats would be available
     %{
       killmail: %{
         ttl_seconds: div(@killmail_dedup_ttl, 1000),

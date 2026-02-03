@@ -3,7 +3,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
   import Mox
 
   alias WandererNotifier.Infrastructure.Adapters.ESI.Service
-  alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock
 
@@ -184,80 +183,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.ServiceTest do
     case id do
       30_000_142 -> {:ok, @system_data}
       _ -> {:error, :not_found}
-    end
-  end
-
-  describe "get_character_struct/2" do
-    test "returns a Character struct when successful", %{character_data: _character_data} do
-      # Ensure cache is empty for this test
-      # Clear any cached data for this character (only if cache is running)
-      cache_key = "esi:character:123456"
-
-      if Process.whereis(:wanderer_test_cache) do
-        Cache.delete(cache_key)
-      end
-
-      # Get character struct from ESI service
-      {:ok, character} = Service.get_character_struct(123_456)
-
-      # Verify that it's a Character struct with the correct data
-      assert %Character{} = character
-      assert character.character_id == 123_456
-      assert character.name == "Test Character"
-      assert character.corporation_id == 789_012
-      assert character.alliance_id == 345_678
-      assert character.security_status == 0.5
-      assert character.birthday == ~U[2020-01-01 00:00:00Z]
-    end
-  end
-
-  describe "get_corporation_struct/2" do
-    test "returns a Corporation struct when successful", %{corporation_data: _corporation_data} do
-      # Ensure cache is empty for this test
-      # Clear any cached data for this corporation (only if cache is running)
-      cache_key = "esi:corporation:789012"
-
-      if Process.whereis(:wanderer_test_cache) do
-        Cache.delete(cache_key)
-      end
-
-      # Get corporation struct from ESI service
-      {:ok, corporation} = Service.get_corporation_struct(789_012)
-
-      # Verify that it's a Corporation struct with the correct data
-      assert %Corporation{} = corporation
-      assert corporation.corporation_id == 789_012
-      assert corporation.name == "Test Corporation"
-      assert corporation.ticker == "TSTC"
-      assert corporation.member_count == 100
-      assert corporation.alliance_id == 345_678
-      assert corporation.description == "A test corporation"
-      assert corporation.founding_date == ~U[2020-01-01 00:00:00Z]
-    end
-  end
-
-  describe "get_alliance_struct/2" do
-    test "returns an Alliance struct when successful", %{alliance_data: _alliance_data} do
-      # Ensure cache is empty for this test
-      # Clear any cached data for this alliance (only if cache is running)
-      cache_key = "esi:alliance:345678"
-
-      if Process.whereis(:wanderer_test_cache) do
-        Cache.delete(cache_key)
-      end
-
-      # Get alliance struct from ESI service
-      {:ok, alliance} = Service.get_alliance_struct(345_678)
-
-      # Verify that it's an Alliance struct with the correct data
-      assert %Alliance{} = alliance
-      assert alliance.alliance_id == 345_678
-      assert alliance.name == "Test Alliance"
-      assert alliance.ticker == "TSTA"
-      assert alliance.executor_corporation_id == 789_012
-      assert alliance.creator_id == 123_456
-      assert alliance.creation_date == ~U[2020-01-01 00:00:00Z]
-      assert alliance.faction_id == 555_555
     end
   end
 

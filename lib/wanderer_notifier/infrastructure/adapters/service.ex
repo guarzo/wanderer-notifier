@@ -11,13 +11,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
 
   require Logger
 
-  alias WandererNotifier.Infrastructure.Adapters.ESI.Entities.{
-    Character,
-    Corporation,
-    Alliance,
-    SolarSystem
-  }
-
   alias WandererNotifier.Infrastructure.Cache
 
   @behaviour WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
@@ -77,12 +70,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
     end
   end
 
-  def get_character_struct(character_id, opts \\ []) do
-    with {:ok, data} <- get_character_info(character_id, opts) do
-      {:ok, Character.from_esi_data(data)}
-    end
-  end
-
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_corporation_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_corporation_info(corporation_id, opts \\ []) do
@@ -102,12 +89,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
     end
   end
 
-  def get_corporation_struct(corporation_id, opts \\ []) do
-    with {:ok, data} <- get_corporation_info(corporation_id, opts) do
-      {:ok, Corporation.from_esi_data(data)}
-    end
-  end
-
   @impl WandererNotifier.Infrastructure.Adapters.ESI.ServiceBehaviour
   @spec get_alliance_info(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_alliance_info(alliance_id, opts \\ []) do
@@ -124,12 +105,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-    end
-  end
-
-  def get_alliance_struct(alliance_id, opts \\ []) do
-    with {:ok, data} <- get_alliance_info(alliance_id, opts) do
-      {:ok, Alliance.from_esi_data(data)}
     end
   end
 
@@ -234,12 +209,6 @@ defmodule WandererNotifier.Infrastructure.Adapters.ESI.Service do
           {:error, reason} ->
             {:error, reason}
         end
-    end
-  end
-
-  def get_system_struct(system_id, opts \\ []) do
-    with {:ok, data} <- get_system(system_id, opts) do
-      {:ok, SolarSystem.from_esi_data(data)}
     end
   end
 

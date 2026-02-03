@@ -1,9 +1,8 @@
 defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   @moduledoc """
-  Consolidated utilities for notification formatting.
-  Single source of truth for all formatting helpers.
+  Utilities for notification formatting.
 
-  This module consolidates all formatter utilities including:
+  Provides helpers for:
   - URL generation (zKillboard, EVE images, Dotlan, EVE Who)
   - Value formatting (ISK, numbers, percentages)
   - Color management (ISK-based, security-based, system/character notifications)
@@ -506,7 +505,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
 
   # Check if two DateTime structs are on the same calendar day
   defp same_date?(%DateTime{} = dt1, %DateTime{} = dt2) do
-    Calendar.strftime(dt1, "%Y-%m-%d") == Calendar.strftime(dt2, "%Y-%m-%d")
+    DateTime.to_date(dt1) == DateTime.to_date(dt2)
   end
 
   # Format time in 12-hour format

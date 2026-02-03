@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @moduledoc """
-  Handles system-related events from the SSE stream using unified tracking infrastructure.
+  Handles system-related events from the SSE stream.
 
-  This module processes system events (add, delete, metadata changes) and integrates
-  with the existing notification pipeline while using shared event handling patterns.
+  Processes system events (add, delete, metadata changes) and integrates
+  with the notification pipeline.
   """
 
   require Logger
@@ -135,10 +135,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp handle_cache_update(enriched_system, payload) do
-    with :ok <- update_system_cache(enriched_system),
-         :ok <- cache_individual_system(enriched_system, payload) do
-      :ok
-    end
+    # Update main systems cache, then cache individual system data
+    {:ok, _} = update_system_cache(enriched_system)
+    cache_individual_system(enriched_system, payload)
   end
 
   defp update_system_cache(system) do

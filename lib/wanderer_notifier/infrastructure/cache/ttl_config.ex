@@ -2,9 +2,6 @@ defmodule WandererNotifier.Infrastructure.Cache.TtlConfig do
   @moduledoc """
   TTL (Time-To-Live) configuration for cache entries.
 
-  Centralizes all TTL constants and provides a unified interface for
-  retrieving TTL values based on data type.
-
   ## TTL Values
 
   | Type              | TTL        | Use Case                              |
@@ -97,46 +94,46 @@ defmodule WandererNotifier.Infrastructure.Cache.TtlConfig do
   def default_ttl, do: @default_ttl
 
   # ============================================================================
-  # TTL Constants (exposed for direct access if needed)
+  # Deprecated: Use ttl/1 instead
   # ============================================================================
 
-  @doc "Returns the character TTL constant."
+  @doc deprecated: "Use ttl(:character) instead"
   @spec character_ttl() :: pos_integer()
-  def character_ttl, do: @character_ttl
+  def character_ttl, do: ttl(:character)
 
-  @doc "Returns the corporation TTL constant."
+  @doc deprecated: "Use ttl(:corporation) instead"
   @spec corporation_ttl() :: pos_integer()
-  def corporation_ttl, do: @corporation_ttl
+  def corporation_ttl, do: ttl(:corporation)
 
-  @doc "Returns the alliance TTL constant."
+  @doc deprecated: "Use ttl(:alliance) instead"
   @spec alliance_ttl() :: pos_integer()
-  def alliance_ttl, do: @alliance_ttl
+  def alliance_ttl, do: ttl(:alliance)
 
-  @doc "Returns the system TTL constant."
+  @doc deprecated: "Use ttl(:system) instead"
   @spec system_ttl() :: pos_integer()
-  def system_ttl, do: @system_ttl
+  def system_ttl, do: ttl(:system)
 
-  @doc "Returns the universe type TTL constant."
+  @doc deprecated: "Use ttl(:universe_type) instead"
   @spec universe_type_ttl() :: pos_integer()
-  def universe_type_ttl, do: @universe_type_ttl
+  def universe_type_ttl, do: ttl(:universe_type)
 
-  @doc "Returns the killmail TTL constant."
+  @doc deprecated: "Use ttl(:killmail) instead"
   @spec killmail_ttl() :: pos_integer()
-  def killmail_ttl, do: @killmail_ttl
+  def killmail_ttl, do: ttl(:killmail)
 
-  @doc "Returns the map data TTL constant."
+  @doc deprecated: "Use ttl(:map_data) instead"
   @spec map_data_ttl() :: pos_integer()
-  def map_data_ttl, do: @map_data_ttl
+  def map_data_ttl, do: ttl(:map_data)
 
-  @doc "Returns the item price TTL constant."
+  @doc deprecated: "Use ttl(:item_price) instead"
   @spec item_price_ttl() :: pos_integer()
-  def item_price_ttl, do: @item_price_ttl
+  def item_price_ttl, do: ttl(:item_price)
 
-  @doc "Returns the license TTL constant."
+  @doc deprecated: "Use ttl(:license) instead"
   @spec license_ttl() :: pos_integer()
-  def license_ttl, do: @license_ttl
+  def license_ttl, do: ttl(:license)
 
-  @doc "Returns the notification deduplication TTL constant."
+  @doc deprecated: "Use ttl(:notification_dedup) instead"
   @spec notification_dedup_ttl() :: pos_integer()
-  def notification_dedup_ttl, do: @notification_dedup_ttl
+  def notification_dedup_ttl, do: ttl(:notification_dedup)
 end

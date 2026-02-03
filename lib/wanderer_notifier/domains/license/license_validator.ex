@@ -98,23 +98,23 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   - `false` otherwise.
   """
   @spec check_features_list(atom() | String.t(), any()) :: boolean()
-  def check_features_list(feature, features) do
-    if is_list(features) do
-      enabled = Enum.member?(features, to_string(feature))
+  def check_features_list(feature, features) when is_list(features) do
+    enabled = Enum.member?(features, to_string(feature))
 
-      Logger.debug(
-        "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}",
-        category: :config
-      )
+    Logger.debug(
+      "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}",
+      category: :config
+    )
 
-      enabled
-    else
-      Logger.debug("Feature check: #{feature} - disabled (features not a list)",
-        category: :config
-      )
+    enabled
+  end
 
-      false
-    end
+  def check_features_list(feature, _features) do
+    Logger.debug("Feature check: #{feature} - disabled (features not a list)",
+      category: :config
+    )
+
+    false
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -122,19 +122,19 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   # ══════════════════════════════════════════════════════════════════════════════
 
   @doc """
-  Validates the API token.
+  Validates the API token from Config.api_token().
   The token should be a non-empty string.
 
   ## Returns
   - `true` if the token is valid.
   - `false` if the token is invalid.
   """
-  @spec validate_token() :: boolean()
-  def validate_token do
+  @spec validate_api_token() :: boolean()
+  def validate_api_token do
     token = Config.api_token()
 
     Logger.info(
-      "License validation - token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}",
+      "License validation - API token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}",
       category: :config
     )
 
@@ -145,7 +145,7 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
     is_valid = !StringUtils.nil_or_empty?(token)
 
     if !is_valid do
-      Logger.warning("License validation warning: Invalid notifier API token", category: :config)
+      Logger.warning("License validation warning: Invalid API token", category: :config)
     end
 
     is_valid
@@ -173,8 +173,8 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   """
   @spec should_use_dev_mode?() :: boolean()
   def should_use_dev_mode? do
-    env = Application.get_env(:wanderer_notifier, :environment)
-    env in [:dev, :test] && (!license_key_present?() || !api_token_valid?())
+    env = Config.environment()
+    env in [:dev, :test] && (!license_key_present?() || !validate_notifier_api_token?())
   end
 
   @doc """
@@ -204,14 +204,14 @@ defmodule WandererNotifier.Domains.License.LicenseValidator do
   end
 
   @doc """
-  Checks if the API token is valid.
+  Checks if the notifier API token is valid.
 
   ## Returns
-  - `true` if the API token is present.
+  - `true` if the notifier API token is present.
   - `false` otherwise.
   """
-  @spec api_token_valid?() :: boolean()
-  def api_token_valid? do
+  @spec validate_notifier_api_token?() :: boolean()
+  def validate_notifier_api_token? do
     token = Config.notifier_api_token()
     StringUtils.present?(token)
   end

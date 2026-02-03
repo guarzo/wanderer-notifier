@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def notifications_enabled?, do: true
     def system_notifications_enabled?, do: true
     def character_notifications_enabled?, do: true
-    def deduplication_module, do: WandererNotifier.Domains.Notifications.CacheImpl
+    def deduplication_module, do: WandererNotifier.Domains.Notifications.Deduplication
     def system_track_module, do: WandererNotifier.MockSystem
     def character_track_module, do: WandererNotifier.MockCharacter
     def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
@@ -52,7 +52,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def get_recent_kills(), do: []
   end
 
-  # Use real deduplication implementation (CacheImpl)
+  # Use real deduplication implementation
 
   # Define MockMetrics for the tests
   defmodule MockMetrics do
@@ -102,7 +102,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     Application.put_env(
       :wanderer_notifier,
       :deduplication_module,
-      WandererNotifier.Domains.Notifications.CacheImpl
+      WandererNotifier.Domains.Notifications.Deduplication
     )
 
     # Set up metrics module
@@ -148,9 +148,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     ESIMockHelper.setup_esi_mocks()
 
     # Always stub the DiscordNotifier with a default response
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
-                                                                          _type,
-                                                                          input_opts ->
+    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail,
+                                                          _type,
+                                                          input_opts ->
       _formatted_opts = if is_map(input_opts), do: Map.to_list(input_opts), else: input_opts
       :ok
     end)

@@ -1,9 +1,8 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   @moduledoc """
-  Handles character events from the Wanderer map API using unified tracking infrastructure.
+  Handles character events from the Wanderer map API.
 
-  This module processes real-time character events to maintain character tracking state
-  while using the shared event handling patterns.
+  Processes real-time character events to maintain character tracking state.
   """
 
   require Logger
@@ -129,12 +128,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     name = character["name"]
     id = character["id"]
 
-    if eve_id do
-      fn cached -> cached["eve_id"] == eve_id end
-    else
-      fn cached ->
-        (name && cached["name"] == name) || (id && cached["id"] == id)
-      end
+    cond do
+      eve_id ->
+        fn cached -> cached["eve_id"] == eve_id end
+
+      name || id ->
+        fn cached ->
+          (name && cached["name"] == name) || (id && cached["id"] == id)
+        end
+
+      true ->
+        # All identifiers are nil - no match possible
+        fn _cached -> false end
     end
   end
 

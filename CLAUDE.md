@@ -359,8 +359,8 @@ Cache.get("custom:key")
 Cache.put("custom:key", value, :timer.hours(1))
 
 # Key generation via Cache.Keys module
-Cache.Keys.character_key(character_id)  # => "esi:character:123"
-Cache.Keys.system_key(system_id)        # => "esi:system:456"
+Cache.Keys.character(character_id)  # => "esi:character:123"
+Cache.Keys.system(system_id)        # => "esi:system:456"
 ```
 
 ### Feature Flags
@@ -376,10 +376,12 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
 - `WORMHOLE_ONLY_KILL_NOTIFICATIONS` - Only send kill notifications for wormhole systems (default: false)
 
-### Exclusion Lists
+### Corporation Kill Focus
 
-- `CORPORATION_EXCLUDE_LIST` - Comma-separated list of corporation IDs to exclude from system kill channel notifications. Any killmail where the victim OR any attacker belongs to these corporations will be excluded from the system kill channel (if configured). This exclusion only applies when `DISCORD_SYSTEM_KILL_CHANNEL_ID` is set; character kill notifications are not affected.
-- `CHARACTER_TRACKING_CORPORATION_IDS` - Comma-separated list of corporation IDs. When set, only kills where a tracked character belongs to one of these corporations will go to the character kill channel. Kills not matching will still be evaluated for the system kill channel. When empty/unset, all tracked character kills go to the character kill channel.
+- `CORPORATION_KILL_FOCUS` - Comma-separated list of corporation IDs for focused kill routing. When set, kills involving characters from these corporations (as victim or attacker) will:
+  - Be routed to the **character kill channel** (or default channel if not configured)
+  - Be **excluded** from the system kill channel
+  - This is useful for tracking your own corporation's kills separately from general system activity
 
 ### Notification Timing Configuration
 

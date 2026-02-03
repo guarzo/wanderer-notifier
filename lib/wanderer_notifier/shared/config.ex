@@ -113,27 +113,25 @@ defmodule WandererNotifier.Shared.Config do
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Exclusion Lists
+  # Corporation Kill Focus
   # ──────────────────────────────────────────────────────────────────────────────
 
-  @doc "Get list of corporation IDs to exclude from kill notifications"
-  def corporation_exclude_list do
-    Application.get_env(:wanderer_notifier, :corporation_exclude_list, [])
+  @doc """
+  Get list of corporation IDs for kill focus.
+
+  Kills involving characters from these corporations:
+  - Go to the character kill channel
+  - Are excluded from the system kill channel
+
+  This consolidates the old CORPORATION_EXCLUDE_LIST and CHARACTER_TRACKING_CORPORATION_IDS.
+  """
+  def corporation_kill_focus do
+    Application.get_env(:wanderer_notifier, :corporation_kill_focus, [])
   end
 
-  @doc "Check if corporation exclusion is configured (has at least one ID)"
-  def corporation_exclusion_enabled? do
-    corporation_exclude_list() != []
-  end
-
-  @doc "Get list of corporation IDs allowed for character kill notifications"
-  def character_tracking_corporation_ids do
-    Application.get_env(:wanderer_notifier, :character_tracking_corporation_ids, [])
-  end
-
-  @doc "Check if character corporation filtering is enabled for kill notifications"
-  def character_tracking_corporation_filter_enabled? do
-    character_tracking_corporation_ids() != []
+  @doc "Check if corporation kill focus is configured"
+  def corporation_kill_focus_enabled? do
+    corporation_kill_focus() != []
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

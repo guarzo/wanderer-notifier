@@ -1,12 +1,6 @@
 defmodule WandererNotifier.Shared.Validation do
   @moduledoc """
-  Unified validation module consolidating all validation patterns across the application.
-
-  This module combines and replaces:
-  - WandererNotifier.Shared.Utils.ValidationUtils (general validation patterns)
-  - HTTP-specific validation (consolidated into this module)
-  - License-specific validation (previously in WandererNotifier.Domains.License.Validation - now removed)
-  - Various validation patterns scattered throughout the codebase
+  Unified validation module for all validation patterns across the application.
 
   ## Design Principles
 

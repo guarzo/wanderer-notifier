@@ -3,7 +3,7 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   Supervisor for the killmail processing pipeline.
 
   This supervisor manages:
-  - The RedisQ client that fetches killmails from zkillboard
+  - The WebSocket client that receives killmails in real-time
   - The pipeline processor that handles incoming killmail messages
   """
 

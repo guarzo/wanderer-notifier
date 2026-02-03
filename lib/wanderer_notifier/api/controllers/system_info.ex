@@ -279,9 +279,9 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   defp calculate_processing_efficiency(_, _), do: 0.0
 
   defp get_last_activity_time(stats) do
-    redisq = stats[:redisq] || %{}
+    websocket = stats[:websocket] || %{}
 
-    case redisq[:last_message] do
+    case websocket[:last_message] do
       nil -> "never"
       dt -> TimeUtils.format_time_ago(dt)
     end

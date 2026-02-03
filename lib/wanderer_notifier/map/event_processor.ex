@@ -7,12 +7,11 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   ## Event Categories
 
-  Events are organized into logical categories for better maintainability:
+  Events are organized into logical categories:
 
   - **System Events**: Changes to wormhole systems (add/remove/update)
-  - **Connection Events**: Wormhole connection changes (future)
-  - **Signature Events**: Cosmic signature updates (future)
-  - **ACL Events**: Access control list changes for character tracking
+  - **Character Events**: Character tracking changes
+  - **Rally Events**: Rally point creation/removal
   - **Special Events**: Meta events like connection status
 
   The event processor uses a two-stage routing approach:
@@ -161,17 +160,13 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
   end
 
-  # Connection event handlers (not implemented yet)
   @spec handle_connection_event(String.t(), map(), String.t()) :: :ignored
   defp handle_connection_event(_event_type, _event, _map_slug) do
-    # Future implementation for wormhole connection events
     :ignored
   end
 
-  # Signature event handlers (not implemented yet)
   @spec handle_signature_event(String.t(), map(), String.t()) :: :ignored
   defp handle_signature_event(_event_type, _event, _map_slug) do
-    # Future implementation for signature scanning events
     :ignored
   end
 
@@ -209,10 +204,9 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
   end
 
-  # ACL event handlers (legacy - keeping for compatibility)
+  # ACL events are handled by character events
   @spec handle_acl_event(String.t(), map(), String.t()) :: :ignored
   defp handle_acl_event(_event_type, _event, _map_slug) do
-    # ACL events are now handled by character events
     :ignored
   end
 

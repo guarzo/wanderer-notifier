@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Http.ResponseHandler do
   @moduledoc """
-  Unified HTTP response handler for consistent response processing across the application.
+  HTTP response handler for consistent response processing.
 
   Provides a flexible way to handle HTTP responses with:
   - Configurable success status codes

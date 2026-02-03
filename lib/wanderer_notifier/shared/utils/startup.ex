@@ -2,9 +2,8 @@ defmodule WandererNotifier.Shared.Utils.Startup do
   @moduledoc """
   Utilities for handling startup-related operations including suppression periods.
 
-  This module provides centralized logic for determining if the application is within
-  the startup suppression period, which is used to avoid notification spam during
-  initial system synchronization.
+  Provides logic for determining if the application is within the startup
+  suppression period, which avoids notification spam during initial synchronization.
   """
 
   @doc """

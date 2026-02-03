@@ -15,7 +15,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   keeping entity-specific data extraction logic in their own modules.
   """
 
-  require Logger
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Determiner
 
@@ -53,9 +52,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     - `:ttl` - Custom TTL for the cache entry (optional, system only)
 
   ## Returns
-  - `:ok` on success
+  - `{:ok, :added}` when entity was added
+  - `{:ok, :already_present}` when entity already exists
   """
-  @spec add_to_cache_list(entity_type(), map() | struct(), keyword()) :: :ok
+  @spec add_to_cache_list(entity_type(), map() | struct(), keyword()) ::
+          {:ok, :added | :already_present}
   def add_to_cache_list(entity_type, entity, opts \\ []) do
     key = cache_key(entity_type)
 
@@ -64,20 +65,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
         entity_identifier = entity_id(entity_type, entity)
 
         if entity_exists?(entity_type, cached_list, entity_identifier) do
-          :ok
+          {:ok, :already_present}
         else
           updated_list = [entity | cached_list]
           put_cache(entity_type, key, updated_list, opts)
-          :ok
+          {:ok, :added}
         end
 
       {:ok, nil} ->
         put_cache(entity_type, key, [entity], opts)
-        :ok
+        {:ok, :added}
 
       {:error, :not_found} ->
         put_cache(entity_type, key, [entity], opts)
-        :ok
+        {:ok, :added}
     end
   end
 
@@ -89,9 +90,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   - `entity` - The entity to remove (or map with identifier)
 
   ## Returns
-  - `:ok` on success
+  - `{:ok, :removed}` when entity was removed
+  - `{:ok, :not_found}` when cache was empty or entity not found
   """
-  @spec remove_from_cache_list(entity_type(), map() | struct()) :: :ok
+  @spec remove_from_cache_list(entity_type(), map() | struct()) :: {:ok, :removed | :not_found}
   def remove_from_cache_list(entity_type, entity) do
     key = cache_key(entity_type)
     entity_identifier = entity_id(entity_type, entity)
@@ -100,13 +102,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
       {:ok, cached_list} when is_list(cached_list) ->
         updated_list = reject_entity(entity_type, cached_list, entity_identifier)
         put_cache(entity_type, key, updated_list, [])
-        :ok
+        {:ok, :removed}
 
       {:ok, nil} ->
-        :ok
+        {:ok, :not_found}
 
       {:error, :not_found} ->
-        :ok
+        {:ok, :not_found}
     end
   end
 
@@ -122,9 +124,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     - `:add_if_missing` - Whether to add if not found (default: true)
 
   ## Returns
-  - `:ok` on success
+  - `{:ok, :updated}` when existing entity was updated
+  - `{:ok, :added}` when entity was added (not found in cache)
   """
-  @spec update_in_cache_list(entity_type(), map() | struct(), function() | nil, keyword()) :: :ok
+  @spec update_in_cache_list(entity_type(), map() | struct(), function() | nil, keyword()) ::
+          {:ok, :updated | :added}
   def update_in_cache_list(entity_type, entity, match_fn \\ nil, opts \\ []) do
     key = cache_key(entity_type)
     entity_identifier = entity_id(entity_type, entity)
@@ -158,7 +162,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
       maybe_add_entity(updated_list, entity, entity_identifier, matched, add_if_missing)
 
     put_cache(entity_type, key, final_list, opts)
-    :ok
+
+    # Return :updated if matched an existing entity, :added if we added a new one
+    was_added = not matched and add_if_missing and entity_identifier != nil
+
+    if matched do
+      {:ok, :updated}
+    else
+      if was_added, do: {:ok, :added}, else: {:ok, :updated}
+    end
   end
 
   defp do_update_in_cache(
@@ -185,12 +197,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts)
   end
 
-  defp maybe_add_entity(list, entity, entity_identifier, matched, add_if_missing) do
-    if not matched and add_if_missing and entity_identifier do
-      [entity | list]
-    else
-      list
-    end
+  defp maybe_add_entity(list, entity, entity_identifier, false = _matched, true = _add_if_missing)
+       when entity_identifier != nil do
+    [entity | list]
+  end
+
+  defp maybe_add_entity(list, _entity, _entity_identifier, _matched, _add_if_missing) do
+    list
   end
 
   defp maybe_add_new_entity(entity_type, key, entity, entity_identifier, opts) do
@@ -198,9 +211,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
 
     if add_if_missing and entity_identifier do
       put_cache(entity_type, key, [entity], opts)
+      {:ok, :added}
+    else
+      {:ok, :added}
     end
-
-    :ok
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -280,7 +294,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   end
 
   defp matches_entity?(:character, cached, entity_identifier) do
-    get_character_id(cached) == entity_identifier
+    ids_equal?(get_character_id(cached), entity_identifier)
   end
 
   defp matches_entity?(:system, cached, entity_identifier) do
@@ -309,10 +323,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
     # Preserve eve_id from cache when merging
     merged = Map.merge(cached, new_entity)
 
-    if cached["eve_id"] && !new_entity["eve_id"] do
-      Map.put(merged, "eve_id", cached["eve_id"])
-    else
-      merged
+    cond do
+      Map.has_key?(cached, :eve_id) and not Map.has_key?(new_entity, :eve_id) ->
+        Map.put(merged, :eve_id, Map.fetch!(cached, :eve_id))
+
+      Map.has_key?(cached, "eve_id") and not Map.has_key?(new_entity, "eve_id") ->
+        Map.put(merged, "eve_id", Map.fetch!(cached, "eve_id"))
+
+      true ->
+        merged
     end
   end
 

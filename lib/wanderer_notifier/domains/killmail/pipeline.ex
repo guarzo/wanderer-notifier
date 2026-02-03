@@ -1,8 +1,7 @@
 defmodule WandererNotifier.Domains.Killmail.Pipeline do
   @moduledoc """
-  Simplified unified pipeline for processing killmails.
+  Pipeline for processing killmails.
 
-  Merges the functionality of Pipeline and Processor modules to eliminate duplication.
   Handles pre-enriched WebSocket data directly without unnecessary transformations.
   """
 

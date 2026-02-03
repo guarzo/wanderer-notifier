@@ -1,10 +1,9 @@
 defmodule WandererNotifier.Domains.Notifications.Determiner do
   @moduledoc """
-  Unified notification determiner that handles all notification types.
+  Notification determiner that handles all notification types.
 
-  Consolidates the logic for determining whether notifications should be sent
-  for characters, systems, and killmails. Replaces the separate Character,
-  System, and Kill determiner modules with a single, cohesive interface.
+  Determines whether notifications should be sent for characters, systems,
+  and killmails based on feature flags, tracking state, and deduplication.
   """
 
   require Logger
@@ -254,10 +253,20 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     do: tracked_character?(Integer.to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    {:ok, tracked} =
-      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str) do
+      {:ok, tracked} ->
+        tracked
 
-    tracked
+      {:error, reason} ->
+        require Logger
+
+        Logger.error("Failed to check if character is tracked",
+          character_id: character_id_str,
+          reason: inspect(reason)
+        )
+
+        false
+    end
   end
 
   def tracked_character?(_), do: false
@@ -269,10 +278,20 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     do: tracked_system?(Integer.to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    {:ok, tracked} =
-      WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str)
+    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
+      {:ok, tracked} ->
+        tracked
 
-    tracked
+      {:error, reason} ->
+        require Logger
+
+        Logger.error("Failed to check if system is tracked",
+          system_id: system_id_str,
+          reason: inspect(reason)
+        )
+
+        false
+    end
   end
 
   def tracked_system?(_), do: false

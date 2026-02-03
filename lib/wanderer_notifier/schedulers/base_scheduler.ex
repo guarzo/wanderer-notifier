@@ -50,46 +50,53 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   # ── Timer Management Helpers ─────────────────────────────────────────────────
 
   @doc """
-  Schedules the next update by creating a timer that sends :update message.
+  Schedules the next update by creating a timer that sends {:update, ref} message.
   Cancels any existing timer in the state first.
+  Uses a unique ref to prevent processing stale timer messages.
   """
   @spec schedule_next_update(map()) :: map()
   def schedule_next_update(state) do
     state = cancel_timer(state)
-    timer = Process.send_after(self(), :update, state.interval)
-    %{state | timer: timer}
+    ref = make_ref()
+    timer = Process.send_after(self(), {:update, ref}, state.interval)
+    %{state | timer: timer, timer_ref: ref}
   end
 
   @doc """
   Cancels an existing timer if present in the state.
   Returns the state unchanged if no timer exists.
+  Also clears the timer_ref.
   """
   @spec cancel_timer(map()) :: map()
-  def cancel_timer(%{timer: nil} = state), do: state
+  def cancel_timer(%{timer: nil} = state), do: %{state | timer_ref: nil}
 
   def cancel_timer(%{timer: timer} = state) do
     Process.cancel_timer(timer)
-    %{state | timer: nil}
+    %{state | timer: nil, timer_ref: nil}
   end
 
   @doc """
   Schedules a feature flag check after the configured interval.
+  Uses a unique ref to prevent processing stale timer messages.
   """
   @spec schedule_feature_check(map()) :: map()
   def schedule_feature_check(state) do
     state = cancel_timer(state)
-    timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
-    %{state | timer: timer}
+    ref = make_ref()
+    timer = Process.send_after(self(), {:check_feature, ref}, Constants.feature_check_interval())
+    %{state | timer: timer, timer_ref: ref}
   end
 
   @doc """
   Schedules an immediate update (0ms delay).
+  Uses a unique ref to prevent processing stale timer messages.
   """
   @spec schedule_immediate_update(map()) :: map()
   def schedule_immediate_update(state) do
     state = cancel_timer(state)
-    timer = Process.send_after(self(), :update, 0)
-    %{state | timer: timer}
+    ref = make_ref()
+    timer = Process.send_after(self(), {:update, ref}, 0)
+    %{state | timer: timer, timer_ref: ref}
   end
 
   # ── Error Classification Helper ──────────────────────────────────────────────
@@ -132,18 +139,17 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
     old_count = length(old_data)
     change = new_count - old_count
 
-    change_indicator =
-      cond do
-        change > 0 -> "+ #{change}"
-        change < 0 -> "#{change}"
-        true -> "No change"
-      end
+    change_indicator = format_change_indicator(change)
 
     emoji = module.log_emoji()
     label = module.log_label()
 
     Logger.info("#{emoji} #{label} updated | #{old_count} -> #{new_count} | #{change_indicator}")
   end
+
+  defp format_change_indicator(change) when change > 0, do: "+ #{change}"
+  defp format_change_indicator(change) when change < 0, do: "#{change}"
+  defp format_change_indicator(_change), do: "No change"
 
   # ── Macro ────────────────────────────────────────────────────────────────────
 
@@ -174,6 +180,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         state = %{
           interval: interval,
           timer: nil,
+          timer_ref: nil,
           primed: primed?,
           cached_data: cached_data
         }
@@ -241,17 +248,19 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           feature_enabled: feature_enabled
         )
 
-        if feature_enabled do
-          Logger.info("Scheduling update",
-            module: __MODULE__,
-            feature: feature_flag(),
-            enabled: true
-          )
+        case feature_enabled do
+          true ->
+            Logger.info("Scheduling update",
+              module: __MODULE__,
+              feature: feature_flag(),
+              enabled: true
+            )
 
-          {:noreply, BaseScheduler.schedule_immediate_update(state)}
-        else
-          maybe_log_feature_disabled(feature_flag_value)
-          {:noreply, BaseScheduler.schedule_feature_check(state)}
+            {:noreply, BaseScheduler.schedule_immediate_update(state)}
+
+          false ->
+            maybe_log_feature_disabled(feature_flag_value)
+            {:noreply, BaseScheduler.schedule_feature_check(state)}
         end
       end
 
@@ -270,22 +279,31 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
               not WandererNotifier.Shared.Config.feature_enabled?(flag)
           end
 
-        if should_log do
-          Logger.info("Feature disabled",
-            module: __MODULE__,
-            feature: feature_flag_value,
-            enabled: false
-          )
+        case should_log do
+          true ->
+            Logger.info("Feature disabled",
+              module: __MODULE__,
+              feature: feature_flag_value,
+              enabled: false
+            )
+
+          false ->
+            :ok
         end
       end
 
       @impl GenServer
-      def handle_info(:check_feature, state) do
+      def handle_info({:check_feature, ref}, %{timer_ref: ref} = state) do
         handle_continue(:schedule, state)
       end
 
+      # Ignore stale check_feature messages with old refs
+      def handle_info({:check_feature, _stale_ref}, state) do
+        {:noreply, state}
+      end
+
       @impl GenServer
-      def handle_info(:update, state) do
+      def handle_info({:update, ref}, %{timer_ref: ref} = state) do
         case update_data(state.cached_data) do
           {:ok, new_data} ->
             handle_update_success(new_data, state)
@@ -293,6 +311,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           {:error, reason} ->
             handle_update_error(reason, state)
         end
+      end
+
+      # Ignore stale update messages with old refs
+      def handle_info({:update, _stale_ref}, state) do
+        {:noreply, state}
       end
 
       defp handle_update_success(new_data, state) do

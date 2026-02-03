@@ -1,9 +1,6 @@
 defmodule WandererNotifier.Infrastructure.Cache.Keys do
   @moduledoc """
-  Centralized cache key generation for consistent naming patterns.
-
-  All cache keys should be generated through these functions to ensure
-  consistency and avoid duplication across the codebase.
+  Cache key generation for consistent naming patterns.
 
   ## Key Naming Conventions
 
@@ -166,7 +163,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
 
   @doc "Returns cache key for license validation result."
   @spec license_validation() :: String.t()
-  def license_validation, do: "license_validation_result"
+  def license_validation, do: "license:validation"
 
   # ============================================================================
   # Generic helper for custom keys

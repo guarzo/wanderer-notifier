@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   @moduledoc """
-  Centralized error handling utilities for consistent error management across the application.
+  Error handling utilities for consistent error management across the application.
 
   This module provides:
   - Standard error tuple formats
@@ -387,12 +387,11 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # Safe Execution Helpers - Added to consolidate scattered try/rescue patterns
+  # Safe Execution Helpers
   # ══════════════════════════════════════════════════════════════════════════════
 
   @doc """
   Safely executes a function and returns normalized error tuples.
-  Consolidates try/rescue patterns scattered throughout the codebase.
 
   ## Examples
 
@@ -435,7 +434,6 @@ defmodule WandererNotifier.Shared.Utils.ErrorHandler do
 
   @doc """
   Safely executes a function and returns a string result for user display.
-  Consolidates string-returning error patterns in formatters and utilities.
 
   ## Examples
 

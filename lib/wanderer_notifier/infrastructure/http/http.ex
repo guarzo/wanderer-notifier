@@ -2,9 +2,10 @@ defmodule WandererNotifier.Infrastructure.Http do
   @behaviour WandererNotifier.Infrastructure.Http.Behaviour
 
   @moduledoc """
-  Unified HTTP client module that handles all HTTP operations for the application.
-  Provides a single interface for making HTTP requests with built-in retry logic,
-  timeout management, error handling, and service-specific configurations.
+  HTTP client module that handles all HTTP operations for the application.
+
+  Provides HTTP requests with built-in retry logic, timeout management,
+  error handling, and service-specific configurations.
 
   ## Service Configurations
 
@@ -140,24 +141,29 @@ defmodule WandererNotifier.Infrastructure.Http do
       client.request(method, url, encoded_body, merged_headers, final_opts)
     else
       # Production path - prepare body and go through middleware chain
-      prepared_body = prepare_body(encoded_body)
-      merged_headers = merge_headers(final_headers, method)
+      case prepare_body(encoded_body) do
+        {:ok, prepared_body} ->
+          merged_headers = merge_headers(final_headers, method)
 
-      # Get middlewares from options or use defaults
-      middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
+          # Get middlewares from options or use defaults
+          middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
 
-      # Create request struct for middleware chain
-      request = %{
-        method: method,
-        url: url,
-        headers: merged_headers,
-        body: prepared_body,
-        opts: final_opts
-      }
+          # Create request struct for middleware chain
+          request = %{
+            method: method,
+            url: url,
+            headers: merged_headers,
+            body: prepared_body,
+            opts: final_opts
+          }
 
-      # Execute middleware chain
-      execute_middleware_chain(request, middlewares)
-      |> transform_response()
+          # Execute middleware chain
+          execute_middleware_chain(request, middlewares)
+          |> transform_response()
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -268,20 +274,20 @@ defmodule WandererNotifier.Infrastructure.Http do
     req_opts
   end
 
-  defp prepare_body(nil), do: nil
-  defp prepare_body(body) when is_binary(body), do: body
+  defp prepare_body(nil), do: {:ok, nil}
+  defp prepare_body(body) when is_binary(body), do: {:ok, body}
 
   defp prepare_body(body) when is_map(body) do
     case JsonUtils.encode(body) do
       {:ok, encoded} ->
-        encoded
+        {:ok, encoded}
 
       {:error, reason} ->
-        raise ArgumentError, "Failed to encode body to JSON: #{inspect(reason)}"
+        {:error, {:json_encode_failed, reason}}
     end
   end
 
-  defp prepare_body(body), do: to_string(body)
+  defp prepare_body(body), do: {:ok, to_string(body)}
 
   defp merge_headers(custom_headers, method) do
     base_headers =

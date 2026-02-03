@@ -1,10 +1,9 @@
 defmodule WandererNotifier.Shared.Env do
   @moduledoc """
-  Consolidated environment variable handling for the application.
+  Environment variable handling for the application.
 
-  This module centralizes all environment variable access with consistent
-  validation, type conversion, and error handling. All modules should use
-  this module instead of direct System.get_env/Application.get_env calls.
+  Provides consistent access to environment variables with validation,
+  type conversion, and error handling.
   """
 
   @doc """

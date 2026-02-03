@@ -124,21 +124,13 @@ Target users in voice channels for priority notifications.
 
 Control which notifications are sent and which are filtered out.
 
-### Corporation Exclusion
+### Corporation Kill Focus
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `CORPORATION_EXCLUDE_LIST` | Corporation IDs to exclude from system kill notifications | `98000001,98000002` |
+| `CORPORATION_KILL_FOCUS` | Corporation IDs for focused kill routing | `98000001,98000002` |
 
-> Kills where the victim OR any attacker belongs to excluded corporations will not appear in the system kill channel.
-
-### Character Kill Channel Filter
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `CHARACTER_TRACKING_CORPORATION_IDS` | Only send character kills for these corps | `98000001,98000002` |
-
-> When set, only kills where a tracked character belongs to one of these corporations will go to the character kill channel. Other kills are still evaluated for the system kill channel.
+> When set, kills involving characters from these corporations (as victim or attacker) will be routed to the **character kill channel** and excluded from the system kill channel. This is useful for tracking your own corporation's kills separately from general system activity.
 
 ### Character Exclusion
 
@@ -239,8 +231,8 @@ DISCORD_CHARACTER_CHANNEL_ID=567890123456789012
 DISCORD_GUILD_ID=678901234567890123
 VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED=true
 
-# Filtering
-CORPORATION_EXCLUDE_LIST=98000001,98000002
+# Focus your corporation's kills to character channel
+CORPORATION_KILL_FOCUS=98000001,98000002
 ```
 
 ---

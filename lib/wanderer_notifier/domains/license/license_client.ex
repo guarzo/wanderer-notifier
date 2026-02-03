@@ -149,11 +149,6 @@ defmodule WandererNotifier.Domains.License.LicenseClient do
   end
 
   defp handle_request_error(reason) do
-    Logger.error("License validation request error",
-      reason: inspect(reason),
-      category: :api
-    )
-
     normalized = ErrorHandler.normalize_error({:error, reason})
     ErrorHandler.log_error("License Manager API request failed", elem(normalized, 1))
     normalized

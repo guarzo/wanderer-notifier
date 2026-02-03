@@ -2,10 +2,6 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
   @moduledoc """
   Handles fetching recent kills via WandererKills API for system notifications
   and provides caching utilities for killmail-related data.
-
-  This module was previously responsible for ESI enrichment, but with the migration
-  to WebSocket with pre-enriched data, it now handles recent kills lookup and
-  system name caching (merged from Killmail.Cache).
   """
 
   alias WandererNotifier.Infrastructure.{Http, Cache}
@@ -50,7 +46,6 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
 
   @doc """
   Gets a system name from the cache or from the API.
-  Merged from WandererNotifier.Domains.Killmail.Cache.
 
   ## Parameters
   - system_id: The ID of the system to get name for
@@ -464,7 +459,6 @@ defmodule WandererNotifier.Domains.Killmail.Enrichment do
     end
   end
 
-  # Dependency injection helper (merged from Cache module)
   defp esi_service,
     do:
       Application.get_env(

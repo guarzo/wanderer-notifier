@@ -2,10 +2,9 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   require Logger
 
   @moduledoc """
-  Unified retry utility for WandererNotifier.
+  Retry utility for WandererNotifier.
 
-  Provides consistent retry logic with exponential backoff across the application.
-  Replaces scattered retry implementations in HTTP clients, RedisQ client, and other modules.
+  Provides consistent retry logic with exponential backoff.
   """
 
   alias WandererNotifier.Shared.Types.Constants

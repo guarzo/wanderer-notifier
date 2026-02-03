@@ -45,10 +45,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
 
   # Note: Deduplication module uses cache directly - no mocking needed
 
-  defmock(WandererNotifier.Test.Mocks.Discord,
-    for: WandererNotifier.Domains.Notifications.Notifiers.Discord.DiscordBehaviour
-  )
-
   defmock(WandererNotifier.Domains.Notifications.KillmailNotificationMock,
     for: WandererNotifier.Domains.Notifications.KillmailNotificationBehaviour
   )
@@ -82,7 +78,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     setup_cache_mocks()
     setup_deduplication_mocks()
     setup_service_mocks()
-    setup_discord_mocks()
     setup_api_context_mocks()
     setup_discord_notifier_mocks()
   end
@@ -233,65 +228,6 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
   end
 
   # Notification mocks removed - deduplication uses cache directly without behaviors
-
-  @doc """
-  Sets up Discord-related mocks with default behaviors.
-  """
-  def setup_discord_mocks do
-    # Stub Discord behavior callbacks with correct signatures
-    stub(WandererNotifier.Test.Mocks.Discord, :notify, fn _notification -> :ok end)
-    stub(WandererNotifier.Test.Mocks.Discord, :send_message, fn _message, _channel -> :ok end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_embed, fn _title,
-                                                              _description,
-                                                              _color,
-                                                              _fields,
-                                                              _channel ->
-      :ok
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_file, fn _filename,
-                                                             _file_data,
-                                                             _title,
-                                                             _description,
-                                                             _channel ->
-      :ok
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_image_embed, fn _title,
-                                                                    _description,
-                                                                    _image_url,
-                                                                    _color,
-                                                                    _channel ->
-      :ok
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_enriched_kill_embed, fn _killmail, _kill_id ->
-      :ok
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_new_system_notification, fn _system -> :ok end)
-
-    stub(
-      WandererNotifier.Test.Mocks.Discord,
-      :send_new_tracked_character_notification,
-      fn _character -> :ok end
-    )
-
-    # Using 3-arity version as it's more commonly used in tests
-    # Individual tests can override with expect/allow for single-arity if needed
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
-                                                                          _type,
-                                                                          _opts ->
-      :ok
-    end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_discord_embed, fn _embed -> {:ok, %{}} end)
-
-    stub(WandererNotifier.Test.Mocks.Discord, :send_notification, fn _type, _data ->
-      {:ok, %{}}
-    end)
-  end
 
   @doc """
   Allows selective mock tracking configuration for specific tests.

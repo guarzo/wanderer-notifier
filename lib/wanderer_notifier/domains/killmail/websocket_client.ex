@@ -2,8 +2,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   @moduledoc """
   WebSocket client for connecting to the external WandererKills service.
 
-  This module replaces the RedisQ HTTP polling approach with a real-time
-  WebSocket connection that receives pre-enriched killmail data.
+  Provides real-time WebSocket connection for receiving pre-enriched killmail data.
   """
 
   use WebSockex
@@ -765,14 +764,7 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
 
   defp transform_attackers(_), do: []
 
-  # Send transformed killmail to pipeline worker
-  defp send_to_pipeline(killmail, state) do
-    # Skip Integration module entirely - it has redundant deduplication
-    # The Pipeline module has the proper domain-specific deduplication
-    send_to_legacy_pipeline(killmail, state)
-  end
-
-  defp send_to_legacy_pipeline(killmail, _state) do
+  defp send_to_pipeline(killmail, _state) do
     # Send to the registered PipelineWorker process
     case Process.whereis(WandererNotifier.Domains.Killmail.PipelineWorker) do
       nil ->

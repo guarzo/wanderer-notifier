@@ -362,12 +362,16 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   # Private Helpers
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  defp ensure_killmail_struct(kill_data) do
-    if is_struct(kill_data, Killmail) do
-      kill_data
-    else
-      struct(Killmail, Map.from_struct(kill_data))
-    end
+  defp ensure_killmail_struct(kill_data) when is_struct(kill_data, Killmail) do
+    kill_data
+  end
+
+  defp ensure_killmail_struct(%{__struct__: _} = kill_data) do
+    struct(Killmail, Map.from_struct(kill_data))
+  end
+
+  defp ensure_killmail_struct(kill_data) when is_map(kill_data) do
+    struct(Killmail, kill_data)
   end
 
   defp send_rich_kill_notification(killmail) do

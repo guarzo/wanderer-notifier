@@ -196,7 +196,6 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   character_module: WandererNotifier.Domains.CharacterTracking.Character,
   system_module: WandererNotifier.Domains.SystemTracking.System,
-  deduplication_module: WandererNotifier.Domains.Notifications.CacheImpl,
   config_module: WandererNotifier.Shared.Config
 
 # Import environment specific config. This must remain at the bottom

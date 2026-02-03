@@ -1,7 +1,6 @@
 defmodule WandererNotifier.Shared.Telemetry do
   @moduledoc """
-  Centralized telemetry and metrics instrumentation for WandererNotifier.
-  Provides a unified interface for emitting events and metrics.
+  Telemetry and metrics instrumentation for WandererNotifier.
   """
 
   alias WandererNotifier.Shared.Metrics
@@ -56,14 +55,6 @@ defmodule WandererNotifier.Shared.Telemetry do
   def processing_error(kill_id, error) do
     Metrics.increment(:killmail_processing_error)
     emit(:killmail, :processing_error, %{kill_id: kill_id, error: inspect(error)})
-  end
-
-  @doc """
-  Emits a telemetry event for RedisQ connection status.
-  """
-  def redisq_status_changed(status) do
-    # Health status is now tracked by simple process checks
-    emit(:redisq, :status_changed, status)
   end
 
   @doc """

@@ -41,8 +41,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
         ) :: :ok | {:error, term()}
   def handle_entity_event(event, map_slug, event_type, extract_fn, cache_fn, notify_fn) do
     payload = Map.get(event, "payload", %{})
+    log_event_received(event_type, map_slug, payload)
 
-    # Log payload information with size limiting to prevent log flooding
+    with {:ok, entity} <- extract_fn.(payload),
+         :ok <- normalize_result(cache_fn.(entity)),
+         :ok <- normalize_result(notify_fn.(entity)) do
+      log_event_success(event_type, map_slug, entity)
+      :ok
+    else
+      {:error, reason} = error ->
+        log_event_error(event_type, map_slug, reason)
+        error
+    end
+  end
+
+  defp log_event_received(event_type, map_slug, payload) do
     Logger.debug("#{event_type} payload received",
       map_slug: map_slug,
       event_type: event_type,
@@ -59,30 +72,25 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       entity_id: extract_entity_id(payload),
       category: :api
     )
+  end
 
-    with {:ok, entity} <- extract_fn.(payload),
-         :ok <- cache_fn.(entity),
-         :ok <- notify_fn.(entity) do
-      Logger.debug("#{event_type} processed successfully",
-        map_slug: map_slug,
-        event_type: event_type,
-        entity_name: extract_entity_name_from_result(entity),
-        entity_id: extract_entity_id_from_result(entity),
-        category: :api
-      )
+  defp log_event_success(event_type, map_slug, entity) do
+    Logger.debug("#{event_type} processed successfully",
+      map_slug: map_slug,
+      event_type: event_type,
+      entity_name: extract_entity_name_from_result(entity),
+      entity_id: extract_entity_id_from_result(entity),
+      category: :api
+    )
+  end
 
-      :ok
-    else
-      {:error, reason} = error ->
-        Logger.error("Failed to process #{event_type} event",
-          map_slug: map_slug,
-          event_type: event_type,
-          error: inspect(reason),
-          category: :api
-        )
-
-        error
-    end
+  defp log_event_error(event_type, map_slug, reason) do
+    Logger.error("Failed to process #{event_type} event",
+      map_slug: map_slug,
+      event_type: event_type,
+      error: inspect(reason),
+      category: :api
+    )
   end
 
   @doc """
@@ -218,6 +226,12 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic do
       end
     end
   end
+
+  # Normalizes cache and notify function results to :ok or {:error, reason}
+  # This allows cache functions to return {:ok, :added}, {:ok, :removed}, etc.
+  defp normalize_result(:ok), do: :ok
+  defp normalize_result({:ok, _}), do: :ok
+  defp normalize_result({:error, _} = error), do: error
 
   # Helper function to truncate large payloads for logging
   @max_payload_log_length 500
