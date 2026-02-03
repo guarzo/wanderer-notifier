@@ -322,7 +322,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case NeoClient.send_embed(embed_with_content, channel_id) do
       {:ok, :sent} ->
-        Logger.debug("Discord notification sent successfully via Nostrum", channel: channel_id)
+        Logger.info("Discord notification sent successfully via Nostrum", channel: channel_id)
         :ok
 
       {:error, reason} ->
