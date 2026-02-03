@@ -261,56 +261,6 @@ defmodule WandererNotifierWeb.DashboardController do
                 border: 1px solid rgba(245, 101, 101, 0.3);
             }
 
-            .validation-controls {
-                display: flex;
-                gap: 12px;
-                flex-wrap: wrap;
-                margin: 20px 0;
-            }
-
-            .btn {
-                background: var(--gradient-primary);
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                border-radius: 8px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                font-size: 0.875rem;
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                box-shadow: var(--shadow-sm);
-            }
-
-            .btn:hover {
-                transform: translateY(-1px);
-                box-shadow: var(--shadow-md);
-            }
-
-            .btn:active {
-                transform: translateY(0);
-            }
-
-            .btn.btn-warning { background: linear-gradient(135deg, #ed8936 0%, #f6ad55 100%); }
-            .btn.btn-info { background: linear-gradient(135deg, #4299e1 0%, #63b3ed 100%); }
-            .btn.btn-secondary { background: linear-gradient(135deg, #718096 0%, #a0aec0 100%); }
-
-            .btn:disabled {
-                opacity: 0.6;
-                cursor: not-allowed;
-                transform: none;
-            }
-
-            .validation-feedback {
-                margin-top: 16px;
-                padding: 12px 16px;
-                border-radius: 8px;
-                font-weight: 500;
-                display: none;
-            }
-
             .footer {
                 text-align: center;
                 margin-top: 40px;
@@ -329,94 +279,17 @@ defmodule WandererNotifierWeb.DashboardController do
             .icon-sse::before { content: '📡'; }
             .icon-cache::before { content: '⚡'; }
             .icon-processes::before { content: '⚙️'; }
-            .icon-validation::before { content: '🧪'; }
 
             /* Responsive design */
             @media (max-width: 768px) {
                 .container { padding: 12px; }
                 .header h1 { font-size: 2rem; }
                 .header-stats { flex-direction: column; gap: 20px; }
-                .validation-controls { justify-content: center; }
                 .grid { grid-template-columns: 1fr; }
             }
         </style>
         <script>
             setTimeout(() => window.location.reload(), 30000);
-
-            function enableValidation(mode) {
-                const feedback = document.getElementById('validation-feedback');
-                const button = document.getElementById('validate-' + mode);
-
-                button.disabled = true;
-                button.textContent = 'Enabling...';
-
-                fetch('/api/validation/enable/' + mode, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showFeedback('Validation enabled for ' + mode + ' notifications. Waiting for next killmail...', 'success');
-                            button.textContent = 'Waiting for next kill...';
-                        } else {
-                            showFeedback('Error: ' + data.error, 'error');
-                            button.disabled = false;
-                            button.textContent = 'Test Next Kill as ' + (mode === 'system' ? 'System' : 'Character') + ' Notification';
-                        }
-                    })
-                    .catch(error => {
-                        showFeedback('Network error: ' + error.message, 'error');
-                        button.disabled = false;
-                        button.textContent = 'Test Next Kill as ' + (mode === 'system' ? 'System' : 'Character') + ' Notification';
-                    });
-            }
-
-            function checkValidationStatus() {
-                fetch('/api/validation/status')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            const status = data.status;
-                            if (status.mode === 'disabled') {
-                                showFeedback('Validation is currently disabled.', 'info');
-                            } else {
-                                const expiresAt = new Date(status.expires_at).toLocaleString();
-                                showFeedback('Validation mode: ' + status.mode + ' (expires at ' + expiresAt + ')', 'info');
-                            }
-                        } else {
-                            showFeedback('Error checking status: ' + data.error, 'error');
-                        }
-                    })
-                    .catch(error => {
-                        showFeedback('Network error: ' + error.message, 'error');
-                    });
-            }
-
-            function showFeedback(message, type) {
-                const feedback = document.getElementById('validation-feedback');
-                feedback.style.display = 'block';
-                feedback.textContent = message;
-
-                switch(type) {
-                    case 'success':
-                        feedback.style.background = '#d4edda';
-                        feedback.style.color = '#155724';
-                        feedback.style.border = '1px solid #c3e6cb';
-                        break;
-                    case 'error':
-                        feedback.style.background = '#f8d7da';
-                        feedback.style.color = '#721c24';
-                        feedback.style.border = '1px solid #f5c6cb';
-                        break;
-                    case 'info':
-                        feedback.style.background = '#d1ecf1';
-                        feedback.style.color = '#0c5460';
-                        feedback.style.border = '1px solid #bee5eb';
-                        break;
-                }
-
-                setTimeout(() => {
-                    feedback.style.display = 'none';
-                }, 10000);
-            }
         </script>
     </head>
     <body>
@@ -516,23 +389,6 @@ defmodule WandererNotifierWeb.DashboardController do
             <div class="card">
                 <h2 class="icon-processes">Key Processes</h2>
                 #{build_processes_html(data.processes.key_processes)}
-            </div>
-
-            <div class="card">
-                <h2 class="icon-validation">Notification Validation</h2>
-                <p style="color: var(--text-secondary); margin-bottom: 20px;">Test notification functionality with the next incoming killmail:</p>
-                <div class="validation-controls">
-                    <button id="validate-system" onclick="enableValidation('system')" class="btn btn-warning icon-system">
-                        Test Next Kill as System Notification
-                    </button>
-                    <button id="validate-character" onclick="enableValidation('character')" class="btn btn-info icon-character">
-                        Test Next Kill as Character Notification
-                    </button>
-                    <button id="validation-status" onclick="checkValidationStatus()" class="btn btn-secondary icon-status">
-                        Check Status
-                    </button>
-                </div>
-                <div id="validation-feedback" class="validation-feedback"></div>
             </div>
 
             <div class="footer">

@@ -128,9 +128,6 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
 
-      # Validation and monitoring
-      {WandererNotifier.Shared.Utils.ValidationManager, []},
-
       # Metrics tracking
       {WandererNotifier.Shared.Metrics, []},
 

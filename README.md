@@ -1,503 +1,332 @@
 # Wanderer Notifier
 
-Wanderer Notifier is a sophisticated Elixir/OTP application that provides real-time EVE Online killmail monitoring and Discord notifications. It uses WebSocket connections for real-time killmail data and Server-Sent Events (SSE) for live map updates, tracking ship destructions in specific systems and sending rich, detailed notifications to Discord channels.
+**Real-time EVE Online killmail monitoring and Discord notifications for wormhole space.**
+
+Wanderer Notifier is an Elixir/OTP application that monitors EVE Online killmail data and sends rich Discord notifications for significant in-game events. It integrates with the Wanderer map via Server-Sent Events (SSE) for real-time system and character tracking.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Notification Types](#notification-types)
+- [Discord Commands](#discord-commands)
+- [License Tiers](#license-tiers)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Architecture](#architecture)
+- [Support](#support)
+
+---
 
 ## Features
 
-- **Real-Time Kill Monitoring:** Receives pre-enriched killmail data via WebSocket connection to WandererKills service
-- **Live Map Synchronization:** Uses Server-Sent Events (SSE) for real-time system and character updates from the Wanderer map
-- **Rich Discord Notifications:** Sends beautifully formatted embed notifications with ship thumbnails, character portraits, and kill details
-- **Character & System Tracking:** Monitor specific characters and wormhole systems for targeted notifications with real-time updates
-- **Rally Point Notifications:** Get instant alerts when players create rally points in your tracked systems
-- **Multi-Channel Support:** Route different notification types (kills, character tracking, system updates) to separate Discord channels
-- **Discord Slash Commands:** Full Discord bot integration with slash commands to manage priority systems and check bot status
-- **Priority Systems:** Mark critical systems for special notifications with targeted mentions, with priority-only mode support
-- **Voice Participant Notifications:** Target only active voice channel users instead of @here mentions for better notification targeting
-- **License-Based Features:** Premium subscribers get unlimited rich embed notifications; free tier gets 5 rich embeds per notification type before switching to text-based alerts
-- **Simplified Cache System:** Direct Cachex integration with domain-specific helpers and consistent key generation
-- **Data Enrichment:** Integrates with EVE's ESI API for additional enrichment when needed (most data comes pre-enriched)
-- **Map Integration:** Real-time SSE connection to Wanderer map API for immediate system and character tracking updates
-- **Event-Driven Architecture:** Built on real-time data streams with minimal polling for maximum responsiveness
-- **Robust Supervision:** Built on Elixir's OTP supervision trees with granular fault tolerance and automatic recovery
-- **Production Ready:** Comprehensive logging, telemetry, Docker deployment, health checks, and operational monitoring
-- **Comprehensive Testing:** Extensive test suite with 150+ tests covering core functionality, mocking, and integration scenarios
+| Category | Features |
+|----------|----------|
+| **Real-Time Monitoring** | WebSocket killmail feed, SSE map synchronization, instant notifications |
+| **Rich Notifications** | Discord embeds with ship thumbnails, portraits, kill values, zKillboard links |
+| **Smart Tracking** | Character tracking, system tracking, rally point alerts |
+| **Multi-Channel** | Route kills, characters, and systems to separate Discord channels |
+| **Discord Integration** | Slash commands for managing priority systems and bot status |
+| **Voice Targeting** | Notify only users in voice channels instead of @here |
+| **Priority Systems** | Mark critical systems for special notifications with mentions |
+| **Production Ready** | OTP supervision trees, health checks, telemetry, Docker deployment |
 
-## Notification System
+---
 
-The application provides several types of Discord notifications:
+## Quick Start
 
-1. **Kill Notifications**
+### Using Docker (Recommended)
 
-   - Real-time alerts for ship destructions in tracked systems
-   - Rich embed format with detailed information:
-     - System location and kill value
-     - Victim details (character, corporation, ship type)
-     - Final blow attacker information
-     - Top damage dealer (if different)
-   - Visual elements including ship thumbnails and corporation icons
-   - Direct links to zKillboard
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/wanderer-notifier.git
+cd wanderer-notifier
 
-2. **System Notifications**
+# Configure environment
+cp .env.example .env
+# Edit .env with your Discord bot token and map API credentials
 
-   - Alerts when new systems are added to tracking
-   - System identification and zKillboard links
-   - Distinctive orange color scheme for easy identification
+# Start the application
+docker-compose up -d
 
-3. **Character Notifications**
+# View logs
+docker-compose logs -f
+```
 
-   - Notifications for newly tracked characters
-   - Character portraits and corporation affiliations
-   - Links to character profiles
-   - Green color scheme for visual distinction
+### Manual Installation
 
-4. **Rally Point Notifications**
+```bash
+# Clone and enter directory
+git clone https://github.com/yourusername/wanderer-notifier.git
+cd wanderer-notifier
 
-   - Instant alerts when players create rally points in tracked systems
-   - Character portraits and rally point messages
-   - System identification and location details
-   - Green color scheme with distinctive formatting
+# Create configuration
+cp .env.example .env
+# Edit .env with your credentials
 
-5. **Service Status Updates**
-   - System startup confirmations
-   - Connection status monitoring
-   - Error reporting and diagnostic information
+# Install dependencies and run
+mix deps.get
+mix compile
+mix run --no-halt
+```
 
-## Kill Notifications
+### Requirements
 
-The notifier supports configurable kill notifications based on tracked systems and tracked characters. Notifications can be sent to separate channels:
+- Elixir >= 1.18
+- Erlang/OTP (compatible version)
+- Docker (recommended for deployment)
+- Discord Bot Token with proper permissions
+- Wanderer map access and API token
 
-- **System kill notifications**: Sent to `DISCORD_SYSTEM_KILL_CHANNEL_ID` when a kill happens in a tracked system
-- **Character kill notifications**: Sent to `DISCORD_CHARACTER_KILL_CHANNEL_ID` when tracked characters are involved in a kill
-  - Green color: When tracked characters are attackers (successful kills)
-  - Red color: When tracked characters are victims (losses)
+---
 
-If a kill involves both tracked systems and tracked characters, notifications will be sent to both channels. This allows for more targeted monitoring of activity.
+## Notification Types
 
-## Discord Slash Commands
+### Kill Notifications
 
-The notifier supports Discord slash commands for managing your notification preferences directly from Discord:
+Real-time alerts for ship destructions in tracked systems.
 
-### Available Commands
+- **System kills** → `DISCORD_SYSTEM_KILL_CHANNEL_ID`
+- **Character kills** → `DISCORD_CHARACTER_KILL_CHANNEL_ID`
+  - Green border: tracked character got a kill
+  - Red border: tracked character was killed
 
-- **`/notifier status`** - Shows the current bot status including:
-  - Number of priority systems configured
-  - Priority-only mode status
-  - Total commands executed and unique users
-  - Feature status (system, character, and kill notifications)
-  - Tracking status for systems and characters
+Each notification includes:
+- System location and ISK value
+- Victim details (character, corporation, ship)
+- Final blow attacker
+- Top damage dealer (if different)
+- Ship thumbnails and corp icons
+- Direct zKillboard link
 
-- **`/notifier system <system_name> [action]`** - Manage system tracking and priority:
-  - `add-priority`: Add a system to your priority list for @here mentions
-  - `remove-priority`: Remove a system from the priority list
-  - `track`: Start tracking a system (coming soon)
-  - `untrack`: Stop tracking a system (coming soon)
+### System Notifications
+
+Alerts when new systems are added to tracking. Orange color scheme for easy identification.
+
+### Character Notifications
+
+Notifications for newly tracked characters with portraits and corporation affiliations. Green color scheme.
+
+### Rally Point Notifications
+
+Instant alerts when players create rally points in tracked systems with character info and location details.
+
+### Status Updates
+
+Optional startup confirmations, connection monitoring, and diagnostic information.
+
+---
+
+## Discord Commands
+
+Manage notifications directly from Discord with slash commands.
+
+### `/notifier status`
+
+Shows current bot status:
+- Priority systems count
+- Feature status (systems, characters, kills)
+- Tracking statistics
+- Usage metrics
+
+### `/notifier system <system_name> [action]`
+
+Manage system tracking and priority:
+
+| Action | Description |
+|--------|-------------|
+| `add-priority` | Add system to priority list for @here mentions |
+| `remove-priority` | Remove system from priority list |
+| `track` | Start tracking a system (coming soon) |
+| `untrack` | Stop tracking a system (coming soon) |
 
 ### Priority Systems
 
-Priority systems receive special treatment in notifications:
-- System notifications in priority systems include targeted mentions (@here or voice participants)
+Priority systems receive special treatment:
+- Notifications include targeted mentions (@here or voice participants)
 - Ensures critical systems get immediate attention
-- Priority status persists between bot restarts
-- Can be configured to only send notifications for priority systems using `PRIORITY_SYSTEMS_ONLY=true`
+- Status persists between bot restarts
+- Use `PRIORITY_SYSTEMS_ONLY=true` to only notify for priority systems
 
-### Voice Participant Notifications
-
-For more targeted notifications, the system can now notify only users actively in Discord voice channels:
-
-- **Smart Targeting**: Only mentions users currently in voice channels (excludes AFK channel)
-- **Fallback Support**: Optionally falls back to @here if no voice participants are found
-- **Priority Integration**: Works seamlessly with priority systems for enhanced notifications
-- **Configurable**: Disabled by default, requires Discord Guild ID to enable
+---
 
 ## License Tiers
 
-Wanderer Notifier operates with two tiers based on license status:
+### Free Tier
 
-### Without a License (Free Tier)
+All core functionality with one limitation:
 
-All core functionality is fully available, with the following limitation:
-
-- **Rich Embed Notifications**: Limited to **5 rich embeds per notification type** (killmail, character, system)
-- After the limit is reached, notifications switch to **plain text format** for the remainder of the session
-- Notifications are still sent, they are just formatted as simple text instead of rich Discord embeds
-
-**Features available without a license:**
+- **5 rich embeds per notification type**, then switches to text format
 - All notification types (kills, characters, systems, rally points)
-- Unlimited character and system tracking
-- Discord slash commands (`/notifier status`, `/notifier system`)
-- Priority system management
-- Voice participant notifications
-- Multi-channel routing
-- Real-time SSE/WebSocket connections
-- All configuration options and feature flags
+- Unlimited tracking
+- All Discord commands
+- All configuration options
 
-### With a Valid License (Premium)
+### Premium
 
-- **Unlimited rich embed notifications** for all notification types
-- All features from the free tier
-- Rich embeds include ship thumbnails, character portraits, corporation icons, and formatted details
+- **Unlimited rich embed notifications**
+- Ship thumbnails, character portraits, corporation icons
+- Formatted details in every notification
 
-### How Licensing Works
+### How It Works
 
-1. The system validates your license against the license manager on startup
-2. License status is refreshed periodically (default: every 1 hour)
-3. If license validation fails or no license is configured, the free tier limits apply
-4. In development/test environments, full features are automatically enabled
+1. License validated on startup
+2. Refreshed periodically (default: hourly)
+3. Free tier limits apply if validation fails
+4. Full features enabled in development/test environments
 
-## Requirements
-
-- Elixir (>= 1.18 required)
-- Erlang/OTP (compatible version)
-- [Docker](https://www.docker.com/) (recommended for deployment)
-- Discord Bot Token (with proper permissions)
-- Wanderer map access and API token
-- License key (optional, for unlimited rich notifications)
-
-## Quick Start with Docker
-
-The simplest way to get started is using Docker and docker-compose:
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/wanderer-notifier.git
-   cd wanderer-notifier
-   ```
-
-2. **Configure environment:**
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` file with your Discord bot token and other configuration.
-
-3. **Start the application:**
-
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Check logs:**
-   ```bash
-   docker-compose logs -f
-   ```
-
-## Manual Installation
-
-If you prefer to run without Docker:
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/wanderer-notifier.git
-   cd wanderer-notifier
-   ```
-
-2. **Setup Environment Variables:**
-   Create a `.env` file using the provided `.env.example` as a template.
-
-3. **Install Dependencies:**
-
-   ```bash
-   mix deps.get
-   ```
-
-4. **Compile the Project:**
-
-   ```bash
-   mix compile
-   ```
-
-5. **Run the Application:**
-   ```bash
-   mix run --no-halt
-   ```
+---
 
 ## Configuration
 
-All configuration is managed through environment variables in the `.env` file. A template is provided as `.env.example`.
+All configuration is managed through environment variables. See **[CONFIGURATION.md](CONFIGURATION.md)** for the complete reference.
 
-### Configuration Validation
+### Essential Variables
 
-On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them.
+```bash
+# Required
+DISCORD_BOT_TOKEN=your_bot_token
+DISCORD_CHANNEL_ID=123456789012345678
+MAP_URL=https://wanderer.ltd
+MAP_NAME=your-map-name
+MAP_API_KEY=your_api_key
 
-### Simplified Environment Variables
+# Recommended
+DISCORD_APPLICATION_ID=your_app_id  # For slash commands
+LICENSE_KEY=your_license_key        # For unlimited rich embeds
+```
 
-Environment variables now use simplified naming without redundant prefixes for cleaner configuration.
+### Common Feature Flags
 
-### Key Configuration Options
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOTIFICATIONS_ENABLED` | `true` | Master switch for all notifications |
+| `KILL_NOTIFICATIONS_ENABLED` | `true` | Enable kill notifications |
+| `SYSTEM_NOTIFICATIONS_ENABLED` | `true` | Enable system notifications |
+| `CHARACTER_NOTIFICATIONS_ENABLED` | `true` | Enable character notifications |
+| `PRIORITY_SYSTEMS_ONLY` | `false` | Only notify for priority systems |
 
-1. **Discord Configuration**
-   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token (required)
-   - `DISCORD_APPLICATION_ID`: Discord application ID for slash commands (optional)
-   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications (required)
-   - `DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications (optional)
-   - `DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications (optional)
-   - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (optional)
-   - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications (optional)
+See [CONFIGURATION.md](CONFIGURATION.md) for all options including:
+- Notification channel routing
+- Voice participant targeting
+- Corporation filtering
+- Timing configuration
 
-2. **Map API Configuration**
-   - `MAP_URL`: Base URL for the Wanderer map API (required, e.g., "https://wanderer.ltd")
-   - `MAP_NAME`: Slug of your specific map (required)
-   - `MAP_API_KEY`: Authentication token for map API access (required)
-
-3. **License Configuration**
-   - `LICENSE_KEY`: Your license key for premium features (optional, see License section below)
-   - `LICENSE_MANAGER_API_KEY`: API token for license validation (optional)
-   - `LICENSE_MANAGER_API_URL`: License manager endpoint (default: "[https://lm.wanderer.ltd/api](https://lm.wanderer.ltd/api)")
-
-4. **Feature Control Flags**
-   - `NOTIFICATIONS_ENABLED`: Master switch for all notifications (default: true)
-   - `KILL_NOTIFICATIONS_ENABLED`: Enable killmail notifications (default: true)
-   - `SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
-   - `CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
-   - `RALLY_NOTIFICATIONS_ENABLED`: Enable rally point notifications (default: true)
-   - `STATUS_MESSAGES_ENABLED`: Enable startup and status notifications (default: false)
-   - `PRIORITY_SYSTEMS_ONLY`: Only send notifications for priority systems (default: false)
-
-5. **Voice Participant Notifications**
-   - `DISCORD_GUILD_ID`: Discord server/guild ID for voice participant queries (required for voice notifications)
-   - `VOICE_PARTICIPANT_NOTIFICATIONS_ENABLED`: Target only active voice channel users (default: false)
-   - `FALLBACK_TO_HERE_ENABLED`: Fallback to @here if no voice participants found (default: true)
-
-6. **Service URLs (Optional)**
-   - `WEBSOCKET_URL`: WebSocket URL for killmail data (default: "ws://host.docker.internal:4004")
-   - `WANDERER_KILLS_URL`: Base URL for WandererKills API (default: "http://host.docker.internal:4004")
-
+---
 
 ## Development
 
-### Using the Dev Container
+### Dev Container (Recommended)
 
-This project includes a development container configuration for VS Code:
-
-1. Install the [Remote - Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open the repository in VS Code
-3. When prompted, reopen the project in the container
+1. Install [Remote - Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+2. Open repository in VS Code
+3. Reopen in container when prompted
 
 ### Makefile Commands
 
-The Makefile provides shortcuts for common tasks:
+| Command | Description |
+|---------|-------------|
+| `make compile` | Compile the project |
+| `make compile.strict` | Compile with warnings as errors |
+| `make test` | Run test suite |
+| `make test.cover` | Run tests with coverage |
+| `make format` | Format code |
+| `make s` | Clean, compile, and start shell |
+| `make deps.get` | Fetch dependencies |
+| `make deps.update` | Update dependencies |
 
-- **Compile:** `make compile`
-- **Clean:** `make clean`
-- **Test:** `make test`
-- **Format:** `make format`
-- **Interactive Shell:** `make shell`
-- **Run Application:** `make run`
-- **Get Dependencies:** `make deps.get`
-- **Update Dependencies:** `make deps.update`
+### Quality Gates
+
+Every change must pass:
+
+```bash
+make compile          # No compilation errors
+make test             # All tests pass
+mix credo --strict    # No credo issues
+mix dialyzer          # No dialyzer warnings
+```
+
+### Interactive Development
+
+```bash
+make s
+# In IEx:
+iex> WandererNotifier.Config.discord_channel_id()
+iex> :observer.start()  # GUI monitoring
+```
+
+---
 
 ## Architecture
 
-Wanderer Notifier follows a mature, domain-driven architecture built on Elixir/OTP principles with real-time data streams. The codebase has been extensively refactored into a production-ready architecture with consolidated services and unified infrastructure.
+Wanderer Notifier follows a domain-driven architecture built on Elixir/OTP principles.
 
-### Core Architecture Principles
+### Core Principles
 
-- **Domain-Driven Design**: Clear separation between business domains (killmail, notifications, tracking, license)
-- **Unified Infrastructure**: Single HTTP client and cache module with service-specific configurations
-- **Application Service Consolidation**: Centralized service handling dependency injection, metrics, and coordination
-- **Context Layer**: Cross-domain coordination for API, notification, and processing concerns
-- **Event-Driven Architecture**: Event sourcing capabilities with extensible handlers and processing pipeline
-- **Real-Time Processing**: Advanced WebSocket and SSE connections with health monitoring
-- **Multi-Phase Initialization**: Sophisticated startup process with infrastructure, foundation, integration, and processing phases
+- **Domain-Driven Design** - Clear separation between killmail, notifications, tracking, and license domains
+- **Event-Driven** - Real-time WebSocket and SSE connections for immediate data processing
+- **Unified Infrastructure** - Single HTTP client and cache module with service-specific configs
+- **Multi-Phase Initialization** - Sophisticated startup ensuring reliable system initialization
+- **OTP Supervision** - Fault-tolerant supervision trees with automatic recovery
 
-### Real-Time Data Flow
+### Data Flow
 
-1. **Application Service** (`lib/wanderer_notifier/application/services/application_service/`): Consolidated service coordinating all application operations with dependency injection and metrics tracking
+```
+┌─────────────────┐     ┌─────────────────┐
+│  WandererKills  │────▶│  WebSocket      │
+│  (Killmails)    │     │  Client         │
+└─────────────────┘     └────────┬────────┘
+                                 │
+┌─────────────────┐     ┌────────▼────────┐     ┌─────────────────┐
+│  Wanderer Map   │────▶│  Processing     │────▶│  Discord        │
+│  (SSE Events)   │     │  Pipeline       │     │  Notifications  │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                        ┌────────▼────────┐
+                        │  Notification   │
+                        │  Determiner     │
+                        └─────────────────┘
+```
 
-2. **Service Initializer** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Multi-phase startup process ensuring reliable system initialization
-
-3. **WebSocket Client** (`lib/wanderer_notifier/domains/killmail/websocket_client.ex`): Maintains persistent connection to WandererKills service for pre-enriched killmail data
-
-4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`): Real-time Server-Sent Events connection with advanced connection monitoring and health tracking
-
-5. **Processing Context** (`lib/wanderer_notifier/contexts/processing_context/`): Coordinates killmail processing across domains
-
-6. **Event Sourcing** (`lib/wanderer_notifier/event_sourcing/`): Event-driven architecture with extensible handlers for future capabilities
-
-7. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`): Coordinates notification processing across domains
-
-8. **Discord Integration** (`lib/wanderer_notifier/domains/notifications/discord/`): Discord bot integration with slash commands and rich notifications
-
-### Module Organization
-
-The refactored codebase follows a mature, layered architecture:
+### Module Structure
 
 ```
 lib/wanderer_notifier/
-├── application/                      # Application coordination layer
-│   ├── services/application_service/ # Consolidated application service
-│   │   ├── dependency_manager.ex     # Dependency injection system
-│   │   ├── metrics_tracker.ex        # Application metrics
-│   │   ├── notification_coordinator.ex # Notification processing
-│   │   └── state.ex                  # Application state management
-│   └── initialization/
-│       └── service_initializer.ex    # Multi-phase startup process
-├── contexts/                         # Cross-domain coordination
-│   ├── api_context/                  # API layer coordination
-│   ├── notification_context/         # Notification handling
-│   └── processing_context/           # Killmail processing coordination
-├── domains/                          # Business logic domains (DDD)
-│   ├── killmail/                     # Killmail processing domain
-│   │   ├── entities/                 # Killmail domain entities
-│   │   ├── services/                 # Processing services
-│   │   ├── pipeline/                 # Processing pipeline
-│   │   └── utils/                    # Domain utilities
-│   ├── tracking/                     # Character and system tracking
-│   │   ├── entities/                 # Character and System entities
-│   │   ├── services/                 # Tracking services
-│   │   └── handlers/                 # Event handlers
-│   ├── notifications/                # Notification handling
-│   │   ├── entities/                 # Notification entities
-│   │   ├── services/                 # Notification logic
-│   │   ├── formatters/               # Message formatters
-│   │   └── discord/                  # Discord integration
-│   └── license/                      # License management
-├── infrastructure/                   # Technical infrastructure
-│   ├── http.ex                       # Unified HTTP client
-│   ├── cache.ex                      # Simplified caching (single module)
-│   ├── adapters/                     # External service adapters
-│   │   ├── esi/                      # EVE Swagger Interface
-│   │   └── janice/                   # Janice pricing
-│   └── messaging/                    # Message handling
-├── map/                              # Real-time map integration
-│   ├── sse_client.ex                 # Server-Sent Events client
-│   ├── connection_monitor.ex         # Connection health monitoring
-│   └── schemas/                      # Map data schemas
-├── event_sourcing/                   # Event-driven architecture
-│   ├── event.ex                      # Event definitions
-│   ├── handlers/                     # Event handlers
-│   └── pipeline.ex                   # Event processing pipeline
-├── shared/                           # Cross-cutting concerns
-│   ├── config/                       # Configuration management
-│   ├── utils/                        # Shared utilities
-│   ├── types/                        # Common types and constants
-│   └── telemetry/                    # Monitoring and metrics
-└── schedulers/                       # Background job scheduling
+├── application/           # Coordination & initialization
+├── domains/               # Business logic (DDD)
+│   ├── killmail/          # Killmail processing
+│   ├── notifications/     # Notification handling
+│   ├── tracking/          # Character & system tracking
+│   └── license/           # License management
+├── infrastructure/        # HTTP, cache, adapters
+├── map/                   # SSE client & connection monitoring
+└── shared/                # Config, utils, telemetry
 ```
-
-### Key Infrastructure Components (Post-Consolidation)
-
-- **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
-  - Service-specific configurations (ESI, WandererKills, License, Map, Streaming)
-  - Built-in authentication (Bearer, API Key, Basic)
-  - Middleware pipeline (Telemetry, RateLimiter, Retry, CircuitBreaker)
-  - Automatic JSON encoding/decoding
-
-- **Simplified Cache System**: Consolidated to single module:
-  - `infrastructure/cache.ex`: Direct Cachex wrapper with domain-specific helpers and consistent key generation
-
-- **Application Service** (`lib/wanderer_notifier/application/services/application_service/`): Consolidated service handling:
-  - Dependency injection via `DependencyManager`
-  - Application metrics via `MetricsTracker`
-  - Notification coordination via `NotificationCoordinator`
-  - State management via `State` module
-
-- **Multi-Phase Initialization** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Sophisticated startup process with infrastructure, foundation, integration, and processing phases
-
-- **Context Layer** (`lib/wanderer_notifier/contexts/`): Cross-domain coordination for API, notification, and processing concerns
-
-- **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
-
-- **Configuration Management** (`lib/wanderer_notifier/shared/config/`): Comprehensive configuration with validation and feature flags
-
-- **Supervision Tree**: Robust fault tolerance with granular supervisor hierarchies and automatic recovery
 
 ### Technology Stack
 
-- **Elixir 1.18+** with OTP supervision trees for fault tolerance
+| Component | Technology |
+|-----------|------------|
+| Runtime | Elixir 1.18+, OTP |
+| Discord | Nostrum |
+| HTTP | HTTPoison/Req with middleware |
+| Cache | Cachex/ETS |
+| JSON | Jason |
+| WebSocket | WebSockex |
+| Testing | ExUnit, Mox |
+| Deployment | Docker |
 
-- **Nostrum** for Discord bot functionality and slash commands
+---
 
-- **HTTPoison/Req** for HTTP API interactions with retry logic
+## Support
 
-- **Cachex/ETS** for multi-adapter caching with TTL management
+- **Issues:** [GitHub Issues](https://github.com/yourusername/wanderer-notifier/issues)
+- **Configuration Help:** See [CONFIGURATION.md](CONFIGURATION.md)
 
-- **Jason** for high-performance JSON encoding/decoding
-
-- **WebSockex** for persistent WebSocket connections
-
-- **Server-Sent Events** for real-time map synchronization
-
-- **Mox** for behavior-based testing and mocking
-
-- **Docker** for containerized deployment and development
-
-## Development & Testing
-
-### Recent Architectural Improvements
-
-The codebase has undergone extensive refactoring and modernization, evolving into a mature production-ready architecture:
-
-#### Application Service Consolidation (Sprint 4+)
-- **Application Service**: Consolidated all application-level concerns into a single `ApplicationService` with specialized sub-modules for dependency injection, metrics, and notification coordination
-- **Multi-Phase Initialization**: Sophisticated startup process with infrastructure → foundation → integration → processing phases
-- **Context Layer**: Added cross-domain coordination layer for API, notification, and processing concerns
-- **Event Sourcing**: Implemented event-driven architecture foundation with extensible handlers and processing pipeline
-
-#### Infrastructure Unification
-- **HTTP Client**: Single module with service-specific configurations for ESI, WandererKills, License, Map, and Streaming services
-- **Cache System**: Consolidated from multiple modules to single unified cache with domain-specific helpers
-- **Real-Time Integration**: Advanced SSE client with connection monitoring and health tracking for map integration
-- **Configuration Management**: Comprehensive system with validation, feature flags, and environment-based configuration
-
-#### Code Quality & Testing Improvements
-- **Comprehensive Test Coverage**: Expanded to 150+ tests covering all architectural layers and integration scenarios
-- **Test Failure Reduction**: Systematically reduced test failures from 185 → 10 (94.6% improvement)
-- **Production Readiness**: Enhanced error handling, logging, telemetry, and operational monitoring
-- **Mock Standardization**: Unified test mocking approach with consistent behavior-based testing
-
-#### Testing Commands
-
-Run the full test suite:
-```bash
-mix test
-```
-
-Run tests with coverage:
-```bash
-mix test --cover
-```
-
-Run specific test categories:
-```bash
-mix test.killmail    # Killmail-related tests
-mix test.all         # All tests with trace output
-```
-
-Run tests in watch mode:
-```bash
-mix test.watch
-```
-
-#### Code Quality Tools
-
-Format code:
-```bash
-mix format
-```
-
-Build and compile:
-```bash
-make compile         # Standard compilation
-make compile.strict  # Warnings as errors
-```
-
-Clean and restart:
-```bash
-make s              # Clean, compile, and start shell
-```
+---
 
 ## License
 
 This project is licensed according to the terms in the LICENSE file.
-
-## Support
-
-If you encounter issues or have questions, please open an issue on the project repository.
-
-## Notes
-
-mix archive.install hex bunt

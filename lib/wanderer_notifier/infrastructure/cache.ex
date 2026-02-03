@@ -2,7 +2,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @moduledoc """
   Simplified cache module using Cachex directly.
 
-  This replaces the complex Facade → Adapter → Cachex architecture with direct Cachex access.
+  This replaces the complex Facade -> Adapter -> Cachex architecture with direct Cachex access.
   No behaviors, no abstractions - just simple cache operations with domain-specific helpers.
 
   ## Usage Examples
@@ -18,27 +18,31 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
       # Custom TTL
       Cache.put_with_ttl("custom:key", value, :timer.minutes(30))
+
+  ## Key Generation
+
+  Use `Cache.Keys` module for consistent key generation:
+
+      Cache.Keys.character(12345)      # => "esi:character:12345"
+      Cache.Keys.map_systems()         # => "map:systems"
+
+  ## TTL Configuration
+
+  TTL values are managed via `Cache.TtlConfig`:
+
+      Cache.ttl(:character)            # => 86400000 (24 hours)
+      Cache.ttl(:system)               # => 3600000 (1 hour)
   """
 
   require Logger
 
+  alias WandererNotifier.Infrastructure.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache.TtlConfig
+
   # Cache configuration
   @default_cache_name :wanderer_notifier_cache
-  @default_ttl :timer.hours(24)
   @namespace_index_key "__namespace_index__"
   @default_size_limit 10_000
-
-  # TTL configurations
-  @character_ttl :timer.hours(24)
-  @corporation_ttl :timer.hours(24)
-  @alliance_ttl :timer.hours(24)
-  @system_ttl :timer.hours(1)
-  @universe_type_ttl :timer.hours(24)
-  @killmail_ttl :timer.minutes(30)
-  @map_data_ttl :timer.hours(1)
-  @item_price_ttl :timer.hours(6)
-  @license_ttl :timer.minutes(20)
-  @notification_dedup_ttl :timer.minutes(30)
 
   @type cache_key :: String.t()
   @type cache_value :: term()
@@ -59,83 +63,8 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
   def default_cache_name, do: @default_cache_name
 
-  # Simplified TTL access - single function with pattern matching
-  def ttl(:character), do: @character_ttl
-  def ttl(:corporation), do: @corporation_ttl
-  def ttl(:alliance), do: @alliance_ttl
-  def ttl(:system), do: @system_ttl
-  def ttl(:universe_type), do: @universe_type_ttl
-  def ttl(:killmail), do: @killmail_ttl
-  def ttl(:map_data), do: @map_data_ttl
-  def ttl(:item_price), do: @item_price_ttl
-  def ttl(:license), do: @license_ttl
-  def ttl(:notification_dedup), do: @notification_dedup_ttl
-  def ttl(:health_check), do: :timer.seconds(1)
-  def ttl(_), do: @default_ttl
-
-  # ============================================================================
-  # Key Generation Functions
-  # ============================================================================
-
-  defmodule Keys do
-    @moduledoc """
-    Centralized cache key generation for consistent naming patterns.
-
-    All cache keys should be generated through these functions to ensure
-    consistency and avoid duplication across the codebase.
-    """
-
-    # ESI-related keys (external API data)
-    def character(id), do: "esi:character:#{id}"
-    def corporation(id), do: "esi:corporation:#{id}"
-    def alliance(id), do: "esi:alliance:#{id}"
-    def system(id), do: "esi:system:#{id}"
-    def system_name(id), do: "esi:system_name:#{id}"
-    def universe_type(id), do: "esi:universe_type:#{id}"
-    def item_price(id), do: "esi:item_price:#{id}"
-
-    # Killmail-related keys
-    def killmail(id), do: "killmail:#{id}"
-    def websocket_dedup(killmail_id), do: "websocket_dedup:#{killmail_id}"
-
-    # Notification keys
-    def notification_dedup(key), do: "notification:dedup:#{key}"
-
-    # Map-related keys
-    def map_systems, do: "map:systems"
-    def map_characters, do: "map:characters"
-
-    # Tracking keys for individual lookups (O(1) performance)
-    def tracked_character(id), do: "tracking:character:#{id}"
-    def tracked_system(id), do: "tracking:system:#{id}"
-    def tracked_systems_list, do: "tracking:systems_list"
-    def tracked_characters_list, do: "tracking:characters_list"
-
-    # Map state keys
-    def map_state(map_slug), do: "map:state:#{map_slug}"
-    def map_subscription_data, do: "map:subscription_data"
-
-    # Domain-specific data keys (using shorter prefixes for better performance)
-    def corporation_data(id), do: "corporation:#{id}"
-    def ship_type(id), do: "ship_type:#{id}"
-    def solar_system(id), do: "solar_system:#{id}"
-
-    # Scheduler keys
-    def scheduler_primed(scheduler_name), do: "scheduler:primed:#{scheduler_name}"
-    def scheduler_data(scheduler_name), do: "scheduler:data:#{scheduler_name}"
-
-    # Status and reporting keys
-    def status_report(minute), do: "status_report:#{minute}"
-
-    # Janice appraisal keys
-    def janice_appraisal(hash), do: "janice:appraisal:#{hash}"
-
-    # License validation keys
-    def license_validation, do: "license_validation_result"
-
-    # Generic helper for custom keys
-    def custom(prefix, suffix), do: "#{prefix}:#{suffix}"
-  end
+  # Delegate TTL access to TtlConfig for backward compatibility
+  defdelegate ttl(type), to: TtlConfig
 
   # ============================================================================
   # Cache Size Management

@@ -8,7 +8,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   require Logger
   alias WandererNotifier.Domains.Tracking.Entities.System
-  alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
@@ -62,10 +62,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # System-Specific Implementation (Legacy API Compatibility)
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  # ══════════════════════════════════════════════════════════════════════════════
   # System-Specific Data Processing
   # ══════════════════════════════════════════════════════════════════════════════
 
@@ -73,14 +69,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     with {:ok, system} <- try_create_system(payload),
          {:ok, enriched_system} <- enrich_system(system) do
       {:ok, enriched_system}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 
   defp try_create_system(payload) do
     try do
-      # Log the incoming payload to see what we're getting
       Logger.debug("Creating system from SSE payload",
         payload: inspect(payload),
         category: :api
@@ -109,8 +102,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         category: :api
       )
 
-      # StaticInfo.enrich_system returns {:ok, enriched_system}
-      # enrich_system always returns {:ok, system}
       {:ok, enriched} = WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
 
       Logger.debug("System enriched successfully",
@@ -136,46 +127,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp extract_system_payload(payload) do
-    # For removal events, we just need the payload as-is
     {:ok, payload}
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # System-Specific Cache Operations
+  # Cache Operations (delegated to GenericEventHandler)
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp handle_cache_update(enriched_system, payload) do
     with :ok <- update_system_cache(enriched_system),
          :ok <- cache_individual_system(enriched_system, payload) do
       :ok
-    else
-      error -> error
     end
   end
 
   defp update_system_cache(system) do
-    cache_key = Cache.Keys.map_systems()
-
-    case Cache.get(cache_key) do
-      {:ok, cached_systems} when is_list(cached_systems) ->
-        updated_systems = update_system_in_list(cached_systems, system)
-        Logger.debug("Storing system in cache, type: #{inspect(system.__struct__)}")
-        Cache.put_with_ttl(cache_key, updated_systems, Cache.ttl(:map_data))
-
-      {:ok, nil} ->
-        Cache.put_with_ttl(cache_key, [system], Cache.ttl(:map_data))
-
-      {:error, :not_found} ->
-        # Cache is empty, create new entry
-        Cache.put_with_ttl(cache_key, [system], Cache.ttl(:map_data))
-    end
+    match_fn = fn cached -> system_matches?(cached, system.solar_system_id) end
+    opts = [ttl: Cache.ttl(:map_data), add_if_missing: true]
+    GenericEventHandler.update_in_cache_list(:system, system, match_fn, opts)
   end
 
   defp cache_individual_system(system, payload) do
     system_id = to_string(system.solar_system_id)
-
-    # Store the raw payload data to preserve custom_name and other fields
-    # This mirrors what MapTrackingClient does when fetching from API
     Cache.put_tracked_system(system_id, payload)
 
     Logger.debug("Cached individual system data",
@@ -189,11 +162,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp remove_system_from_cache(payload) do
-    cache_key = Cache.Keys.map_systems()
-
-    # IMPORTANT: Use solar_system_id for cache operations, falling back to id
-    # The individual cache is keyed by solar_system_id (EVE system ID like 30000142),
-    # not by the map-internal "id" field (which may be a UUID or database ID).
     system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
 
     Logger.debug("Removing system from cache",
@@ -203,11 +171,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       category: :cache
     )
 
-    # Remove from main systems list
-    result =
-      cache_key
-      |> Cache.get()
-      |> handle_cache_result_for_removal(cache_key, system_id)
+    GenericEventHandler.remove_from_cache_list(:system, payload)
 
     # Also remove individual system cache entry
     if system_id do
@@ -217,83 +181,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       |> Cache.delete()
     end
 
-    result
-  end
-
-  defp handle_cache_result_for_removal({:ok, cached_systems}, cache_key, system_id)
-       when is_list(cached_systems) do
-    updated_systems = filter_out_system(cached_systems, system_id)
-    Cache.put_with_ttl(cache_key, updated_systems, Cache.ttl(:map_data))
-  end
-
-  defp handle_cache_result_for_removal({:ok, nil}, _cache_key, _system_id) do
-    # No cached systems, nothing to remove
     :ok
-  end
-
-  defp handle_cache_result_for_removal({:error, :not_found}, _cache_key, _system_id) do
-    # No cached systems, nothing to remove
-    :ok
-  end
-
-  defp filter_out_system(systems, system_id) do
-    Enum.reject(systems, &has_matching_system_id?(&1, system_id))
-  end
-
-  defp has_matching_system_id?(%System{solar_system_id: sid}, system_id) do
-    compare_system_ids(sid, system_id)
-  end
-
-  defp has_matching_system_id?(%{solar_system_id: sid}, system_id) do
-    compare_system_ids(sid, system_id)
-  end
-
-  defp has_matching_system_id?(%{"solar_system_id" => sid}, system_id) do
-    compare_system_ids(sid, system_id)
-  end
-
-  defp has_matching_system_id?(%{id: id}, system_id) do
-    compare_system_ids(id, system_id)
-  end
-
-  defp has_matching_system_id?(%{"id" => id}, system_id) do
-    compare_system_ids(id, system_id)
-  end
-
-  defp has_matching_system_id?(_, _), do: false
-
-  # Helper to compare system IDs regardless of type (string vs integer)
-  defp compare_system_ids(id1, id2) do
-    normalize_id(id1) == normalize_id(id2)
-  end
-
-  defp normalize_id(id) when is_integer(id), do: id
-
-  defp normalize_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_id, ""} -> int_id
-      _ -> id
-    end
-  end
-
-  defp normalize_id(id), do: id
-
-  defp update_system_in_list(systems, new_system) do
-    system_id = new_system.solar_system_id
-
-    case find_system_index(systems, system_id) do
-      nil ->
-        # System not found, add it
-        [new_system | systems]
-
-      index ->
-        # System found, update it
-        List.replace_at(systems, index, new_system)
-    end
-  end
-
-  defp find_system_index(systems, system_id) do
-    Enum.find_index(systems, &system_matches?(&1, system_id))
   end
 
   defp system_matches?(%System{solar_system_id: sid}, system_id), do: sid == system_id
@@ -301,24 +189,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp system_matches?(_, _), do: false
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # System-Specific Notification Logic
+  # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_send_notification(system) do
-    # Use the existing system determiner to check if we should notify
-    # Pass the system_id as first parameter, and the system struct as second
-    case Determiner.should_notify?(:system, system.solar_system_id, system) do
-      true ->
-        send_system_notification(system)
+    if GenericEventHandler.should_notify?(:system, system.solar_system_id, system) do
+      send_system_notification(system)
+    else
+      Logger.info("System notification skipped",
+        system_name: system.name,
+        reason: "determiner_rejected",
+        category: :api
+      )
 
-      false ->
-        Logger.info("System notification skipped",
-          system_name: system.name,
-          reason: "determiner_rejected",
-          category: :api
-        )
-
-        :ok
+      :ok
     end
   end
 
@@ -344,7 +228,6 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     Logger.debug("send_system_notification called with type: #{inspect(system.__struct__)}")
     Logger.debug("System keys: #{inspect(Map.keys(system))}")
 
-    # Send system notification directly - always returns :ok immediately
     WandererNotifier.DiscordNotifier.send_system_async(system)
 
     Logger.debug("System notification queued",

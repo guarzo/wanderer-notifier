@@ -17,7 +17,7 @@ config :wanderer_notifier,
 
 # Configure HTTP client
 config :wanderer_notifier,
-  http_client: WandererNotifier.HTTP,
+  http_client: WandererNotifier.Infrastructure.Http,
   default_timeout: 5_000,
   default_recv_timeout: 5_000,
   default_connect_timeout: 3_000,

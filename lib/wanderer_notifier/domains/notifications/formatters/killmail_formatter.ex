@@ -8,7 +8,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Adapters.ESI
   alias WandererNotifier.Shared.Config
@@ -47,7 +46,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
         # Green for kills
         :attacker -> 0x2ECC71
         # ISK-based color for system kills - prefer dropped value (lootable) over total value
-        _ -> FormatterUtils.get_isk_color(killmail.dropped_value || killmail.value || 0)
+        _ -> Utils.get_isk_color(killmail.dropped_value || killmail.value || 0)
       end
 
     # Build title with system name (displays in larger font)
@@ -94,7 +93,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Value and timestamp
     value_time_line =
       if killmail.value && killmail.value > 0 do
-        "Value: #{FormatterUtils.format_isk(killmail.value)} ISK • #{format_timestamp(killmail)}"
+        "Value: #{Utils.format_isk(killmail.value)} ISK • #{format_timestamp(killmail)}"
       else
         format_timestamp(killmail)
       end
@@ -354,9 +353,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   defp format_notable_item(name, quantity, value, false = _is_abyssal) do
     # Regular items: show price
     if quantity > 1 do
-      "• #{name} x#{quantity} (~#{FormatterUtils.format_isk(value)} ISK)"
+      "• #{name} x#{quantity} (~#{Utils.format_isk(value)} ISK)"
     else
-      "• #{name} (~#{FormatterUtils.format_isk(value)} ISK)"
+      "• #{name} (~#{Utils.format_isk(value)} ISK)"
     end
   end
 

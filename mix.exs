@@ -59,20 +59,17 @@ defmodule WandererNotifier.MixProject do
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10", runtime: Mix.env() != :test},
       {:websockex, "~> 0.5"},
-      {:slipstream, "~> 1.2"},
       {:jason, "~> 1.4"},
       {:nimble_csv, "~> 1.3"},
       {:plug, "~> 1.19"},
       {:plug_cowboy, "~> 2.7"},
       {:mime, "~> 2.0"},
-      {:decimal, "~> 2.3"},
       {:logger_file_backend, "~> 0.0.14"},
       {:logger_backends, "~> 1.0"},
-      # Phoenix & Ecto
+      # Phoenix
       {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.3"},
       {:phoenix_pubsub, "~> 2.2"},
-      {:ecto, "~> 3.13"},
       {:mint_web_socket, "~> 1.0"},
       # Rate limiting
       {:hammer, "~> 7.1"},
@@ -83,7 +80,6 @@ defmodule WandererNotifier.MixProject do
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},
       {:stream_data, "~> 1.2", only: [:dev, :test]},
-      {:crontab, "~> 1.2"},
       {:excoveralls, "~> 0.18", only: :test},
       {:benchfella, "~> 0.3", only: :dev},
       {:mix_version, "~> 2.5", only: [:dev, :test], runtime: false}

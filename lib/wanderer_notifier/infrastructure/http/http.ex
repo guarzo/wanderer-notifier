@@ -115,44 +115,12 @@ defmodule WandererNotifier.Infrastructure.Http do
   @impl true
   @spec request(method(), url(), body(), headers(), opts()) :: response()
   def request(method, url, body \\ nil, headers \\ [], opts \\ []) do
-    case http_client() do
-      WandererNotifier.HTTPMock ->
-        make_mock_request(method, url, body, headers, opts)
-
-      _ ->
-        make_real_request(method, url, body, headers, opts)
-    end
+    # Unified code path: preprocess the request the same way for mock and real clients
+    make_request(method, url, body, headers, opts)
   end
 
-  defp make_mock_request(method, url, body, headers, opts) do
-    final_opts = apply_service_config(opts)
-
-    # Add Content-Type header for JSON if needed
-    headers_with_json = add_json_content_type_if_needed(body, headers, method)
-
-    # Apply auth headers and encode body
-    final_headers = apply_auth_headers(headers_with_json, final_opts)
-    encoded_body = encode_body(body, final_headers)
-
-    # Call appropriate mock method
-    call_mock_method(method, url, encoded_body, final_headers, final_opts)
-  end
-
-  defp add_json_content_type_if_needed(body, headers, method) do
-    if is_map(body) and not has_content_type?(headers) and method in [:post, :put, :patch] do
-      [{"Content-Type", "application/json"} | headers]
-    else
-      headers
-    end
-  end
-
-  defp call_mock_method(method, url, encoded_body, final_headers, final_opts) do
-    # Call the mock's request/5 method directly
-    http_client().request(method, url, encoded_body, final_headers, final_opts)
-  end
-
-  defp make_real_request(method, url, body, headers, opts) do
-    # Production mode - apply service configuration
+  defp make_request(method, url, body, headers, opts) do
+    # Apply service configuration
     final_opts = apply_service_config(opts)
 
     # Add authentication headers
@@ -161,25 +129,36 @@ defmodule WandererNotifier.Infrastructure.Http do
     # Encode body if needed
     encoded_body = encode_body(body, final_headers)
 
-    # Prepare body and headers for middleware chain
-    prepared_body = prepare_body(encoded_body)
-    merged_headers = merge_headers(final_headers, method)
+    # Check if using mock client - if so, call directly without middleware
+    # This preserves test isolation and simplifies mock setup
+    client = http_client()
 
-    # Get middlewares from options or use defaults
-    middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
+    if client != __MODULE__ do
+      # Mock/injected client path - call directly without middleware
+      # Headers are merged for consistency with production behavior
+      merged_headers = merge_headers(final_headers, method)
+      client.request(method, url, encoded_body, merged_headers, final_opts)
+    else
+      # Production path - prepare body and go through middleware chain
+      prepared_body = prepare_body(encoded_body)
+      merged_headers = merge_headers(final_headers, method)
 
-    # Create request struct for middleware chain
-    request = %{
-      method: method,
-      url: url,
-      headers: merged_headers,
-      body: prepared_body,
-      opts: final_opts
-    }
+      # Get middlewares from options or use defaults
+      middlewares = Keyword.get(final_opts, :middlewares, default_middlewares())
 
-    # Execute middleware chain
-    execute_middleware_chain(request, middlewares)
-    |> transform_response()
+      # Create request struct for middleware chain
+      request = %{
+        method: method,
+        url: url,
+        headers: merged_headers,
+        body: prepared_body,
+        opts: final_opts
+      }
+
+      # Execute middleware chain
+      execute_middleware_chain(request, middlewares)
+      |> transform_response()
+    end
   end
 
   # Private implementation
@@ -199,6 +178,8 @@ defmodule WandererNotifier.Infrastructure.Http do
   end
 
   defp make_http_request(%{method: method, url: url, headers: headers, body: body, opts: opts}) do
+    # Production path - use Req library
+    # Mock clients are handled earlier in make_request to bypass middleware
     req_opts = build_req_opts(opts, headers, body)
     start_time = System.monotonic_time(:millisecond)
 
@@ -434,9 +415,26 @@ defmodule WandererNotifier.Infrastructure.Http do
     ]
   }
 
-  @doc false
+  @doc """
+  Returns the configuration for a specific HTTP service.
+
+  First checks for runtime configuration in Application env under
+  `:wanderer_notifier, :http_service_configs`. If not found, falls back
+  to the hardcoded defaults in `@service_configs`.
+
+  This allows runtime override of service configurations while maintaining
+  backward compatibility with existing deployments.
+
+  ## Parameters
+    - service: The service atom (:esi, :wanderer_kills, :license, etc.)
+
+  ## Returns
+    - Keyword list of service configuration options
+  """
+  @spec service_config(atom()) :: keyword()
   def service_config(service) when is_atom(service) do
-    Map.get(@service_configs, service, [])
+    runtime_configs = Application.get_env(:wanderer_notifier, :http_service_configs, %{})
+    Map.get(runtime_configs, service) || Map.get(@service_configs, service, [])
   end
 
   defp add_auth_header(headers, type: :bearer, token: token) when is_binary(token) do

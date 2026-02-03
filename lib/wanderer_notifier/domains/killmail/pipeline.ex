@@ -133,21 +133,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     )
   end
 
-  @doc """
-  Send a test notification using recent kill data.
-  """
-  @spec send_test_notification() :: result()
-  def send_test_notification do
-    case get_recent_kills() do
-      {:ok, [kill_data | _]} ->
-        Logger.info("Sending test notification", category: :killmail)
-        process_killmail(kill_data)
-
-      {:ok, []} ->
-        {:error, :no_recent_kills}
-    end
-  end
-
   # ═══════════════════════════════════════════════════════════════════════════════
   # Core Processing Steps
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -543,19 +528,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
         # If we can't parse the kill time, allow it through
         Logger.warning("Failed to parse kill_time", kill_time: kill_time)
         :ok
-    end
-  end
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # Utilities
-  # ═══════════════════════════════════════════════════════════════════════════════
-
-  @spec get_recent_kills() :: {:ok, list(killmail_data())} | {:error, term()}
-  defp get_recent_kills do
-    case Cache.get("zkill:recent_kills") do
-      {:ok, kills} when is_list(kills) -> {:ok, kills}
-      {:error, :not_found} -> {:ok, []}
-      _ -> {:ok, []}
     end
   end
 end

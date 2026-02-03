@@ -8,7 +8,6 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
 
   alias WandererNotifier.Domains.Tracking.Entities.Character
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils, as: Utils
-  alias WandererNotifier.Domains.Notifications.Utils.FormatterUtils
   require Logger
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -34,7 +33,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.CharacterFormatter d
       type: :character_notification,
       title: build_character_title(character),
       description: build_character_description(character),
-      color: FormatterUtils.get_character_color(:added),
+      color: Utils.get_character_color(:added),
       url: character_id_int && "https://zkillboard.com/character/#{character_id_int}/",
       thumbnail:
         character_id_int &&

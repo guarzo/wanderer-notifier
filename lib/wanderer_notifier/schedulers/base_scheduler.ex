@@ -2,6 +2,24 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   @moduledoc """
   Base scheduler module that provides common functionality for map-related schedulers.
   These schedulers handle periodic updates of data from the map API.
+
+  ## Usage
+
+  Modules using this base scheduler must implement the required callbacks:
+  - `feature_flag/0` - Returns the feature flag atom for enabling/disabling
+  - `update_data/1` - Performs the actual data update
+  - `cache_key/0` - Returns the cache key for storing data
+  - `primed_key/0` - Returns the key for tracking primed state
+  - `log_emoji/0` - Returns emoji for log messages
+  - `log_label/0` - Returns label for log messages
+  - `interval_key/0` - Returns the config key for update interval
+  - `stats_type/0` - Returns :systems, :characters, or nil for metrics tracking
+
+  ## Optional Callbacks
+
+  - `polling_disabled_flag/0` - Returns the feature flag that disables polling for SSE.
+    When this flag is enabled, the scheduler suppresses "feature disabled" log messages.
+    Defaults to returning `nil` (no SSE override).
   """
 
   use GenServer
@@ -10,6 +28,7 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   alias WandererNotifier.Shared.Types.Constants
   alias WandererNotifier.Infrastructure.Cache
 
+  # Required callbacks
   @callback feature_flag() :: atom()
   @callback update_data(any()) :: {:ok, any()} | {:error, any()}
   @callback cache_key() :: String.t()
@@ -19,10 +38,114 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   @callback interval_key() :: atom()
   @callback stats_type() :: atom() | nil
 
+  # Optional callback for SSE-based polling disable flag
+  @callback polling_disabled_flag() :: atom() | nil
+  @optional_callbacks [polling_disabled_flag: 0]
+
   @impl GenServer
   def init(opts) do
     {:ok, opts}
   end
+
+  # ── Timer Management Helpers ─────────────────────────────────────────────────
+
+  @doc """
+  Schedules the next update by creating a timer that sends :update message.
+  Cancels any existing timer in the state first.
+  """
+  @spec schedule_next_update(map()) :: map()
+  def schedule_next_update(state) do
+    state = cancel_timer(state)
+    timer = Process.send_after(self(), :update, state.interval)
+    %{state | timer: timer}
+  end
+
+  @doc """
+  Cancels an existing timer if present in the state.
+  Returns the state unchanged if no timer exists.
+  """
+  @spec cancel_timer(map()) :: map()
+  def cancel_timer(%{timer: nil} = state), do: state
+
+  def cancel_timer(%{timer: timer} = state) do
+    Process.cancel_timer(timer)
+    %{state | timer: nil}
+  end
+
+  @doc """
+  Schedules a feature flag check after the configured interval.
+  """
+  @spec schedule_feature_check(map()) :: map()
+  def schedule_feature_check(state) do
+    state = cancel_timer(state)
+    timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
+    %{state | timer: timer}
+  end
+
+  @doc """
+  Schedules an immediate update (0ms delay).
+  """
+  @spec schedule_immediate_update(map()) :: map()
+  def schedule_immediate_update(state) do
+    state = cancel_timer(state)
+    timer = Process.send_after(self(), :update, 0)
+    %{state | timer: timer}
+  end
+
+  # ── Error Classification Helper ──────────────────────────────────────────────
+
+  @doc """
+  Classifies an error into a category for logging purposes.
+  """
+  @spec classify_error(any()) :: atom()
+  def classify_error({:http_error, status, _}) when status >= 500, do: :server_error
+  def classify_error({:http_error, status, _}) when status >= 400, do: :client_error
+  def classify_error(:cache_error), do: :cache_error
+  def classify_error(:invalid_data), do: :invalid_data
+  def classify_error(_), do: :unknown_error
+
+  # ── Stats Update Helper ──────────────────────────────────────────────────────
+
+  @doc """
+  Updates metrics with the tracked count for a scheduler.
+  Only updates for :systems or :characters stat types.
+  """
+  @spec update_stats_count(module(), non_neg_integer()) :: :ok
+  def update_stats_count(module, count) do
+    case module.stats_type() do
+      stat_type when stat_type in [:systems, :characters] ->
+        WandererNotifier.Shared.Metrics.set_tracked_count(stat_type, count)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # ── Log Helper ───────────────────────────────────────────────────────────────
+
+  @doc """
+  Logs an update with change indicators.
+  """
+  @spec log_update(module(), list(), list()) :: :ok
+  def log_update(module, new_data, old_data) do
+    new_count = length(new_data)
+    old_count = length(old_data)
+    change = new_count - old_count
+
+    change_indicator =
+      cond do
+        change > 0 -> "+ #{change}"
+        change < 0 -> "#{change}"
+        true -> "No change"
+      end
+
+    emoji = module.log_emoji()
+    label = module.log_label()
+
+    Logger.info("#{emoji} #{label} updated | #{old_count} -> #{new_count} | #{change_indicator}")
+  end
+
+  # ── Macro ────────────────────────────────────────────────────────────────────
 
   defmacro __using__(_opts) do
     quote do
@@ -30,22 +153,22 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
       use GenServer
       require Logger
 
+      alias WandererNotifier.Schedulers.BaseScheduler
+      alias WandererNotifier.Shared.Types.Constants
+      alias WandererNotifier.Infrastructure.Cache
+
+      # Default implementation for optional callback
+      def polling_disabled_flag, do: nil
+      defoverridable polling_disabled_flag: 0
+
       def start_link(opts) do
         GenServer.start_link(__MODULE__, opts, name: __MODULE__)
       end
 
       @impl GenServer
       def init(opts) do
-        primed? =
-          __MODULE__
-          |> Cache.Keys.scheduler_primed()
-          |> Cache.get()
-          |> Kernel.==({:ok, true})
-
-        # Get the configured interval for this scheduler type
+        primed? = check_primed_status()
         interval = get_scheduler_interval(opts)
-
-        # Get cached data, defaulting to empty list if not found
         cached_data = get_cached_data()
 
         state = %{
@@ -62,23 +185,22 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           cached_count: length(cached_data)
         )
 
-        # Return with continue to trigger handle_continue
         {:ok, state, {:continue, :schedule}}
       end
 
-      # Get the interval configuration for different scheduler types
+      defp check_primed_status do
+        __MODULE__
+        |> Cache.Keys.scheduler_primed()
+        |> Cache.get()
+        |> Kernel.==({:ok, true})
+      end
+
       defp get_scheduler_interval(opts) do
-        # Get the default interval from opts
         default_interval = Keyword.get(opts, :interval, Constants.default_service_interval())
-
-        # Get the config key from the callback
         config_key = interval_key()
-
-        # Fetch from application config with the callback-provided key and default
         Application.get_env(:wanderer_notifier, config_key, default_interval)
       end
 
-      # Get cached data with error handling
       defp get_cached_data do
         __MODULE__
         |> Cache.Keys.scheduler_data()
@@ -110,7 +232,6 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl GenServer
       def handle_continue(:schedule, state) do
-        # Use the Config module's feature_enabled? function which handles both maps and keyword lists
         feature_flag_value = feature_flag()
         feature_enabled = WandererNotifier.Shared.Config.feature_enabled?(feature_flag_value)
 
@@ -127,45 +248,39 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             enabled: true
           )
 
-          # Start with an immediate timer
-          timer = Process.send_after(self(), :update, 0)
-          {:noreply, %{state | timer: timer}}
+          {:noreply, BaseScheduler.schedule_immediate_update(state)}
         else
-          # Only log for actual feature disabling, not SSE-based disabling
-          # Check the module name to suppress logs for SSE-enabled schedulers
-          should_log =
-            case __MODULE__ do
-              WandererNotifier.Schedulers.SystemUpdateScheduler ->
-                not WandererNotifier.Shared.Config.feature_enabled?(
-                  :system_polling_disabled_for_sse
-                )
+          maybe_log_feature_disabled(feature_flag_value)
+          {:noreply, BaseScheduler.schedule_feature_check(state)}
+        end
+      end
 
-              WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-                not WandererNotifier.Shared.Config.feature_enabled?(
-                  :character_polling_disabled_for_sse
-                )
+      # Determine if we should log the feature disabled message.
+      # If the scheduler has a polling_disabled_flag and it's enabled,
+      # we suppress the log (SSE is handling updates instead).
+      defp maybe_log_feature_disabled(feature_flag_value) do
+        sse_flag = polling_disabled_flag()
 
-              _ ->
-                true
-            end
+        should_log =
+          case sse_flag do
+            nil ->
+              true
 
-          if should_log do
-            Logger.info("Feature disabled",
-              module: __MODULE__,
-              feature: feature_flag(),
-              enabled: false
-            )
+            flag when is_atom(flag) ->
+              not WandererNotifier.Shared.Config.feature_enabled?(flag)
           end
 
-          # Even if feature is disabled, we should still schedule the next check
-          timer = Process.send_after(self(), :check_feature, Constants.feature_check_interval())
-          {:noreply, %{state | timer: timer}}
+        if should_log do
+          Logger.info("Feature disabled",
+            module: __MODULE__,
+            feature: feature_flag_value,
+            enabled: false
+          )
         end
       end
 
       @impl GenServer
       def handle_info(:check_feature, state) do
-        # Re-check the feature flag and schedule if enabled
         handle_continue(:schedule, state)
       end
 
@@ -180,7 +295,6 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         end
       end
 
-      # Handle successful data update
       defp handle_update_success(new_data, state) do
         __MODULE__
         |> Cache.Keys.scheduler_primed()
@@ -190,19 +304,15 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         |> Cache.Keys.scheduler_data()
         |> Cache.put(new_data)
 
-        log_update(__MODULE__, new_data, state.cached_data)
+        BaseScheduler.log_update(__MODULE__, new_data, state.cached_data)
+        BaseScheduler.update_stats_count(__MODULE__, length(new_data))
 
-        # Update Stats module with the tracked count
-        update_stats_count(__MODULE__, length(new_data))
-
-        # Schedule next update and update state
-        new_state = schedule_update(%{state | cached_data: new_data})
+        new_state = BaseScheduler.schedule_next_update(%{state | cached_data: new_data})
         {:noreply, new_state}
       end
 
-      # Handle update error
       defp handle_update_error(reason, state) do
-        error_type = get_error_type(reason)
+        error_type = BaseScheduler.classify_error(reason)
 
         Logger.error("Update failed",
           module: __MODULE__,
@@ -210,117 +320,27 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           error_type: error_type
         )
 
-        # Reschedule after error with a shorter delay
-        new_state = schedule_update(state)
+        new_state = BaseScheduler.schedule_next_update(state)
         {:noreply, new_state}
       end
 
-      defp get_error_type({:http_error, status, _}) when status >= 500, do: :server_error
-      defp get_error_type({:http_error, status, _}) when status >= 400, do: :client_error
-      defp get_error_type(:cache_error), do: :cache_error
-      defp get_error_type(:invalid_data), do: :invalid_data
-      defp get_error_type(_), do: :unknown_error
-
-      defp schedule_update(state) do
-        # Cancel any existing timer
-        if state.timer, do: Process.cancel_timer(state.timer)
-
-        # Schedule next update
-        timer = Process.send_after(self(), :update, state.interval)
-        %{state | timer: timer}
-      end
-
       @doc """
-      Runs an update cycle.
+      Runs an update cycle manually.
       """
       def run do
-        cached_data = get_cached_data_for_run()
+        cached_data = get_cached_data()
 
         case update_data(cached_data) do
           {:ok, new_data} ->
-            handle_successful_run(new_data)
+            __MODULE__
+            |> Cache.Keys.scheduler_data()
+            |> Cache.put(new_data)
+
+            {:ok, new_data}
 
           {:error, reason} ->
-            handle_failed_run(reason)
-        end
-      end
-
-      # Get cached data for manual run operation
-      defp get_cached_data_for_run do
-        __MODULE__
-        |> Cache.Keys.scheduler_data()
-        |> Cache.get()
-        |> case do
-          {:ok, data} when is_list(data) ->
-            data
-
-          {:ok, nil} ->
-            Logger.info("No cached data found")
-            []
-
-          {:ok, data} ->
-            Logger.error("Invalid cached data format",
-              data: inspect(data)
-            )
-
-            []
-
-          {:error, reason} ->
-            Logger.error("Failed to get cached data",
-              error: inspect(reason)
-            )
-
-            []
-        end
-      end
-
-      # Handle successful manual run
-      defp handle_successful_run(new_data) do
-        __MODULE__
-        |> Cache.Keys.scheduler_data()
-        |> Cache.put(new_data)
-
-        {:ok, new_data}
-      end
-
-      # Handle failed manual run
-      defp handle_failed_run(reason) do
-        Logger.error("Manual update failed",
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-      end
-
-      def log_update(module, new_data, old_data) do
-        new_count = length(new_data)
-        old_count = length(old_data)
-        change = new_count - old_count
-
-        change_indicator =
-          cond do
-            change > 0 -> "📈 + #{change}"
-            change < 0 -> "📉 #{change}"
-            true -> "➡️  No change"
-          end
-
-        emoji = module.log_emoji()
-        label = module.log_label()
-
-        Logger.info(
-          "#{emoji} #{label} updated | #{old_count} → #{new_count} | #{change_indicator}"
-        )
-      end
-
-      defp update_stats_count(module, count) do
-        # Call module.stats_type() and update stats if it returns a valid type
-        # This function will only be called from schedulers that return :systems or :characters
-        case module.stats_type() do
-          stat_type when stat_type in [:systems, :characters] ->
-            WandererNotifier.Shared.Metrics.set_tracked_count(stat_type, count)
-
-          _ ->
-            :ok
+            Logger.error("Manual update failed", error: inspect(reason))
+            {:error, reason}
         end
       end
     end

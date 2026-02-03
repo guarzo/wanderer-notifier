@@ -702,41 +702,33 @@ defmodule WandererNotifier.DiscordNotifier do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do
-    if should_add_voice_mentions?(killmail, channel_id) do
-      add_voice_mentions_to_notification(notification)
+    with true <- voice_pings_enabled?(),
+         true <- system_kill_channel?(channel_id),
+         true <- pure_system_kill?(killmail) do
+      prepend_voice_mentions(notification)
     else
-      notification
+      _ -> notification
     end
   end
 
-  defp should_add_voice_mentions?(killmail, channel_id) do
-    system_kill_channel = Config.discord_system_kill_channel_id()
-    voice_pings_enabled = Config.voice_participant_notifications_enabled?()
+  defp voice_pings_enabled?, do: Config.voice_participant_notifications_enabled?()
 
-    # Only add voice mentions for system kill channel notifications
-    is_system_kill_channel = channel_id == system_kill_channel and system_kill_channel != nil
-
-    # Check that this is a system-tracked kill (not a character-tracked kill)
+  # Returns true if the kill is in a tracked system with no tracked characters involved
+  defp pure_system_kill?(killmail) do
     system_id = Map.get(killmail, :system_id)
-    has_tracked_system = tracked_system?(system_id)
-    has_tracked_character = tracked_character?(killmail)
-
-    # Add voice mentions only for system kills (tracked system, no tracked character)
-    is_system_kill_channel and has_tracked_system and not has_tracked_character and
-      voice_pings_enabled
+    tracked_system?(system_id) and not tracked_character?(killmail)
   end
 
-  defp add_voice_mentions_to_notification(notification) do
-    mentions = VoiceParticipants.get_active_voice_mentions()
-
-    case mentions do
-      [] ->
-        notification
-
-      mentions_list ->
-        mention_string = Enum.join(mentions_list, " ")
-        existing_content = Map.get(notification, :content, "")
-        Map.put(notification, :content, "#{mention_string} #{existing_content}")
+  defp prepend_voice_mentions(notification) do
+    case VoiceParticipants.get_active_voice_mentions() do
+      [] -> notification
+      mentions -> prepend_mentions(notification, mentions)
     end
+  end
+
+  defp prepend_mentions(notification, mentions) do
+    mention_string = Enum.join(mentions, " ")
+    existing_content = Map.get(notification, :content, "")
+    Map.put(notification, :content, "#{mention_string} #{existing_content}")
   end
 end
