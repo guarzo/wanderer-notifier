@@ -139,6 +139,14 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       )
 
     result = Retry.http_retry(retry_fn, retry_opts)
+
+    # Debug: Log exact result value and type for pattern matching diagnosis
+    Logger.debug("[NeoClient] Retry result for pattern matching",
+      result: inspect(result),
+      result_type: inspect(result) |> String.split("{") |> hd(),
+      category: :discord_api
+    )
+
     handle_discord_result(result, start_time, rally_id)
   end
 
@@ -258,10 +266,20 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp handle_discord_result({:error, :timeout}, _start_time, _rally_id) do
     # Timeout already recorded in handle_final_timeout/2
     # Don't call record_failure here as it would reset consecutive_timeouts
+    Logger.debug("[NeoClient] Matched {:error, :timeout} pattern - skipping failure recording",
+      category: :discord_api
+    )
+
     {:error, :timeout}
   end
 
   defp handle_discord_result({:error, reason}, _start_time, _rally_id) do
+    Logger.warning("[NeoClient] Matched general {:error, reason} pattern instead of specific",
+      reason_value: inspect(reason),
+      is_timeout_atom: reason == :timeout,
+      category: :discord_api
+    )
+
     Logger.error("Discord API call failed after all attempts",
       reason: inspect(reason),
       category: :discord_api
