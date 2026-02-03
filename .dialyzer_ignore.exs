@@ -6,8 +6,8 @@
   {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match, 1},
 
   # Defensive error handling - the pattern handles future API changes
-  {"lib/wanderer_notifier/domains/notifications/determiner.ex", :pattern_match, {260, 16}},
-  {"lib/wanderer_notifier/domains/notifications/determiner.ex", :pattern_match, {285, 16}},
+  {"lib/wanderer_notifier/domains/notifications/determiner.ex", :pattern_match, {262, 16}},
+  {"lib/wanderer_notifier/domains/notifications/determiner.ex", :pattern_match, {287, 16}},
 
   # Pre-existing issues - not related to cleanup
   {"lib/wanderer_notifier/discord_notifier.ex", :pattern_match, {128, 22}},
