@@ -74,7 +74,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event
-      assert :ok = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Verify character was removed
       {:ok, remaining_characters} = Cache.get(Cache.Keys.map_characters())
@@ -100,7 +100,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event - should not error
-      assert :ok = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Cache should still be empty
       assert {:error, :not_found} = Cache.get(Cache.Keys.map_characters())
@@ -177,7 +177,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event - should handle gracefully
-      assert :ok = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Cache should still be empty
       cache_result = Cache.get(Cache.Keys.map_systems())
@@ -224,7 +224,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event
-      assert :ok = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Verify system was removed from main cache
       cache_result = Cache.get(Cache.Keys.map_systems())
@@ -272,7 +272,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
           }
         }
 
-        assert :ok = EventProcessor.process_event(event, "test-map")
+        assert {:ok, _} = EventProcessor.process_event(event, "test-map")
       end
 
       # Verify only characters 1 and 4 remain
