@@ -99,7 +99,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   defp handle_route_result({:ok, status}, event_type, map_slug)
-       when status in [:queued, :ignored] do
+       when status in [:queued, :ignored, :connected] do
     Logger.debug("Event processed",
       map_slug: map_slug,
       event_type: event_type,
@@ -218,8 +218,9 @@ defmodule WandererNotifier.Map.EventProcessor do
   defp log_empty_character_payload(%{"payload" => _payload}, _map_slug), do: :ok
 
   defp log_empty_character_payload(event, map_slug) do
-    Logger.warning("Character updated event has empty payload",
+    Logger.warning("Character updated event has missing or unexpected payload structure",
       map_slug: map_slug,
+      payload: Map.get(event, "payload"),
       event_id: Map.get(event, "id"),
       event_keys: Map.keys(event)
     )
@@ -287,7 +288,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Special event handlers
-  @spec handle_special_event(String.t(), map(), String.t()) :: :ok | {:ok, :ignored}
+  @spec handle_special_event(String.t(), map(), String.t()) :: {:ok, :connected | :ignored}
   defp handle_special_event("connected", event, map_slug) do
     Logger.debug("SSE connection established",
       map_slug: map_slug,
@@ -295,7 +296,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       server_time: Map.get(event, "server_time")
     )
 
-    :ok
+    {:ok, :connected}
   end
 
   defp handle_special_event("map_kill", _event, _map_slug) do
@@ -324,12 +325,9 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `timestamp` - ISO 8601 timestamp
   - `payload` - Event-specific data
   """
-  @spec validate_event(map()) :: :ok | {:error, term()}
+  @spec validate_event(map()) :: {:ok, map()} | {:error, term()}
   def validate_event(event) do
-    case WandererNotifier.Shared.Validation.validate_event_data(event) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    WandererNotifier.Shared.Validation.validate_event_data(event)
   end
 
   # Event validation logic moved to WandererNotifier.Shared.Validation

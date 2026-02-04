@@ -563,13 +563,15 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     valid_state
   end
 
-  defp log_validation_result(valid_state, %State{bot_assigned: old_bot_assigned}) do
-    if valid_state.bot_assigned != old_bot_assigned do
-      log_state_change(valid_state.bot_assigned)
-    else
-      Logger.debug("License validation successful (status unchanged)")
-    end
+  defp log_validation_result(%State{bot_assigned: bot_assigned} = valid_state, %State{
+         bot_assigned: bot_assigned
+       }) do
+    Logger.debug("License validation successful (status unchanged)")
+    valid_state
+  end
 
+  defp log_validation_result(valid_state, %State{bot_assigned: _old_bot_assigned}) do
+    log_state_change(valid_state.bot_assigned)
     valid_state
   end
 
@@ -609,10 +611,9 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
     base_state = Map.merge(defaults, Map.take(state || %{}, Map.keys(defaults)))
 
-    if is_map(base_state[:notification_counts]) do
-      base_state
-    else
-      Map.put(base_state, :notification_counts, defaults.notification_counts)
+    case base_state[:notification_counts] do
+      counts when is_map(counts) -> base_state
+      _ -> Map.put(base_state, :notification_counts, defaults.notification_counts)
     end
   end
 end
