@@ -314,7 +314,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @impl true
   def handle_call({:set_status, status}, _from, state) do
-    {:reply, :ok, Map.put(state, :valid, status)}
+    {:reply, :ok, %{state | valid: status}}
   end
 
   @impl true
@@ -612,11 +612,22 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       backoff_multiplier: 1
     }
 
-    base_state = Map.merge(defaults, Map.take(state || %{}, Map.keys(defaults)))
+    state_map = state || %{}
 
-    case base_state[:notification_counts] do
+    base_state = %State{
+      valid: Map.get(state_map, :valid, defaults.valid),
+      bot_assigned: Map.get(state_map, :bot_assigned, defaults.bot_assigned),
+      details: Map.get(state_map, :details, defaults.details),
+      error: Map.get(state_map, :error, defaults.error),
+      error_message: Map.get(state_map, :error_message, defaults.error_message),
+      last_validated: Map.get(state_map, :last_validated, defaults.last_validated),
+      notification_counts: Map.get(state_map, :notification_counts, defaults.notification_counts),
+      backoff_multiplier: Map.get(state_map, :backoff_multiplier, defaults.backoff_multiplier)
+    }
+
+    case base_state.notification_counts do
       counts when is_map(counts) -> base_state
-      _ -> Map.put(base_state, :notification_counts, defaults.notification_counts)
+      _ -> %{base_state | notification_counts: defaults.notification_counts}
     end
   end
 end
