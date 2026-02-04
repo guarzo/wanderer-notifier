@@ -81,21 +81,20 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   @doc """
   Validates the license key.
 
-  Returns `{:ok, result}` on successful validation where `result` is a map
-  with license status information, or `{:error, reason}` on failure.
+  Returns `{:ok, state}` on successful validation where `state` is a `%State{}`
+  struct with license status information, or `{:error, reason}` on failure.
 
   ## Returns
 
-  - `{:ok, map()}` - Successful validation with license state
+  - `{:ok, %State{}}` - Successful validation with license state
   - `{:error, :timeout}` - Validation timed out
   - `{:error, {:exception, term()}}` - Exception during validation
-  - `{:error, {:unexpected, term()}}` - Unexpected validation result
   """
   def validate do
-    with {:ok, result} <- safe_validate_call(),
-         {:ok, validated_result} <- LicenseValidator.valid_result?(result) do
-      {:ok, validated_result}
-    else
+    case safe_validate_call() do
+      {:ok, %State{} = state} ->
+        {:ok, state}
+
       {:error, :timeout} ->
         Logger.error("License validation timed out", category: :config)
         {:error, :timeout}
@@ -103,13 +102,6 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       {:error, {:exception, e}} ->
         Logger.error("Error in license validation: #{inspect(e)}", category: :config)
         {:error, {:exception, e}}
-
-      {:error, {:unexpected, result}} ->
-        Logger.error("Unexpected result from license validation: #{inspect(result)}",
-          category: :config
-        )
-
-        {:error, {:unexpected, result}}
     end
   end
 
@@ -529,39 +521,60 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @dialyzer {:nowarn_function, create_valid_license_state: 2}
   defp create_valid_license_state(response, state) do
-    bot_assigned = LicenseValidator.extract_bot_assigned(response)
+    response
+    |> LicenseValidator.extract_bot_assigned()
+    |> build_valid_state(response, state)
+    |> log_validation_result(state)
+  end
 
-    if !bot_assigned do
-      Logger.debug(
-        "License is valid but no bot is assigned. Please assign a bot to your license.",
-        category: :config
-      )
-    end
-
-    valid_state = %State{
+  defp build_valid_state(true = _bot_assigned, response, state) do
+    %State{
       valid: true,
-      bot_assigned: bot_assigned,
+      bot_assigned: true,
       details: response,
       error: nil,
-      error_message: if(bot_assigned, do: nil, else: "License valid but bot not assigned"),
+      error_message: nil,
       last_validated: :os.system_time(:second),
       notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
       backoff_multiplier: 1
     }
+  end
 
-    if not state.valid or state.bot_assigned != bot_assigned do
-      log_message =
-        if bot_assigned,
-          do: "License validated - bot assigned",
-          else: "License validated - awaiting bot assignment"
+  defp build_valid_state(false = _bot_assigned, response, state) do
+    Logger.debug(
+      "License is valid but no bot is assigned. Please assign a bot to your license.",
+      category: :config
+    )
 
-      Logger.info(log_message)
+    %State{
+      valid: true,
+      bot_assigned: false,
+      details: response,
+      error: nil,
+      error_message: "License valid but bot not assigned",
+      last_validated: :os.system_time(:second),
+      notification_counts: state.notification_counts || %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: 1
+    }
+  end
+
+  defp log_validation_result(valid_state, %State{valid: false}) do
+    log_state_change(valid_state.bot_assigned)
+    valid_state
+  end
+
+  defp log_validation_result(valid_state, %State{bot_assigned: old_bot_assigned}) do
+    if valid_state.bot_assigned != old_bot_assigned do
+      log_state_change(valid_state.bot_assigned)
     else
       Logger.debug("License validation successful (status unchanged)")
     end
 
     valid_state
   end
+
+  defp log_state_change(true), do: Logger.info("License validated - bot assigned")
+  defp log_state_change(false), do: Logger.info("License validated - awaiting bot assignment")
 
   @dialyzer {:nowarn_function, create_invalid_license_state: 3}
   defp create_invalid_license_state(response, message, state) do

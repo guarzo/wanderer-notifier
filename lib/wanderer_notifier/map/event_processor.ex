@@ -21,6 +21,15 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   require Logger
 
+  # Event type categorization constants
+  @system_events ["add_system", "deleted_system", "system_metadata_changed"]
+  @connection_events ["connection_added", "connection_removed", "connection_updated"]
+  @signature_events ["signature_added", "signature_removed", "signatures_updated"]
+  @character_events ["character_added", "character_removed", "character_updated"]
+  @acl_events ["acl_member_added", "acl_member_removed", "acl_member_updated"]
+  @rally_events ["rally_point_added", "rally_point_removed"]
+  @special_events ["connected", "map_kill"]
+
   @doc """
   Processes a single event from the SSE stream.
 
@@ -75,7 +84,7 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   # Handles the result of routing an event
   @spec handle_route_result(
-          :ok | {:ok, atom()} | {:error, term()} | :ignored,
+          :ok | {:ok, atom()} | {:error, term()},
           String.t(),
           String.t()
         ) ::
@@ -110,15 +119,6 @@ defmodule WandererNotifier.Map.EventProcessor do
     error
   end
 
-  defp handle_route_result(:ignored, event_type, map_slug) do
-    Logger.debug("Event ignored",
-      map_slug: map_slug,
-      event_type: event_type
-    )
-
-    :ok
-  end
-
   # Routes an event to the appropriate handler based on event type.
   #
   # ## Event Categories
@@ -128,7 +128,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   # - ACL Events: acl_member_added, acl_member_removed, acl_member_updated
   # - Special Events: connected, map_kill
   @spec route_event(String.t(), map(), String.t()) ::
-          :ok | {:ok, atom()} | {:error, term()} | :ignored
+          :ok | {:ok, atom()} | {:error, term()}
   defp route_event(event_type, event, map_slug) do
     case categorize_event(event_type) do
       :system -> handle_system_event(event_type, event, map_slug)
@@ -144,33 +144,14 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   # Categorizes events based on their type prefix or pattern
   @spec categorize_event(String.t()) :: atom()
-  defp categorize_event(event_type) do
-    cond do
-      event_type in ["add_system", "deleted_system", "system_metadata_changed"] ->
-        :system
-
-      event_type in ["connection_added", "connection_removed", "connection_updated"] ->
-        :connection
-
-      event_type in ["signature_added", "signature_removed", "signatures_updated"] ->
-        :signature
-
-      event_type in ["character_added", "character_removed", "character_updated"] ->
-        :character
-
-      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
-        :acl
-
-      event_type in ["rally_point_added", "rally_point_removed"] ->
-        :rally
-
-      event_type in ["connected", "map_kill"] ->
-        :special
-
-      true ->
-        :unknown
-    end
-  end
+  defp categorize_event(type) when type in @system_events, do: :system
+  defp categorize_event(type) when type in @connection_events, do: :connection
+  defp categorize_event(type) when type in @signature_events, do: :signature
+  defp categorize_event(type) when type in @character_events, do: :character
+  defp categorize_event(type) when type in @acl_events, do: :acl
+  defp categorize_event(type) when type in @rally_events, do: :rally
+  defp categorize_event(type) when type in @special_events, do: :special
+  defp categorize_event(_type), do: :unknown
 
   # System event handlers
   @spec handle_system_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
@@ -192,14 +173,14 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
   end
 
-  @spec handle_connection_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_connection_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_connection_event(_event_type, _event, _map_slug) do
-    :ignored
+    {:ok, :ignored}
   end
 
-  @spec handle_signature_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_signature_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_signature_event(_event_type, _event, _map_slug) do
-    :ignored
+    {:ok, :ignored}
   end
 
   # Character event handlers
@@ -245,9 +226,9 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # ACL events are handled by character events
-  @spec handle_acl_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_acl_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_acl_event(_event_type, _event, _map_slug) do
-    :ignored
+    {:ok, :ignored}
   end
 
   # Rally point event handlers
@@ -306,7 +287,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Special event handlers
-  @spec handle_special_event(String.t(), map(), String.t()) :: :ok | :ignored
+  @spec handle_special_event(String.t(), map(), String.t()) :: :ok | {:ok, :ignored}
   defp handle_special_event("connected", event, map_slug) do
     Logger.debug("SSE connection established",
       map_slug: map_slug,
@@ -319,18 +300,18 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   defp handle_special_event("map_kill", _event, _map_slug) do
     # Kill events are handled by the existing killmail pipeline
-    :ignored
+    {:ok, :ignored}
   end
 
   # Unknown event handler
-  @spec handle_unknown_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_unknown_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_unknown_event(unknown_type, _event, map_slug) do
     Logger.warning("Unknown event type received",
       map_slug: map_slug,
       event_type: unknown_type
     )
 
-    :ignored
+    {:ok, :ignored}
   end
 
   @doc """
