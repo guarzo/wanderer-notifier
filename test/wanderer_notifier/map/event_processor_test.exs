@@ -45,7 +45,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
     end
 
     test "processes different event categories correctly" do
-      # Test unknown event (returns :ok for ignored events)
+      # Test unknown event (returns {:ok, :ignored} for unknown events)
       unknown_event = %{
         "id" => "test-789",
         "type" => "future_event_type",
@@ -54,7 +54,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "payload" => %{}
       }
 
-      assert EventProcessor.process_event(unknown_event, "test-map") == :ok
+      assert EventProcessor.process_event(unknown_event, "test-map") == {:ok, :ignored}
 
       # Test special event (connected)
       connected_event = %{
@@ -66,7 +66,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "server_time" => "2024-01-01T12:00:00Z"
       }
 
-      assert EventProcessor.process_event(connected_event, "test-map") == :ok
+      assert EventProcessor.process_event(connected_event, "test-map") == {:ok, :connected}
     end
   end
 end

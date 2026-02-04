@@ -226,14 +226,16 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
         new_state = do_validate(state)
 
-        if new_state.valid do
-          Logger.debug(
-            "License validated successfully: #{new_state.details["status"] || "valid"}",
-            category: :config
-          )
-        else
-          error_msg = new_state.error_message || "No error message provided"
-          Logger.warning("License validation warning: #{error_msg}", category: :config)
+        case new_state.valid do
+          true ->
+            Logger.debug(
+              "License validated successfully: #{new_state.details["status"] || "valid"}",
+              category: :config
+            )
+
+          false ->
+            error_msg = new_state.error_message || "No error message provided"
+            Logger.warning("License validation warning: #{error_msg}", category: :config)
         end
 
         {:ok, new_state}
@@ -606,7 +608,8 @@ defmodule WandererNotifier.Domains.License.LicenseService do
       error: nil,
       error_message: nil,
       last_validated: :os.system_time(:second),
-      notification_counts: %{system: 0, character: 0, killmail: 0}
+      notification_counts: %{system: 0, character: 0, killmail: 0},
+      backoff_multiplier: 1
     }
 
     base_state = Map.merge(defaults, Map.take(state || %{}, Map.keys(defaults)))

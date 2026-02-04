@@ -38,10 +38,10 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `map_slug` - The map identifier for logging context
 
   ## Returns
-  - `:ok` on successful processing
+  - `{:ok, result}` on successful processing
   - `{:error, reason}` on failure
   """
-  @spec process_event(map(), String.t()) :: :ok | {:error, term()}
+  @spec process_event(map(), String.t()) :: {:ok, term()} | {:error, term()}
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
     log_incoming_event(event_type, event, map_slug)
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Logs incoming SSE events with appropriate log level
-  @spec log_incoming_event(String.t(), map(), String.t()) :: :ok
+  @spec log_incoming_event(String.t() | nil, map(), String.t()) :: :ok
   defp log_incoming_event(event_type, event, map_slug) do
     {log_level, payload_preview} = event_log_params(event_type, event)
 
@@ -74,7 +74,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Returns log level and payload preview based on event type
-  @spec event_log_params(String.t(), map()) :: {:info | :debug, String.t() | nil}
+  @spec event_log_params(String.t() | nil, map()) :: {:info | :debug, String.t() | nil}
   defp event_log_params(event_type, event)
        when event_type in ["rally_point_added", "rally_point_removed"] do
     {:info, inspect(Map.get(event, "payload", %{}), limit: 200)}
@@ -85,17 +85,17 @@ defmodule WandererNotifier.Map.EventProcessor do
   # Handles the result of routing an event
   @spec handle_route_result(
           :ok | {:ok, atom()} | {:error, term()},
-          String.t(),
+          String.t() | nil,
           String.t()
         ) ::
-          :ok | {:error, term()}
+          {:ok, atom()} | {:error, term()}
   defp handle_route_result(:ok, event_type, map_slug) do
     Logger.debug("Event processed successfully",
       map_slug: map_slug,
       event_type: event_type
     )
 
-    :ok
+    {:ok, :processed}
   end
 
   defp handle_route_result({:ok, status}, event_type, map_slug)
@@ -106,7 +106,7 @@ defmodule WandererNotifier.Map.EventProcessor do
       status: status
     )
 
-    :ok
+    {:ok, status}
   end
 
   defp handle_route_result({:error, reason} = error, event_type, map_slug) do
@@ -127,7 +127,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   # - Signature Events: signature_added, signature_removed, signatures_updated
   # - ACL Events: acl_member_added, acl_member_removed, acl_member_updated
   # - Special Events: connected, map_kill
-  @spec route_event(String.t(), map(), String.t()) ::
+  @spec route_event(String.t() | nil, map(), String.t()) ::
           :ok | {:ok, atom()} | {:error, term()}
   defp route_event(event_type, event, map_slug) do
     case categorize_event(event_type) do
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Categorizes events based on their type prefix or pattern
-  @spec categorize_event(String.t()) :: atom()
+  @spec categorize_event(String.t() | nil) :: atom()
   defp categorize_event(type) when type in @system_events, do: :system
   defp categorize_event(type) when type in @connection_events, do: :connection
   defp categorize_event(type) when type in @signature_events, do: :signature

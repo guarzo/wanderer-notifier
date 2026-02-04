@@ -414,7 +414,7 @@ defmodule WandererNotifier.Map.SSEClient do
 
   defp process_event_through_processor(validated_event, state) do
     case EventProcessor.process_event(validated_event, state.map_slug) do
-      :ok -> extract_event_id(validated_event)
+      {:ok, _result} -> extract_event_id(validated_event)
       error -> error
     end
   end
