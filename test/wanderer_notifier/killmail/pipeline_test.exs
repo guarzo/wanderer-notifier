@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def notifications_enabled?, do: true
     def system_notifications_enabled?, do: true
     def character_notifications_enabled?, do: true
-    def deduplication_module, do: WandererNotifier.Domains.Notifications.CacheImpl
+    def deduplication_module, do: WandererNotifier.Domains.Notifications.Deduplication
     def system_track_module, do: WandererNotifier.MockSystem
     def character_track_module, do: WandererNotifier.MockCharacter
     def notification_determiner_module, do: WandererNotifier.Domains.Notifications.Determiner.Kill
@@ -49,10 +49,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def get_and_update(_key, _fun), do: {:ok, :mock, :mock}
     def set(_key, _value, _opts), do: {:ok, :mock}
     def init_batch_logging(), do: :ok
-    def get_recent_kills(), do: []
   end
 
-  # Use real deduplication implementation (CacheImpl)
+  # Use real deduplication implementation
 
   # Define MockMetrics for the tests
   defmodule MockMetrics do
@@ -102,7 +101,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     Application.put_env(
       :wanderer_notifier,
       :deduplication_module,
-      WandererNotifier.Domains.Notifications.CacheImpl
+      WandererNotifier.Domains.Notifications.Deduplication
     )
 
     # Set up metrics module
@@ -148,9 +147,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     ESIMockHelper.setup_esi_mocks()
 
     # Always stub the DiscordNotifier with a default response
-    stub(WandererNotifier.Test.Mocks.Discord, :send_kill_notification, fn _killmail,
-                                                                          _type,
-                                                                          input_opts ->
+    stub(DiscordNotifierMock, :send_kill_notification, fn _killmail, _type, input_opts ->
       _formatted_opts = if is_map(input_opts), do: Map.to_list(input_opts), else: input_opts
       :ok
     end)
@@ -445,13 +442,13 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
 
     setup do
       # Capture original config values before any test modifications
-      original_exclude_list = Application.get_env(:wanderer_notifier, :corporation_exclude_list)
+      original_kill_focus = Application.get_env(:wanderer_notifier, :corporation_kill_focus)
       original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
       cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
 
       # Register cleanup to run even if test fails
       on_exit(fn ->
-        Application.put_env(:wanderer_notifier, :corporation_exclude_list, original_exclude_list)
+        Application.put_env(:wanderer_notifier, :corporation_kill_focus, original_kill_focus)
 
         Application.put_env(
           :wanderer_notifier,
@@ -490,7 +487,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
          } do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list with victim's corporation
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_001])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -520,7 +517,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
          %{cache_name: cache_name} do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list with attacker's corporation
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_002])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_002])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -550,7 +547,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       cache_name: cache_name
     } do
       # Set up exclusion list with different corporation
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_099])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_099])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -580,7 +577,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       cache_name: cache_name
     } do
       # Empty exclusion list
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -607,7 +604,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     } do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_003])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_003])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -639,7 +636,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       cache_name: cache_name
     } do
       # Set up exclusion list
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_001])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{
@@ -669,7 +666,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       cache_name: cache_name
     } do
       # Set up exclusion list
-      Application.put_env(:wanderer_notifier, :corporation_exclude_list, [98_000_001])
+      Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
 
       zkb_data = %{

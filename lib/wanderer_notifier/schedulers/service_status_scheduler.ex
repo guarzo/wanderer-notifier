@@ -118,12 +118,21 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     dedup_key = "#{current_minute}"
 
     case Deduplication.check_and_mark(:status_report, dedup_key) do
-      :new ->
+      {:ok, :new} ->
         Logger.info("📊 Status report sent | #{formatted_uptime} uptime")
         send_discord_status_message(formatted_uptime)
+        {:ok, :sent}
 
-      :duplicate ->
+      {:ok, :duplicate} ->
         Logger.info("📊 Status report skipped - duplicate")
+        {:ok, :skipped}
+
+      {:error, reason} ->
+        Logger.warning("📊 Status report skipped - deduplication error",
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 

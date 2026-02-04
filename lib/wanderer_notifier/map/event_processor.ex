@@ -7,12 +7,11 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   ## Event Categories
 
-  Events are organized into logical categories for better maintainability:
+  Events are organized into logical categories:
 
   - **System Events**: Changes to wormhole systems (add/remove/update)
-  - **Connection Events**: Wormhole connection changes (future)
-  - **Signature Events**: Cosmic signature updates (future)
-  - **ACL Events**: Access control list changes for character tracking
+  - **Character Events**: Character tracking changes
+  - **Rally Events**: Rally point creation/removal
   - **Special Events**: Meta events like connection status
 
   The event processor uses a two-stage routing approach:
@@ -22,6 +21,15 @@ defmodule WandererNotifier.Map.EventProcessor do
 
   require Logger
 
+  # Event type categorization constants
+  @system_events ["add_system", "deleted_system", "system_metadata_changed"]
+  @connection_events ["connection_added", "connection_removed", "connection_updated"]
+  @signature_events ["signature_added", "signature_removed", "signatures_updated"]
+  @character_events ["character_added", "character_removed", "character_updated"]
+  @acl_events ["acl_member_added", "acl_member_removed", "acl_member_updated"]
+  @rally_events ["rally_point_added", "rally_point_removed"]
+  @special_events ["connected", "map_kill"]
+
   @doc """
   Processes a single event from the SSE stream.
 
@@ -30,54 +38,17 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `map_slug` - The map identifier for logging context
 
   ## Returns
-  - `:ok` on successful processing
+  - `{:ok, result}` on successful processing
   - `{:error, reason}` on failure
   """
-  @spec process_event(map(), String.t()) :: :ok | {:error, term()}
+  @spec process_event(map(), String.t()) :: {:ok, term()} | {:error, term()}
   def process_event(event, map_slug) when is_map(event) do
     event_type = Map.get(event, "type")
+    log_incoming_event(event_type, event, map_slug)
 
-    # Change to info level and add payload preview for rally events
-    log_level =
-      if event_type in ["rally_point_added", "rally_point_removed"], do: :info, else: :debug
-
-    Logger.log(log_level, "Processing SSE event",
-      map_slug: map_slug,
-      event_type: event_type,
-      event_id: Map.get(event, "id"),
-      payload_preview:
-        if(event_type in ["rally_point_added", "rally_point_removed"],
-          do: inspect(Map.get(event, "payload", %{}), limit: 200),
-          else: nil
-        )
-    )
-
-    case route_event(event_type, event, map_slug) do
-      :ok ->
-        Logger.debug("Event processed successfully",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-
-      {:error, reason} = error ->
-        Logger.error("Event processing failed",
-          map_slug: map_slug,
-          event_type: event_type,
-          error: inspect(reason)
-        )
-
-        error
-
-      :ignored ->
-        Logger.debug("Event ignored",
-          map_slug: map_slug,
-          event_type: event_type
-        )
-
-        :ok
-    end
+    event_type
+    |> route_event(event, map_slug)
+    |> handle_route_result(event_type, map_slug)
   end
 
   def process_event(event, map_slug) do
@@ -89,6 +60,65 @@ defmodule WandererNotifier.Map.EventProcessor do
     {:error, :invalid_event_format}
   end
 
+  # Logs incoming SSE events with appropriate log level
+  @spec log_incoming_event(String.t() | nil, map(), String.t()) :: :ok
+  defp log_incoming_event(event_type, event, map_slug) do
+    {log_level, payload_preview} = event_log_params(event_type, event)
+
+    Logger.log(log_level, "Processing SSE event",
+      map_slug: map_slug,
+      event_type: event_type,
+      event_id: Map.get(event, "id"),
+      payload_preview: payload_preview
+    )
+  end
+
+  # Returns log level and payload preview based on event type
+  @spec event_log_params(String.t() | nil, map()) :: {:info | :debug, String.t() | nil}
+  defp event_log_params(event_type, event)
+       when event_type in ["rally_point_added", "rally_point_removed"] do
+    {:info, inspect(Map.get(event, "payload", %{}), limit: 200)}
+  end
+
+  defp event_log_params(_event_type, _event), do: {:debug, nil}
+
+  # Handles the result of routing an event
+  @spec handle_route_result(
+          :ok | {:ok, atom()} | {:error, term()},
+          String.t() | nil,
+          String.t()
+        ) ::
+          {:ok, atom()} | {:error, term()}
+  defp handle_route_result(:ok, event_type, map_slug) do
+    Logger.debug("Event processed successfully",
+      map_slug: map_slug,
+      event_type: event_type
+    )
+
+    {:ok, :processed}
+  end
+
+  defp handle_route_result({:ok, status}, event_type, map_slug)
+       when status in [:queued, :ignored, :connected] do
+    Logger.debug("Event processed",
+      map_slug: map_slug,
+      event_type: event_type,
+      status: status
+    )
+
+    {:ok, status}
+  end
+
+  defp handle_route_result({:error, reason} = error, event_type, map_slug) do
+    Logger.error("Event processing failed",
+      map_slug: map_slug,
+      event_type: event_type,
+      error: inspect(reason)
+    )
+
+    error
+  end
+
   # Routes an event to the appropriate handler based on event type.
   #
   # ## Event Categories
@@ -97,7 +127,8 @@ defmodule WandererNotifier.Map.EventProcessor do
   # - Signature Events: signature_added, signature_removed, signatures_updated
   # - ACL Events: acl_member_added, acl_member_removed, acl_member_updated
   # - Special Events: connected, map_kill
-  @spec route_event(String.t(), map(), String.t()) :: :ok | {:error, term()} | :ignored
+  @spec route_event(String.t() | nil, map(), String.t()) ::
+          :ok | {:ok, atom()} | {:error, term()}
   defp route_event(event_type, event, map_slug) do
     case categorize_event(event_type) do
       :system -> handle_system_event(event_type, event, map_slug)
@@ -112,34 +143,15 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   # Categorizes events based on their type prefix or pattern
-  @spec categorize_event(String.t()) :: atom()
-  defp categorize_event(event_type) do
-    cond do
-      event_type in ["add_system", "deleted_system", "system_metadata_changed"] ->
-        :system
-
-      event_type in ["connection_added", "connection_removed", "connection_updated"] ->
-        :connection
-
-      event_type in ["signature_added", "signature_removed", "signatures_updated"] ->
-        :signature
-
-      event_type in ["character_added", "character_removed", "character_updated"] ->
-        :character
-
-      event_type in ["acl_member_added", "acl_member_removed", "acl_member_updated"] ->
-        :acl
-
-      event_type in ["rally_point_added", "rally_point_removed"] ->
-        :rally
-
-      event_type in ["connected", "map_kill"] ->
-        :special
-
-      true ->
-        :unknown
-    end
-  end
+  @spec categorize_event(String.t() | nil) :: atom()
+  defp categorize_event(type) when type in @system_events, do: :system
+  defp categorize_event(type) when type in @connection_events, do: :connection
+  defp categorize_event(type) when type in @signature_events, do: :signature
+  defp categorize_event(type) when type in @character_events, do: :character
+  defp categorize_event(type) when type in @acl_events, do: :acl
+  defp categorize_event(type) when type in @rally_events, do: :rally
+  defp categorize_event(type) when type in @special_events, do: :special
+  defp categorize_event(_type), do: :unknown
 
   # System event handlers
   @spec handle_system_event(String.t(), map(), String.t()) :: :ok | {:error, term()}
@@ -161,18 +173,14 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
   end
 
-  # Connection event handlers (not implemented yet)
-  @spec handle_connection_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_connection_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_connection_event(_event_type, _event, _map_slug) do
-    # Future implementation for wormhole connection events
-    :ignored
+    {:ok, :ignored}
   end
 
-  # Signature event handlers (not implemented yet)
-  @spec handle_signature_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_signature_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_signature_event(_event_type, _event, _map_slug) do
-    # Future implementation for signature scanning events
-    :ignored
+    {:ok, :ignored}
   end
 
   # Character event handlers
@@ -192,16 +200,7 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   defp handle_character_event("character_updated", event, map_slug) do
-    # Add defensive logging to see what's in the event
-    payload = Map.get(event, "payload", %{})
-
-    if map_size(payload) == 0 do
-      Logger.warning("Character updated event has empty payload",
-        map_slug: map_slug,
-        event_id: Map.get(event, "id"),
-        event_keys: Map.keys(event)
-      )
-    end
+    log_empty_character_payload(event, map_slug)
 
     WandererNotifier.Domains.Tracking.Handlers.CharacterHandler.handle_entity_updated(
       event,
@@ -209,15 +208,33 @@ defmodule WandererNotifier.Map.EventProcessor do
     )
   end
 
-  # ACL event handlers (legacy - keeping for compatibility)
-  @spec handle_acl_event(String.t(), map(), String.t()) :: :ignored
+  defp log_empty_character_payload(%{"payload" => payload}, map_slug)
+       when payload == %{} or payload == nil do
+    Logger.warning("Character updated event has empty payload",
+      map_slug: map_slug
+    )
+  end
+
+  defp log_empty_character_payload(%{"payload" => _payload}, _map_slug), do: :ok
+
+  defp log_empty_character_payload(event, map_slug) do
+    Logger.warning("Character updated event has missing or unexpected payload structure",
+      map_slug: map_slug,
+      payload: Map.get(event, "payload"),
+      event_id: Map.get(event, "id"),
+      event_keys: Map.keys(event)
+    )
+  end
+
+  # ACL events are handled by character events
+  @spec handle_acl_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_acl_event(_event_type, _event, _map_slug) do
-    # ACL events are now handled by character events
-    :ignored
+    {:ok, :ignored}
   end
 
   # Rally point event handlers
-  @spec handle_rally_event(String.t(), map(), String.t()) :: :ok | {:error, term()} | :ignored
+  @spec handle_rally_event(String.t(), map(), String.t()) ::
+          {:ok, :queued | :ignored} | {:error, term()}
   defp handle_rally_event("rally_point_added", event, _map_slug) do
     payload = Map.get(event, "payload", %{})
 
@@ -229,10 +246,21 @@ defmodule WandererNotifier.Map.EventProcessor do
       category: :rally
     )
 
+    process_rally_point_payload(payload)
+  end
+
+  defp handle_rally_event("rally_point_removed", _event, _map_slug) do
+    # Not handling removed events for now
+    {:ok, :ignored}
+  end
+
+  defp process_rally_point_payload(
+         %{"solar_system_id" => system_id, "system_name" => system_name} = payload
+       ) do
     rally_point = %{
       id: Map.get(payload, "rally_point_id"),
-      system_id: Map.get(payload, "solar_system_id"),
-      system_name: Map.get(payload, "system_name"),
+      system_id: system_id,
+      system_name: system_name,
       character_name: Map.get(payload, "character_name"),
       character_eve_id: Map.get(payload, "character_eve_id"),
       message: Map.get(payload, "message"),
@@ -241,17 +269,26 @@ defmodule WandererNotifier.Map.EventProcessor do
 
     # Send rally point notification directly - always returns :ok immediately
     WandererNotifier.DiscordNotifier.send_rally_point_async(rally_point)
-    Logger.info("Rally point notification queued successfully")
-    :ok
+    # Changed from info to debug since this logs before the async operation completes
+    Logger.debug("Rally point notification queued")
+    {:ok, :queued}
   end
 
-  defp handle_rally_event("rally_point_removed", _event, _map_slug) do
-    # Not handling removed events for now
-    :ignored
+  defp process_rally_point_payload(payload) do
+    required_fields = ["solar_system_id", "system_name"]
+    missing = Enum.filter(required_fields, &(Map.get(payload, &1) == nil))
+
+    Logger.warning("Rally point payload missing required fields",
+      missing_fields: missing,
+      payload: inspect(payload),
+      category: :rally
+    )
+
+    {:error, :missing_required_fields}
   end
 
   # Special event handlers
-  @spec handle_special_event(String.t(), map(), String.t()) :: :ok | :ignored
+  @spec handle_special_event(String.t(), map(), String.t()) :: {:ok, :connected | :ignored}
   defp handle_special_event("connected", event, map_slug) do
     Logger.debug("SSE connection established",
       map_slug: map_slug,
@@ -259,23 +296,23 @@ defmodule WandererNotifier.Map.EventProcessor do
       server_time: Map.get(event, "server_time")
     )
 
-    :ok
+    {:ok, :connected}
   end
 
   defp handle_special_event("map_kill", _event, _map_slug) do
     # Kill events are handled by the existing killmail pipeline
-    :ignored
+    {:ok, :ignored}
   end
 
   # Unknown event handler
-  @spec handle_unknown_event(String.t(), map(), String.t()) :: :ignored
+  @spec handle_unknown_event(String.t(), map(), String.t()) :: {:ok, :ignored}
   defp handle_unknown_event(unknown_type, _event, map_slug) do
     Logger.warning("Unknown event type received",
       map_slug: map_slug,
       event_type: unknown_type
     )
 
-    :ignored
+    {:ok, :ignored}
   end
 
   @doc """
@@ -288,12 +325,9 @@ defmodule WandererNotifier.Map.EventProcessor do
   - `timestamp` - ISO 8601 timestamp
   - `payload` - Event-specific data
   """
-  @spec validate_event(map()) :: :ok | {:error, term()}
+  @spec validate_event(map()) :: {:ok, map()} | {:error, term()}
   def validate_event(event) do
-    case WandererNotifier.Shared.Validation.validate_event_data(event) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    WandererNotifier.Shared.Validation.validate_event_data(event)
   end
 
   # Event validation logic moved to WandererNotifier.Shared.Validation

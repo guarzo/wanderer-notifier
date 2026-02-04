@@ -1,59 +1,78 @@
 defmodule WandererNotifier.Domains.Notifications.Deduplication do
   @moduledoc """
-  Behaviour for deduplication services.
+  Notification deduplication using the infrastructure cache.
   """
+
+  require Logger
+  alias WandererNotifier.Infrastructure.Cache.Deduplication, as: CacheDedup
 
   @type notification_type :: :kill | :system | :character | :rally_point
   @type notification_id :: String.t() | integer()
   @type result :: {:ok, :new} | {:ok, :duplicate} | {:error, term()}
 
   @doc """
-  Checks if a notification for the given type and id is a duplicate.
-  If not, marks it as seen for the deduplication TTL.
-
-  This function delegates to the configured implementation module.
-
-  ## Parameters
-    - type: The type of notification (:system, :character, :kill, or :rally_point)
-    - id: The ID of the notification to check
-
-  ## Returns
-    - {:ok, :new} if this is a new notification (not a duplicate)
-    - {:ok, :duplicate} if this is a duplicate notification
-    - {:error, reason} on error
+  Checks if a notification is a duplicate. If not, marks it as seen.
   """
   @spec check(notification_type(), notification_id()) :: result()
-  def check(type, id) do
-    deduplication_impl().check(type, id)
-  end
+  def check(type, id) when type in [:kill, :system, :character, :rally_point] do
+    dedup_type = map_to_dedup_type(type)
+    identifier = to_string(id)
 
-  @doc """
-  Clears a deduplication key from the cache (for testing or manual reset).
+    case CacheDedup.check_and_mark(dedup_type, identifier) do
+      {:ok, :new} ->
+        Logger.debug("New notification marked", type: type, id: id)
+        {:ok, :new}
 
-  This function delegates to the configured implementation module.
+      {:ok, :duplicate} ->
+        Logger.debug("Duplicate notification detected", type: type, id: id)
+        {:ok, :duplicate}
 
-  ## Parameters
-    - type: The type of notification (:system, :character, :kill, or :rally_point)
-    - id: The ID of the notification to clear
+      {:error, reason} ->
+        Logger.error("Deduplication check failed",
+          type: type,
+          id: id,
+          reason: inspect(reason)
+        )
 
-  ## Returns
-    - {:ok, :cleared} on success
-    - {:error, reason} on failure
-  """
-  @spec clear_key(notification_type(), notification_id()) :: {:ok, :cleared} | {:error, term()}
-  def clear_key(type, id) do
-    if function_exported?(deduplication_impl(), :clear_key, 2) do
-      deduplication_impl().clear_key(type, id)
-    else
-      {:error, :not_implemented}
+        {:error, reason}
     end
   end
 
-  defp deduplication_impl do
-    Application.get_env(
-      :wanderer_notifier,
-      :deduplication_module,
-      WandererNotifier.Domains.Notifications.CacheImpl
-    )
+  def check(type, _id), do: {:error, {:invalid_notification_type, type}}
+
+  @doc """
+  Clears a specific deduplication key from the cache.
+
+  Use this to remove a previously marked notification from the deduplication cache,
+  allowing it to be sent again if it reappears.
+  """
+  @spec clear_key(notification_type(), notification_id()) :: {:ok, :cleared} | {:error, term()}
+  def clear_key(type, id) when type in [:kill, :system, :character, :rally_point] do
+    dedup_type = map_to_dedup_type(type)
+    identifier = to_string(id)
+
+    case CacheDedup.delete(dedup_type, identifier) do
+      {:ok, :deleted} ->
+        Logger.debug("Cleared deduplication key", type: type, id: id)
+        {:ok, :cleared}
+
+      {:error, reason} ->
+        Logger.error("Failed to clear deduplication key",
+          type: type,
+          id: id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
   end
+
+  def clear_key(type, _id), do: {:error, {:invalid_notification_type, type}}
+
+  # Private
+
+  defp map_to_dedup_type(:kill), do: :notification_kill
+  defp map_to_dedup_type(:system), do: :notification_system
+  defp map_to_dedup_type(:character), do: :notification_character
+  defp map_to_dedup_type(:rally_point), do: :notification_rally
 end

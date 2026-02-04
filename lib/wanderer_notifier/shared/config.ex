@@ -87,12 +87,12 @@ defmodule WandererNotifier.Shared.Config do
   def track_kspace_enabled?, do: get_boolean("TRACK_KSPACE_ENABLED", true)
 
   @doc "Check if only priority systems should be notified"
-  def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY", false)
+  def priority_systems_only?, do: get_boolean("PRIORITY_SYSTEMS_ONLY_ENABLED", false)
 
   @doc "Check if kill notifications should only be sent for wormhole systems"
   def wormhole_only_kill_notifications? do
-    case Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications) do
-      nil -> get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false)
+    case Application.get_env(:wanderer_notifier, :wormhole_only_kill_notifications_enabled) do
+      nil -> get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED", false)
       value -> value
     end
   end
@@ -113,27 +113,25 @@ defmodule WandererNotifier.Shared.Config do
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Exclusion Lists
+  # Corporation Kill Focus
   # ──────────────────────────────────────────────────────────────────────────────
 
-  @doc "Get list of corporation IDs to exclude from kill notifications"
-  def corporation_exclude_list do
-    Application.get_env(:wanderer_notifier, :corporation_exclude_list, [])
+  @doc """
+  Get list of corporation IDs for kill focus.
+
+  Kills involving characters from these corporations:
+  - Go to the character kill channel
+  - Are excluded from the system kill channel
+
+  This consolidates the old CORPORATION_EXCLUDE_LIST and CHARACTER_TRACKING_CORPORATION_IDS.
+  """
+  def corporation_kill_focus do
+    Application.get_env(:wanderer_notifier, :corporation_kill_focus, [])
   end
 
-  @doc "Check if corporation exclusion is configured (has at least one ID)"
-  def corporation_exclusion_enabled? do
-    corporation_exclude_list() != []
-  end
-
-  @doc "Get list of corporation IDs allowed for character kill notifications"
-  def character_tracking_corporation_ids do
-    Application.get_env(:wanderer_notifier, :character_tracking_corporation_ids, [])
-  end
-
-  @doc "Check if character corporation filtering is enabled for kill notifications"
-  def character_tracking_corporation_filter_enabled? do
-    character_tracking_corporation_ids() != []
+  @doc "Check if corporation kill focus is configured"
+  def corporation_kill_focus_enabled? do
+    corporation_kill_focus() != []
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

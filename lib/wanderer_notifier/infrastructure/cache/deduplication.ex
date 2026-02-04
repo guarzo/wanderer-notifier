@@ -3,8 +3,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   Centralized deduplication service for consistent duplicate prevention.
 
   Provides type-aware deduplication with appropriate TTLs for different
-  data types across the application. This consolidates multiple deduplication
-  patterns into a single, consistent interface.
+  data types across the application.
   """
 
   alias WandererNotifier.Infrastructure.Cache
@@ -84,27 +83,89 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   end
 
   @doc """
-  Checks and marks in a single atomic operation.
-  Returns :new if this is a new item, :duplicate if already seen.
+  Checks and marks in a single atomic operation using Cachex.transaction.
+  Returns {:ok, :new} if this is a new item, {:ok, :duplicate} if already seen,
+  or {:error, reason} on failure.
+
+  Uses Cachex.transaction/3 to ensure atomicity, preventing TOCTOU race conditions.
 
   ## Examples
       iex> Deduplication.check_and_mark(:killmail, "12345")
-      :new
+      {:ok, :new}
 
       iex> Deduplication.check_and_mark(:killmail, "12345")
-      :duplicate
+      {:ok, :duplicate}
   """
-  @spec check_and_mark(dedup_type(), String.t()) :: dedup_result()
+  @spec check_and_mark(dedup_type(), String.t()) :: {:ok, dedup_result()} | {:error, term()}
   def check_and_mark(type, identifier) when is_atom(type) and is_binary(identifier) do
-    if is_duplicate?(type, identifier) do
-      :duplicate
-    else
-      case mark_processed(type, identifier) do
-        :ok -> :new
-        # Err on the side of caution
-        {:error, _} -> :duplicate
-      end
+    key = build_dedup_key(type, identifier)
+    ttl = get_ttl_for_type(type)
+
+    # Use Cache.transaction for atomic check-and-mark operation
+    result =
+      Cache.transaction([key], fn ->
+        do_atomic_check_and_mark(key, ttl)
+      end)
+
+    handle_check_and_mark_result(result, type, identifier, ttl)
+  end
+
+  # Dialyzer reports the catch-all error clause as unreachable because current Cache
+  # implementation only returns :not_found errors. Added for defensive programming.
+  @dialyzer {:nowarn_function, do_atomic_check_and_mark: 2}
+  defp do_atomic_check_and_mark(key, ttl) do
+    case Cache.get(key) do
+      {:error, :not_found} ->
+        # Not a duplicate, mark as processed
+        case Cache.put(key, %{processed_at: DateTime.utc_now()}, ttl) do
+          :ok -> :new
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, _value} ->
+        # Already exists, it's a duplicate
+        :duplicate
+
+      {:error, reason} ->
+        # Propagate error
+        {:error, reason}
     end
+  end
+
+  defp handle_check_and_mark_result({:ok, :new}, type, identifier, ttl) do
+    Logger.debug("Marked #{type} #{identifier} as processed (atomic)",
+      type: type,
+      identifier: identifier,
+      ttl_seconds: div(ttl, 1000)
+    )
+
+    {:ok, :new}
+  end
+
+  defp handle_check_and_mark_result({:ok, :duplicate}, _type, _identifier, _ttl),
+    do: {:ok, :duplicate}
+
+  defp handle_check_and_mark_result({:ok, {:error, reason}}, _type, _identifier, _ttl) do
+    # Error from within transaction, propagate
+    {:error, reason}
+  end
+
+  defp handle_check_and_mark_result({:error, reason}, _type, _identifier, _ttl) do
+    # Transaction failed, propagate the error
+    {:error, reason}
+  end
+
+  @doc """
+  Deletes a specific deduplication key from the cache.
+
+  ## Examples
+      iex> Deduplication.delete(:killmail, "12345")
+      {:ok, :deleted}
+  """
+  @spec delete(dedup_type(), String.t()) :: {:ok, :deleted} | {:error, term()}
+  def delete(type, identifier) when is_atom(type) and is_binary(identifier) do
+    key = build_dedup_key(type, identifier)
+    Cache.delete(key)
   end
 
   @doc """
@@ -123,8 +184,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
     try do
       # Stream all keys from the cache and filter by prefix
       keys_to_delete =
-        Cache.cache_name()
-        |> Cachex.stream!(of: :key)
+        Cache.stream_keys()
         |> Stream.filter(&String.starts_with?(&1, prefix))
         |> Enum.to_list()
 
@@ -132,7 +192,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
       deletion_results =
         keys_to_delete
         |> Enum.map(&Cache.delete/1)
-        |> Enum.all?(&match?(:ok, &1))
+        |> Enum.all?(&match?({:ok, _}, &1))
 
       if deletion_results do
         Logger.info("Successfully cleared #{length(keys_to_delete)} duplicates for type #{type}",
@@ -163,8 +223,6 @@ defmodule WandererNotifier.Infrastructure.Cache.Deduplication do
   """
   @spec get_dedup_stats() :: map()
   def get_dedup_stats do
-    # In a real implementation, this would query actual cache stats
-    # For now, return a structure showing what stats would be available
     %{
       killmail: %{
         ttl_seconds: div(@killmail_dedup_ttl, 1000),

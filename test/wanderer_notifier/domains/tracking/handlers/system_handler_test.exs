@@ -4,6 +4,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
   alias WandererNotifier.Domains.Tracking.Handlers.SystemHandler
   alias WandererNotifier.Domains.Tracking.Entities.System
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Test.Support.Helpers.ESIMockHelper
 
   import ExUnit.CaptureLog
   import Mox
@@ -18,6 +19,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
     # Stub deduplication mock to allow notifications
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
+
+    # Stub ESI client mock for any notification formatting that might happen
+    ESIMockHelper.stub_default_esi_client_mocks()
 
     :ok
   end

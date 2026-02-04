@@ -78,12 +78,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
     {:ok, RallyFormatter.format_embed(rally_point)}
   end
 
-  # Also handle the original format for backwards compatibility
+  # Handle alternate rally point format
   def format_notification(%{id: _, system_name: _, character_name: _} = rally_point, _opts) do
-    Logger.debug(
-      "NotificationFormatter received rally point (legacy format): #{inspect(rally_point)}"
-    )
-
+    Logger.debug("NotificationFormatter received rally point: #{inspect(rally_point)}")
     {:ok, RallyFormatter.format_embed(rally_point)}
   end
 
@@ -93,32 +90,32 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationFormatte
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
-  # Legacy API - delegate to specific formatters
+  # Convenience Functions
   # ═══════════════════════════════════════════════════════════════════════════════
 
   @doc """
-  Format a killmail notification (legacy API).
+  Format a killmail notification.
   """
   def format_kill_notification(%Killmail{} = killmail) do
     KillmailFormatter.format(killmail)
   end
 
   @doc """
-  Format a character notification (legacy API).
+  Format a character notification.
   """
   def format_character_notification(%Character{} = character) do
     CharacterFormatter.format_embed(character)
   end
 
   @doc """
-  Format a system notification (legacy API).
+  Format a system notification.
   """
   def format_system_notification(%System{} = system) do
     SystemFormatter.format_embed(system)
   end
 
   @doc """
-  Format plain text notification (legacy API).
+  Format plain text notification.
   """
   def format_plain_text(notification) do
     case notification do

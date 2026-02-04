@@ -37,16 +37,6 @@ defmodule WandererNotifierWeb.Router do
     get("/status", StatusController, :show)
   end
 
-  # Validation API endpoints
-  scope "/api/validation", WandererNotifierWeb do
-    pipe_through(:api)
-
-    post("/enable/system", ValidationController, :enable_system)
-    post("/enable/character", ValidationController, :enable_character)
-    delete("/disable", ValidationController, :disable)
-    get("/status", ValidationController, :status)
-  end
-
   # Catch-all route for undefined paths
   match(:*, "/*path", WandererNotifierWeb.FallbackController, :not_found)
 end

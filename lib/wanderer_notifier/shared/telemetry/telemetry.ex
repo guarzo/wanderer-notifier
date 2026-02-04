@@ -1,7 +1,6 @@
 defmodule WandererNotifier.Shared.Telemetry do
   @moduledoc """
-  Centralized telemetry and metrics instrumentation for WandererNotifier.
-  Provides a unified interface for emitting events and metrics.
+  Telemetry and metrics instrumentation for WandererNotifier.
   """
 
   alias WandererNotifier.Shared.Metrics
@@ -38,7 +37,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   """
   def processing_completed(kill_id, result) do
     Metrics.increment(:killmail_processing_complete)
-    status = if match?({:ok, _}, result), do: :success, else: :error
+    status = result_to_status(result)
     emit(:killmail, :processing_completed, %{kill_id: kill_id, status: status})
   end
 
@@ -56,14 +55,6 @@ defmodule WandererNotifier.Shared.Telemetry do
   def processing_error(kill_id, error) do
     Metrics.increment(:killmail_processing_error)
     emit(:killmail, :processing_error, %{kill_id: kill_id, error: inspect(error)})
-  end
-
-  @doc """
-  Emits a telemetry event for RedisQ connection status.
-  """
-  def redisq_status_changed(status) do
-    # Health status is now tracked by simple process checks
-    emit(:redisq, :status_changed, status)
   end
 
   @doc """
@@ -95,7 +86,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for cache hit/miss.
   """
   def cache_event(operation, key, hit?) do
-    metric = if hit?, do: :hit, else: :miss
+    metric = bool_to_hit_miss(hit?)
     emit(:cache, metric, %{operation: operation, key: key})
   end
 
@@ -103,7 +94,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for API calls.
   """
   def api_call(service, endpoint, duration_ms, success?) do
-    status = if success?, do: :success, else: :error
+    status = bool_to_status(success?)
 
     emit(:api, status, %{
       service: service,
@@ -116,7 +107,7 @@ defmodule WandererNotifier.Shared.Telemetry do
   Emits a telemetry event for scheduler runs.
   """
   def scheduler_run(scheduler, duration_ms, result) do
-    status = if match?({:ok, _}, result), do: :success, else: :error
+    status = result_to_status(result)
 
     emit(:scheduler, :run, %{
       scheduler: scheduler,
@@ -124,6 +115,18 @@ defmodule WandererNotifier.Shared.Telemetry do
       status: status
     })
   end
+
+  # Private helpers for status conversion using pattern matching
+
+  defp result_to_status({:ok, _}), do: :success
+  defp result_to_status({:error, _}), do: :error
+  defp result_to_status(_), do: :error
+
+  defp bool_to_status(true), do: :success
+  defp bool_to_status(false), do: :error
+
+  defp bool_to_hit_miss(true), do: :hit
+  defp bool_to_hit_miss(false), do: :miss
 
   # Private helper to emit telemetry events
   defp emit(event_type, event_name, metadata) do
@@ -143,6 +146,6 @@ defmodule WandererNotifier.Shared.Telemetry do
   rescue
     error ->
       # Don't let telemetry errors crash the application
-      Logger.debug("Telemetry error: #{inspect(error)}")
+      Logger.warning("Telemetry error: #{inspect(error)}")
   end
 end

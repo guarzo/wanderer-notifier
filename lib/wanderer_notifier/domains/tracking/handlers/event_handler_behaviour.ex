@@ -1,8 +1,8 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour do
   @moduledoc """
-  Behavior definition for unified tracking event handlers.
+  Behavior definition for tracking event handlers.
 
-  This behavior defines a common interface for both character and system event handlers,
+  Defines a common interface for character and system event handlers,
   enabling shared logic and consistent event processing patterns.
   """
 

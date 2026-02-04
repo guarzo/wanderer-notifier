@@ -1,9 +1,8 @@
 defmodule WandererNotifier.Infrastructure.Http.Headers do
   @moduledoc """
-  Centralized HTTP header management for consistent header generation across all HTTP clients.
+  HTTP header management for consistent header generation.
 
-  This module provides common header patterns and builder functions to eliminate
-  duplication and ensure consistency in HTTP requests throughout the application.
+  Provides common header patterns and builder functions for HTTP requests.
   """
 
   alias WandererNotifier.Shared.Types.Constants

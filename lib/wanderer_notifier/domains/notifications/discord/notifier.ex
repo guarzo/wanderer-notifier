@@ -1,10 +1,17 @@
 defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   @moduledoc """
-  Clean Discord notification service without test logic or unused parameters.
+  Discord notification service - thin orchestrator for sending notifications.
+
+  This module coordinates notification sending by delegating to:
+  - `LicenseLimiter` for license-based throttling
+  - `NotificationFormatter` for embed/text formatting
+  - `NeoClient` for Discord API calls
+  - `EnrichmentHelper` for data enrichment
+  - `ChannelResolver` for channel routing
   """
 
   require Logger
-  alias WandererNotifier.Domains.Killmail.{Killmail, Enrichment}
+  alias WandererNotifier.Domains.Killmail.Killmail
 
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.{
     ComponentBuilder,
@@ -12,12 +19,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     NeoClient
   }
 
-  alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
-  alias WandererNotifier.Domains.Notifications.LicenseLimiter
-  alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Domains.Notifications.Discord.{
+    ChannelResolver,
+    EnrichmentHelper
+  }
+
+  alias WandererNotifier.Domains.Notifications.Formatters.{
+    NotificationFormatter,
+    NotificationUtils
+  }
+
+  alias WandererNotifier.Domains.Notifications.{Determiner, LicenseLimiter}
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.ErrorHandler
-  alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
 
   # Default embed colors
   @default_embed_color 0x3498DB
@@ -103,70 +117,65 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   """
   def send_kill_notification(kill_data) do
     ErrorHandler.safe_execute(
-      fn ->
-        if LicenseLimiter.should_send_rich?(:killmail) do
-          killmail = ensure_killmail_struct(kill_data)
-          send_rich_kill_notification(killmail)
-          LicenseLimiter.increment(:killmail)
-        else
-          channel_id = Config.discord_channel_id()
-          send_simple_kill_notification(kill_data, channel_id)
-        end
-      end,
+      fn -> do_send_kill_notification(kill_data) end,
       context: %{operation: :send_kill_notification, category: :processor}
     )
   end
 
-  @doc """
-  Send a kill notification to a specific channel.
-  """
-  def send_kill_notification_to_channel(kill_data, channel_id) do
-    ErrorHandler.safe_execute(
-      fn ->
-        killmail = ensure_killmail_struct(kill_data)
+  defp do_send_kill_notification(kill_data) do
+    # Check startup suppression via Determiner before sending any notification
+    killmail_id = get_killmail_id(kill_data)
 
-        # Enrich with system name if needed
-        enriched_killmail = enrich_with_system_name(killmail)
-
-        # Format and send the notification
-        case NotificationFormatter.format_notification(enriched_killmail) do
-          {:ok, notification} ->
-            notification = maybe_add_voice_mentions(notification, killmail, channel_id)
-            send_kill_embed_to_channel(notification, channel_id, killmail.killmail_id)
-
-          {:error, reason} ->
-            Logger.error("Failed to format kill notification",
-              category: :discord_notify,
-              channel_id: channel_id,
-              killmail_id: killmail.killmail_id,
-              reason: inspect(reason)
-            )
-
-            {:error, reason}
-        end
-      end,
-      context: %{
-        operation: :send_kill_notification_to_channel,
-        channel_id: channel_id,
-        category: :api
-      }
-    )
-  end
-
-  defp send_kill_embed_to_channel(notification, channel_id, killmail_id) do
-    case NeoClient.send_embed(notification, channel_id) do
-      {:ok, _} ->
-        {:ok, :sent}
-
-      {:error, reason} ->
-        Logger.error("Failed to send kill notification to Discord",
-          category: :discord_notify,
-          channel_id: channel_id,
+    case Determiner.should_notify?(:kill, killmail_id, kill_data) do
+      {:ok, false} ->
+        Logger.debug("Kill notification suppressed",
           killmail_id: killmail_id,
-          reason: inspect(reason)
+          category: :notification
         )
 
-        {:error, reason}
+        {:ok, :suppressed}
+
+      {:ok, true} ->
+        do_send_kill_notification_impl(kill_data)
+
+      {:error, reason} ->
+        Logger.warning("Kill notification check failed",
+          killmail_id: killmail_id,
+          reason: inspect(reason),
+          category: :notification
+        )
+
+        # Proceed anyway if check fails
+        do_send_kill_notification_impl(kill_data)
+    end
+  end
+
+  defp do_send_kill_notification_impl(kill_data) do
+    case LicenseLimiter.should_send_rich?(:killmail) do
+      true ->
+        kill_data
+        |> ensure_killmail_struct()
+        |> send_rich_kill_with_increment()
+
+      false ->
+        channel_id = ChannelResolver.resolve_channel(:kill)
+        send_simple_kill_notification(kill_data, channel_id)
+    end
+  end
+
+  defp get_killmail_id(%Killmail{killmail_id: id}), do: id
+  defp get_killmail_id(%{killmail_id: id}), do: id
+  defp get_killmail_id(%{"killmail_id" => id}), do: id
+  defp get_killmail_id(_), do: nil
+
+  defp send_rich_kill_with_increment(killmail) do
+    case send_rich_kill_notification(killmail) do
+      {:ok, :sent} ->
+        LicenseLimiter.increment(:killmail)
+        {:ok, :sent}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -180,15 +189,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_tracked_character_notification(character) do
     ErrorHandler.safe_execute(
       fn ->
-        send_character_notification_impl(character)
+        case send_character_notification_impl(character) do
+          {:ok, _} ->
+            WandererNotifier.Shared.Metrics.increment(:characters)
 
-        WandererNotifier.Shared.Metrics.increment(:characters)
+            Logger.info("Character #{character.name} (#{character.character_id}) notified",
+              category: :processor
+            )
 
-        Logger.info("Character #{character.name} (#{character.character_id}) notified",
-          category: :processor
-        )
+            {:ok, :sent}
 
-        {:ok, :sent}
+          {:error, _} = error ->
+            error
+        end
       end,
       context: %{
         operation: :send_new_tracked_character_notification,
@@ -215,7 +228,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   defp send_rich_character_notification(character) do
     case NotificationFormatter.format_notification(character) do
       {:ok, notification} ->
-        channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
+        channel_id = ChannelResolver.resolve_channel(:character)
 
         case NeoClient.send_embed(notification, channel_id) do
           {:ok, _} = success ->
@@ -243,15 +256,19 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   def send_new_system_notification(system) do
     ErrorHandler.safe_execute(
       fn ->
-        send_system_notification_impl(system)
+        case send_system_notification_impl(system) do
+          {:ok, _} ->
+            WandererNotifier.Shared.Metrics.increment(:systems)
 
-        WandererNotifier.Shared.Metrics.increment(:systems)
+            Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
+              category: :processor
+            )
 
-        Logger.info("System #{system.name} (#{system.solar_system_id}) notified",
-          category: :processor
-        )
+            {:ok, :sent}
 
-        {:ok, :sent}
+          {:error, _} = error ->
+            error
+        end
       end,
       context: %{
         operation: :send_new_system_notification,
@@ -278,7 +295,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   defp send_rich_system_notification(system) do
     case NotificationFormatter.format_notification(system) do
       {:ok, notification} ->
-        channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
+        channel_id = ChannelResolver.resolve_channel(:system)
 
         case NeoClient.send_embed(notification, channel_id) do
           {:ok, _} = success ->
@@ -300,157 +317,66 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a rally point notification.
   """
   def send_rally_point_notification(rally_point) do
-    start_time = System.monotonic_time(:millisecond)
     rally_id = rally_point[:id]
 
     ErrorHandler.safe_execute(
-      fn ->
-        log_rally_start(rally_id)
-
-        # Enrich with custom system name if available
-        enriched_rally_point = enrich_rally_with_system_name(rally_point)
-
-        case format_rally_notification(enriched_rally_point, rally_id, start_time) do
-          {:ok, notification} ->
-            channel_id = get_rally_channel_id(rally_id, start_time)
-            notification_with_content = add_rally_content(notification, enriched_rally_point)
-
-            send_rally_to_discord(
-              notification_with_content,
-              channel_id,
-              enriched_rally_point,
-              rally_id,
-              start_time
-            )
-
-          {:error, _reason} = error ->
-            error
-        end
-      end,
+      fn -> do_send_rally_notification(rally_point, rally_id) end,
       fallback: fn error ->
-        handle_rally_exception(error, rally_id, start_time)
+        Logger.error("Exception in rally notification",
+          rally_id: rally_id,
+          error: Exception.message(error),
+          category: :rally
+        )
+
+        {:error, error}
       end
     )
   end
 
-  defp log_rally_start(rally_id) do
-    Logger.info("[RALLY_TIMING] Starting send_rally_point_notification",
-      rally_id: rally_id,
-      category: :rally
-    )
-  end
+  defp do_send_rally_notification(rally_point, rally_id) do
+    Logger.debug("Starting rally point notification", rally_id: rally_id, category: :rally)
 
-  defp format_rally_notification(rally_point, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Calling NotificationFormatter.format_notification",
-      rally_id: rally_id,
-      elapsed_ms: System.monotonic_time(:millisecond) - start_time,
-      category: :rally
-    )
+    enriched_rally_point = EnrichmentHelper.enrich_rally_with_system_name(rally_point)
 
-    case NotificationFormatter.format_notification(rally_point) do
-      {:ok, notification} ->
-        Logger.info(
-          "[RALLY_TIMING] Formatting completed after #{System.monotonic_time(:millisecond) - start_time}ms",
+    with {:ok, notification} <- NotificationFormatter.format_notification(enriched_rally_point),
+         {:ok, :sent} <- send_rally_embed(notification) do
+      log_rally_success(enriched_rally_point, rally_id)
+      {:ok, :sent}
+    else
+      {:error, reason} ->
+        Logger.error("Failed to send rally notification",
           rally_id: rally_id,
+          reason: inspect(reason),
           category: :rally
         )
 
-        {:ok, notification}
-
-      {:error, reason} ->
-        elapsed_ms = System.monotonic_time(:millisecond) - start_time
-
-        Logger.error("[RALLY_TIMING] Formatting failed after #{elapsed_ms}ms: #{inspect(reason)}",
-          rally_id: rally_id,
-          elapsed_ms: elapsed_ms,
-          category: :rally
-        )
-
-        {:error, {:formatting_failed, reason}}
-    end
-  end
-
-  defp get_rally_channel_id(rally_id, start_time) do
-    channel_id = Config.discord_rally_channel_id()
-
-    Logger.info(
-      "[RALLY_TIMING] Retrieved channel_id: #{inspect(channel_id)} after #{System.monotonic_time(:millisecond) - start_time}ms",
-      rally_id: rally_id,
-      category: :rally
-    )
-
-    channel_id
-  end
-
-  defp add_rally_content(notification, rally_point) do
-    content = build_rally_content(rally_point)
-    Map.put(notification, :content, content)
-  end
-
-  defp send_rally_to_discord(notification, channel_id, rally_point, rally_id, start_time) do
-    Logger.info("[RALLY_TIMING] Calling NeoClient.send_embed",
-      rally_id: rally_id,
-      channel_id: channel_id,
-      elapsed_ms: System.monotonic_time(:millisecond) - start_time,
-      category: :rally
-    )
-
-    case NeoClient.send_embed(notification, channel_id) do
-      {:ok, :sent} ->
-        log_rally_success(rally_point, rally_id, start_time)
-        {:ok, :sent}
-
-      {:error, reason} ->
-        log_rally_error(reason, rally_id, start_time)
         {:error, reason}
     end
   end
 
-  defp log_rally_success(rally_point, rally_id, start_time) do
-    total_time = System.monotonic_time(:millisecond) - start_time
-
-    Logger.info(
-      "[RALLY_TIMING] NeoClient.send_embed returned success after #{total_time}ms total",
-      rally_id: rally_id,
-      system: rally_point.system_name,
-      character: rally_point.character_name,
-      category: :rally
-    )
+  defp send_rally_embed(notification) do
+    notification
+    |> add_rally_mentions()
+    |> NeoClient.send_embed(Config.discord_rally_channel_id())
   end
 
-  defp log_rally_error(reason, rally_id, start_time) do
-    total_time = System.monotonic_time(:millisecond) - start_time
+  defp add_rally_mentions(notification) do
+    content =
+      case NotificationUtils.rally_mentions() do
+        "" -> "Rally point created!"
+        mentions -> "#{mentions} Rally point created!"
+      end
 
-    Logger.error("[RALLY_TIMING] NeoClient.send_embed returned error after #{total_time}ms total",
-      rally_id: rally_id,
-      reason: inspect(reason),
-      category: :rally
-    )
+    Map.put(notification, :content, content)
   end
 
-  defp handle_rally_exception(e, rally_id, start_time) do
-    total_time = System.monotonic_time(:millisecond) - start_time
-
-    Logger.error(
-      "[RALLY_TIMING] Exception in send_rally_point_notification after #{total_time}ms",
+  defp log_rally_success(rally_point, rally_id) do
+    Logger.info("Rally notification sent",
       rally_id: rally_id,
-      error: Exception.message(e),
+      system: rally_point[:system_name],
+      character: rally_point[:character_name],
       category: :rally
     )
-
-    {:error, e}
-  end
-
-  defp build_rally_content(_rally_point) do
-    alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils
-
-    case NotificationUtils.rally_mentions() do
-      "" ->
-        "Rally point created!"
-
-      mentions ->
-        "#{mentions} Rally point created!"
-    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -461,18 +387,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   Send a notification based on type and data.
   """
   def send_notification(:send_discord_embed, [embed]) do
-    NeoClient.send_embed(embed, nil)
-    {:ok, :sent}
+    case NeoClient.send_embed(embed, nil) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_discord_embed_to_channel, [channel_id, embed]) do
-    NeoClient.send_embed(embed, channel_id)
-    {:ok, :sent}
+    case NeoClient.send_embed(embed, channel_id) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_message, [message]) do
-    send_message(message)
-    {:ok, :sent}
+    case send_message(message) do
+      {:ok, _} -> {:ok, :sent}
+      {:error, _} = error -> error
+    end
   end
 
   def send_notification(:send_new_tracked_character_notification, [character]) do
@@ -492,30 +424,25 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
   # Private Helpers
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  defp ensure_killmail_struct(kill_data) do
-    if is_struct(kill_data, Killmail) do
-      kill_data
-    else
-      struct(Killmail, Map.from_struct(kill_data))
-    end
+  defp ensure_killmail_struct(kill_data) when is_struct(kill_data, Killmail) do
+    kill_data
+  end
+
+  defp ensure_killmail_struct(%{__struct__: _} = kill_data) do
+    struct(Killmail, Map.from_struct(kill_data))
+  end
+
+  defp ensure_killmail_struct(kill_data) when is_map(kill_data) do
+    struct(Killmail, kill_data)
   end
 
   defp send_rich_kill_notification(killmail) do
-    enriched_killmail = enrich_with_system_name(killmail)
+    enriched_killmail = EnrichmentHelper.enrich_killmail_with_system_name(killmail)
 
     case NotificationFormatter.format_notification(enriched_killmail) do
       {:ok, notification} ->
-        # Add components if feature is enabled
-        notification =
-          if Config.features()[:discord_components] do
-            Map.put(notification, :components, [
-              ComponentBuilder.kill_action_row(killmail.killmail_id)
-            ])
-          else
-            notification
-          end
-
-        channel_id = Config.discord_channel_id()
+        notification = maybe_add_components(notification, killmail.killmail_id)
+        channel_id = ChannelResolver.resolve_channel(:kill)
 
         result =
           if FeatureFlags.components_enabled?() and Map.has_key?(notification, :components) do
@@ -529,7 +456,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
           end
 
         case result do
-          {:ok, :sent} -> :ok
+          {:ok, :sent} -> {:ok, :sent}
           {:error, reason} -> {:error, reason}
         end
 
@@ -539,146 +466,24 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.Notifier do
     end
   end
 
+  defp maybe_add_components(notification, killmail_id) do
+    do_add_components(notification, killmail_id, FeatureFlags.components_enabled?())
+  end
+
+  defp do_add_components(notification, killmail_id, true) do
+    Map.put(notification, :components, [
+      ComponentBuilder.kill_action_row(killmail_id)
+    ])
+  end
+
+  defp do_add_components(notification, _killmail_id, false), do: notification
+
   defp send_simple_kill_notification(kill_data, channel_id) do
     message = NotificationFormatter.format_plain_text(kill_data)
-    result = NeoClient.send_message(message, channel_id)
 
-    case result do
-      {:ok, :sent} -> :ok
+    case NeoClient.send_message(message, channel_id) do
+      {:ok, :sent} -> {:ok, :sent}
       {:error, reason} -> {:error, reason}
     end
-  end
-
-  defp enrich_with_system_name(%Killmail{} = killmail) do
-    system_id = get_system_id_from_killmail(killmail)
-
-    case system_id do
-      id when is_integer(id) ->
-        # First check if it's a tracked system with a custom name
-        system_name = get_tracked_system_name(id) || Enrichment.get_system_name(id)
-        %{killmail | system_name: system_name}
-
-      _ ->
-        killmail
-    end
-  end
-
-  defp get_system_id_from_killmail(%Killmail{system_id: system_id}) when is_integer(system_id) do
-    system_id
-  end
-
-  defp get_system_id_from_killmail(_), do: nil
-
-  defp get_tracked_system_name(system_id) when is_integer(system_id) do
-    # Get the tracked system from map cache to get custom name
-    # Convert integer to string as get_system expects String.t()
-    system_id
-    |> Integer.to_string()
-    |> WandererNotifier.Domains.Tracking.Entities.System.get_system()
-    |> case do
-      {:ok, %{name: name}} when is_binary(name) -> name
-      _ -> nil
-    end
-  end
-
-  defp enrich_rally_with_system_name(rally_point) do
-    # Convert struct to map first to ensure Map.put/3 works
-    rally_map =
-      if is_struct(rally_point) do
-        Map.from_struct(rally_point)
-      else
-        rally_point
-      end
-
-    system_id = rally_map[:system_id]
-
-    case system_id do
-      id when is_integer(id) ->
-        # Check if tracked system has a custom name
-        case get_tracked_system_name(id) do
-          nil -> rally_map
-          custom_name -> Map.put(rally_map, :system_name, custom_name)
-        end
-
-      _ ->
-        rally_map
-    end
-  end
-
-  defp debug_logging_enabled? do
-    Config.feature_enabled?(:discord_debug_logging) or Logger.level() == :debug
-  end
-
-  defp maybe_add_voice_mentions(notification, killmail, channel_id) do
-    if should_add_voice_mentions?(killmail, channel_id) do
-      add_voice_mentions_to_notification(notification)
-    else
-      log_voice_ping_debug("[Voice Ping Debug] Not a system kill or voice pings disabled")
-      notification
-    end
-  end
-
-  defp should_add_voice_mentions?(killmail, channel_id) do
-    system_kill_channel = Config.discord_system_kill_channel_id()
-
-    log_voice_ping_debug(
-      "[Voice Ping Debug] Channel comparison - channel_id: #{inspect(channel_id)}, " <>
-        "system_kill_channel: #{inspect(system_kill_channel)}, channels_match: #{channel_id == system_kill_channel}"
-    )
-
-    is_system_kill = system_kill?(killmail, channel_id, system_kill_channel)
-    voice_pings_enabled = Config.voice_participant_notifications_enabled?()
-
-    log_voice_ping_debug(
-      "[Voice Ping Debug] System kill determination - is_system_kill: #{is_system_kill}, " <>
-        "voice_pings_enabled: #{voice_pings_enabled}"
-    )
-
-    is_system_kill and voice_pings_enabled
-  end
-
-  defp system_kill?(killmail, channel_id, system_kill_channel) do
-    system_tracked = Determiner.tracked_system_for_killmail?(killmail.system_id)
-    has_tracked_char = Determiner.has_tracked_character?(killmail)
-
-    log_voice_ping_debug(
-      "[Voice Ping Debug] Kill tracking status - system_id: #{killmail.system_id}, " <>
-        "system_tracked: #{system_tracked}, has_tracked_character: #{has_tracked_char}"
-    )
-
-    channel_id == system_kill_channel and system_tracked and not has_tracked_char
-  end
-
-  defp add_voice_mentions_to_notification(notification) do
-    mentions = VoiceParticipants.get_active_voice_mentions()
-
-    log_voice_ping_debug(
-      "[Voice Ping Debug] Voice mentions retrieved - count: #{length(mentions)}, mentions: #{inspect(mentions)}"
-    )
-
-    case mentions do
-      [] ->
-        log_voice_ping_debug("[Voice Ping Debug] No voice users found")
-        notification
-
-      mentions_list ->
-        append_mentions_to_notification(notification, mentions_list)
-    end
-  end
-
-  defp append_mentions_to_notification(notification, mentions_list) do
-    mention_string = Enum.join(mentions_list, " ")
-    existing_content = Map.get(notification, :content, "")
-
-    log_voice_ping_debug(
-      "[Voice Ping Debug] Adding mentions - mention_string: #{mention_string}, " <>
-        "existing_content: #{existing_content}"
-    )
-
-    Map.put(notification, :content, "#{mention_string} #{existing_content}")
-  end
-
-  defp log_voice_ping_debug(message) do
-    if debug_logging_enabled?(), do: Logger.debug(message)
   end
 end

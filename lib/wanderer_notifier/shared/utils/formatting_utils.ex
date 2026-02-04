@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Shared.Utils.FormattingUtils do
   @moduledoc """
-  Centralized formatting utilities for consistent display across the application.
+  Formatting utilities for consistent display across the application.
 
-  This module consolidates all formatting logic, particularly ISK (InterStellar Kredits)
-  currency formatting, to ensure consistent presentation throughout the codebase.
+  Provides formatting for ISK (InterStellar Kredits) currency, numbers,
+  and percentages.
   """
 
   @doc """

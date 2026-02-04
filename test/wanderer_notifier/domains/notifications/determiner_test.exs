@@ -84,7 +84,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       # Priority system should be allowed to notify even with notifications disabled
       result = Determiner.should_notify?(:system, 30_000_142, system_data)
 
-      assert result == true,
+      assert result == {:ok, true},
              "Priority system should receive notification even when system notifications are disabled"
     end
 
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       # Non-priority system should NOT be allowed to notify
       result = Determiner.should_notify?(:system, 30_002_187, system_data)
 
-      assert result == false,
+      assert result == {:ok, false},
              "Non-priority system should be blocked when system notifications are disabled"
     end
 
@@ -118,7 +118,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       # Should be allowed to notify
       result = Determiner.should_notify?(:system, 30_002_659, system_data)
 
-      assert result == true,
+      assert result == {:ok, true},
              "All systems should receive notifications when system notifications are enabled"
     end
 
@@ -133,7 +133,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       system_data = %{"name" => "J155416", "solar_system_id" => 31_001_503}
 
       result = Determiner.should_notify?(:system, 31_001_503, system_data)
-      assert result == true
+      assert result == {:ok, true}
     end
 
     test "priority system with solar_system_name key is recognized" do
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
       system_data = %{solar_system_name: "Thera", solar_system_id: 31_000_005}
 
       result = Determiner.should_notify?(:system, 31_000_005, system_data)
-      assert result == true
+      assert result == {:ok, true}
     end
 
     test "priority system hash matches the consumer module's hash" do
@@ -171,7 +171,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
 
       # With nil data, should not be treated as priority
       result = Determiner.should_notify?(:system, 12_345, nil)
-      assert result == false
+      assert result == {:ok, false}
     end
 
     test "empty map system_data is handled gracefully" do
@@ -179,7 +179,7 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
 
       # With empty map, should not be treated as priority
       result = Determiner.should_notify?(:system, 12_345, %{})
-      assert result == false
+      assert result == {:ok, false}
     end
 
     test "multiple priority systems work correctly" do
@@ -197,14 +197,14 @@ defmodule WandererNotifier.Domains.Notifications.DeterminerTest do
         system_data = %{name: name, solar_system_id: :erlang.phash2(name)}
         result = Determiner.should_notify?(:system, :erlang.phash2(name), system_data)
 
-        assert result == true,
+        assert result == {:ok, true},
                "System '#{name}' should be recognized as priority"
       end
 
       # Non-priority system should still be blocked
       non_priority_data = %{name: "Rens", solar_system_id: 30_002_510}
       result = Determiner.should_notify?(:system, 30_002_510, non_priority_data)
-      assert result == false
+      assert result == {:ok, false}
     end
   end
 end

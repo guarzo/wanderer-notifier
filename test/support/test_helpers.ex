@@ -49,7 +49,6 @@ defmodule WandererNotifier.Test.Support.TestHelpers do
     stub(WandererNotifier.MockCache, :put, fn _key, value -> {:ok, value} end)
     stub(WandererNotifier.MockCache, :delete, fn _key -> :ok end)
     stub(WandererNotifier.MockCache, :clear, fn -> :ok end)
-    stub(WandererNotifier.MockCache, :get_recent_kills, fn -> [] end)
   end
 
   @doc """

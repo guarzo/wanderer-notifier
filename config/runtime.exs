@@ -210,29 +210,133 @@ config :wanderer_notifier,
     RuntimeConfig.get_boolean("CHARACTER_NOTIFICATIONS_ENABLED", true),
   rally_notifications_enabled: RuntimeConfig.get_boolean("RALLY_NOTIFICATIONS_ENABLED", true),
   status_messages_enabled: RuntimeConfig.get_boolean("STATUS_MESSAGES_ENABLED", false),
-  priority_systems_only: RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY", false),
-  wormhole_only_kill_notifications:
-    RuntimeConfig.get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS", false),
+  priority_systems_only_enabled:
+    RuntimeConfig.get_boolean("PRIORITY_SYSTEMS_ONLY_ENABLED", false),
+  wormhole_only_kill_notifications_enabled:
+    RuntimeConfig.get_boolean("WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED", false),
 
   # Lists
   character_exclude_list:
     RuntimeConfig.parse_list(RuntimeConfig.get_env("CHARACTER_EXCLUDE_LIST", "")),
   system_exclude_list: RuntimeConfig.parse_list(RuntimeConfig.get_env("SYSTEM_EXCLUDE_LIST", "")),
-  corporation_exclude_list:
-    RuntimeConfig.parse_numeric_id_list(RuntimeConfig.get_env("CORPORATION_EXCLUDE_LIST", "")),
-  character_tracking_corporation_ids:
-    RuntimeConfig.parse_numeric_id_list(
-      RuntimeConfig.get_env("CHARACTER_TRACKING_CORPORATION_IDS", "")
-    ),
-
-  # Scheduler intervals (from constants)
-  system_update_scheduler_interval:
-    WandererNotifier.Shared.Types.Constants.system_update_interval(),
-  character_update_scheduler_interval:
-    WandererNotifier.Shared.Types.Constants.character_update_interval(),
+  corporation_kill_focus:
+    RuntimeConfig.parse_numeric_id_list(RuntimeConfig.get_env("CORPORATION_KILL_FOCUS", "")),
 
   # Module configuration
   config: WandererNotifier.Shared.Config
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HTTP Service Configurations
+# ══════════════════════════════════════════════════════════════════════════════
+# These configurations can be overridden at runtime via environment variables.
+# If not set, the Http module falls back to hardcoded defaults for backward compatibility.
+#
+# To customize a specific service, set environment variables like:
+#   HTTP_ESI_TIMEOUT=5000
+#   HTTP_ESI_RETRY_COUNT=5
+#
+# Note: Middleware configurations use module references and are not easily
+# configurable via environment variables, so they use defaults.
+
+config :wanderer_notifier, :http_service_configs, %{
+  esi: [
+    # ESI typically responds in 80-240ms, 3s timeout is plenty
+    timeout: RuntimeConfig.get_integer("HTTP_ESI_TIMEOUT", 3_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_ESI_RETRY_COUNT", 3),
+    retry_delay: RuntimeConfig.get_integer("HTTP_ESI_RETRY_DELAY", 500),
+    retryable_status_codes: [429, 500, 502, 503, 504],
+    # Use dynamic rate limiting based on X-ESI-Error-Limit-* headers
+    middlewares: [
+      WandererNotifier.Infrastructure.Http.Middleware.Retry,
+      WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter
+    ],
+    decode_json: true
+  ],
+  wanderer_kills: [
+    # WandererKills is fast, 5s timeout is generous
+    timeout: RuntimeConfig.get_integer("HTTP_WANDERER_KILLS_TIMEOUT", 5_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_WANDERER_KILLS_RETRY_COUNT", 2),
+    retry_delay: RuntimeConfig.get_integer("HTTP_WANDERER_KILLS_RETRY_DELAY", 500),
+    retryable_status_codes: [429, 500, 502, 503, 504],
+    rate_limit: [requests_per_second: 10, burst_capacity: 20, per_host: true],
+    middlewares: [
+      WandererNotifier.Infrastructure.Http.Middleware.Retry,
+      WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
+    ],
+    decode_json: true
+  ],
+  license: [
+    # License validation typically 300-400ms
+    timeout: RuntimeConfig.get_integer("HTTP_LICENSE_TIMEOUT", 3_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_LICENSE_RETRY_COUNT", 2),
+    retry_delay: RuntimeConfig.get_integer("HTTP_LICENSE_RETRY_DELAY", 1_000),
+    # Don't retry auth failures
+    retryable_status_codes: [500, 502, 503, 504],
+    rate_limit: [requests_per_second: 1, burst_capacity: 2, per_host: true],
+    middlewares: [
+      WandererNotifier.Infrastructure.Http.Middleware.Retry,
+      WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
+    ],
+    decode_json: true
+  ],
+  janice: [
+    # Janice usually responds in 500ms, but can be slow
+    timeout: RuntimeConfig.get_integer("HTTP_JANICE_TIMEOUT", 5_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_JANICE_RETRY_COUNT", 3),
+    retry_delay: RuntimeConfig.get_integer("HTTP_JANICE_RETRY_DELAY", 500),
+    retryable_status_codes: [429, 500, 502, 503, 504],
+    rate_limit: [requests_per_second: 5, burst_capacity: 10, per_host: true],
+    middlewares: [
+      WandererNotifier.Infrastructure.Http.Middleware.Retry,
+      WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
+    ],
+    decode_json: true
+  ],
+  map: [
+    timeout: RuntimeConfig.get_integer("HTTP_MAP_TIMEOUT", 60_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_MAP_RETRY_COUNT", 2),
+    retry_delay: RuntimeConfig.get_integer("HTTP_MAP_RETRY_DELAY", 500),
+    retryable_status_codes: [500, 502, 503, 504],
+    # Internal service, no rate limiting
+    disable_middleware: true,
+    decode_json: true
+  ],
+  discord: [
+    # Discord API typically responds in 200-500ms, but can be slow during outages
+    timeout: RuntimeConfig.get_integer("HTTP_DISCORD_TIMEOUT", 30_000),
+    # Disable retries to prevent duplicate notifications
+    retry_count: RuntimeConfig.get_integer("HTTP_DISCORD_RETRY_COUNT", 0),
+    retryable_status_codes: [429, 500, 502, 503, 504],
+    # Use dynamic rate limiting based on X-RateLimit-* headers with webhook and global limits
+    middlewares: [WandererNotifier.Infrastructure.Http.Middleware.DynamicRateLimiter],
+    decode_json: true
+  ],
+  streaming: [
+    timeout: :infinity,
+    stream: true,
+    retry_count: 0,
+    disable_middleware: true,
+    follow_redirects: false,
+    decode_json: false
+  ],
+  wanderer_sde: [
+    timeout: RuntimeConfig.get_integer("HTTP_WANDERER_SDE_TIMEOUT", 60_000),
+    retry_count: RuntimeConfig.get_integer("HTTP_WANDERER_SDE_RETRY_COUNT", 3),
+    retry_delay: RuntimeConfig.get_integer("HTTP_WANDERER_SDE_RETRY_DELAY", 2_000),
+    retryable_status_codes: [429, 500, 502, 503, 504],
+    rate_limit: [
+      service: :wanderer_sde,
+      requests_per_second: 10,
+      burst_capacity: 20,
+      per_host: true
+    ],
+    middlewares: [
+      WandererNotifier.Infrastructure.Http.Middleware.Retry,
+      WandererNotifier.Infrastructure.Http.Middleware.RateLimiter
+    ],
+    decode_json: false
+  ]
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Phoenix Endpoint Configuration
@@ -258,7 +362,8 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
     port: RuntimeConfig.get_integer("PORT", 4000),
     transport_options: [socket_opts: [:inet6]]
   ],
-  server: true,
+  # Don't start the server in test mode to avoid port conflicts
+  server: config_env() != :test,
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt

@@ -409,14 +409,12 @@ defmodule WandererNotifier.Map.SSEClient do
   end
 
   defp process_validated_event(validated_event, state) do
-    # Skip Integration processing - it has redundant deduplication
-    # Go directly to legacy processing which has proper domain-specific deduplication
-    process_legacy_only(validated_event, state)
+    process_event_through_processor(validated_event, state)
   end
 
-  defp process_legacy_only(validated_event, state) do
+  defp process_event_through_processor(validated_event, state) do
     case EventProcessor.process_event(validated_event, state.map_slug) do
-      :ok -> extract_event_id(validated_event)
+      {:ok, _result} -> extract_event_id(validated_event)
       error -> error
     end
   end
@@ -534,8 +532,6 @@ defmodule WandererNotifier.Map.SSEClient do
             {last_id, count}
         end
       end)
-
-    # Removed verbose debug logging
 
     # Continue streaming
     async_response = %HTTPoison.AsyncResponse{id: async_id}

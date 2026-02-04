@@ -1,15 +1,13 @@
 defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   @moduledoc """
-  Handles character events from the Wanderer map API using unified tracking infrastructure.
+  Handles character events from the Wanderer map API.
 
-  This module processes real-time character events to maintain character tracking state
-  while using the shared event handling patterns.
+  Processes real-time character events to maintain character tracking state.
   """
 
   require Logger
   alias WandererNotifier.Domains.Tracking.Entities.Character, as: Character
-  alias WandererNotifier.Infrastructure.Cache
-  alias WandererNotifier.Domains.Notifications.Determiner
+  alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
@@ -58,27 +56,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # Character-Specific Implementation
-  # ══════════════════════════════════════════════════════════════════════════════
-
-  # Handles character added events.
-  #
-  # Expected payload structure:
-  # ```
-  # %{
-  #   "id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
-  #   "character_id" => "536ad050-51b1-4732-8dc3-90f1823e36b9",
-  #   "character_eve_id" => "2000000263",
-  #   "name" => "Character Name",
-  #   "corporation_id" => 1000000263,
-  #   "alliance_id" => null,
-  #   "ship_type_id" => 670,
-  #   "online" => true
-  # }
-  # ```
-
-  # ══════════════════════════════════════════════════════════════════════════════
-  # Character-Specific Data Extraction and Processing
+  # Character-Specific Data Extraction
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp extract_character_from_event(payload) do
@@ -99,255 +77,108 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       "online" => Map.get(payload, "online")
     }
 
-    # For character_updated events, we might only get partial data
-    # Only require name for updates (we can look up eve_id from cache if needed)
-    cond do
-      character["eve_id"] && character["name"] ->
-        {:ok, character}
+    validate_character(character, payload)
+  end
 
-      character["name"] && character["id"] ->
-        # If we have name and id but no eve_id, try to find it in cache
-        Logger.debug("Character update without eve_id, will try to find in cache",
-          name: character["name"],
-          id: character["id"],
-          category: :api
-        )
+  defp validate_character(%{"eve_id" => eve_id, "name" => name} = character, _payload)
+       when eve_id != nil and name != nil do
+    {:ok, character}
+  end
 
-        {:ok, character}
+  defp validate_character(%{"name" => name, "id" => id} = character, _payload)
+       when name != nil and id != nil do
+    Logger.debug("Character update without eve_id, will try to find in cache",
+      name: name,
+      id: id,
+      category: :api
+    )
 
-      true ->
-        Logger.error("Missing required fields in character event",
-          eve_id: eve_id,
-          name: character["name"],
-          payload_keys: Map.keys(payload),
-          category: :api
-        )
+    {:ok, character}
+  end
 
-        {:error, :missing_required_fields}
-    end
+  defp validate_character(character, payload) do
+    Logger.error("Missing required fields in character event",
+      eve_id: character["eve_id"],
+      name: character["name"],
+      payload_keys: Map.keys(payload),
+      category: :api
+    )
+
+    {:error, :missing_required_fields}
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # Character-Specific Cache Operations
+  # Cache Operations (delegated to GenericEventHandler)
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp add_character_to_cache(character) do
-    case Cache.get(Cache.Keys.map_characters()) do
-      {:ok, cached_characters} when is_list(cached_characters) ->
-        add_to_existing_cache(cached_characters, character)
-
-      {:error, :not_found} ->
-        # No cached characters, create new list
-        Cache.put(Cache.Keys.map_characters(), [character])
-        :ok
-    end
-  end
-
-  defp add_to_existing_cache(cached_characters, character) do
-    eve_id = character["eve_id"]
-
-    if Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end) do
-      :ok
-    else
-      # Add new character
-      updated_characters = [character | cached_characters]
-      Cache.put(Cache.Keys.map_characters(), updated_characters)
-      :ok
-    end
+    GenericEventHandler.add_to_cache_list(:character, character)
   end
 
   defp remove_character_from_cache(character) do
-    case Cache.get(Cache.Keys.map_characters()) do
-      {:ok, cached_characters} when is_list(cached_characters) ->
-        # Remove character from the list
-        eve_id = character["eve_id"]
-        updated_characters = Enum.reject(cached_characters, fn c -> c["eve_id"] == eve_id end)
-        Cache.put(Cache.Keys.map_characters(), updated_characters)
-        :ok
-
-      {:error, :not_found} ->
-        # No cached characters, nothing to remove
-        :ok
-    end
+    GenericEventHandler.remove_from_cache_list(:character, character)
   end
 
   defp update_character_in_cache(character) do
-    case Cache.get(Cache.Keys.map_characters()) do
-      {:ok, cached_characters} when is_list(cached_characters) ->
-        update_cached_characters(cached_characters, character)
+    match_fn = build_character_match_fn(character)
+    GenericEventHandler.update_in_cache_list(:character, character, match_fn)
+  end
 
-      {:error, :not_found} ->
-        # No cached characters, only create if we have eve_id
-        if character["eve_id"] do
-          Cache.put(Cache.Keys.map_characters(), [character])
-        end
+  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_integer(eve_id) do
+    fn cached -> cached["eve_id"] == eve_id end
+  end
 
-        :ok
+  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_binary(eve_id) and eve_id != "" do
+    fn cached -> cached["eve_id"] == eve_id end
+  end
+
+  defp build_character_match_fn(%{"name" => name, "id" => id})
+       when is_binary(name) and name != "" and id != nil do
+    fn cached ->
+      cached["name"] == name or cached["id"] == id
     end
   end
 
-  defp update_cached_characters(cached_characters, character) do
-    {matched, updated_characters} =
-      if character["eve_id"] do
-        update_by_eve_id(cached_characters, character)
-      else
-        update_by_name_or_id(cached_characters, character)
-      end
-
-    final_characters = add_if_new(updated_characters, character, matched)
-    Cache.put(Cache.Keys.map_characters(), final_characters)
-    :ok
+  defp build_character_match_fn(%{"name" => name}) when is_binary(name) and name != "" do
+    fn cached -> cached["name"] == name end
   end
 
-  defp update_by_eve_id(cached_characters, character) do
-    eve_id = character["eve_id"]
-
-    updated =
-      Enum.map(cached_characters, fn c ->
-        if c["eve_id"] == eve_id do
-          Map.merge(c, character)
-        else
-          c
-        end
-      end)
-
-    matched = Enum.any?(cached_characters, fn c -> c["eve_id"] == eve_id end)
-    {matched, updated}
+  defp build_character_match_fn(%{"id" => id}) when id != nil do
+    fn cached -> cached["id"] == id end
   end
 
-  defp update_by_name_or_id(cached_characters, character) do
-    name = character["name"]
-    id = character["id"]
-
-    # Try to find matching character to get eve_id
-    matched_character = Enum.find(cached_characters, &matches_name_or_id?(&1, name, id))
-
-    if matched_character do
-      Logger.debug("Found cached character for update",
-        character_name: name,
-        character_id: id,
-        cached_eve_id: matched_character["eve_id"],
-        cached_name: matched_character["name"],
-        category: :api
-      )
-    else
-      Logger.warning("No cached character found for update",
-        character_name: name,
-        character_id: id,
-        total_cached: length(cached_characters),
-        cached_names: Enum.map(cached_characters, & &1["name"]) |> Enum.take(5),
-        category: :api
-      )
-    end
-
-    updated =
-      Enum.map(cached_characters, fn c ->
-        if matches_name_or_id?(c, name, id) do
-          # Preserve the eve_id from cache and merge the update
-          Map.merge(c, character) |> Map.put("eve_id", c["eve_id"])
-        else
-          c
-        end
-      end)
-
-    matched = matched_character != nil
-    {matched, updated}
-  end
-
-  defp matches_name_or_id?(character, name, id) do
-    (name && character["name"] == name) || (id && character["id"] == id)
-  end
-
-  defp add_if_new(characters, new_character, matched) do
-    if not matched and new_character["eve_id"] do
-      [new_character | characters]
-    else
-      characters
-    end
+  defp build_character_match_fn(_character) do
+    # All identifiers are nil - no match possible
+    fn _cached -> false end
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # Character-Specific Notification Logic
+  # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_notify_character_added(character) do
-    if should_notify_character_added(character) do
-      send_character_added_notification(character)
-    end
+    case should_notify_character?(character) do
+      {:ok, true} ->
+        send_character_added_notification(character)
+        {:ok, :sent}
 
-    :ok
+      {:ok, false} ->
+        {:ok, :skipped}
+    end
   end
 
   defp maybe_notify_character_removed(character) do
-    # Always log removal, regardless of notification decision
     Logger.debug("Character removed from tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       category: :api
     )
 
-    if should_notify_character_removed(character) do
-      send_character_removed_notification(character)
-    end
-
-    :ok
+    # No notification sent for character removal
+    {:ok, :skipped}
   end
 
   defp maybe_notify_character_updated(character) do
-    if should_notify_character_updated(character) do
-      send_character_updated_notification(character)
-    end
-
-    :ok
-  end
-
-  defp should_notify_character_added(character) do
-    character_id = character["eve_id"]
-    # Don't try to notify if we don't have an eve_id
-    if character_id do
-      Determiner.should_notify?(:character, character_id, character)
-    else
-      false
-    end
-  end
-
-  defp should_notify_character_removed(character) do
-    character_id = character["eve_id"]
-    # Don't try to notify if we don't have an eve_id
-    if character_id do
-      Determiner.should_notify?(:character, character_id, character)
-    else
-      false
-    end
-  end
-
-  defp should_notify_character_updated(character) do
-    character_id = character["eve_id"]
-    # Don't try to notify if we don't have an eve_id
-    if character_id do
-      Determiner.should_notify?(:character, character_id, character)
-    else
-      false
-    end
-  end
-
-  defp send_character_added_notification(character) do
-    # Create a MapCharacter struct for the notification
-    map_character = Character.from_api_data(character)
-
-    # Send character notification directly - always returns :ok immediately
-    WandererNotifier.DiscordNotifier.send_character_async(map_character)
-    :ok
-  end
-
-  defp send_character_removed_notification(_character) do
-    # For now, we don't have a specific "character removed" notification
-    # Logging is handled in maybe_notify_character_removed
-    :ok
-  end
-
-  defp send_character_updated_notification(character) do
-    # For now, we don't have a specific "character updated" notification
     Logger.debug("Character updated in tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
@@ -356,6 +187,18 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       category: :api
     )
 
-    :ok
+    # No notification sent for character updates
+    {:ok, :skipped}
+  end
+
+  defp should_notify_character?(character) do
+    character_id = character["eve_id"]
+    GenericEventHandler.should_notify?(:character, character_id, character)
+  end
+
+  defp send_character_added_notification(character) do
+    map_character = Character.from_api_data(character)
+    WandererNotifier.DiscordNotifier.send_character_async(map_character)
+    {:ok, :sent}
   end
 end

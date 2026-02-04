@@ -17,7 +17,7 @@ config :wanderer_notifier,
 
 # Configure HTTP client
 config :wanderer_notifier,
-  http_client: WandererNotifier.HTTP,
+  http_client: WandererNotifier.Infrastructure.Http,
   default_timeout: 5_000,
   default_recv_timeout: 5_000,
   default_connect_timeout: 3_000,
@@ -196,7 +196,6 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   character_module: WandererNotifier.Domains.CharacterTracking.Character,
   system_module: WandererNotifier.Domains.SystemTracking.System,
-  deduplication_module: WandererNotifier.Domains.Notifications.CacheImpl,
   config_module: WandererNotifier.Shared.Config
 
 # Import environment specific config. This must remain at the bottom

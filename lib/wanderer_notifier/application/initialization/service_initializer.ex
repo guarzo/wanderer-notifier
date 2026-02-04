@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
   @moduledoc """
-  Unified service initialization coordinator.
+  Service initialization coordinator.
 
-  This module manages the startup sequence of all application services,
-  ensuring proper dependency ordering and error handling during initialization.
+  Manages the startup sequence of all application services, ensuring proper
+  dependency ordering and error handling during initialization.
 
   ## Initialization Phases
 
@@ -127,9 +127,6 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Persistent storage
       {WandererNotifier.PersistentValues, []},
       {WandererNotifier.CommandLog, []},
-
-      # Validation and monitoring
-      {WandererNotifier.Shared.Utils.ValidationManager, []},
 
       # Metrics tracking
       {WandererNotifier.Shared.Metrics, []},

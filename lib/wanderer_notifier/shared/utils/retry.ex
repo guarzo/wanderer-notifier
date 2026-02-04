@@ -2,10 +2,9 @@ defmodule WandererNotifier.Shared.Utils.Retry do
   require Logger
 
   @moduledoc """
-  Unified retry utility for WandererNotifier.
+  Retry utility for WandererNotifier.
 
-  Provides consistent retry logic with exponential backoff across the application.
-  Replaces scattered retry implementations in HTTP clients, RedisQ client, and other modules.
+  Provides consistent retry logic with exponential backoff.
   """
 
   alias WandererNotifier.Shared.Types.Constants
@@ -183,11 +182,17 @@ defmodule WandererNotifier.Shared.Utils.Retry do
     end
   end
 
-  defp handle_exception(error, state, fun) do
-    if state.attempt < state.max_attempts and retryable_exception?(error, state.retryable_errors) do
-      perform_retry(fun, state, error)
-    else
-      {:error, error}
+  defp handle_exception(error, %{attempt: attempt, max_attempts: max} = state, fun)
+       when attempt < max do
+    handle_retryable_exception(error, state, fun)
+  end
+
+  defp handle_exception(error, _state, _fun), do: {:error, error}
+
+  defp handle_retryable_exception(error, state, fun) do
+    case retryable_exception?(error, state.retryable_errors) do
+      true -> perform_retry(fun, state, error)
+      false -> {:error, error}
     end
   end
 
@@ -284,13 +289,10 @@ defmodule WandererNotifier.Shared.Utils.Retry do
     Task.Supervisor.async(state.supervisor, fn -> execute_with_retry(fun, state) end)
   end
 
-  defp extract_retry_delay(error, state) do
-    if state.extract_retry_after do
-      state.extract_retry_after.(error)
-    else
-      nil
-    end
-  end
+  defp extract_retry_delay(error, %{extract_retry_after: extractor}) when is_function(extractor),
+    do: extractor.(error)
+
+  defp extract_retry_delay(_error, _state), do: nil
 
   defp extract_http_retry_after({:error, {:http_error, _status, headers}})
        when is_list(headers) do

@@ -1,7 +1,6 @@
 defmodule WandererNotifier.Shared.Utils.TimeUtils do
   @moduledoc """
-  Centralized time and date utilities for WandererNotifier.
-  Provides consistent time handling across the application.
+  Time and date utilities for WandererNotifier.
   """
 
   @doc """

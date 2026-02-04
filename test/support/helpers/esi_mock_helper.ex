@@ -9,6 +9,31 @@ defmodule WandererNotifier.Test.Support.Helpers.ESIMockHelper do
   alias WandererNotifier.Infrastructure.Adapters.ESI.ClientMock
 
   @doc """
+  Sets up default ESI client stubs that return generic test data.
+
+  Use this in test setup blocks to provide baseline stubs for ESI client calls.
+
+  ## Returns
+  - `{:ok, :stubs_set}` after registering the stubs.
+  """
+  @spec stub_default_esi_client_mocks() :: {:ok, :stubs_set}
+  def stub_default_esi_client_mocks do
+    stub(ClientMock, :get_corporation_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Corporation", "ticker" => "TEST"}}
+    end)
+
+    stub(ClientMock, :get_alliance_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Alliance", "ticker" => "ALLY"}}
+    end)
+
+    stub(ClientMock, :get_character_info, fn _id, _opts ->
+      {:ok, %{"name" => "Test Character"}}
+    end)
+
+    {:ok, :stubs_set}
+  end
+
+  @doc """
   Sets up common ESI service mocks for testing.
   """
   def setup_esi_mocks do

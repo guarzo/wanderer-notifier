@@ -1,9 +1,9 @@
 defmodule WandererNotifier.DiscordNotifier do
   @moduledoc """
-  Simplified Discord notification system.
+  Discord notification system.
 
   Handles all Discord notifications (kills, rally points, system/character tracking)
-  using a single, unified approach with proper async handling and Nostrum integration.
+  with proper async handling and Nostrum integration.
 
   Key design principles:
   - Fire-and-forget: All public functions return immediately
@@ -116,10 +116,21 @@ defmodule WandererNotifier.DiscordNotifier do
       category: :notifications
     )
 
+    dispatch_to_channels(killmail, channels, killmail_id)
+  end
+
+  defp dispatch_to_channels(_killmail, [], killmail_id) do
+    Logger.debug("No channels to send to, kill notification skipped",
+      killmail_id: killmail_id
+    )
+
+    {:ok, :skipped}
+  end
+
+  defp dispatch_to_channels(killmail, channels, killmail_id) do
     notifications_sent = send_to_channels(killmail, channels)
     record_notifications_sent(killmail_id, notifications_sent)
-
-    :sent
+    {:ok, :sent}
   end
 
   defp send_to_channels(killmail, channels) do
@@ -138,7 +149,7 @@ defmodule WandererNotifier.DiscordNotifier do
     case format_notification(killmail, use_custom_system_name: use_custom_name) do
       {:ok, formatted_notification} ->
         # Add voice mentions for system kill channel notifications
-        formatted_notification =
+        {:ok, formatted_notification} =
           maybe_add_voice_mentions(formatted_notification, killmail, channel_id)
 
         case send_to_discord(formatted_notification, channel_id) do
@@ -361,131 +372,42 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp determine_kill_channels(killmail) do
-    # Determine all channels to send to - may be multiple if both system and character are tracked
+    ctx = build_channel_context(killmail)
+    select_channels(ctx) |> Enum.uniq()
+  end
+
+  defp build_channel_context(killmail) do
     system_id = Map.get(killmail, :system_id)
     has_tracked_system = tracked_system?(system_id)
-    has_tracked_character = tracked_character?(killmail)
 
-    default_channel = Config.discord_channel_id()
-    system_channel = Config.discord_system_kill_channel_id()
-    character_channel = Config.discord_character_kill_channel_id()
-
-    # Check if corporation exclusion applies (only affects system kill channel)
-    # Only compute when system-based routing is actually in use
-    corp_excluded =
-      if has_tracked_system and system_channel != nil do
-        corporation_excluded?(killmail)
-      else
-        false
-      end
-
-    # Check if wormhole-only filter applies (only affects system kill channel)
-    # Only compute when system-based routing is actually in use
-    wormhole_excluded =
-      if has_tracked_system and system_channel != nil do
-        wormhole_excluded?(system_id)
-      else
-        false
-      end
-
-    # Check if character corporation filter applies (only affects character kill channel)
-    # Only compute when character-based routing is actually in use
-    char_corp_excluded =
-      if has_tracked_character and character_channel != nil do
-        character_corporation_excluded?(killmail)
-      else
-        false
-      end
-
-    channels =
-      []
-      |> maybe_add_system_channel(
-        has_tracked_system,
-        corp_excluded or wormhole_excluded,
-        system_channel,
-        default_channel
-      )
-      |> maybe_add_character_channel(
-        has_tracked_character,
-        char_corp_excluded,
-        character_channel,
-        default_channel
-      )
-
-    # If no channels were added (neither system nor character tracked), use default
-    if Enum.empty?(channels) do
-      [default_channel]
-    else
-      # Return unique channels to avoid sending duplicates if both channels are the same
-      Enum.uniq(channels)
-    end
+    %{
+      killmail_id: Map.get(killmail, :killmail_id),
+      involves_focused_corp: involves_focused_corporation?(killmail),
+      has_tracked_system: has_tracked_system,
+      wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
+      default_channel: Config.discord_channel_id(),
+      system_channel: Config.discord_system_kill_channel_id(),
+      character_channel: Config.discord_character_kill_channel_id()
+    }
   end
 
-  # For system channel, check corporation exclusion - only add if not excluded
-  defp maybe_add_system_channel(channels, true, false, specific_channel, default_channel) do
-    # System is tracked and corporation is NOT excluded - add the channel
-    channel = specific_channel || default_channel
-    [channel | channels]
+  # Kill involves focused corporation -> character channel only
+  defp select_channels(%{involves_focused_corp: true} = ctx) do
+    Logger.info("Kill routed to character channel - focused corporation involved",
+      killmail_id: ctx.killmail_id
+    )
+
+    [ctx.character_channel || ctx.default_channel]
   end
 
-  defp maybe_add_system_channel(channels, true, true, specific_channel, _default_channel) do
-    # System is tracked but corporation IS excluded
-    # Only skip if there's a dedicated system kill channel configured
-    if specific_channel != nil do
-      Logger.info(
-        "Kill notification excluded from system kill channel - corporation in exclusion list"
-      )
-
-      channels
-    else
-      # No dedicated system channel, so exclusion doesn't apply (falls back to default)
-      # In this case, we don't add the channel here - let the default logic handle it
-      channels
-    end
+  # System tracked and not wormhole-excluded -> system channel
+  defp select_channels(%{has_tracked_system: true, wormhole_excluded: false} = ctx) do
+    [ctx.system_channel || ctx.default_channel]
   end
 
-  defp maybe_add_system_channel(
-         channels,
-         false,
-         _corp_excluded,
-         _specific_channel,
-         _default_channel
-       ) do
-    # System not tracked - don't add system channel
-    channels
-  end
-
-  # For character channel, check corporation allowlist - only add if allowed
-  defp maybe_add_character_channel(channels, true, false, specific_channel, default_channel) do
-    # Character is tracked and corporation IS allowed (or no filter configured)
-    channel = specific_channel || default_channel
-    [channel | channels]
-  end
-
-  defp maybe_add_character_channel(channels, true, true, specific_channel, _default_channel) do
-    # Character is tracked but corporation is NOT in allowed list
-    # Only skip if there's a dedicated character kill channel configured
-    if specific_channel != nil do
-      Logger.info(
-        "Kill notification excluded from character kill channel - corporation not in allowed list"
-      )
-
-      channels
-    else
-      # No dedicated character channel, so filter doesn't apply (falls back to default)
-      channels
-    end
-  end
-
-  defp maybe_add_character_channel(
-         channels,
-         false,
-         _char_corp_excluded,
-         _specific_channel,
-         _default_channel
-       ) do
-    # Character not tracked - don't add character channel
-    channels
+  # Fallback -> default channel
+  defp select_channels(ctx) do
+    [ctx.default_channel]
   end
 
   defp build_rally_content do
@@ -558,42 +480,52 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp wormhole_system?(_), do: false
 
-  defp corporation_excluded?(killmail) do
-    exclude_list = Config.corporation_exclude_list()
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Corporation Kill Focus
+  # ═══════════════════════════════════════════════════════════════════════════════
 
-    if exclude_list == [] do
-      false
-    else
-      # Convert to MapSet once for O(1) lookups
-      exclude_set = MapSet.new(exclude_list)
-
-      victim_excluded = victim_corp_excluded?(killmail, exclude_set)
-      attacker_excluded = any_attacker_corp_excluded?(killmail, exclude_set)
-
-      if victim_excluded or attacker_excluded do
-        Logger.debug(
-          "Corporation exclusion matched - killmail_id: #{Map.get(killmail, :killmail_id)}, " <>
-            "victim_corp: #{inspect(Map.get(killmail, :victim_corporation_id))}, " <>
-            "victim_excluded: #{victim_excluded}, attacker_excluded: #{attacker_excluded}"
-        )
-      end
-
-      victim_excluded or attacker_excluded
-    end
+  # Checks if a kill involves any character from a focused corporation.
+  # When CORPORATION_KILL_FOCUS is configured, kills involving these corps:
+  # - Are routed to the character kill channel
+  # - Are excluded from the system kill channel
+  defp involves_focused_corporation?(killmail) do
+    focus_corps = Config.corporation_kill_focus()
+    do_involves_focused_corporation?(killmail, focus_corps)
   end
 
-  defp victim_corp_excluded?(killmail, exclude_set) do
-    victim_corp_id = Map.get(killmail, :victim_corporation_id)
-    normalized_id = normalize_corp_id(victim_corp_id)
+  defp do_involves_focused_corporation?(_killmail, []), do: false
 
-    case normalized_id do
+  defp do_involves_focused_corporation?(killmail, focus_corps) do
+    focus_set = MapSet.new(focus_corps)
+
+    victim_in_focus = victim_in_focused_corp?(killmail, focus_set)
+    attacker_in_focus = any_attacker_in_focused_corp?(killmail, focus_set)
+
+    victim_in_focus or attacker_in_focus
+  end
+
+  defp victim_in_focused_corp?(killmail, focus_set) do
+    victim_corp_id = Map.get(killmail, :victim_corporation_id)
+    corp_in_set?(victim_corp_id, focus_set)
+  end
+
+  defp any_attacker_in_focused_corp?(killmail, focus_set) do
+    attackers = Map.get(killmail, :attackers, []) || []
+
+    Enum.any?(attackers, fn attacker ->
+      corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
+      corp_in_set?(corp_id, focus_set)
+    end)
+  end
+
+  defp corp_in_set?(corp_id, set) do
+    case normalize_corp_id(corp_id) do
       nil -> false
-      id -> MapSet.member?(exclude_set, id)
+      id -> MapSet.member?(set, id)
     end
   end
 
   # Normalizes corporation ID to integer for consistent comparison
-  # Handles both integer and string IDs from different data sources
   defp normalize_corp_id(nil), do: nil
   defp normalize_corp_id(id) when is_integer(id), do: id
 
@@ -606,137 +538,45 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp normalize_corp_id(_), do: nil
 
-  defp any_attacker_corp_excluded?(killmail, exclude_set) do
-    attackers = Map.get(killmail, :attackers, []) || []
-
-    Enum.any?(attackers, fn attacker ->
-      corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
-      normalized_id = normalize_corp_id(corp_id)
-
-      case normalized_id do
-        nil -> false
-        id -> MapSet.member?(exclude_set, id)
-      end
-    end)
-  end
-
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # Character Kill Channel Filtering
-  # ═══════════════════════════════════════════════════════════════════════════════
-
-  # Checks if the kill should be excluded from character kill channel based on
-  # corporation allowlist. Returns true if excluded (no tracked character belongs
-  # to an allowed corporation).
-  defp character_corporation_excluded?(killmail) do
-    allowed_corps = Config.character_tracking_corporation_ids()
-    do_character_corporation_excluded?(killmail, allowed_corps)
-  end
-
-  # No filter configured - allow all
-  defp do_character_corporation_excluded?(_killmail, []), do: false
-
-  defp do_character_corporation_excluded?(killmail, allowed_corps) when is_list(allowed_corps) do
-    # Convert to MapSet once for O(1) lookups
-    allowed_set = MapSet.new(allowed_corps)
-
-    # Check if any tracked character (victim or attacker) belongs to an allowed corporation
-    has_allowed_character = has_allowed_tracked_character?(killmail, allowed_set)
-
-    if not has_allowed_character do
-      Logger.debug(
-        "Kill excluded from character channel - no tracked character in allowed corporations",
-        killmail_id: Map.get(killmail, :killmail_id)
-      )
-    end
-
-    not has_allowed_character
-  end
-
-  # Check if any tracked character in the killmail belongs to an allowed corporation
-  defp has_allowed_tracked_character?(killmail, allowed_set) do
-    victim_allowed?(killmail, allowed_set) or any_attacker_allowed?(killmail, allowed_set)
-  end
-
-  defp victim_allowed?(killmail, allowed_set) do
-    victim_character_id = Map.get(killmail, :victim_character_id)
-
-    # Only check if victim is actually tracked
-    if victim_character_id && tracked_character_id?(victim_character_id) do
-      victim_corp_id = Map.get(killmail, :victim_corporation_id)
-      normalized_id = normalize_corp_id(victim_corp_id)
-
-      case normalized_id do
-        nil -> false
-        id -> MapSet.member?(allowed_set, id)
-      end
-    else
-      false
-    end
-  end
-
-  defp any_attacker_allowed?(killmail, allowed_set) do
-    attackers = Map.get(killmail, :attackers, []) || []
-    Enum.any?(attackers, &attacker_allowed?(&1, allowed_set))
-  end
-
-  defp attacker_allowed?(attacker, allowed_set) do
-    attacker_character_id =
-      Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-
-    # Only check if attacker is actually tracked
-    if attacker_character_id && tracked_character_id?(attacker_character_id) do
-      corp_id = Map.get(attacker, "corporation_id") || Map.get(attacker, :corporation_id)
-      normalized_id = normalize_corp_id(corp_id)
-      normalized_id != nil and MapSet.member?(allowed_set, normalized_id)
-    else
-      false
-    end
-  end
-
-  defp tracked_character_id?(character_id) do
-    WandererNotifier.Domains.Notifications.Determiner.tracked_character?(character_id)
-  end
-
   # ═══════════════════════════════════════════════════════════════════════════════
   # Voice Channel Mentions
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do
-    if should_add_voice_mentions?(killmail, channel_id) do
-      add_voice_mentions_to_notification(notification)
-    else
-      notification
+    case {voice_pings_enabled?(), system_kill_channel?(channel_id), pure_system_kill?(killmail)} do
+      {true, true, true} ->
+        prepend_voice_mentions(notification)
+
+      _ ->
+        {:ok, notification}
     end
   end
 
-  defp should_add_voice_mentions?(killmail, channel_id) do
-    system_kill_channel = Config.discord_system_kill_channel_id()
-    voice_pings_enabled = Config.voice_participant_notifications_enabled?()
+  @spec voice_pings_enabled?() :: boolean()
+  defp voice_pings_enabled?, do: Config.voice_participant_notifications_enabled?()
 
-    # Only add voice mentions for system kill channel notifications
-    is_system_kill_channel = channel_id == system_kill_channel and system_kill_channel != nil
+  # Returns true if the kill is in a tracked system with no tracked characters involved
+  @spec pure_system_kill?(map()) :: boolean()
+  defp pure_system_kill?(killmail) do
+    case Map.get(killmail, :system_id) do
+      nil ->
+        false
 
-    # Check that this is a system-tracked kill (not a character-tracked kill)
-    system_id = Map.get(killmail, :system_id)
-    has_tracked_system = tracked_system?(system_id)
-    has_tracked_character = tracked_character?(killmail)
-
-    # Add voice mentions only for system kills (tracked system, no tracked character)
-    is_system_kill_channel and has_tracked_system and not has_tracked_character and
-      voice_pings_enabled
+      system_id ->
+        tracked_system?(system_id) and not tracked_character?(killmail)
+    end
   end
 
-  defp add_voice_mentions_to_notification(notification) do
-    mentions = VoiceParticipants.get_active_voice_mentions()
-
-    case mentions do
-      [] ->
-        notification
-
-      mentions_list ->
-        mention_string = Enum.join(mentions_list, " ")
-        existing_content = Map.get(notification, :content, "")
-        Map.put(notification, :content, "#{mention_string} #{existing_content}")
+  defp prepend_voice_mentions(notification) do
+    case VoiceParticipants.get_active_voice_mentions() do
+      [] -> {:ok, notification}
+      mentions -> prepend_mentions(notification, mentions)
     end
+  end
+
+  defp prepend_mentions(notification, mentions) do
+    mention_string = Enum.join(mentions, " ")
+    existing_content = Map.get(notification, :content, "")
+    {:ok, Map.put(notification, :content, "#{mention_string} #{existing_content}")}
   end
 end

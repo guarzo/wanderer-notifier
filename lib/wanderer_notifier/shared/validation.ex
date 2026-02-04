@@ -1,12 +1,6 @@
 defmodule WandererNotifier.Shared.Validation do
   @moduledoc """
-  Unified validation module consolidating all validation patterns across the application.
-
-  This module combines and replaces:
-  - WandererNotifier.Shared.Utils.ValidationUtils (general validation patterns)
-  - HTTP-specific validation (consolidated into this module)
-  - License-specific validation (previously in WandererNotifier.Domains.License.Validation - now removed)
-  - Various validation patterns scattered throughout the codebase
+  Unified validation module for all validation patterns across the application.
 
   ## Design Principles
 
@@ -142,10 +136,9 @@ defmodule WandererNotifier.Shared.Validation do
     string_keys = Enum.map(keys, &to_string/1)
     has_any_key = Enum.any?(string_keys, &Map.has_key?(data, &1))
 
-    if has_any_key do
-      {:ok, data}
-    else
-      {:error, {:missing_any_key, string_keys}}
+    case has_any_key do
+      true -> {:ok, data}
+      false -> {:error, {:missing_any_key, string_keys}}
     end
   end
 
@@ -168,10 +161,9 @@ defmodule WandererNotifier.Shared.Validation do
   def validate_optional_field(nil, _type), do: {:ok, nil}
 
   def validate_optional_field(value, type) do
-    if validate_type(value, type) do
-      {:ok, value}
-    else
-      {:error, :invalid_type}
+    case validate_type(value, type) do
+      true -> {:ok, value}
+      false -> {:error, :invalid_type}
     end
   end
 
@@ -273,10 +265,9 @@ defmodule WandererNotifier.Shared.Validation do
         {:error, :field_not_found}
 
       value ->
-        if validate_type(value, expected_type) do
-          {:ok, value}
-        else
-          {:error, :invalid_type}
+        case validate_type(value, expected_type) do
+          true -> {:ok, value}
+          false -> {:error, :invalid_type}
         end
     end
   end

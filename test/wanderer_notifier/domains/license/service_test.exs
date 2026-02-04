@@ -47,7 +47,7 @@ defmodule WandererNotifier.Domains.License.LicenseServiceTest do
   end
 
   describe "validate/0" do
-    test "returns validation results" do
+    test "returns {:ok, map} on successful validation" do
       # The validate function triggers another validation via GenServer
       # Mock the validation request that will be made
       WandererNotifier.HTTPMock
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Domains.License.LicenseServiceTest do
          }}
       end)
 
-      result = Service.validate()
+      assert {:ok, result} = Service.validate()
       assert is_map(result)
     end
   end

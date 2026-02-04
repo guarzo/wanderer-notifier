@@ -1,10 +1,20 @@
 defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
   @moduledoc """
-  Consolidated utilities for notification formatting.
-  Single source of truth for all formatting helpers.
+  Utilities for notification formatting.
+
+  Provides helpers for:
+  - URL generation (zKillboard, EVE images, Dotlan, EVE Who)
+  - Value formatting (ISK, numbers, percentages)
+  - Color management (ISK-based, security-based, system/character notifications)
+  - Link creation (markdown links for characters, systems, corporations, alliances)
+  - Icon management (system type icons)
+  - Field building helpers for Discord embeds
+  - Text utilities (truncation, capitalization)
+  - Timestamp formatting with EVE context
   """
 
   alias WandererNotifier.Shared.Utils.FormattingUtils
+  alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Config
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -283,5 +293,226 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.NotificationUtils do
     else
       footer
     end
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # ISK-Based Color Management
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Gets Discord color code based on ISK value.
+
+  Returns color codes based on value thresholds:
+  - >= 5B ISK: Red (0xFF0000) - Very high value
+  - >= 1B ISK: Orange (0xFF6600) - High value
+  - >= 100M ISK: Yellow (0xFFFF00) - Medium value
+  - >= 10M ISK: Green (0x00FF00) - Low value
+  - < 10M ISK: Gray (0x808080) - Very low value
+  """
+  # Red for very high value (>= 5B)
+  def get_isk_color(value) when is_number(value) and value >= 5_000_000_000, do: 0xFF0000
+  # Orange for high value (>= 1B)
+  def get_isk_color(value) when is_number(value) and value >= 1_000_000_000, do: 0xFF6600
+  # Yellow for medium value (>= 100M)
+  def get_isk_color(value) when is_number(value) and value >= 100_000_000, do: 0xFFFF00
+  # Green for low value (>= 10M)
+  def get_isk_color(value) when is_number(value) and value >= 10_000_000, do: 0x00FF00
+  # Gray for very low value (< 10M)
+  def get_isk_color(value) when is_number(value), do: 0x808080
+  # Gray for non-numbers
+  def get_isk_color(_), do: 0x808080
+
+  @doc """
+  Gets Discord color code for system notifications.
+
+  Returns color codes for system events:
+  - :added - Green (0x00FF00)
+  - :removed - Red (0xFF0000)
+  - :updated - Yellow (0xFFFF00)
+  - Other - Gray (0x808080)
+  """
+  # Green
+  def get_system_color(:added), do: 0x00FF00
+  # Red
+  def get_system_color(:removed), do: 0xFF0000
+  # Yellow
+  def get_system_color(:updated), do: 0xFFFF00
+  # Gray
+  def get_system_color(_), do: 0x808080
+
+  @doc """
+  Gets Discord color code for character notifications.
+
+  Returns color codes for character events:
+  - :online - Green (0x00FF00)
+  - :offline - Red (0xFF0000)
+  - :added - Cyan (0x00FFFF)
+  - :removed - Orange (0xFF6600)
+  - Other - Gray (0x808080)
+  """
+  # Green
+  def get_character_color(:online), do: 0x00FF00
+  # Red
+  def get_character_color(:offline), do: 0xFF0000
+  # Cyan
+  def get_character_color(:added), do: 0x00FFFF
+  # Orange
+  def get_character_color(:removed), do: 0xFF6600
+  # Gray
+  def get_character_color(_), do: 0x808080
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Text Formatting Utilities
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Truncates text to a maximum length with ellipsis.
+
+  ## Examples
+      iex> truncate_text("Hello World", 8)
+      "Hello..."
+
+      iex> truncate_text("Hi", 10)
+      "Hi"
+  """
+  def truncate_text(text, max_length) when is_binary(text) and is_integer(max_length) do
+    cond do
+      String.length(text) <= max_length ->
+        text
+
+      max_length <= 3 ->
+        String.slice(text, 0, max_length)
+
+      true ->
+        text
+        |> String.slice(0, max_length - 3)
+        |> Kernel.<>("...")
+    end
+  end
+
+  def truncate_text(text, _max_length), do: to_string(text)
+
+  @doc """
+  Capitalizes the first letter of a string.
+
+  ## Examples
+      iex> capitalize_first("hello")
+      "Hello"
+
+      iex> capitalize_first("HELLO")
+      "HELLO"
+  """
+  def capitalize_first(text) when is_binary(text) do
+    case String.length(text) do
+      0 ->
+        text
+
+      1 ->
+        String.upcase(text)
+
+      _ ->
+        text
+        |> String.at(0)
+        |> String.upcase()
+        |> Kernel.<>(String.slice(text, 1..-1//1))
+    end
+  end
+
+  def capitalize_first(text), do: to_string(text)
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Timestamp Formatting with EVE Context
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Formats a timestamp with EVE context and relative time.
+
+  For recent events (< 1 hour), shows relative time like "5 minutes ago".
+  For older events, shows absolute time with EVE context.
+  """
+  def format_timestamp_with_context(datetime) when is_struct(datetime, DateTime) do
+    relative_time = TimeUtils.format_relative_time(datetime)
+    format_relative_with_context(relative_time, datetime)
+  end
+
+  def format_timestamp_with_context(timestamp) when is_binary(timestamp) do
+    case TimeUtils.parse_iso8601(timestamp) do
+      {:ok, datetime} -> format_timestamp_with_context(datetime)
+      {:error, _reason} -> "Recently"
+    end
+  end
+
+  def format_timestamp_with_context(_), do: "Recently"
+
+  # Pattern-matched helper for relative time formatting
+  defp format_relative_with_context("just now", _datetime), do: "just now"
+
+  defp format_relative_with_context(relative_time, datetime) do
+    cond do
+      String.contains?(relative_time, "seconds ago") ->
+        relative_time
+
+      String.contains?(relative_time, "minutes ago") ->
+        relative_time
+
+      String.contains?(relative_time, "hour") ->
+        "#{relative_time} (#{format_eve_time(datetime)})"
+
+      true ->
+        format_absolute_eve_time(datetime)
+    end
+  end
+
+  @doc """
+  Formats time with EVE context for recent events.
+
+  ## Examples
+      iex> format_eve_time(~U[2024-01-15 14:30:00Z])
+      "14:30 EVE"
+  """
+  def format_eve_time(datetime) when is_struct(datetime, DateTime) do
+    "#{Calendar.strftime(datetime, "%H:%M")} EVE"
+  end
+
+  def format_eve_time(_), do: "Unknown EVE"
+
+  @doc """
+  Formats absolute time for older events.
+
+  Shows "HH:MM AM/PM EVE today" for same-day events,
+  or "Mon DD at HH:MM AM/PM EVE" for older events.
+  """
+  def format_absolute_eve_time(datetime) when is_struct(datetime, DateTime) do
+    now = TimeUtils.now()
+
+    case same_date?(datetime, now) do
+      true -> "#{format_12_hour_time(datetime)} EVE today"
+      false -> "#{Calendar.strftime(datetime, "%b %d")} at #{format_12_hour_time(datetime)} EVE"
+    end
+  end
+
+  def format_absolute_eve_time(_), do: "Unknown EVE"
+
+  @doc """
+  Formats ISK values with commas for readability, including the ISK suffix.
+
+  ## Examples
+      iex> format_isk_with_commas(2_500_000_000)
+      "2,500,000,000 ISK"
+  """
+  def format_isk_with_commas(value), do: FormattingUtils.format_isk_full(value)
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Private Helper Functions
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Check if two DateTime structs are on the same calendar day
+  defp same_date?(%DateTime{} = dt1, %DateTime{} = dt2) do
+    DateTime.to_date(dt1) == DateTime.to_date(dt2)
+  end
+
+  # Format time in 12-hour format
+  defp format_12_hour_time(datetime) do
+    Calendar.strftime(datetime, "%I:%M %p")
   end
 end

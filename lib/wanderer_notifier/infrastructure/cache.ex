@@ -2,7 +2,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
   @moduledoc """
   Simplified cache module using Cachex directly.
 
-  This replaces the complex Facade → Adapter → Cachex architecture with direct Cachex access.
+  This replaces the complex Facade -> Adapter -> Cachex architecture with direct Cachex access.
   No behaviors, no abstractions - just simple cache operations with domain-specific helpers.
 
   ## Usage Examples
@@ -18,27 +18,29 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
       # Custom TTL
       Cache.put_with_ttl("custom:key", value, :timer.minutes(30))
+
+  ## Key Generation
+
+  Use `Cache.Keys` module for consistent key generation:
+
+      Cache.Keys.character(12345)      # => "esi:character:12345"
+      Cache.Keys.map_systems()         # => "map:systems"
+
+  ## TTL Configuration
+
+  TTL values are managed via `Cache.TtlConfig`:
+
+      Cache.ttl(:character)            # => 86400000 (24 hours)
+      Cache.ttl(:system)               # => 3600000 (1 hour)
   """
 
   require Logger
 
+  alias WandererNotifier.Infrastructure.Cache.Keys
+  alias WandererNotifier.Infrastructure.Cache.TtlConfig
+
   # Cache configuration
   @default_cache_name :wanderer_notifier_cache
-  @default_ttl :timer.hours(24)
-  @namespace_index_key "__namespace_index__"
-  @default_size_limit 10_000
-
-  # TTL configurations
-  @character_ttl :timer.hours(24)
-  @corporation_ttl :timer.hours(24)
-  @alliance_ttl :timer.hours(24)
-  @system_ttl :timer.hours(1)
-  @universe_type_ttl :timer.hours(24)
-  @killmail_ttl :timer.minutes(30)
-  @map_data_ttl :timer.hours(1)
-  @item_price_ttl :timer.hours(6)
-  @license_ttl :timer.minutes(20)
-  @notification_dedup_ttl :timer.minutes(30)
 
   @type cache_key :: String.t()
   @type cache_value :: term()
@@ -51,152 +53,12 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
   def cache_name, do: Application.get_env(:wanderer_notifier, :cache_name, @default_cache_name)
 
-  def cache_size_limit,
-    do: Application.get_env(:wanderer_notifier, :cache_size_limit, @default_size_limit)
-
   def cache_stats_enabled?,
     do: Application.get_env(:wanderer_notifier, :cache_stats_enabled, true)
 
   def default_cache_name, do: @default_cache_name
 
-  # Simplified TTL access - single function with pattern matching
-  def ttl(:character), do: @character_ttl
-  def ttl(:corporation), do: @corporation_ttl
-  def ttl(:alliance), do: @alliance_ttl
-  def ttl(:system), do: @system_ttl
-  def ttl(:universe_type), do: @universe_type_ttl
-  def ttl(:killmail), do: @killmail_ttl
-  def ttl(:map_data), do: @map_data_ttl
-  def ttl(:item_price), do: @item_price_ttl
-  def ttl(:license), do: @license_ttl
-  def ttl(:notification_dedup), do: @notification_dedup_ttl
-  def ttl(:health_check), do: :timer.seconds(1)
-  def ttl(_), do: @default_ttl
-
-  # ============================================================================
-  # Key Generation Functions
-  # ============================================================================
-
-  defmodule Keys do
-    @moduledoc """
-    Centralized cache key generation for consistent naming patterns.
-
-    All cache keys should be generated through these functions to ensure
-    consistency and avoid duplication across the codebase.
-    """
-
-    # ESI-related keys (external API data)
-    def character(id), do: "esi:character:#{id}"
-    def corporation(id), do: "esi:corporation:#{id}"
-    def alliance(id), do: "esi:alliance:#{id}"
-    def system(id), do: "esi:system:#{id}"
-    def system_name(id), do: "esi:system_name:#{id}"
-    def universe_type(id), do: "esi:universe_type:#{id}"
-    def item_price(id), do: "esi:item_price:#{id}"
-
-    # Killmail-related keys
-    def killmail(id), do: "killmail:#{id}"
-    def websocket_dedup(killmail_id), do: "websocket_dedup:#{killmail_id}"
-
-    # Notification keys
-    def notification_dedup(key), do: "notification:dedup:#{key}"
-
-    # Map-related keys
-    def map_systems, do: "map:systems"
-    def map_characters, do: "map:characters"
-
-    # Tracking keys for individual lookups (O(1) performance)
-    def tracked_character(id), do: "tracking:character:#{id}"
-    def tracked_system(id), do: "tracking:system:#{id}"
-    def tracked_systems_list, do: "tracking:systems_list"
-    def tracked_characters_list, do: "tracking:characters_list"
-
-    # Map state keys
-    def map_state(map_slug), do: "map:state:#{map_slug}"
-    def map_subscription_data, do: "map:subscription_data"
-
-    # Domain-specific data keys (using shorter prefixes for better performance)
-    def corporation_data(id), do: "corporation:#{id}"
-    def ship_type(id), do: "ship_type:#{id}"
-    def solar_system(id), do: "solar_system:#{id}"
-
-    # Scheduler keys
-    def scheduler_primed(scheduler_name), do: "scheduler:primed:#{scheduler_name}"
-    def scheduler_data(scheduler_name), do: "scheduler:data:#{scheduler_name}"
-
-    # Status and reporting keys
-    def status_report(minute), do: "status_report:#{minute}"
-
-    # Janice appraisal keys
-    def janice_appraisal(hash), do: "janice:appraisal:#{hash}"
-
-    # License validation keys
-    def license_validation, do: "license_validation_result"
-
-    # Generic helper for custom keys
-    def custom(prefix, suffix), do: "#{prefix}:#{suffix}"
-  end
-
-  # ============================================================================
-  # Cache Size Management
-  # ============================================================================
-
-  @doc """
-  Checks if cache is approaching size limit and triggers eviction if needed.
-  """
-  def check_cache_size do
-    cache_name = cache_name()
-    size_limit = cache_size_limit()
-
-    case Cachex.size(cache_name) do
-      {:ok, current_size} when current_size > size_limit * 0.9 ->
-        Logger.warning("Cache approaching size limit",
-          current_size: current_size,
-          limit: size_limit
-        )
-
-        evict_oldest_entries()
-
-      {:ok, current_size} when current_size > size_limit ->
-        Logger.error("Cache exceeded size limit",
-          current_size: current_size,
-          limit: size_limit
-        )
-
-        evict_oldest_entries(0.3)
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp evict_oldest_entries(percentage \\ 0.1) do
-    cache_name = cache_name()
-
-    case Cachex.keys(cache_name) do
-      {:ok, keys} ->
-        perform_eviction(cache_name, keys, percentage)
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp perform_eviction(cache_name, keys, percentage) do
-    evict_count = max(1, trunc(length(keys) * percentage))
-    Logger.info("Evicting #{evict_count} oldest cache entries")
-
-    keys
-    |> Enum.take_random(evict_count)
-    |> Enum.each(&evict_single_key(cache_name, &1))
-  end
-
-  defp evict_single_key(cache_name, key) do
-    if key != @namespace_index_key do
-      Cachex.del(cache_name, key)
-      remove_from_namespace_index(key)
-    end
-  end
+  defdelegate ttl(type), to: TtlConfig
 
   # ============================================================================
   # Core Cache Operations
@@ -249,7 +111,7 @@ defmodule WandererNotifier.Infrastructure.Cache do
     cache_name = cache_name()
 
     result = put_value_with_ttl(cache_name, key, value, ttl)
-    final_result = handle_put_result(result, key)
+    final_result = handle_put_result(result)
 
     emit_put_telemetry(start_time, key, final_result)
     final_result
@@ -265,17 +127,11 @@ defmodule WandererNotifier.Infrastructure.Cache do
     end
   end
 
-  defp handle_put_result(result, key) do
+  defp handle_put_result(result) do
     case result do
-      {:ok, true} ->
-        update_namespace_index(key)
-        :ok
-
-      {:ok, false} ->
-        {:error, :not_stored}
-
-      error ->
-        error
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :not_stored}
+      error -> error
     end
   end
 
@@ -298,14 +154,14 @@ defmodule WandererNotifier.Infrastructure.Cache do
 
   ## Examples
       iex> Cache.delete("user:123")
-      :ok
+      {:ok, :deleted}
   """
-  @spec delete(cache_key()) :: :ok
+  @spec delete(cache_key()) :: {:ok, :deleted} | {:error, term()}
   def delete(key) when is_binary(key) do
-    Cachex.del(cache_name(), key)
-    # Remove from namespace index
-    remove_from_namespace_index(key)
-    :ok
+    case Cachex.del(cache_name(), key) do
+      {:ok, _} -> {:ok, :deleted}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """
@@ -324,50 +180,17 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   @doc """
-  Atomically updates a counter by incrementing it by the given delta.
-  If the key doesn't exist, initializes it with the delta value.
-  Optionally resets the TTL on update.
+  Clears all entries from the cache.
 
   ## Examples
-      iex> Cache.update_counter("rate_limit:user:123", 1, :timer.minutes(5))
-      {:ok, 1}
-
-      iex> Cache.update_counter("rate_limit:user:123", 1, :timer.minutes(5))
-      {:ok, 2}
+      iex> Cache.clear()
+      {:ok, :cleared}
   """
-  @spec update_counter(cache_key(), integer(), ttl_value()) :: {:ok, integer()} | {:error, term()}
-  def update_counter(key, delta \\ 1, ttl \\ nil) when is_binary(key) and is_integer(delta) do
-    cache_name = cache_name()
-
-    case Cachex.incr(cache_name, key, delta) do
-      {:ok, new_value} ->
-        handle_counter_increment_success(cache_name, key, new_value, ttl)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp handle_counter_increment_success(cache_name, key, new_value, ttl) do
-    if ttl do
-      handle_counter_with_ttl(cache_name, key, new_value, ttl)
-    else
-      update_namespace_index(key)
-      {:ok, new_value}
-    end
-  end
-
-  defp handle_counter_with_ttl(cache_name, key, new_value, ttl) do
-    case Cachex.expire(cache_name, key, ttl) do
-      {:ok, true} ->
-        update_namespace_index(key)
-        {:ok, new_value}
-
-      {:ok, false} ->
-        {:error, :key_not_found}
-
-      {:error, reason} ->
-        {:error, reason}
+  @spec clear() :: {:ok, :cleared} | {:error, term()}
+  def clear do
+    case Cachex.clear(cache_name()) do
+      {:ok, _} -> {:ok, :cleared}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -395,7 +218,6 @@ defmodule WandererNotifier.Infrastructure.Cache do
            handle_windowed_counter_transaction(cache_name, key, window_ms, current_time, ttl)
          end) do
       {:ok, result} ->
-        update_namespace_index(key)
         result
 
       {:error, reason} ->
@@ -463,19 +285,6 @@ defmodule WandererNotifier.Infrastructure.Cache do
       {:ok, true} -> {:ok, value}
       error -> error
     end
-  end
-
-  @doc """
-  Clears all entries from the cache.
-
-  ## Examples
-      iex> Cache.clear()
-      :ok
-  """
-  @spec clear() :: :ok
-  def clear do
-    Cachex.clear(cache_name())
-    :ok
   end
 
   # ============================================================================
@@ -686,27 +495,11 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   @doc """
-  Gets the list of all tracked systems.
-  """
-  @spec get_tracked_systems_list() :: cache_result()
-  def get_tracked_systems_list do
-    get(Keys.tracked_systems_list())
-  end
-
-  @doc """
   Puts the list of tracked systems with 1-hour TTL.
   """
   @spec put_tracked_systems_list(list()) :: :ok | {:error, term()}
   def put_tracked_systems_list(systems) when is_list(systems) do
     put(Keys.tracked_systems_list(), systems, ttl(:system))
-  end
-
-  @doc """
-  Gets the list of all tracked characters.
-  """
-  @spec get_tracked_characters_list() :: cache_result()
-  def get_tracked_characters_list do
-    get(Keys.tracked_characters_list())
   end
 
   @doc """
@@ -718,214 +511,11 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   # ============================================================================
-  # Batch Operations
-  # ============================================================================
-
-  # Helper function to transform cache get results
-  defp transform_cache_result(key, cache_result) do
-    case cache_result do
-      {:ok, nil} -> {key, {:error, :not_found}}
-      {:ok, value} -> {key, {:ok, value}}
-      {:error, reason} -> {key, {:error, reason}}
-    end
-  end
-
-  @doc """
-  Gets multiple values from the cache in a single operation.
-
-  ## Examples
-      iex> Cache.get_batch(["user:1", "user:2", "user:3"])
-      %{
-        "user:1" => {:ok, %{name: "John"}},
-        "user:2" => {:ok, %{name: "Jane"}},
-        "user:3" => {:error, :not_found}
-      }
-  """
-  @spec get_batch([cache_key()]) :: %{cache_key() => cache_result()}
-  def get_batch(keys) when is_list(keys) do
-    cache_name = cache_name()
-
-    # Use Cachex.execute to reduce overhead from multiple process jumps
-    # This executes all get operations in the cache worker context
-    case Cachex.execute(cache_name, &get_batch_results(&1, keys)) do
-      {:ok, results} ->
-        # Convert to map
-        results |> Enum.into(%{})
-
-      {:error, reason} ->
-        Logger.error("Batch get failed", error: inspect(reason))
-        # Return empty results map on error
-        keys
-        |> Enum.map(&{&1, {:error, reason}})
-        |> Enum.into(%{})
-    end
-  end
-
-  defp get_batch_results(worker, keys) do
-    Enum.map(keys, &transform_cache_result(&1, Cachex.get(worker, &1)))
-  end
-
-  @doc """
-  Puts multiple values in the cache in a single operation.
-
-  ## Examples
-      iex> Cache.put_batch([{"user:1", %{name: "John"}}, {"user:2", %{name: "Jane"}}])
-      :ok
-  """
-  @spec put_batch([{cache_key(), cache_value()}]) :: :ok | {:error, term()}
-  def put_batch(entries) when is_list(entries) do
-    put_batch_with_ttl(Enum.map(entries, fn {key, value} -> {key, value, nil} end))
-  end
-
-  @doc """
-  Puts multiple values in the cache with individual TTLs.
-
-  ## Examples
-      iex> Cache.put_batch_with_ttl([
-      ...>   {"session:1", %{user: "John"}, :timer.hours(1)},
-      ...>   {"session:2", %{user: "Jane"}, :timer.hours(2)}
-      ...> ])
-      :ok
-  """
-  @spec put_batch_with_ttl([{cache_key(), cache_value(), ttl_value()}]) :: :ok | {:error, term()}
-  def put_batch_with_ttl(entries) when is_list(entries) do
-    cache_name = cache_name()
-
-    entries
-    |> Enum.group_by(fn {_key, _value, ttl} -> ttl end)
-    |> Enum.map(&put_ttl_group(cache_name, &1))
-    |> validate_batch_results()
-  end
-
-  defp put_ttl_group(cache_name, {ttl, entries}) do
-    key_values = Enum.map(entries, fn {key, value, _ttl} -> {key, value} end)
-
-    case ttl do
-      nil ->
-        Cachex.put_many(cache_name, key_values)
-
-      ttl when is_integer(ttl) or ttl == :infinity ->
-        Cachex.put_many(cache_name, key_values, ttl: ttl)
-    end
-  end
-
-  defp validate_batch_results(results) do
-    case Enum.find(results, &match?({:error, _}, &1)) do
-      nil ->
-        :ok
-
-      error ->
-        Logger.error("Batch put failed", error: inspect(error))
-        error
-    end
-  end
-
-  # ============================================================================
-  # Domain-Specific Batch Helpers
-  # ============================================================================
-
-  @doc """
-  Gets multiple characters from cache in a single operation.
-
-  ## Examples
-      iex> Cache.get_characters_batch([123, 456, 789])
-      %{
-        123 => {:ok, %{name: "Character One"}},
-        456 => {:ok, %{name: "Character Two"}},
-        789 => {:error, :not_found}
-      }
-  """
-  @spec get_characters_batch([integer()]) :: %{integer() => cache_result()}
-  def get_characters_batch(character_ids) when is_list(character_ids) do
-    keys = Enum.map(character_ids, &Keys.character/1)
-    results = get_batch(keys)
-
-    # Map back to character IDs
-    Enum.into(character_ids, %{}, fn id ->
-      key = Keys.character(id)
-      {id, Map.get(results, key, {:error, :not_found})}
-    end)
-  end
-
-  @doc """
-  Puts multiple characters in cache with 24-hour TTL.
-
-  ## Examples
-      iex> Cache.put_characters_batch([{123, %{name: "Char1"}}, {456, %{name: "Char2"}}])
-      :ok
-  """
-  @spec put_characters_batch([{integer(), map()}]) :: :ok | {:error, term()}
-  def put_characters_batch(character_entries) when is_list(character_entries) do
-    entries =
-      Enum.map(character_entries, fn {id, data} ->
-        {Keys.character(id), data, ttl(:character)}
-      end)
-
-    put_batch_with_ttl(entries)
-  end
-
-  @doc """
-  Gets multiple systems from cache in a single operation.
-  """
-  @spec get_systems_batch([integer()]) :: %{integer() => cache_result()}
-  def get_systems_batch(system_ids) when is_list(system_ids) do
-    keys = Enum.map(system_ids, &Keys.system/1)
-    results = get_batch(keys)
-
-    # Map back to system IDs
-    Enum.into(system_ids, %{}, fn id ->
-      key = Keys.system(id)
-      {id, Map.get(results, key, {:error, :not_found})}
-    end)
-  end
-
-  @doc """
-  Puts multiple systems in cache with 1-hour TTL.
-  """
-  @spec put_systems_batch([{integer(), map()}]) :: :ok | {:error, term()}
-  def put_systems_batch(system_entries) when is_list(system_entries) do
-    entries =
-      Enum.map(system_entries, fn {id, data} ->
-        {Keys.system(id), data, ttl(:system)}
-      end)
-
-    put_batch_with_ttl(entries)
-  end
-
-  @doc """
-  Gets multiple universe types from cache in a single operation.
-  """
-  @spec get_universe_types_batch([integer()]) :: %{integer() => cache_result()}
-  def get_universe_types_batch(type_ids) when is_list(type_ids) do
-    keys = Enum.map(type_ids, &Keys.universe_type/1)
-    results = get_batch(keys)
-
-    # Map back to type IDs
-    Enum.into(type_ids, %{}, fn id ->
-      key = Keys.universe_type(id)
-      {id, Map.get(results, key, {:error, :not_found})}
-    end)
-  end
-
-  @doc """
-  Puts multiple universe types in cache with 24-hour TTL.
-  """
-  @spec put_universe_types_batch([{integer(), map()}]) :: :ok | {:error, term()}
-  def put_universe_types_batch(type_entries) when is_list(type_entries) do
-    entries =
-      Enum.map(type_entries, fn {id, data} ->
-        {Keys.universe_type(id), data, ttl(:universe_type)}
-      end)
-
-    put_batch_with_ttl(entries)
-  end
-
-  # ============================================================================
   # Convenience Functions
   # ============================================================================
 
   @doc """
-  Puts a value in cache with explicit TTL (alias for put/3 for backward compatibility).
+  Puts a value in cache with explicit TTL (alias for put/3).
 
   ## Examples
       iex> Cache.put_with_ttl("custom:key", value, :timer.minutes(30))
@@ -972,421 +562,34 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   # ============================================================================
-  # Namespace Management
+  # Transaction Support
   # ============================================================================
 
   @doc """
-  Clears all cache entries with keys matching the given namespace prefix.
+  Executes a function within a transactional context for atomic operations.
 
-  ## Options
-    * `:async` - Run as background task (default: false)
-    * `:batch_size` - Number of keys to delete per batch (default: 100)
-    * `:callback` - Function to call when async operation completes
+  Wraps Cachex.transaction/3 to ensure atomic read-modify-write operations.
 
   ## Examples
-      iex> Cache.clear_namespace("esi")
-      {:ok, 42}  # Cleared 42 entries
-
-      iex> Cache.clear_namespace("tracking", async: true)
-      {:ok, :async}  # Started background job
-
-      iex> Cache.clear_namespace("esi", batch_size: 50)
-      {:ok, 42}  # Cleared in smaller batches
+      iex> Cache.transaction(["key1", "key2"], fn -> :some_operation end)
+      {:ok, :some_operation}
   """
-  @spec clear_namespace(String.t(), keyword()) :: {:ok, integer() | :async} | {:error, term()}
-  def clear_namespace(namespace, opts \\ []) when is_binary(namespace) do
-    async = Keyword.get(opts, :async, false)
-    batch_size = Keyword.get(opts, :batch_size, 100)
-    callback = Keyword.get(opts, :callback)
-
-    case async do
-      true ->
-        start_async_clear_namespace(namespace, batch_size, callback)
-        {:ok, :async}
-
-      false ->
-        do_clear_namespace(namespace, batch_size)
-    end
-  end
-
-  defp start_async_clear_namespace(namespace, batch_size, callback) do
-    Task.start(fn ->
-      result = do_clear_namespace(namespace, batch_size)
-
-      execute_callback_if_present(callback, namespace, result)
-
-      Logger.info("Background namespace clear completed",
-        namespace: namespace,
-        result: inspect(result)
-      )
-    end)
-  end
-
-  defp execute_callback_if_present(callback, namespace, result) do
-    if callback && is_function(callback, 2) do
-      callback.(namespace, result)
-    end
-  end
-
-  defp do_clear_namespace(namespace, batch_size) do
-    cache_name = cache_name()
-
-    try do
-      # Get all keys matching the namespace using optimized method
-      matching_keys = get_keys_by_namespace_optimized(namespace)
-
-      # Delete in batches to avoid blocking
-      deleted_count = delete_keys_in_batches(cache_name, matching_keys, batch_size)
-
-      {:ok, deleted_count}
-    rescue
-      error ->
-        Logger.error("Failed to clear namespace",
-          namespace: namespace,
-          error: inspect(error)
-        )
-
-        {:error, error}
-    end
-  end
-
-  defp delete_keys_in_batches(cache_name, keys, batch_size) do
-    keys
-    |> Enum.chunk_every(batch_size)
-    |> Enum.reduce(0, fn batch, acc ->
-      delete_batch_keys(cache_name, batch)
-      maybe_add_batch_delay(batch, batch_size)
-      acc + length(batch)
-    end)
-  end
-
-  defp delete_batch_keys(cache_name, batch) do
-    Cachex.execute(cache_name, fn cache ->
-      Enum.each(batch, &delete_single_key(cache, &1))
-    end)
-  end
-
-  defp delete_single_key(cache, key) do
-    Cachex.del!(cache, key)
-    remove_from_namespace_index(key)
-  end
-
-  defp maybe_add_batch_delay(batch, batch_size) do
-    if length(batch) == batch_size do
-      :timer.sleep(5)
-    end
+  @spec transaction([cache_key()], (-> term())) :: {:ok, term()} | {:error, term()}
+  def transaction(keys, fun) when is_list(keys) and is_function(fun, 0) do
+    Cachex.transaction(cache_name(), keys, fun)
   end
 
   @doc """
-  Gets statistics for a specific namespace.
+  Streams all keys from the cache.
+
+  Wraps Cachex.stream!/2 with of: :key option.
 
   ## Examples
-      iex> Cache.get_namespace_stats("esi")
-      %{
-        count: 150,
-        size_bytes: 524288,
-        oldest_entry: ~U[2024-01-01 12:00:00Z],
-        newest_entry: ~U[2024-01-02 15:30:00Z]
-      }
+      iex> Cache.stream_keys() |> Enum.take(5)
+      ["key1", "key2", "key3", "key4", "key5"]
   """
-  @spec get_namespace_stats(String.t()) :: map()
-  def get_namespace_stats(namespace) when is_binary(namespace) do
-    matching_keys = get_keys_by_namespace(namespace)
-
-    %{
-      count: length(matching_keys),
-      namespace: namespace,
-      sample_keys: Enum.take(matching_keys, 5)
-    }
+  @spec stream_keys() :: Enumerable.t()
+  def stream_keys do
+    Cachex.stream!(cache_name(), of: :key)
   end
-
-  @doc """
-  Lists all namespaces in the cache.
-
-  ## Options
-    * `:use_index` - Use namespace index for faster lookup (default: true)
-
-  ## Examples
-      iex> Cache.list_namespaces()
-      ["esi", "tracking", "notification", "scheduler", "websocket_dedup", "dedup"]
-      
-      iex> Cache.list_namespaces(use_index: false)
-      ["esi", "tracking"]  # Forces scan of all keys
-  """
-  @spec list_namespaces(keyword()) :: [String.t()]
-  def list_namespaces(opts \\ []) do
-    case Keyword.get(opts, :use_index, true) do
-      true -> list_namespaces_with_index()
-      false -> list_namespaces_traditional()
-    end
-  end
-
-  defp list_namespaces_with_index do
-    case get_namespace_index() do
-      {:ok, index} when is_map(index) ->
-        extract_sorted_keys(index)
-
-      _ ->
-        list_namespaces_with_rebuilt_index()
-    end
-  end
-
-  defp list_namespaces_with_rebuilt_index do
-    case do_rebuild_namespace_index() do
-      {:ok, index} ->
-        extract_sorted_keys(index)
-
-      _ ->
-        list_namespaces_traditional()
-    end
-  end
-
-  defp extract_sorted_keys(index) do
-    index
-    |> Map.keys()
-    |> Enum.sort()
-  end
-
-  defp list_namespaces_traditional do
-    cache_name = cache_name()
-
-    # Get all keys and extract namespaces
-    case Cachex.keys(cache_name) do
-      {:ok, keys} ->
-        keys
-        |> Enum.reject(&(&1 == @namespace_index_key))
-        |> Enum.map(&extract_namespace/1)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
-        |> Enum.sort()
-
-      {:error, _} ->
-        []
-    end
-  end
-
-  @doc """
-  Rebuilds the namespace index from scratch.
-
-  This can be useful when the index becomes stale or corrupted.
-
-  ## Examples
-      iex> Cache.rebuild_namespace_index()
-      {:ok, %{"esi" => [...], "tracking" => [...]}}
-  """
-  @spec rebuild_namespace_index() :: {:ok, map()} | {:error, term()}
-  def rebuild_namespace_index do
-    do_rebuild_namespace_index()
-  end
-
-  # ============================================================================
-  # Private Namespace Functions
-  # ============================================================================
-
-  defp get_keys_by_namespace(namespace) do
-    cache_name = cache_name()
-    prefix = "#{namespace}:"
-
-    # Use paginated key fetching
-    get_keys_by_namespace_paginated(cache_name, prefix, [])
-  end
-
-  defp get_keys_by_namespace_optimized(namespace) do
-    # Try to get keys from namespace index first
-    case get_namespace_index() do
-      {:ok, index} when is_map(index) ->
-        Map.get(index, namespace, [])
-
-      _ ->
-        # Fallback to traditional method
-        get_keys_by_namespace(namespace)
-    end
-  end
-
-  # Namespace index management
-  defp get_namespace_index do
-    get(@namespace_index_key)
-  end
-
-  defp update_namespace_index(key) do
-    namespace = extract_namespace(key)
-
-    if namespace do
-      case get_namespace_index() do
-        {:ok, index} when is_map(index) ->
-          updated_keys = [key | Map.get(index, namespace, [])]
-          updated_index = Map.put(index, namespace, Enum.uniq(updated_keys))
-          put(@namespace_index_key, updated_index, :timer.hours(24))
-
-        _ ->
-          # Create new index
-          new_index = %{namespace => [key]}
-          put(@namespace_index_key, new_index, :timer.hours(24))
-      end
-    end
-  end
-
-  defp remove_from_namespace_index(key) do
-    case extract_namespace(key) do
-      nil -> :ok
-      namespace -> update_namespace_index_for_removal(namespace, key)
-    end
-  end
-
-  defp update_namespace_index_for_removal(namespace, key) do
-    case get_namespace_index() do
-      {:ok, index} when is_map(index) ->
-        updated_keys =
-          index
-          |> Map.get(namespace, [])
-          |> Enum.reject(&(&1 == key))
-
-        updated_index = build_updated_index(index, namespace, updated_keys)
-        put(@namespace_index_key, updated_index, :timer.hours(24))
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp build_updated_index(index, namespace, updated_keys) do
-    if Enum.empty?(updated_keys) do
-      Map.delete(index, namespace)
-    else
-      Map.put(index, namespace, updated_keys)
-    end
-  end
-
-  defp do_rebuild_namespace_index do
-    cache_name = cache_name()
-
-    case Cachex.keys(cache_name) do
-      {:ok, keys} ->
-        # Filter out the index key itself
-        actual_keys = Enum.reject(keys, &(&1 == @namespace_index_key))
-
-        # Build namespace index
-        index =
-          actual_keys
-          |> Enum.group_by(&extract_namespace/1)
-          |> Enum.reject(fn {namespace, _} -> is_nil(namespace) end)
-          |> Enum.into(%{})
-
-        put(@namespace_index_key, index, :timer.hours(24))
-        {:ok, index}
-
-      error ->
-        error
-    end
-  end
-
-  defp get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor \\ nil) do
-    namespace = extract_namespace(prefix)
-
-    if namespace do
-      get_keys_with_namespace_index(namespace, prefix, accumulator, cache_name, cursor)
-    else
-      get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
-    end
-  end
-
-  defp get_keys_with_namespace_index(namespace, prefix, accumulator, cache_name, cursor) do
-    case get_namespace_index() do
-      {:ok, index} when is_map(index) ->
-        get_keys_from_namespace_index(index, namespace, prefix, accumulator)
-
-      {:error, :not_found} ->
-        handle_missing_namespace_index(cache_name, prefix, accumulator, cursor)
-
-      _ ->
-        get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor)
-    end
-  end
-
-  defp get_keys_from_namespace_index(index, namespace, prefix, accumulator) do
-    namespace_keys = Map.get(index, namespace, [])
-    matching_keys = Enum.filter(namespace_keys, &String.starts_with?(&1, prefix))
-    accumulator ++ matching_keys
-  end
-
-  defp handle_missing_namespace_index(cache_name, prefix, accumulator, cursor) do
-    case rebuild_namespace_index() do
-      {:ok, _} -> get_keys_by_namespace_paginated(cache_name, prefix, accumulator, cursor)
-      _ -> accumulator
-    end
-  end
-
-  defp get_keys_by_namespace_paginated_fallback(cache_name, prefix, accumulator, cursor) do
-    # Fetch keys in batches of 1000
-    batch_size = 1000
-
-    case fetch_keys_batch(cache_name, cursor, batch_size) do
-      {:ok, keys, nil} ->
-        # Last batch
-        matching_keys = Enum.filter(keys, &String.starts_with?(&1, prefix))
-        accumulator ++ matching_keys
-
-      {:ok, keys, next_cursor} ->
-        # More batches available
-        matching_keys = Enum.filter(keys, &String.starts_with?(&1, prefix))
-
-        get_keys_by_namespace_paginated_fallback(
-          cache_name,
-          prefix,
-          accumulator ++ matching_keys,
-          next_cursor
-        )
-
-      {:error, _} ->
-        accumulator
-    end
-  end
-
-  defp fetch_keys_batch(cache_name, cursor, batch_size) do
-    # Use namespace index for efficient key retrieval instead of loading all keys
-    case get_namespace_index() do
-      {:ok, index} when is_map(index) ->
-        # Flatten all keys from namespace index
-        all_keys =
-          index
-          |> Map.values()
-          |> List.flatten()
-          |> Enum.sort()
-
-        start_index = cursor || 0
-        keys_batch = Enum.slice(all_keys, start_index, batch_size)
-
-        next_cursor =
-          if length(keys_batch) < batch_size do
-            nil
-          else
-            start_index + batch_size
-          end
-
-        {:ok, keys_batch, next_cursor}
-
-      {:error, :not_found} ->
-        # Fallback: rebuild index if it doesn't exist
-        case rebuild_namespace_index() do
-          {:ok, index} when is_map(index) ->
-            # Retry with newly built index
-            fetch_keys_batch(cache_name, cursor, batch_size)
-
-          error ->
-            error
-        end
-
-      error ->
-        error
-    end
-  end
-
-  defp extract_namespace(key) when is_binary(key) do
-    case String.split(key, ":", parts: 2) do
-      [namespace, _rest] -> namespace
-      _ -> nil
-    end
-  end
-
-  defp extract_namespace(_), do: nil
 end

@@ -74,17 +74,37 @@ lib/wanderer_notifier/
 │   │   ├── entities/                 # Character and System entities
 │   │   ├── services/                 # Tracking services
 │   │   └── handlers/                 # Event handlers
+│   │       ├── character_handler.ex  # Character event handling
+│   │       ├── system_handler.ex     # System event handling
+│   │       ├── generic_event_handler.ex # Shared handler logic
+│   │       ├── shared_event_logic.ex # Common event utilities
+│   │       └── event_handler_behaviour.ex # Handler behaviour
 │   ├── notifications/                # Notification handling
 │   │   ├── entities/                 # Notification entities
 │   │   ├── services/                 # Notification logic
 │   │   ├── formatters/               # Message formatters
 │   │   └── discord/                  # Discord integration
+│   │       ├── notifier.ex           # Main notification dispatcher
+│   │       ├── neo_client.ex         # Discord API client
+│   │       ├── channel_resolver.ex   # Channel routing logic
+│   │       ├── enrichment_helper.ex  # System name enrichment
+│   │       ├── component_builder.ex  # UI component construction
+│   │       ├── feature_flags.ex      # Feature flag checks
+│   │       ├── constants.ex          # Discord constants
+│   │       ├── connection_health.ex  # Connection monitoring
+│   │       └── discord_behaviour.ex  # Behaviour definition
 │   └── license/                      # License management
-│       ├── entities/                 # License entities
-│       └── services/                 # License validation
+│       ├── license.ex                # License entity
+│       ├── license_service.ex        # License business logic
+│       ├── license_validator.ex      # Pure validation functions
+│       └── license_client.ex         # HTTP client for license API
 ├── infrastructure/                   # Technical infrastructure
 │   ├── http.ex                       # Unified HTTP client with middleware
-│   ├── cache.ex                      # Simplified caching (single module)
+│   ├── cache.ex                      # Main cache interface
+│   ├── cache/                        # Cache submodules
+│   │   ├── keys.ex                   # Centralized cache key generation
+│   │   ├── ttl_config.ex             # TTL configuration
+│   │   └── deduplication.ex          # Notification deduplication
 │   ├── adapters/                     # External service adapters
 │   │   ├── esi/                      # EVE Swagger Interface
 │   │   └── janice/                   # Janice pricing
@@ -108,7 +128,7 @@ lib/wanderer_notifier/
 - **Clients**: `*_client.ex` (e.g., `discord_client.ex`, `sse_client.ex`)
 - **Handlers**: `*_handler.ex` (e.g., `character_event_handler.ex`)
 - **Entities**: Plain names (e.g., `killmail.ex`, `character.ex`, `system.ex`)
-- **Utilities**: `*_utils.ex` in `utils/` directories (e.g., `formatter_utils.ex`, `http_utils.ex`)
+- **Utilities**: `*_utils.ex` in `utils/` directories (e.g., `http_utils.ex`, `notification_utils.ex`)
 - **Behaviours**: `*_behaviour.ex` (e.g., `cache_behaviour.ex`)
 - **Middleware**: `*_middleware.ex` (e.g., `retry_middleware.ex`)
 - **Formatters**: `*_formatter.ex` (e.g., `killmail_formatter.ex`)
@@ -149,8 +169,10 @@ The reorganized codebase follows DDD patterns for better maintainability:
   - Built-in authentication (Bearer, API Key, Basic)
   - Middleware pipeline (Telemetry, RateLimiter, Retry, CircuitBreaker)
   - Automatic JSON encoding/decoding
-- **Simplified Cache System**: Consolidated to single module:
-  - `infrastructure/cache.ex`: Direct Cachex wrapper with domain-specific helpers and consistent key generation
+- **Cache System** (`lib/wanderer_notifier/infrastructure/cache.ex`): Cachex wrapper with supporting modules:
+  - `cache/keys.ex`: Centralized cache key generation with consistent patterns
+  - `cache/ttl_config.ex`: TTL configuration for different data types
+  - `cache/deduplication.ex`: Notification deduplication logic
 - **Simple Dependency Resolution** (`lib/wanderer_notifier/shared/dependencies.ex`): Lightweight function-based dependency injection replacing complex GenServer registry
 - **Lightweight Application Service** (`lib/wanderer_notifier/application/services/simple_application_service.ex`): Minimal coordinator with focused responsibilities
 - **Modular Metrics & Health** (`lib/wanderer_notifier/shared/metrics.ex`, `lib/wanderer_notifier/shared/health.ex`): Agent-based metrics and process-based health checks
@@ -253,7 +275,11 @@ The codebase has completed major reorganization phases and architecture simplifi
 - **Application Service**: Simplified from complex 340+ line GenServer to focused coordinator
 - **Configuration**: Removed macro-based system for direct Application.get_env access
 - **Directory Cleanup**: Removed 10+ empty domain directories and unused abstractions
-- **Quality**: All tests passing (348 tests), credo clean, full compilation success
+- **Unused Dependencies Removed**: Cleaned up mix.exs by removing decimal, slipstream, crontab, and ecto
+- **Cache Modularization**: Extracted cache key generation and TTL config into dedicated modules
+- **License Domain Refactoring**: Split into license_validator.ex (pure functions) and license_client.ex (HTTP)
+- **Discord Helpers**: Added channel_resolver.ex and enrichment_helper.ex for cleaner separation
+- **Quality**: All tests passing, credo clean, full compilation success
 
 ### Current Architecture State
 The application now represents a mature, production-ready architecture with:
@@ -270,6 +296,7 @@ The application now represents a mature, production-ready architecture with:
 - Functions return `{:ok, result}` or `{:error, reason}` tuples
 - Use pattern matching for control flow
 - Errors are logged via centralized Logger module
+- **Exception**: Simple boolean predicates (functions ending in `?`) may return `boolean()` directly when used for straightforward validation checks. Examples: `license_key_present?/0`, `bot_token_assigned?/0`, `should_use_dev_mode?/0`
 
 ### HTTP Client Usage (Unified Infrastructure)
 All HTTP requests go through the unified `WandererNotifier.Infrastructure.Http` module which provides:
@@ -311,12 +338,15 @@ Service configurations:
 - `:streaming` - Infinite timeout, no retries, no middleware
 
 ### Caching Strategy (Unified Infrastructure)
-Direct cache access via `WandererNotifier.Infrastructure.Cache`:
+Direct cache access via `WandererNotifier.Infrastructure.Cache` with supporting modules:
+- **Cache.Keys** (`cache/keys.ex`): Centralized key generation with consistent patterns
+- **Cache.TtlConfig** (`cache/ttl_config.ex`): TTL configuration for different data types
+- **Cache.Deduplication** (`cache/deduplication.ex`): Notification deduplication logic
+
+Default TTL values (configurable via TtlConfig):
 - Character/corporation/alliance data: 24-hour TTL
 - System information: 1-hour TTL
 - Notification deduplication: 30-minute window
-- Direct Cachex access with domain-specific helpers
-- Consistent key generation built into cache module
 
 Example usage:
 ```elixir
@@ -329,8 +359,9 @@ Cache.get_killmail(killmail_id)
 Cache.get("custom:key")
 Cache.put("custom:key", value, :timer.hours(1))
 
-# Cache module handles all key generation internally
-# Keys follow pattern: "namespace:type:id" (e.g., "esi:character:123")
+# Key generation via Cache.Keys module
+Cache.Keys.character(character_id)  # => "esi:character:123"
+Cache.Keys.system(system_id)        # => "esi:system:456"
 ```
 
 ### Feature Flags
@@ -343,13 +374,15 @@ Features can be toggled via environment variables ending in `_ENABLED`:
 - `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications (default: true)
 - `STATUS_MESSAGES_ENABLED` - Enable/disable startup status messages (default: false)
 - `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
-- `PRIORITY_SYSTEMS_ONLY` - Only send notifications for priority systems (default: false)
-- `WORMHOLE_ONLY_KILL_NOTIFICATIONS` - Only send kill notifications for wormhole systems (default: false)
+- `PRIORITY_SYSTEMS_ONLY_ENABLED` - Only send notifications for priority systems (default: false)
+- `WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED` - Only send kill notifications for wormhole systems (default: false)
 
-### Exclusion Lists
+### Corporation Kill Focus
 
-- `CORPORATION_EXCLUDE_LIST` - Comma-separated list of corporation IDs to exclude from system kill channel notifications. Any killmail where the victim OR any attacker belongs to these corporations will be excluded from the system kill channel (if configured). This exclusion only applies when `DISCORD_SYSTEM_KILL_CHANNEL_ID` is set; character kill notifications are not affected.
-- `CHARACTER_TRACKING_CORPORATION_IDS` - Comma-separated list of corporation IDs. When set, only kills where a tracked character belongs to one of these corporations will go to the character kill channel. Kills not matching will still be evaluated for the system kill channel. When empty/unset, all tracked character kills go to the character kill channel.
+- `CORPORATION_KILL_FOCUS` - Comma-separated list of corporation IDs for focused kill routing. When set, kills involving characters from these corporations (as victim or attacker) will:
+  - Be routed to the **character kill channel** (or default channel if not configured)
+  - Be **excluded** from the system kill channel
+  - This is useful for tracking your own corporation's kills separately from general system activity
 
 ### Notification Timing Configuration
 

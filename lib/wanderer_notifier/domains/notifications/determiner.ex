@@ -1,10 +1,9 @@
 defmodule WandererNotifier.Domains.Notifications.Determiner do
   @moduledoc """
-  Unified notification determiner that handles all notification types.
+  Notification determiner that handles all notification types.
 
-  Consolidates the logic for determining whether notifications should be sent
-  for characters, systems, and killmails. Replaces the separate Character,
-  System, and Kill determiner modules with a single, cohesive interface.
+  Determines whether notifications should be sent for characters, systems,
+  and killmails based on feature flags, tracking state, and deduplication.
   """
 
   require Logger
@@ -22,6 +21,43 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
           {:ok, %{should_notify: boolean(), reason: String.t() | atom() | nil}} | {:error, term()}
 
   # ══════════════════════════════════════════════════════════════════════════════
+  # Common Helper Functions
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  # Checks if notifications are suppressed during startup period
+  defp startup_suppressed?, do: Startup.in_suppression_period?()
+
+  # Checks if the feature flag for the given notification type is enabled
+  defp feature_enabled?(:character), do: Config.character_notifications_enabled?()
+  defp feature_enabled?(:system), do: Config.system_notifications_enabled?()
+  defp feature_enabled?(:kill), do: Config.kill_notifications_enabled?()
+  defp feature_enabled?(:rally_point), do: Config.rally_notifications_enabled?()
+
+  # Logs startup suppression for a notification type
+  defp log_startup_suppression(:character, entity_id) do
+    Logger.debug("Character notification suppressed during startup period",
+      character_id: entity_id,
+      category: :notification
+    )
+  end
+
+  defp log_startup_suppression(:system, entity_id) do
+    Logger.debug("System notification suppressed during startup period",
+      system_id: entity_id,
+      category: :notification
+    )
+  end
+
+  # Standard deduplication check returning boolean (for character/rally_point)
+  defp check_dedup_boolean(type, entity_id) do
+    case Deduplication.check(type, entity_id) do
+      {:ok, :new} -> true
+      {:ok, :duplicate} -> false
+      {:error, _reason} -> true
+    end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
   # Main Notification Decision Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
@@ -34,32 +70,26 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     - entity_data: Optional entity data for additional context
 
   ## Returns
-    - true if a notification should be sent
-    - false otherwise
+    - `{:ok, true}` if a notification should be sent
+    - `{:ok, false}` if a notification should not be sent
+    - `{:error, term()}` if an error occurred during the check
   """
-  @spec should_notify?(notification_type(), entity_id()) :: boolean()
-  @spec should_notify?(notification_type(), entity_id(), entity_data()) :: boolean()
+  @spec should_notify?(notification_type(), entity_id()) :: {:ok, boolean()} | {:error, term()}
+  @spec should_notify?(notification_type(), entity_id(), entity_data()) ::
+          {:ok, boolean()} | {:error, term()}
   def should_notify?(type, entity_id, entity_data \\ nil)
 
   def should_notify?(:character, character_id, _character_data) do
     cond do
-      Startup.in_suppression_period?() ->
-        Logger.debug("Character notification suppressed during startup period",
-          character_id: character_id,
-          category: :notification
-        )
+      startup_suppressed?() ->
+        log_startup_suppression(:character, character_id)
+        {:ok, false}
 
-        false
-
-      not Config.character_notifications_enabled?() ->
-        false
+      not feature_enabled?(:character) ->
+        {:ok, false}
 
       true ->
-        case Deduplication.check(:character, character_id) do
-          {:ok, :new} -> true
-          {:ok, :duplicate} -> false
-          {:error, _reason} -> true
-        end
+        {:ok, check_dedup_boolean(:character, character_id)}
     end
   end
 
@@ -67,53 +97,50 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
     is_priority = priority_system?(system_data)
 
     cond do
-      Startup.in_suppression_period?() ->
-        Logger.debug("System notification suppressed during startup period",
-          system_id: system_id,
-          category: :notification
-        )
+      startup_suppressed?() ->
+        log_startup_suppression(:system, system_id)
+        {:ok, false}
 
-        false
-
-      not Config.system_notifications_enabled?() and not is_priority ->
+      not feature_enabled?(:system) and not is_priority ->
         Logger.debug("System notification skipped - notifications disabled and not priority",
           system_id: system_id,
           category: :notification
         )
 
-        false
+        {:ok, false}
 
       true ->
-        check_system_deduplication(system_id, is_priority)
+        {:ok, check_system_deduplication(system_id, is_priority)}
     end
   end
 
   def should_notify?(:kill, _killmail_id, killmail_data) do
     # For killmails, we delegate to the specialized killmail logic
-    should_notify_killmail?(killmail_data)
+    # Convert the rich format to simple boolean
+    case should_notify_killmail?(killmail_data) do
+      {:ok, %{should_notify: should_notify}} -> {:ok, should_notify}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def should_notify?(:rally_point, rally_id, _rally_data) do
     cond do
-      Startup.in_suppression_period?() ->
-        false
-
-      not Config.rally_notifications_enabled?() ->
-        false
-
-      true ->
-        case Deduplication.check(:rally_point, rally_id) do
-          {:ok, :new} -> true
-          {:ok, :duplicate} -> false
-          {:error, _reason} -> true
-        end
+      startup_suppressed?() -> {:ok, false}
+      not feature_enabled?(:rally_point) -> {:ok, false}
+      true -> {:ok, check_dedup_boolean(:rally_point, rally_id)}
     end
   end
 
   defp check_system_deduplication(system_id, is_priority) do
     case Deduplication.check(:system, system_id) do
       {:ok, :new} ->
-        log_priority_system_notification(system_id, is_priority)
+        if is_priority,
+          do:
+            Logger.info("Priority system notification will be sent",
+              system_id: system_id,
+              category: :notification
+            )
+
         true
 
       {:ok, :duplicate} ->
@@ -130,15 +157,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
         true
     end
   end
-
-  defp log_priority_system_notification(system_id, true) do
-    Logger.info("Priority system notification will be sent",
-      system_id: system_id,
-      category: :notification
-    )
-  end
-
-  defp log_priority_system_notification(_system_id, false), do: :ok
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Killmail-Specific Logic (from Kill determiner)
@@ -237,17 +255,14 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   @doc """
   Checks if a character is being tracked.
   """
-  def tracked_character?(character_id) when is_integer(character_id) do
-    character_id_str = Integer.to_string(character_id)
-    tracked_character?(character_id_str)
-  end
+  def tracked_character?(character_id) when is_integer(character_id),
+    do: tracked_character?(Integer.to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
-           character_id_str
-         ) do
-      {:ok, tracked} -> tracked
-    end
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
+
+    tracked
   end
 
   def tracked_character?(_), do: false
@@ -255,15 +270,16 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   @doc """
   Checks if a system is being tracked.
   """
-  def tracked_system?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    tracked_system?(system_id_str)
-  end
+  def tracked_system?(system_id) when is_integer(system_id),
+    do: tracked_system?(Integer.to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
-      {:ok, tracked} -> tracked
-    end
+    # MapTrackingClient.is_system_tracked?/1 always returns {:ok, boolean()}
+    # It handles cache errors internally and returns false on any failure
+    {:ok, tracked} =
+      WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str)
+
+    tracked
   end
 
   def tracked_system?(_), do: false
@@ -277,7 +293,6 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   """
   def changed?(:character, character_id, new_data), do: character_changed?(character_id, new_data)
   def changed?(:system, system_id, new_data), do: system_changed?(system_id, new_data)
-  # Killmails are always considered "changed"
   def changed?(:kill, _, _), do: true
 
   @doc """
@@ -285,16 +300,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   """
   def character_changed?(character_id, new_data)
       when (is_binary(character_id) or is_integer(character_id)) and not is_nil(new_data) do
-    case Cache.get_character(character_id) do
-      {:ok, old_data} when old_data != nil ->
-        old_data != new_data
-
-      {:error, :not_found} ->
-        true
-
-      _ ->
-        true
-    end
+    check_cache_changed(Cache.get_character(character_id), new_data)
   end
 
   def character_changed?(_, _), do: false
@@ -303,17 +309,14 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   Checks if a system's data has changed from what's in cache.
   """
   def system_changed?(system_id, new_data) do
-    case Cache.get_system(system_id) do
-      {:ok, old_data} when old_data != nil ->
-        old_data != new_data
-
-      {:error, :not_found} ->
-        true
-
-      _ ->
-        true
-    end
+    check_cache_changed(Cache.get_system(system_id), new_data)
   end
+
+  # Common helper for cache change detection
+  defp check_cache_changed({:ok, old_data}, new_data) when old_data != nil,
+    do: old_data != new_data
+
+  defp check_cache_changed(_, _), do: true
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Killmail-Specific Helper Functions (from Kill determiner)
@@ -332,48 +335,34 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   """
   def has_tracked_character?(%Killmail{} = killmail) do
     victim_id = Killmail.get_victim_character_id(killmail)
-    attackers = Killmail.get_attacker(killmail)
-    attacker_ids = Enum.map(attackers, &Map.get(&1, "character_id"))
-
-    tracked_character?(victim_id) or Enum.any?(attacker_ids, &tracked_character?/1)
+    attacker_ids = killmail |> Killmail.get_attacker() |> Enum.map(&Map.get(&1, "character_id"))
+    any_tracked_character?(victim_id, attacker_ids)
   end
 
   def has_tracked_character?(%{"victim" => victim, "attackers" => attackers}) do
-    victim_id = get_in(victim, ["character_id"])
     attacker_ids = Enum.map(attackers, &get_in(&1, ["character_id"]))
-
-    tracked_character?(victim_id) or Enum.any?(attacker_ids, &tracked_character?/1)
+    any_tracked_character?(get_in(victim, ["character_id"]), attacker_ids)
   end
 
   def has_tracked_character?(%{victim: victim, attackers: attackers}) do
-    victim_id = Map.get(victim, :character_id)
     attacker_ids = Enum.map(attackers, &Map.get(&1, :character_id))
-
-    tracked_character?(victim_id) or Enum.any?(attacker_ids, &tracked_character?/1)
+    any_tracked_character?(Map.get(victim, :character_id), attacker_ids)
   end
+
+  defp any_tracked_character?(victim_id, attacker_ids),
+    do: tracked_character?(victim_id) or Enum.any?(attacker_ids, &tracked_character?/1)
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Private Helper Functions
   # ══════════════════════════════════════════════════════════════════════════════
 
   # Checks if a system is marked as a priority system.
-  # Priority systems are identified by hashing the system name and checking against
-  # the stored priority system list. This allows priority system notifications to
-  # bypass the system_notifications_enabled? check.
   defp priority_system?(nil), do: false
 
   defp priority_system?(system_data) when is_map(system_data) do
-    # Extract system name from various possible structures
-    system_name = extract_system_name(system_data)
-
-    case system_name do
-      nil ->
-        false
-
-      name when is_binary(name) ->
-        system_hash = :erlang.phash2(name)
-        priority_systems = PersistentValues.get(:priority_systems)
-        system_hash in priority_systems
+    case extract_system_name(system_data) do
+      name when is_binary(name) -> :erlang.phash2(name) in PersistentValues.get(:priority_systems)
+      _ -> false
     end
   end
 
@@ -382,34 +371,27 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   # Extract system name from various data structures
   defp extract_system_name(%{name: name}) when is_binary(name), do: name
   defp extract_system_name(%{"name" => name}) when is_binary(name), do: name
-
   defp extract_system_name(%{solar_system_name: name}) when is_binary(name), do: name
-
   defp extract_system_name(%{"solar_system_name" => name}) when is_binary(name), do: name
-
   defp extract_system_name(_), do: nil
 
   defp check_killmail_notification(killmail_id, system_id, victim_character_id) do
     cond do
-      Startup.in_suppression_period?() ->
+      startup_suppressed?() ->
         {:ok, %{should_notify: false, reason: :startup_suppression}}
 
-      not Config.kill_notifications_enabled?() ->
+      not feature_enabled?(:kill) ->
         {:ok, %{should_notify: false, reason: :kill_notifications_disabled}}
 
-      has_tracked_system_or_character?(system_id, victim_character_id) ->
-        check_deduplication(killmail_id)
+      tracked_system_for_killmail?(system_id) or tracked_character?(victim_character_id) ->
+        check_killmail_deduplication(killmail_id)
 
       true ->
         {:ok, %{should_notify: false, reason: :no_tracked_entities}}
     end
   end
 
-  defp has_tracked_system_or_character?(system_id, victim_character_id) do
-    tracked_system_for_killmail?(system_id) or tracked_character?(victim_character_id)
-  end
-
-  defp check_deduplication(killmail_id) do
+  defp check_killmail_deduplication(killmail_id) do
     case Deduplication.check(:kill, killmail_id) do
       {:ok, :new} ->
         {:ok, %{should_notify: true, reason: :new_killmail}}

@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Shared.Utils.EntityUtils do
   @moduledoc """
-  Centralized entity ID extraction and validation utilities.
+  Entity ID extraction and validation utilities.
 
-  This module consolidates all ID extraction, normalization, and validation logic
-  to ensure consistent handling of EVE Online entity IDs across the application.
+  Provides consistent handling of EVE Online entity IDs (systems, characters,
+  corporations, alliances) across the application.
   """
 
   # EVE Online ID ranges
@@ -37,9 +37,12 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   """
   @spec extract_system_id(any()) :: integer() | nil
   def extract_system_id(system) when is_struct(system) do
-    Map.get(system, :solar_system_id) ||
-      Map.get(system, :system_id) ||
-      Map.get(system, :id)
+    value =
+      Map.get(system, :solar_system_id) ||
+        Map.get(system, :system_id) ||
+        Map.get(system, :id)
+
+    normalize_id(value)
   end
 
   def extract_system_id(system) when is_map(system) do
@@ -89,21 +92,25 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   """
   @spec extract_character_id(any()) :: integer() | nil
   def extract_character_id(data) when is_map(data) do
-    # Handle nested character structure
-    if is_map(data["character"]) and data["character"]["eve_id"] do
-      normalize_id(data["character"]["eve_id"])
-    else
-      # Handle flat structure with various key formats
-      value =
-        data["character_id"] || data[:character_id] ||
-          data["eve_id"] || data[:eve_id] ||
-          data["id"] || data[:id]
-
-      normalize_id(value)
-    end
+    do_extract_character_id(data)
   end
 
   def extract_character_id(_), do: nil
+
+  # Handle nested character structure
+  defp do_extract_character_id(%{"character" => %{"eve_id" => eve_id}}) do
+    normalize_id(eve_id)
+  end
+
+  # Handle flat structure with various key formats
+  defp do_extract_character_id(data) do
+    value =
+      data["character_id"] || data[:character_id] ||
+        data["eve_id"] || data[:eve_id] ||
+        data["id"] || data[:id]
+
+    normalize_id(value)
+  end
 
   @doc """
   Validates if a character ID is within EVE Online's valid range.
@@ -191,30 +198,62 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   """
   @spec get_value(map(), String.t() | atom()) :: any()
   def get_value(data, key) when is_map(data) and is_binary(key) do
-    data[key] || data[String.to_atom(key)]
+    case Map.fetch(data, key) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        atom_key = String.to_existing_atom(key)
+        Map.get(data, atom_key)
+    end
+  rescue
+    ArgumentError -> nil
   end
 
   def get_value(data, key) when is_map(data) and is_atom(key) do
-    data[key] || data[Atom.to_string(key)]
+    case Map.fetch(data, key) do
+      {:ok, value} -> value
+      :error -> Map.get(data, Atom.to_string(key))
+    end
   end
 
   def get_value(_, _), do: nil
 
   @doc """
-  Normalizes an ID value to integer or nil.
+  Normalizes an ID value to integer or nil with strict validation.
 
-  Handles strings, integers, and floats.
+  Handles strings, integers, and floats. For string inputs, requires an exact
+  numeric match - the entire string must be a valid integer with no trailing
+  characters.
+
+  **Important:** Use this function when you need strict ID validation (e.g.,
+  validating entity IDs from API responses). For more lenient parsing that
+  extracts leading digits from strings with trailing characters, use
+  `parse_integer/2` instead.
+
+  ## Behavior Comparison
+
+  | Input       | `normalize_id/1` | `parse_integer/1` |
+  |-------------|------------------|-------------------|
+  | `123`       | `123`            | `123`             |
+  | `"123"`     | `123`            | `123`             |
+  | `"123abc"`  | `nil`            | `123`             |
+  | `"abc123"`  | `nil`            | `nil` (default)   |
+  | `"invalid"` | `nil`            | `nil` (default)   |
 
   ## Examples
       iex> normalize_id(123)
       123
-      
+
       iex> normalize_id("123")
       123
-      
+
       iex> normalize_id(123.0)
       123
-      
+
+      iex> normalize_id("123abc")
+      nil
+
       iex> normalize_id("invalid")
       nil
   """
@@ -232,14 +271,39 @@ defmodule WandererNotifier.Shared.Utils.EntityUtils do
   def normalize_id(_), do: nil
 
   @doc """
-  Parses a value to integer with optional default.
+  Parses a value to integer with optional default using lenient parsing.
+
+  Unlike `normalize_id/1`, this function extracts the leading integer portion
+  from a string even if it contains trailing non-numeric characters. This is
+  useful when parsing values that may have units or other suffixes (e.g., "100px",
+  "50%").
+
+  **Important:** Use `normalize_id/1` instead when you need strict validation
+  that rejects strings with trailing characters (e.g., validating EVE Online
+  entity IDs).
+
+  ## Behavior Comparison
+
+  | Input       | `parse_integer/1` | `normalize_id/1` |
+  |-------------|-------------------|------------------|
+  | `123`       | `123`             | `123`            |
+  | `"123"`     | `123`             | `123`            |
+  | `"123abc"`  | `123`             | `nil`            |
+  | `"abc123"`  | `nil` (default)   | `nil`            |
+  | `"invalid"` | `nil` (default)   | `nil`            |
 
   ## Examples
       iex> parse_integer("123")
       123
-      
+
+      iex> parse_integer("123abc")
+      123
+
       iex> parse_integer("invalid", 0)
       0
+
+      iex> parse_integer(nil, -1)
+      -1
   """
   @spec parse_integer(any(), integer() | nil) :: integer() | nil
   def parse_integer(value, default \\ nil)

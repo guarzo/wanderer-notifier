@@ -3,10 +3,10 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   require Logger
 
   @moduledoc """
-  Unified rate limiting for HTTP middleware and general-purpose operations.
+  Rate limiting for HTTP middleware and general-purpose operations.
 
-  This module provides both HTTP middleware functionality for request pipeline
-  integration and general-purpose rate limiting utilities with exponential backoff.
+  Provides HTTP middleware functionality for request pipeline integration
+  and general-purpose rate limiting utilities with exponential backoff.
 
   ## HTTP Middleware Features
   - Efficient rate limiting via Hammer library
