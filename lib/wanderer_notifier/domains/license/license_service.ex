@@ -15,7 +15,7 @@ defmodule WandererNotifier.Domains.License.LicenseService do
   alias WandererNotifier.Domains.License.LicenseClient
 
   # Define the behaviour callbacks
-  @callback validate() :: map()
+  @callback validate() :: {:ok, map()} | {:error, atom() | {atom(), any()}}
   @callback status() :: map()
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -80,31 +80,36 @@ defmodule WandererNotifier.Domains.License.LicenseService do
 
   @doc """
   Validates the license key.
-  Returns a map with license status information.
+
+  Returns `{:ok, result}` on successful validation where `result` is a map
+  with license status information, or `{:error, reason}` on failure.
+
+  ## Returns
+
+  - `{:ok, map()}` - Successful validation with license state
+  - `{:error, :timeout}` - Validation timed out
+  - `{:error, {:exception, term()}}` - Exception during validation
+  - `{:error, {:unexpected, term()}}` - Unexpected validation result
   """
   def validate do
     with {:ok, result} <- safe_validate_call(),
          {:ok, validated_result} <- LicenseValidator.valid_result?(result) do
-      validated_result
+      {:ok, validated_result}
     else
       {:error, :timeout} ->
         Logger.error("License validation timed out", category: :config)
-        LicenseValidator.default_error_state(:timeout, "License validation timed out")
+        {:error, :timeout}
 
       {:error, {:exception, e}} ->
         Logger.error("Error in license validation: #{inspect(e)}", category: :config)
-
-        LicenseValidator.default_error_state(
-          :exception,
-          "License validation error: #{inspect(e)}"
-        )
+        {:error, {:exception, e}}
 
       {:error, {:unexpected, result}} ->
         Logger.error("Unexpected result from license validation: #{inspect(result)}",
           category: :config
         )
 
-        LicenseValidator.default_error_state(:unexpected_result, "Unexpected validation result")
+        {:error, {:unexpected, result}}
     end
   end
 
@@ -473,10 +478,9 @@ defmodule WandererNotifier.Domains.License.LicenseService do
     license_valid = LicenseValidator.extract_license_valid(response)
     message = LicenseValidator.extract_message(response)
 
-    if license_valid do
-      create_valid_license_state(response, state)
-    else
-      create_invalid_license_state(response, message, state)
+    case license_valid do
+      true -> create_valid_license_state(response, state)
+      false -> create_invalid_license_state(response, message, state)
     end
   end
 

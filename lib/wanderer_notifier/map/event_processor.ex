@@ -219,20 +219,28 @@ defmodule WandererNotifier.Map.EventProcessor do
   end
 
   defp handle_character_event("character_updated", event, map_slug) do
-    # Add defensive logging to see what's in the event
-    payload = Map.get(event, "payload", %{})
-
-    if map_size(payload) == 0 do
-      Logger.warning("Character updated event has empty payload",
-        map_slug: map_slug,
-        event_id: Map.get(event, "id"),
-        event_keys: Map.keys(event)
-      )
-    end
+    log_empty_character_payload(event, map_slug)
 
     WandererNotifier.Domains.Tracking.Handlers.CharacterHandler.handle_entity_updated(
       event,
       map_slug
+    )
+  end
+
+  defp log_empty_character_payload(%{"payload" => payload}, map_slug)
+       when payload == %{} or payload == nil do
+    Logger.warning("Character updated event has empty payload",
+      map_slug: map_slug
+    )
+  end
+
+  defp log_empty_character_payload(%{"payload" => _payload}, _map_slug), do: :ok
+
+  defp log_empty_character_payload(event, map_slug) do
+    Logger.warning("Character updated event has empty payload",
+      map_slug: map_slug,
+      event_id: Map.get(event, "id"),
+      event_keys: Map.keys(event)
     )
   end
 
