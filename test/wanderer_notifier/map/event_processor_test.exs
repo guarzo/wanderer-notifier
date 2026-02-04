@@ -13,7 +13,7 @@ defmodule WandererNotifier.Map.EventProcessorTest do
         "payload" => %{"test" => "data"}
       }
 
-      assert EventProcessor.validate_event(valid_event) == :ok
+      assert {:ok, _validated} = EventProcessor.validate_event(valid_event)
     end
 
     test "rejects invalid event structure" do
