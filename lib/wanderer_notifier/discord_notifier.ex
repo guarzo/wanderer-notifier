@@ -112,7 +112,8 @@ defmodule WandererNotifier.DiscordNotifier do
 
     # Check wormhole-only filter at the top level - blocks ALL kill notifications for non-wormhole systems
     if wormhole_only_excluded?(system_id) do
-      Logger.debug("Kill notification skipped - non-wormhole system with wormhole-only filter enabled",
+      Logger.debug(
+        "Kill notification skipped - non-wormhole system with wormhole-only filter enabled",
         killmail_id: killmail_id,
         system_id: system_id
       )
