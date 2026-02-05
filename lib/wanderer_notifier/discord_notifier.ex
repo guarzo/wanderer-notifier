@@ -108,15 +108,27 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp do_send_kill_notification(killmail) do
     killmail_id = Map.get(killmail, :killmail_id)
-    channels = determine_kill_channels(killmail)
+    system_id = Map.get(killmail, :system_id)
 
-    Logger.info("Kill notification channel routing",
-      killmail_id: killmail_id,
-      channels: inspect(channels),
-      category: :notifications
-    )
+    # Check wormhole-only filter at the top level - blocks ALL kill notifications for non-wormhole systems
+    if wormhole_only_excluded?(system_id) do
+      Logger.debug("Kill notification skipped - non-wormhole system with wormhole-only filter enabled",
+        killmail_id: killmail_id,
+        system_id: system_id
+      )
 
-    dispatch_to_channels(killmail, channels, killmail_id)
+      {:ok, :skipped}
+    else
+      channels = determine_kill_channels(killmail)
+
+      Logger.info("Kill notification channel routing",
+        killmail_id: killmail_id,
+        channels: inspect(channels),
+        category: :notifications
+      )
+
+      dispatch_to_channels(killmail, channels, killmail_id)
+    end
   end
 
   defp dispatch_to_channels(_killmail, [], killmail_id) do
@@ -443,27 +455,16 @@ defmodule WandererNotifier.DiscordNotifier do
   # System Kill Channel Exclusions
   # ═══════════════════════════════════════════════════════════════════════════════
 
+  # Top-level check: should this kill be excluded entirely due to wormhole-only filter?
+  # This blocks ALL kill notifications for non-wormhole systems when WORMHOLE_ONLY is enabled
+  defp wormhole_only_excluded?(system_id) do
+    Config.wormhole_only_kill_notifications?() and not wormhole_system?(system_id)
+  end
+
   # Checks if system should be excluded from system kill channel due to wormhole-only filter
+  # (Used for channel routing decisions - kept for backwards compatibility)
   defp wormhole_excluded?(system_id) do
-    wormhole_only = Config.wormhole_only_kill_notifications?()
-
-    if wormhole_only do
-      # Use system ID range to reliably detect wormhole systems
-      # J-space (wormhole) systems have IDs in range 31000000-31999999
-      is_wormhole = wormhole_system?(system_id)
-
-      if not is_wormhole do
-        Logger.info(
-          "Kill notification excluded from system kill channel - non-wormhole system",
-          system_id: system_id,
-          wormhole_only: wormhole_only
-        )
-      end
-
-      not is_wormhole
-    else
-      false
-    end
+    wormhole_only_excluded?(system_id)
   end
 
   # Detects wormhole systems by EVE system ID range
