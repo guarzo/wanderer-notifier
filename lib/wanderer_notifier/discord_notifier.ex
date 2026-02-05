@@ -110,7 +110,7 @@ defmodule WandererNotifier.DiscordNotifier do
     killmail_id = Map.get(killmail, :killmail_id)
     system_id = Map.get(killmail, :system_id)
 
-    # Check wormhole-only filter at the top level - blocks ALL kill notifications for non-wormhole systems
+    # Early return guard - wormhole-only filter blocks ALL kill notifications for non-wormhole systems
     if wormhole_only_excluded?(system_id) do
       Logger.debug(
         "Kill notification skipped - non-wormhole system with wormhole-only filter enabled",
@@ -120,16 +120,20 @@ defmodule WandererNotifier.DiscordNotifier do
 
       {:ok, :skipped}
     else
-      channels = determine_kill_channels(killmail)
-
-      Logger.info("Kill notification channel routing",
-        killmail_id: killmail_id,
-        channels: inspect(channels),
-        category: :notifications
-      )
-
-      dispatch_to_channels(killmail, channels, killmail_id)
+      process_kill_notification(killmail, killmail_id)
     end
+  end
+
+  defp process_kill_notification(killmail, killmail_id) do
+    channels = determine_kill_channels(killmail)
+
+    Logger.info("Kill notification channel routing",
+      killmail_id: killmail_id,
+      channels: inspect(channels),
+      category: :notifications
+    )
+
+    dispatch_to_channels(killmail, channels, killmail_id)
   end
 
   defp dispatch_to_channels(_killmail, [], killmail_id) do
