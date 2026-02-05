@@ -386,8 +386,9 @@ defmodule WandererNotifier.Infrastructure.Http do
       decode_json: true
     ],
     janice: [
-      # Janice usually responds in 500ms, but can be slow
-      timeout: 5_000,
+      # Janice usually responds in 500ms, but can be slow or have connection issues
+      timeout: 10_000,
+      connect_timeout: 5_000,
       retry_count: 3,
       retry_delay: 500,
       retryable_status_codes: [429, 500, 502, 503, 504],

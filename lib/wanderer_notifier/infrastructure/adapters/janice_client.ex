@@ -242,6 +242,25 @@ defmodule WandererNotifier.Infrastructure.Adapters.JaniceClient do
     Logger.debug("Janice request body preview: #{String.slice(body, 0, 100)}")
     Logger.debug("Janice request body full: #{body}")
     Logger.debug("Janice request headers: #{inspect(headers)}")
+
+    # Check if any lines appear to be numeric IDs (which Janice won't accept)
+    body
+    |> String.split("\n")
+    |> Enum.each(fn line ->
+      case String.split(line, " ") do
+        [item_part, _qty] ->
+          if Regex.match?(~r/^\d+$/, item_part) do
+            Logger.warning(
+              "Janice request contains numeric type_id instead of item name: #{line}. " <>
+                "This will fail - check if ItemLookupService has loaded SDE data.",
+              category: :janice
+            )
+          end
+
+        _ ->
+          :ok
+      end
+    end)
   end
 
   defp handle_response(%{status_code: 200, body: response}) do

@@ -65,9 +65,24 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   @spec get_item_name(integer()) :: String.t()
   def get_item_name(type_id) when is_integer(type_id) do
     case GenServer.call(__MODULE__, {:get_item, type_id}) do
-      {:ok, %ItemType{name: name}} -> name
-      {:error, :not_found} -> get_item_name_fallback(type_id)
-      {:error, :not_loaded} -> get_item_name_fallback(type_id)
+      {:ok, %ItemType{name: name}} ->
+        name
+
+      {:error, :not_found} ->
+        Logger.debug("Item type_id #{type_id} not in SDE, falling back to ESI",
+          category: :item_lookup
+        )
+
+        get_item_name_fallback(type_id)
+
+      {:error, :not_loaded} ->
+        Logger.warning(
+          "SDE data not loaded yet, falling back to ESI for type_id #{type_id}. " <>
+            "This may indicate a startup race condition.",
+          category: :item_lookup
+        )
+
+        get_item_name_fallback(type_id)
     end
   end
 
@@ -473,10 +488,22 @@ defmodule WandererNotifier.Domains.Universe.Services.ItemLookupService do
   defp fetch_from_esi_and_cache(type_id, cache_key) do
     case fetch_type_from_esi(type_id) do
       {:ok, type_data} ->
+        name = Map.get(type_data, "name", "Unknown Item")
         Cache.put(cache_key, type_data, Cache.ttl(:universe_type))
-        Map.get(type_data, "name", "Unknown Item")
 
-      {:error, _} ->
+        Logger.debug("ESI lookup succeeded for type_id #{type_id}: #{name}",
+          category: :item_lookup
+        )
+
+        name
+
+      {:error, reason} ->
+        Logger.warning(
+          "ESI lookup failed for type_id #{type_id}: #{inspect(reason)}. " <>
+            "Item will be sent to Janice as numeric ID which will fail.",
+          category: :item_lookup
+        )
+
         "Unknown Item"
     end
   end
