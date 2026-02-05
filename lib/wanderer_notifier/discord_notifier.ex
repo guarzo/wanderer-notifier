@@ -405,6 +405,11 @@ defmodule WandererNotifier.DiscordNotifier do
     [ctx.system_channel || ctx.default_channel]
   end
 
+  # System tracked but wormhole-excluded -> no notification
+  defp select_channels(%{has_tracked_system: true, wormhole_excluded: true}) do
+    []
+  end
+
   # Fallback -> default channel
   defp select_channels(ctx) do
     [ctx.default_channel]
@@ -425,10 +430,6 @@ defmodule WandererNotifier.DiscordNotifier do
   # Simplified tracking checks - delegate to existing modules
   defp tracked_system?(system_id) do
     WandererNotifier.Domains.Notifications.Determiner.tracked_system_for_killmail?(system_id)
-  end
-
-  defp tracked_character?(killmail) do
-    WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail)
   end
 
   # Feature flags
@@ -543,7 +544,7 @@ defmodule WandererNotifier.DiscordNotifier do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp maybe_add_voice_mentions(notification, killmail, channel_id) do
-    case {voice_pings_enabled?(), system_kill_channel?(channel_id), pure_system_kill?(killmail)} do
+    case {voice_pings_enabled?(), system_kill_channel?(channel_id), system_kill?(killmail)} do
       {true, true, true} ->
         prepend_voice_mentions(notification)
 
@@ -555,15 +556,12 @@ defmodule WandererNotifier.DiscordNotifier do
   @spec voice_pings_enabled?() :: boolean()
   defp voice_pings_enabled?, do: Config.voice_participant_notifications_enabled?()
 
-  # Returns true if the kill is in a tracked system with no tracked characters involved
-  @spec pure_system_kill?(map()) :: boolean()
-  defp pure_system_kill?(killmail) do
+  # Returns true if the kill is in a tracked system (for voice notification purposes)
+  @spec system_kill?(map()) :: boolean()
+  defp system_kill?(killmail) do
     case Map.get(killmail, :system_id) do
-      nil ->
-        false
-
-      system_id ->
-        tracked_system?(system_id) and not tracked_character?(killmail)
+      nil -> false
+      system_id -> tracked_system?(system_id)
     end
   end
 

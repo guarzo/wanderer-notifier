@@ -114,10 +114,23 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   @spec process_voice_states_list(list(), map()) :: [String.t()]
   defp process_voice_states_list(voice_states, guild) do
     voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
+    afk_channel_id = guild.afk_channel_id
 
     voice_states
+    |> exclude_afk_users(afk_channel_id)
     |> filter_by_voice_channels(voice_channel_ids)
     |> build_user_mentions()
+  end
+
+  # Directly excludes users in the AFK channel from voice states
+  @spec exclude_afk_users(list(), integer() | nil) :: list()
+  defp exclude_afk_users(voice_states, nil), do: voice_states
+
+  defp exclude_afk_users(voice_states, afk_channel_id) do
+    Enum.reject(voice_states, fn voice_state ->
+      channel_id = Map.get(voice_state, :channel_id) || Map.get(voice_state, "channel_id")
+      channel_id == afk_channel_id
+    end)
   end
 
   # Filters voice states to only include those in voice channels
