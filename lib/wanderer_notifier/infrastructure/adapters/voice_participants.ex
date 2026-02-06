@@ -113,13 +113,46 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   # Processes voice states when they're in list format
   @spec process_voice_states_list(list(), map()) :: [String.t()]
   defp process_voice_states_list(voice_states, guild) do
-    voice_channel_ids = get_voice_channel_ids(guild, guild.afk_channel_id)
     afk_channel_id = guild.afk_channel_id
+    voice_channel_ids = get_voice_channel_ids(guild, afk_channel_id)
 
-    voice_states
-    |> exclude_afk_users(afk_channel_id)
-    |> filter_by_voice_channels(voice_channel_ids)
-    |> build_user_mentions()
+    Logger.info(
+      "Voice participant filtering: " <>
+        "total_voice_states=#{length(voice_states)}, " <>
+        "afk_channel_id=#{inspect(afk_channel_id)}, " <>
+        "voice_channel_ids=#{inspect(voice_channel_ids)}"
+    )
+
+    after_afk_filter = exclude_afk_users(voice_states, afk_channel_id)
+
+    Logger.info(
+      "After AFK exclusion: #{length(after_afk_filter)} users " <>
+        "(excluded #{length(voice_states) - length(after_afk_filter)})"
+    )
+
+    after_channel_filter = filter_by_voice_channels(after_afk_filter, voice_channel_ids)
+
+    Logger.info(
+      "After voice channel filter: #{length(after_channel_filter)} users " <>
+        "(filtered #{length(after_afk_filter) - length(after_channel_filter)})"
+    )
+
+    if after_afk_filter != [] and after_channel_filter == [] do
+      # Log the channel IDs that were rejected to help diagnose mismatches
+      rejected_channel_ids =
+        after_afk_filter
+        |> Enum.map(fn vs ->
+          Map.get(vs, :channel_id) || Map.get(vs, "channel_id")
+        end)
+        |> Enum.uniq()
+
+      Logger.warning(
+        "All voice users filtered out! User channel_ids=#{inspect(rejected_channel_ids)} " <>
+          "not in voice_channel_ids=#{inspect(voice_channel_ids)}"
+      )
+    end
+
+    build_user_mentions(after_channel_filter)
   end
 
   # Directly excludes users in the AFK channel from voice states
@@ -156,9 +189,18 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   # Gets all voice channel IDs in the guild, excluding the AFK channel.
   @spec get_voice_channel_ids(map(), integer() | nil) :: [integer()]
   defp get_voice_channel_ids(guild, afk_channel_id) do
-    guild.channels
-    |> extract_channels()
-    |> filter_voice_channels()
+    all_channels = extract_channels(guild.channels)
+    voice_channels = filter_voice_channels(all_channels)
+
+    if voice_channels == [] and all_channels != [] do
+      channel_types =
+        all_channels
+        |> Enum.map(fn ch -> {Map.get(ch, :id), Map.get(ch, :type)} end)
+
+      Logger.warning("No voice channels found! Channel types in guild: #{inspect(channel_types)}")
+    end
+
+    voice_channels
     |> exclude_afk_channel(afk_channel_id)
     |> extract_channel_ids()
   end
@@ -183,10 +225,10 @@ defmodule WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants do
   defp extract_channel_ids(channels), do: Enum.map(channels, & &1.id)
 
   # Checks if a channel is a voice channel.
+  # Discord channel types: 2 = GUILD_VOICE, 13 = GUILD_STAGE_VOICE
+  @voice_channel_types [2, 13]
   @spec voice_channel?(map()) :: boolean()
-  defp voice_channel?(%{type: :voice}), do: true
-  # Voice channel type ID
-  defp voice_channel?(%{type: 2}), do: true
+  defp voice_channel?(%{type: type}) when type in @voice_channel_types, do: true
   defp voice_channel?(_), do: false
 
   @doc """
