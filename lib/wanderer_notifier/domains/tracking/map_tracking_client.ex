@@ -10,6 +10,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   require Logger
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Map.MapConfig
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.EntityUtils
   alias WandererNotifier.Domains.Notifications.Determiner
@@ -58,12 +59,17 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Optional skip_notifications parameter prevents notifications during initial load.
   """
   @spec fetch_and_cache_characters(boolean()) :: {:ok, list()} | {:error, term()}
-  def fetch_and_cache_characters(skip_notifications) do
+  @spec fetch_and_cache_characters(MapConfig.t()) :: {:ok, list()} | {:error, term()}
+  def fetch_and_cache_characters(skip_notifications) when is_boolean(skip_notifications) do
     Logger.debug("MapTrackingClient.fetch_and_cache_characters called",
       skip_notifications: skip_notifications
     )
 
     fetch_and_cache_entities(:characters, skip_notifications)
+  end
+
+  def fetch_and_cache_characters(%MapConfig{} = map_config) do
+    fetch_and_cache_entities_for_map(map_config, :characters, true)
   end
 
   @doc """
@@ -79,12 +85,17 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Optional skip_notifications parameter prevents notifications during initial load.
   """
   @spec fetch_and_cache_systems(boolean()) :: {:ok, list()} | {:error, term()}
-  def fetch_and_cache_systems(skip_notifications) do
+  @spec fetch_and_cache_systems(MapConfig.t()) :: {:ok, list()} | {:error, term()}
+  def fetch_and_cache_systems(skip_notifications) when is_boolean(skip_notifications) do
     Logger.debug("MapTrackingClient.fetch_and_cache_systems called",
       skip_notifications: skip_notifications
     )
 
     fetch_and_cache_entities(:systems, skip_notifications)
+  end
+
+  def fetch_and_cache_systems(%MapConfig{} = map_config) do
+    fetch_and_cache_entities_for_map(map_config, :systems, true)
   end
 
   @doc """
@@ -112,8 +123,55 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     end
   end
 
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Multi-Map API - Functions accepting MapConfig for per-map operations
+  # ══════════════════════════════════════════════════════════════════════════════
+
   @doc """
-  Checks if a character is tracked.
+  Fetches and caches entities for a specific map.
+  """
+  @spec fetch_and_cache_characters(MapConfig.t(), boolean()) :: {:ok, list()} | {:error, term()}
+  def fetch_and_cache_characters(%MapConfig{} = map_config, skip_notifications)
+      when is_boolean(skip_notifications) do
+    fetch_and_cache_entities_for_map(map_config, :characters, skip_notifications)
+  end
+
+  @spec fetch_and_cache_systems(MapConfig.t(), boolean()) :: {:ok, list()} | {:error, term()}
+  def fetch_and_cache_systems(%MapConfig{} = map_config, skip_notifications)
+      when is_boolean(skip_notifications) do
+    fetch_and_cache_entities_for_map(map_config, :systems, skip_notifications)
+  end
+
+  @doc """
+  Checks if a system is tracked on a specific map.
+  """
+  @spec is_system_tracked?(String.t(), String.t() | integer()) :: {:ok, boolean()}
+  def is_system_tracked?(map_slug, system_id) when is_binary(map_slug) do
+    {:ok, Cache.is_system_tracked?(map_slug, to_string(system_id))}
+  end
+
+  @doc """
+  Checks if a character is tracked on a specific map.
+  """
+  @spec is_character_tracked?(String.t(), String.t() | integer()) :: {:ok, boolean()}
+  def is_character_tracked?(map_slug, character_id) when is_binary(map_slug) do
+    char_id =
+      if is_integer(character_id),
+        do: character_id,
+        else: parse_character_id(character_id)
+
+    {:ok, char_id != nil and Cache.is_character_tracked?(map_slug, char_id)}
+  end
+
+  defp parse_character_id(character_id) when is_binary(character_id) do
+    case Integer.parse(character_id) do
+      {int_id, ""} -> int_id
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Checks if a character is tracked (legacy single-map).
   """
   @spec is_character_tracked?(String.t() | integer()) :: {:ok, boolean()}
   def is_character_tracked?(character_id) when is_binary(character_id) do
@@ -495,5 +553,175 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
       :ok
     end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Multi-Map Notification Helpers
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  defp process_entities_for_map(entity_type, entities, map_config, skip_notifications) do
+    Enum.each(entities, fn entity ->
+      maybe_send_notification_for_map(entity_type, entity, map_config, skip_notifications)
+    end)
+  end
+
+  defp maybe_send_notification_for_map(:characters, character, map_config, true) do
+    Logger.debug("Skipping character notification during initial load",
+      character_id: character["eve_id"],
+      map_slug: map_config.slug,
+      category: :notifications
+    )
+
+    :ok
+  end
+
+  defp maybe_send_notification_for_map(:characters, character, map_config, false) do
+    character_id = character["eve_id"]
+
+    if character_id do
+      case Determiner.should_notify_for_map?(map_config, :character, character_id, character) do
+        {:ok, true} ->
+          WandererNotifier.DiscordNotifier.send_character_async(character, map_config)
+
+        {:ok, false} ->
+          :ok
+      end
+    end
+
+    :ok
+  end
+
+  defp maybe_send_notification_for_map(:systems, system, map_config, true) do
+    Logger.debug("Skipping system notification during initial load",
+      system_id: system["solar_system_id"],
+      map_slug: map_config.slug,
+      category: :notifications
+    )
+
+    :ok
+  end
+
+  defp maybe_send_notification_for_map(:systems, system, map_config, false) do
+    system_id = system["solar_system_id"]
+
+    if system_id do
+      case Determiner.should_notify_for_map?(map_config, :system, system_id, system) do
+        {:ok, true} ->
+          system_struct = System.from_api_data(system)
+          {:ok, enriched_system} = StaticInfo.enrich_system(system_struct)
+          WandererNotifier.DiscordNotifier.send_system_async(enriched_system, map_config)
+
+        {:ok, false} ->
+          :ok
+      end
+    end
+
+    :ok
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Multi-Map Private Implementation
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  defp fetch_and_cache_entities_for_map(map_config, entity_type, skip_notifications) do
+    config = get_entity_config(entity_type)
+
+    case fetch_from_api_for_map(map_config, entity_type, config) do
+      {:ok, entities} ->
+        cache_entities_for_map(map_config.slug, entity_type, entities, config)
+        process_entities_for_map(entity_type, entities, map_config, skip_notifications)
+        {:ok, entities}
+
+      {:error, reason} ->
+        Logger.error("Failed to fetch #{entity_type} for map #{map_config.slug}",
+          reason: inspect(reason),
+          category: :api
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp fetch_from_api_for_map(map_config, entity_type, config) do
+    url = build_url_for_map(map_config, config)
+    headers = build_headers_for_map(map_config)
+
+    Logger.debug("Fetching #{entity_type} from API for map #{map_config.slug}",
+      url: url,
+      category: :api
+    )
+
+    case Http.map_get(url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        parse_response(entity_type, body)
+
+      {:ok, %{status_code: status_code} = response} ->
+        Logger.error("HTTP #{status_code} error fetching #{entity_type} for #{map_config.slug}",
+          status_code: status_code,
+          body: Map.get(response, :body),
+          category: :api
+        )
+
+        {:error, {:http_error, status_code}}
+
+      {:error, reason} ->
+        Logger.error("Request failed for #{entity_type} on #{map_config.slug}",
+          error: inspect(reason),
+          category: :api
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp build_url_for_map(map_config, config) do
+    base_url = Config.map_url()
+    "#{base_url}/api/maps/#{map_config.slug}/#{config.endpoint}"
+  end
+
+  defp build_headers_for_map(map_config) do
+    api_key = map_config.api_token || Config.map_api_key()
+
+    [
+      {"Authorization", "Bearer #{api_key}"},
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"}
+    ]
+  end
+
+  defp cache_entities_for_map(map_slug, entity_type, entities, _config) do
+    scoped_key = scoped_cache_key(entity_type, map_slug)
+    Cache.put(scoped_key, entities, Cache.ttl(:map_data))
+    cache_individual_entities_for_map(map_slug, entity_type, entities)
+
+    Logger.debug("Cached #{length(entities)} #{entity_type} for map #{map_slug}",
+      category: :cache,
+      cache_key: scoped_key
+    )
+
+    :ok
+  end
+
+  defp scoped_cache_key(:characters, map_slug), do: Cache.Keys.map_characters(map_slug)
+  defp scoped_cache_key(:systems, map_slug), do: Cache.Keys.map_systems(map_slug)
+
+  defp cache_individual_entities_for_map(map_slug, :characters, entities) do
+    Cache.put_tracked_characters_list(map_slug, entities)
+
+    Enum.each(entities, fn character ->
+      if character_id = get_character_id(character) do
+        Cache.put_tracked_character(map_slug, character_id, character)
+      end
+    end)
+  end
+
+  defp cache_individual_entities_for_map(map_slug, :systems, entities) do
+    Cache.put_tracked_systems_list(map_slug, entities)
+
+    Enum.each(entities, fn system ->
+      if system_id = get_system_id(system) do
+        Cache.put_tracked_system(map_slug, system_id, system)
+      end
+    end)
   end
 end

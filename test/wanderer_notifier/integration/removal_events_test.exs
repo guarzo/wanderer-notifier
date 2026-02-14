@@ -10,8 +10,9 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
   setup :verify_on_exit!
 
   setup do
-    # Clear cache before each test
+    # Clear cache before each test (both global and scoped keys)
     Cache.delete(Cache.Keys.map_characters())
+    "test-map" |> Cache.Keys.map_characters() |> Cache.delete()
     Cache.delete(Cache.Keys.map_systems())
 
     # Clear any tracked system entries
@@ -57,7 +58,8 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, characters)
 
       # Create SSE event
       event = %{
@@ -77,7 +79,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Verify character was removed
-      {:ok, remaining_characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, remaining_characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(remaining_characters) == 1
       assert hd(remaining_characters)["eve_id"] == "789012"
     end
@@ -103,7 +105,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       assert {:ok, _} = EventProcessor.process_event(event, "test-map")
 
       # Cache should still be empty
-      assert {:error, :not_found} = Cache.get(Cache.Keys.map_characters())
+      assert {:error, :not_found} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
     end
   end
 
@@ -256,7 +258,8 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         %{"eve_id" => "444", "name" => "Char 4"}
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, characters)
 
       # Remove characters 2 and 3
       for eve_id <- ["222", "333"] do
@@ -276,7 +279,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       end
 
       # Verify only characters 1 and 4 remain
-      {:ok, remaining} = Cache.get(Cache.Keys.map_characters())
+      {:ok, remaining} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(remaining) == 2
       eve_ids = Enum.map(remaining, & &1["eve_id"]) |> Enum.sort()
       assert eve_ids == ["111", "444"]

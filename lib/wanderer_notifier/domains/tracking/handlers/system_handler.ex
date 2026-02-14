@@ -14,6 +14,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
+  defp map_registry do
+    Application.get_env(
+      :wanderer_notifier,
+      :map_registry_module,
+      WandererNotifier.Map.MapRegistry
+    )
+  end
+
   # ══════════════════════════════════════════════════════════════════════════════
   # Event Handler Implementation
   # ══════════════════════════════════════════════════════════════════════════════
@@ -22,6 +30,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @spec handle_entity_added(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_added(event, map_slug) do
     payload = Map.get(event, "payload", %{})
+    registry = map_registry()
 
     SharedEventLogic.handle_entity_event(
       event,
@@ -29,19 +38,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       :system_added,
       &create_system_from_payload/1,
       &handle_cache_update(&1, payload),
-      &maybe_send_notification/1
+      &handle_system_added_notification(&1, map_slug, registry)
     )
   end
 
   @impl true
   @spec handle_entity_removed(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_removed(event, map_slug) do
+    registry = map_registry()
+
     SharedEventLogic.handle_entity_event(
       event,
       map_slug,
       :system_removed,
       &extract_system_payload/1,
-      &remove_system_from_cache/1,
+      &handle_system_removal(&1, map_slug, registry),
       &maybe_log_system_removal/1
     )
   end
@@ -164,13 +175,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
-  defp remove_system_from_cache(payload) do
+  defp handle_system_removal(payload, map_slug, registry) do
     system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
 
     Logger.debug("Removing system from cache",
       solar_system_id: Map.get(payload, "solar_system_id"),
       id: Map.get(payload, "id"),
       resolved_system_id: system_id,
+      map_slug: map_slug,
       category: :cache
     )
 
@@ -185,6 +197,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       |> Cache.delete()
     end
 
+    # Update reverse index for killmail fan-out (best-effort, deindex_system returns :ok)
+    if system_id do
+      try do
+        registry.deindex_system(map_slug, system_id)
+      rescue
+        e ->
+          Logger.error("Failed to deindex system from reverse index",
+            map_slug: map_slug,
+            system_id: system_id,
+            reason: Exception.message(e)
+          )
+      end
+    end
+
     {:ok, :removed}
   end
 
@@ -196,7 +222,20 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp maybe_send_notification(system) do
+  defp handle_system_added_notification(system, map_slug, registry) do
+    # Update reverse index for killmail fan-out
+    try do
+      registry.index_system(map_slug, system.solar_system_id)
+    rescue
+      error ->
+        Logger.error("Failed to index system in MapRegistry",
+          map_slug: map_slug,
+          solar_system_id: system.solar_system_id,
+          reason: Exception.message(error),
+          category: :api
+        )
+    end
+
     case GenericEventHandler.should_notify?(:system, system.solar_system_id, system) do
       {:ok, true} ->
         send_system_notification(system)
