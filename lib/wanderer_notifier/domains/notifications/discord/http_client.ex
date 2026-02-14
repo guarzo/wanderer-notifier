@@ -59,7 +59,7 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
   # Private Implementation
   # ============================================================================
 
-  defp send_message_payload(bot_token, channel_id, payload, _opts) do
+  defp send_message_payload(bot_token, channel_id, payload, caller_opts) do
     url = "#{@discord_api_base}/channels/#{channel_id}/messages"
 
     headers = [
@@ -67,7 +67,8 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
       {"Content-Type", "application/json"}
     ]
 
-    opts = [service: :discord, rate_limit: [bucket_key: token_bucket_key(bot_token)]]
+    defaults = [service: :discord, rate_limit: [bucket_key: token_bucket_key(bot_token)]]
+    opts = Keyword.merge(defaults, caller_opts)
 
     case Http.request(:post, url, payload, headers, opts) do
       {:ok, %{status_code: status}} when status in 200..299 ->
@@ -128,11 +129,14 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
   defp normalize_keys(map) do
     Map.new(map, fn
       {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+      {k, v} when is_binary(k) -> {safe_to_existing_atom(k), v}
     end)
+  end
+
+  defp safe_to_existing_atom(str) do
+    String.to_existing_atom(str)
   rescue
-    # If string key doesn't have a matching atom, keep as-is
-    ArgumentError -> map
+    ArgumentError -> str
   end
 
   defp reject_nil_values(map) do

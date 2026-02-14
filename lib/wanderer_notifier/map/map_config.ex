@@ -19,7 +19,7 @@ defmodule WandererNotifier.Map.MapConfig do
         }
 
   @type discord_config :: %{
-          bot_token: String.t(),
+          bot_token: String.t() | nil,
           application_id: String.t() | nil,
           guild_id: String.t() | nil,
           channels: discord_channels(),
@@ -149,7 +149,7 @@ defmodule WandererNotifier.Map.MapConfig do
       owner: nil,
       api_token: safe_get_env("MAP_API_KEY"),
       discord: %{
-        bot_token: safe_get_env("DISCORD_BOT_TOKEN", ""),
+        bot_token: safe_get_env("DISCORD_BOT_TOKEN"),
         application_id: safe_get_env("DISCORD_APPLICATION_ID"),
         guild_id: safe_get_env("DISCORD_GUILD_ID"),
         channels: %{
@@ -222,7 +222,7 @@ defmodule WandererNotifier.Map.MapConfig do
   @doc """
   Gets the Discord bot token for this map.
   """
-  @spec bot_token(t()) :: String.t()
+  @spec bot_token(t()) :: String.t() | nil
   def bot_token(%__MODULE__{discord: %{bot_token: token}}), do: token
 
   @doc """
@@ -269,7 +269,7 @@ defmodule WandererNotifier.Map.MapConfig do
 
   defp parse_discord(data) when is_map(data) do
     %{
-      bot_token: data["bot_token"] || "",
+      bot_token: normalize_bot_token(data["bot_token"]),
       application_id: data["application_id"],
       guild_id: data["guild_id"],
       channels: parse_channels(data["channels"] || %{}),
@@ -279,7 +279,7 @@ defmodule WandererNotifier.Map.MapConfig do
 
   defp parse_discord(_),
     do: %{
-      bot_token: "",
+      bot_token: nil,
       application_id: nil,
       guild_id: nil,
       channels: @default_channels,
@@ -300,7 +300,7 @@ defmodule WandererNotifier.Map.MapConfig do
   defp parse_channels(_), do: @default_channels
 
   defp parse_features(data) when is_map(data) do
-    Map.merge(@default_features, %{
+    %{
       notifications_enabled: get_bool(data, "notifications_enabled", true),
       kill_notifications_enabled: get_bool(data, "kill_notifications_enabled", true),
       system_notifications_enabled: get_bool(data, "system_notifications_enabled", true),
@@ -313,7 +313,7 @@ defmodule WandererNotifier.Map.MapConfig do
       notable_items_enabled: get_bool(data, "notable_items_enabled", false),
       voice_participant_notifications_enabled:
         get_bool(data, "voice_participant_notifications_enabled", false)
-    })
+    }
   end
 
   defp parse_features(_), do: @default_features
@@ -355,6 +355,11 @@ defmodule WandererNotifier.Map.MapConfig do
   end
 
   defp parse_string_list(_), do: []
+
+  defp normalize_bot_token(nil), do: nil
+  defp normalize_bot_token(""), do: nil
+  defp normalize_bot_token(token) when is_binary(token), do: token
+  defp normalize_bot_token(_), do: nil
 
   defp safe_get_env(key, default \\ nil) do
     System.get_env(key) || default

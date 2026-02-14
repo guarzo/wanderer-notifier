@@ -33,8 +33,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   Starts an SSE client for a specific map.
 
   ## Parameters
-  - `:map_id` - The map UUID for SSE endpoint
-  - `:map_slug` - The map slug for identification
+  - `:map_slug` - The map slug for identification and SSE endpoint
   - `:api_token` - Authentication token
   - `:events` - Optional list of events to subscribe to
   """
@@ -189,9 +188,33 @@ defmodule WandererNotifier.Map.SSESupervisor do
     Logger.info("Initializing #{length(maps)} maps from registry", category: :startup)
 
     # Initialize data for all maps (parallelized with concurrency limit)
-    maps
-    |> Task.async_stream(&initialize_map_data_safely/1, max_concurrency: 10, timeout: 60_000)
-    |> Stream.run()
+    # Task.async_stream preserves input order, so we zip maps with results
+    results =
+      maps
+      |> Task.async_stream(&initialize_map_data_safely/1,
+        max_concurrency: 10,
+        timeout: 60_000
+      )
+      |> Enum.to_list()
+      |> then(&Enum.zip(maps, &1))
+
+    {succeeded, failed} =
+      Enum.split_with(results, fn
+        {_map, {:ok, :ok}} -> true
+        _ -> false
+      end)
+
+    log_initialization_failures(failed)
+
+    successful_maps = Enum.map(succeeded, fn {map, _result} -> map end)
+
+    if failed != [] do
+      Logger.warning(
+        "#{length(failed)}/#{length(maps)} maps failed initialization, " <>
+          "starting SSE for #{length(successful_maps)} maps",
+        category: :startup
+      )
+    end
 
     # Small delay to ensure cache writes settle
     Process.sleep(1000)
@@ -199,8 +222,25 @@ defmodule WandererNotifier.Map.SSESupervisor do
     # Signal PipelineWorker
     signal_pipeline_worker()
 
-    # Start SSE clients with staggered connections
-    start_sse_clients_staggered(maps)
+    # Start SSE clients only for successfully initialized maps
+    start_sse_clients_staggered(successful_maps)
+  end
+
+  defp log_initialization_failures(failed) do
+    Enum.each(failed, fn {map_config, result} ->
+      reason =
+        case result do
+          {:ok, {:error, reason}} -> reason
+          {:exit, reason} -> reason
+          other -> other
+        end
+
+      Logger.warning("Map initialization failed",
+        map_slug: map_config.slug,
+        map_name: map_config.name,
+        reason: inspect(reason)
+      )
+    end)
   end
 
   defp initialize_and_start_for_map(map_config) do
@@ -249,7 +289,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
         error: Exception.message(error)
       )
 
-      :ok
+      {:error, Exception.message(error)}
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

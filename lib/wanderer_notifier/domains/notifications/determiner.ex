@@ -188,10 +188,8 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   end
 
   def should_notify_for_map?(%MapConfig{} = mc, :kill, _killmail_id, killmail_data) do
-    case should_notify_killmail_for_map?(mc, killmail_data) do
-      {:ok, %{should_notify: should_notify}} -> {:ok, should_notify}
-      {:error, _reason} -> {:ok, false}
-    end
+    {:ok, %{should_notify: should_notify}} = should_notify_killmail_for_map?(mc, killmail_data)
+    {:ok, should_notify}
   end
 
   def should_notify_for_map?(%MapConfig{} = mc, :rally_point, rally_id, _rally_data) do
@@ -204,8 +202,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
 
   # Per-map feature flag check
   defp map_feature_enabled?(%MapConfig{} = mc, feature) do
-    MapConfig.feature_enabled?(mc, :notifications_enabled) and
-      MapConfig.feature_enabled?(mc, feature)
+    MapConfig.notifications_fully_enabled?(mc, feature)
   end
 
   # Scoped dedup: incorporates map_slug into the identifier
@@ -259,10 +256,31 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
         {:ok, %{should_notify: false, reason: :kill_notifications_disabled}}
 
       true ->
-        # Delegate to existing killmail format parsing + dedup
-        # Killmail dedup stays global (process each killmail once from WebSocket)
-        # but notification dedup is per-map (same kill can notify multiple maps)
-        should_notify_killmail?(killmail_data)
+        # Tracking already verified by Pipeline fan-out via MapRegistry reverse index.
+        # Only check per-map scoped dedup here.
+        killmail_id = extract_killmail_id_from_data(killmail_data)
+        check_scoped_killmail_dedup(mc.slug, killmail_id)
+    end
+  end
+
+  # Extracts killmail ID from various data formats for per-map dedup
+  defp extract_killmail_id_from_data(%Killmail{killmail_id: id}), do: id
+  defp extract_killmail_id_from_data(%{killmail_id: id}), do: id
+  defp extract_killmail_id_from_data(%{"killmail_id" => id}), do: id
+  defp extract_killmail_id_from_data(%{"killID" => id}), do: id
+  defp extract_killmail_id_from_data(data) when is_map(data), do: :erlang.phash2(data)
+  defp extract_killmail_id_from_data(_), do: nil
+
+  # Per-map killmail deduplication check
+  defp check_scoped_killmail_dedup(_map_slug, nil) do
+    {:ok, %{should_notify: false, reason: :missing_killmail_id}}
+  end
+
+  defp check_scoped_killmail_dedup(map_slug, killmail_id) do
+    if check_scoped_dedup(:kill, map_slug, killmail_id) do
+      {:ok, %{should_notify: true, reason: :new_killmail}}
+    else
+      {:ok, %{should_notify: false, reason: :duplicate_killmail}}
     end
   end
 

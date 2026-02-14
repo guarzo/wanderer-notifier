@@ -16,15 +16,17 @@ defmodule WandererNotifier.Map.MapRegistry do
   ## ETS Tables
 
   - `:map_registry_configs` - `{slug, MapConfig.t()}`
-  - `:map_registry_system_index` - `{system_id, [map_slug]}`
-  - `:map_registry_character_index` - `{character_id, [map_slug]}`
+  - `:map_registry_system_index` - `{system_id, map_slug}` (bag table, one row per mapping)
+  - `:map_registry_character_index` - `{character_id, map_slug}` (bag table, one row per mapping)
   """
 
   use GenServer
   require Logger
 
-  alias WandererNotifier.Map.MapConfig
+  alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Infrastructure.Http
+  alias WandererNotifier.Map.MapConfig
   alias WandererNotifier.Shared.Config
 
   @refresh_interval :timer.minutes(5)
@@ -52,7 +54,10 @@ defmodule WandererNotifier.Map.MapRegistry do
   def all_maps do
     @configs_table
     |> :ets.tab2list()
-    |> Enum.map(fn {_slug, config} -> config end)
+    |> Enum.flat_map(fn
+      {:__mode__, _} -> []
+      {_slug, config} -> [config]
+    end)
   rescue
     ArgumentError -> []
   end
@@ -73,7 +78,10 @@ defmodule WandererNotifier.Map.MapRegistry do
   def map_slugs do
     @configs_table
     |> :ets.tab2list()
-    |> Enum.map(fn {slug, _config} -> slug end)
+    |> Enum.flat_map(fn
+      {:__mode__, _} -> []
+      {slug, _config} -> [slug]
+    end)
   rescue
     ArgumentError -> []
   end
@@ -88,10 +96,10 @@ defmodule WandererNotifier.Map.MapRegistry do
   def maps_tracking_system(system_id) do
     system_key = to_string(system_id)
 
-    case :ets.lookup(@system_index_table, system_key) do
-      [{^system_key, slugs}] -> resolve_configs(slugs)
-      [] -> []
-    end
+    @system_index_table
+    |> :ets.lookup(system_key)
+    |> Enum.map(fn {_key, slug} -> slug end)
+    |> resolve_configs()
   rescue
     ArgumentError -> []
   end
@@ -99,7 +107,13 @@ defmodule WandererNotifier.Map.MapRegistry do
   @doc "Returns the number of registered maps."
   @spec count() :: non_neg_integer()
   def count do
-    :ets.info(@configs_table, :size)
+    size = :ets.info(@configs_table, :size)
+
+    # Subtract 1 for the :__mode__ metadata key if it exists
+    case :ets.lookup(@configs_table, :__mode__) do
+      [{:__mode__, _}] -> max(size - 1, 0)
+      [] -> size
+    end
   rescue
     ArgumentError -> 0
   end
@@ -118,17 +132,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec index_system(String.t(), String.t() | integer()) :: :ok
   def index_system(map_slug, system_id) when is_binary(map_slug) do
     system_key = to_string(system_id)
-
-    current_slugs =
-      case :ets.lookup(@system_index_table, system_key) do
-        [{^system_key, slugs}] -> slugs
-        [] -> []
-      end
-
-    unless map_slug in current_slugs do
-      :ets.insert(@system_index_table, {system_key, [map_slug | current_slugs]})
-    end
-
+    :ets.insert(@system_index_table, {system_key, map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -142,21 +146,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec deindex_system(String.t(), String.t() | integer()) :: :ok
   def deindex_system(map_slug, system_id) when is_binary(map_slug) do
     system_key = to_string(system_id)
-
-    case :ets.lookup(@system_index_table, system_key) do
-      [{^system_key, slugs}] ->
-        updated = List.delete(slugs, map_slug)
-
-        if updated == [] do
-          :ets.delete(@system_index_table, system_key)
-        else
-          :ets.insert(@system_index_table, {system_key, updated})
-        end
-
-      [] ->
-        :ok
-    end
-
+    :ets.delete_object(@system_index_table, {system_key, map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -172,10 +162,10 @@ defmodule WandererNotifier.Map.MapRegistry do
   def maps_tracking_character(character_id) do
     char_key = to_string(character_id)
 
-    case :ets.lookup(@character_index_table, char_key) do
-      [{^char_key, slugs}] -> resolve_configs(slugs)
-      [] -> []
-    end
+    @character_index_table
+    |> :ets.lookup(char_key)
+    |> Enum.map(fn {_key, slug} -> slug end)
+    |> resolve_configs()
   rescue
     ArgumentError -> []
   end
@@ -188,17 +178,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec index_character(String.t(), String.t() | integer()) :: :ok
   def index_character(map_slug, character_id) when is_binary(map_slug) do
     char_key = to_string(character_id)
-
-    current_slugs =
-      case :ets.lookup(@character_index_table, char_key) do
-        [{^char_key, slugs}] -> slugs
-        [] -> []
-      end
-
-    unless map_slug in current_slugs do
-      :ets.insert(@character_index_table, {char_key, [map_slug | current_slugs]})
-    end
-
+    :ets.insert(@character_index_table, {char_key, map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -212,21 +192,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec deindex_character(String.t(), String.t() | integer()) :: :ok
   def deindex_character(map_slug, character_id) when is_binary(map_slug) do
     char_key = to_string(character_id)
-
-    case :ets.lookup(@character_index_table, char_key) do
-      [{^char_key, slugs}] ->
-        updated = List.delete(slugs, map_slug)
-
-        if updated == [] do
-          :ets.delete(@character_index_table, char_key)
-        else
-          :ets.insert(@character_index_table, {char_key, updated})
-        end
-
-      [] ->
-        :ok
-    end
-
+    :ets.delete_object(@character_index_table, {char_key, map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -235,7 +201,12 @@ defmodule WandererNotifier.Map.MapRegistry do
   @doc "Returns the current operating mode (:api or :legacy)."
   @spec mode() :: :api | :legacy
   def mode do
-    GenServer.call(__MODULE__, :mode)
+    case :ets.lookup(@configs_table, :__mode__) do
+      [{:__mode__, m}] -> m
+      [] -> :legacy
+    end
+  rescue
+    ArgumentError -> :legacy
   end
 
   # ============================================================================
@@ -246,8 +217,8 @@ defmodule WandererNotifier.Map.MapRegistry do
   def init(_opts) do
     # Create ETS tables for concurrent reads
     :ets.new(@configs_table, [:named_table, :set, :public, read_concurrency: true])
-    :ets.new(@system_index_table, [:named_table, :set, :public, read_concurrency: true])
-    :ets.new(@character_index_table, [:named_table, :set, :public, read_concurrency: true])
+    :ets.new(@system_index_table, [:named_table, :bag, :public, read_concurrency: true])
+    :ets.new(@character_index_table, [:named_table, :bag, :public, read_concurrency: true])
 
     state = %{
       version: 0,
@@ -279,11 +250,6 @@ defmodule WandererNotifier.Map.MapRegistry do
     {:noreply, %{new_state | refresh_timer: timer}}
   end
 
-  @impl true
-  def handle_call(:mode, _from, state) do
-    {:reply, state.mode, state}
-  end
-
   # ============================================================================
   # Private Implementation
   # ============================================================================
@@ -300,14 +266,20 @@ defmodule WandererNotifier.Map.MapRegistry do
   defp do_fetch_and_update(state) do
     case fetch_map_configs() do
       {:ok, configs, version} ->
-        apply_config_changes(configs, state)
+        if version == state.version and state.mode == :api do
+          Logger.debug("Map config unchanged, skipping update", version: version)
+          state
+        else
+          apply_config_changes(configs, state)
 
-        Logger.info("Map configs loaded from API",
-          count: length(configs),
-          version: version
-        )
+          Logger.info("Map configs loaded from API",
+            count: length(configs),
+            version: version
+          )
 
-        %{state | version: version, last_fetched_at: DateTime.utc_now(), mode: :api}
+          :ets.insert(@configs_table, {:__mode__, :api})
+          %{state | version: version, last_fetched_at: DateTime.utc_now(), mode: :api}
+        end
 
       {:error, reason} ->
         handle_fetch_failure(state, reason)
@@ -332,6 +304,7 @@ defmodule WandererNotifier.Map.MapRegistry do
 
     legacy_config = MapConfig.from_env()
     apply_config_changes([legacy_config], state)
+    :ets.insert(@configs_table, {:__mode__, :legacy})
     %{state | last_fetched_at: DateTime.utc_now(), mode: :legacy}
   end
 
@@ -410,6 +383,7 @@ defmodule WandererNotifier.Map.MapRegistry do
     # Remove old configs
     Enum.each(removed, fn slug ->
       :ets.delete(@configs_table, slug)
+      cleanup_map_cache(slug)
       Logger.info("Map removed from registry", map_slug: slug)
     end)
 
@@ -432,24 +406,39 @@ defmodule WandererNotifier.Map.MapRegistry do
       removed: MapSet.to_list(removed)
     }
 
-    Phoenix.PubSub.broadcast(
-      WandererNotifier.PubSub,
-      "map_registry",
-      {:maps_updated, changes}
-    )
+    if Process.whereis(WandererNotifier.PubSub) do
+      Phoenix.PubSub.broadcast(
+        WandererNotifier.PubSub,
+        "map_registry",
+        {:maps_updated, changes}
+      )
+    end
 
-    # Notify SSESupervisor to start/stop SSE clients for changed maps
     notify_sse_supervisor(changes)
-  rescue
-    # PubSub may not be started yet during initialization
-    _ -> :ok
   end
 
   defp notify_sse_supervisor(changes) do
-    WandererNotifier.Map.SSESupervisor.handle_maps_updated(changes)
+    if Process.whereis(WandererNotifier.Map.SSESupervisor) do
+      Task.start(fn ->
+        WandererNotifier.Map.SSESupervisor.handle_maps_updated(changes)
+      end)
+    end
+  end
+
+  defp cleanup_map_cache(map_slug) do
+    # Delete scoped cache keys for this map
+    map_slug |> CacheKeys.map_systems() |> Cache.delete()
+    map_slug |> CacheKeys.map_characters() |> Cache.delete()
+
+    # Remove all entries from reverse indexes for this map
+    cleanup_reverse_index(@system_index_table, map_slug)
+    cleanup_reverse_index(@character_index_table, map_slug)
   rescue
-    # SSESupervisor may not be started yet during initialization
     _ -> :ok
+  end
+
+  defp cleanup_reverse_index(table, map_slug) do
+    :ets.match_delete(table, {:_, map_slug})
   end
 
   defp schedule_refresh do

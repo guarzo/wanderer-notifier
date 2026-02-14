@@ -272,93 +272,18 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_rally_point_notification(rally_point) do
-    Logger.debug("Processing rally point notification async", rally_id: rally_point[:id])
-
-    try do
-      if notifications_enabled?() and rally_notifications_enabled?() do
-        case format_notification(rally_point) do
-          {:ok, formatted_notification} ->
-            channel_id = Config.discord_rally_channel_id() || Config.discord_channel_id()
-
-            # Add @group mention if configured
-            content = build_rally_content()
-            formatted_with_content = Map.put(formatted_notification, :content, content)
-
-            send_to_discord(formatted_with_content, channel_id)
-            Logger.debug("Rally point notification sent successfully")
-            :sent
-
-          {:error, reason} ->
-            Logger.error("Failed to format rally point notification: #{inspect(reason)}")
-            :error
-        end
-      else
-        Logger.debug("Rally point notifications disabled, skipping")
-        :skipped
-      end
-    rescue
-      e ->
-        Logger.error("Exception in send_rally_point_notification: #{Exception.message(e)}")
-        :error
-    end
+    mc = MapConfig.from_env()
+    send_rally_point_notification_for_map(rally_point, mc)
   end
 
   defp send_system_notification(system) do
-    Logger.debug("Processing system notification async",
-      system_id: Map.get(system, :solar_system_id)
-    )
-
-    try do
-      if notifications_enabled?() and system_notifications_enabled?() do
-        case format_notification(system) do
-          {:ok, formatted_notification} ->
-            channel_id = Config.discord_system_channel_id() || Config.discord_channel_id()
-            send_to_discord(formatted_notification, channel_id)
-            Logger.debug("System notification sent successfully")
-            :sent
-
-          {:error, reason} ->
-            Logger.error("Failed to format system notification: #{inspect(reason)}")
-            :error
-        end
-      else
-        Logger.debug("System notifications disabled, skipping")
-        :skipped
-      end
-    rescue
-      e ->
-        Logger.error("Exception in send_system_notification: #{Exception.message(e)}")
-        :error
-    end
+    mc = MapConfig.from_env()
+    send_system_notification_for_map(system, mc)
   end
 
   defp send_character_notification(character) do
-    Logger.debug("Processing character notification async",
-      character_id: Map.get(character, :character_id)
-    )
-
-    try do
-      if notifications_enabled?() and character_notifications_enabled?() do
-        case format_notification(character) do
-          {:ok, formatted_notification} ->
-            channel_id = Config.discord_character_channel_id() || Config.discord_channel_id()
-            send_to_discord(formatted_notification, channel_id)
-            Logger.debug("Character notification sent successfully")
-            :sent
-
-          {:error, reason} ->
-            Logger.error("Failed to format character notification: #{inspect(reason)}")
-            :error
-        end
-      else
-        Logger.debug("Character notifications disabled, skipping")
-        :skipped
-      end
-    rescue
-      e ->
-        Logger.error("Exception in send_character_notification: #{Exception.message(e)}")
-        :error
-    end
+    mc = MapConfig.from_env()
+    send_character_notification_for_map(character, mc)
   end
 
   defp send_generic_embed(embed, opts) do
@@ -470,7 +395,11 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
     system_id = Map.get(killmail, :system_id)
-    has_tracked_system = tracked_system?(system_id)
+    # Always true: Pipeline fan-out already verified this map tracks the system
+    # via MapRegistry reverse index before dispatching here.
+    # Using the global tracked_system?/1 would be incorrect in multi-map mode
+    # because it checks unscoped/legacy cache keys instead of per-map scoped keys.
+    has_tracked_system = true
     involves_focused = involves_focused_corporation_for_map?(killmail, mc)
 
     ctx = %{
@@ -653,18 +582,6 @@ defmodule WandererNotifier.DiscordNotifier do
     [ctx.default_channel]
   end
 
-  defp build_rally_content do
-    alias WandererNotifier.Domains.Notifications.Formatters.NotificationUtils
-
-    case NotificationUtils.rally_mentions() do
-      "" ->
-        "Rally point created!"
-
-      mentions ->
-        "#{mentions} Rally point created!"
-    end
-  end
-
   # Simplified tracking checks - delegate to existing modules
   defp tracked_system?(system_id) do
     WandererNotifier.Domains.Notifications.Determiner.tracked_system_for_killmail?(system_id)
@@ -673,9 +590,6 @@ defmodule WandererNotifier.DiscordNotifier do
   # Feature flags
   defp notifications_enabled?, do: Config.notifications_enabled?()
   defp kill_notifications_enabled?, do: Config.kill_notifications_enabled?()
-  defp rally_notifications_enabled?, do: Config.rally_notifications_enabled?()
-  defp system_notifications_enabled?, do: Config.system_notifications_enabled?()
-  defp character_notifications_enabled?, do: Config.character_notifications_enabled?()
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # System Kill Channel Exclusions

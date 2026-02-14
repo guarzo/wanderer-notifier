@@ -623,14 +623,14 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
     ]
   end
 
-  defp cache_entities_for_map(map_slug, entity_type, entities, config) do
+  defp cache_entities_for_map(map_slug, entity_type, entities, _config) do
     scoped_key = scoped_cache_key(entity_type, map_slug)
     Cache.put(scoped_key, entities, Cache.ttl(:map_data))
     cache_individual_entities_for_map(map_slug, entity_type, entities)
 
     Logger.debug("Cached #{length(entities)} #{entity_type} for map #{map_slug}",
       category: :cache,
-      cache_key: config.cache_key
+      cache_key: scoped_key
     )
 
     :ok
