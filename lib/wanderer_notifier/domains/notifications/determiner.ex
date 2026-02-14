@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Domains.Killmail.Killmail
+  alias WandererNotifier.Map.MapConfig
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.PersistentValues
 
@@ -128,6 +129,140 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
       startup_suppressed?() -> {:ok, false}
       not feature_enabled?(:rally_point) -> {:ok, false}
       true -> {:ok, check_dedup_boolean(:rally_point, rally_id)}
+    end
+  end
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # Per-Map Notification Decision Logic
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Determines if a notification should be sent for a specific map.
+
+  Uses per-map feature flags from MapConfig instead of global Config.
+  Deduplication is scoped by map_slug so the same entity on different
+  maps generates separate notifications.
+
+  ## Parameters
+    - map_config: The MapConfig for the target map
+    - type: The notification type (:character, :system, or :kill)
+    - entity_id: The ID of the entity
+    - entity_data: Optional entity data for additional context
+
+  ## Returns
+    - `{:ok, true}` if a notification should be sent
+    - `{:ok, false}` if a notification should not be sent
+  """
+  @spec should_notify_for_map?(MapConfig.t(), notification_type(), entity_id(), entity_data()) ::
+          {:ok, boolean()}
+  def should_notify_for_map?(map_config, type, entity_id, entity_data \\ nil)
+
+  def should_notify_for_map?(%MapConfig{} = mc, :character, character_id, _character_data) do
+    cond do
+      startup_suppressed?() ->
+        log_startup_suppression(:character, character_id)
+        {:ok, false}
+
+      not map_feature_enabled?(mc, :character_notifications_enabled) ->
+        {:ok, false}
+
+      true ->
+        {:ok, check_scoped_dedup(:character, mc.slug, character_id)}
+    end
+  end
+
+  def should_notify_for_map?(%MapConfig{} = mc, :system, system_id, system_data) do
+    is_priority = priority_system?(system_data)
+
+    cond do
+      startup_suppressed?() ->
+        log_startup_suppression(:system, system_id)
+        {:ok, false}
+
+      not map_feature_enabled?(mc, :system_notifications_enabled) and not is_priority ->
+        {:ok, false}
+
+      true ->
+        {:ok, check_scoped_system_dedup(mc.slug, system_id, is_priority)}
+    end
+  end
+
+  def should_notify_for_map?(%MapConfig{} = mc, :kill, _killmail_id, killmail_data) do
+    case should_notify_killmail_for_map?(mc, killmail_data) do
+      {:ok, %{should_notify: should_notify}} -> {:ok, should_notify}
+      {:error, _reason} -> {:ok, false}
+    end
+  end
+
+  def should_notify_for_map?(%MapConfig{} = mc, :rally_point, rally_id, _rally_data) do
+    cond do
+      startup_suppressed?() -> {:ok, false}
+      not map_feature_enabled?(mc, :rally_notifications_enabled) -> {:ok, false}
+      true -> {:ok, check_scoped_dedup(:rally_point, mc.slug, rally_id)}
+    end
+  end
+
+  # Per-map feature flag check
+  defp map_feature_enabled?(%MapConfig{} = mc, feature) do
+    MapConfig.feature_enabled?(mc, :notifications_enabled) and
+      MapConfig.feature_enabled?(mc, feature)
+  end
+
+  # Scoped dedup: incorporates map_slug into the identifier
+  defp check_scoped_dedup(type, map_slug, entity_id) do
+    scoped_id = "#{map_slug}:#{entity_id}"
+
+    case Deduplication.check(type, scoped_id) do
+      {:ok, :new} -> true
+      {:ok, :duplicate} -> false
+      {:error, _reason} -> true
+    end
+  end
+
+  defp check_scoped_system_dedup(map_slug, system_id, is_priority) do
+    scoped_id = "#{map_slug}:#{system_id}"
+
+    case Deduplication.check(:system, scoped_id) do
+      {:ok, :new} ->
+        if is_priority,
+          do:
+            Logger.info("Priority system notification will be sent (map: #{map_slug})",
+              system_id: system_id,
+              map_slug: map_slug,
+              category: :notification
+            )
+
+        true
+
+      {:ok, :duplicate} ->
+        false
+
+      {:error, reason} ->
+        Logger.warning("System deduplication check failed",
+          system_id: system_id,
+          map_slug: map_slug,
+          is_priority: is_priority,
+          reason: inspect(reason),
+          category: :notification
+        )
+
+        true
+    end
+  end
+
+  defp should_notify_killmail_for_map?(%MapConfig{} = mc, killmail_data) do
+    cond do
+      startup_suppressed?() ->
+        {:ok, %{should_notify: false, reason: :startup_suppression}}
+
+      not map_feature_enabled?(mc, :kill_notifications_enabled) ->
+        {:ok, %{should_notify: false, reason: :kill_notifications_disabled}}
+
+      true ->
+        # Delegate to existing killmail format parsing + dedup
+        # Killmail dedup stays global (process each killmail once from WebSocket)
+        # but notification dedup is per-map (same kill can notify multiple maps)
+        should_notify_killmail?(killmail_data)
     end
   end
 

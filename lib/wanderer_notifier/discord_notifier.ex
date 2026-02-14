@@ -17,6 +17,7 @@ defmodule WandererNotifier.DiscordNotifier do
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
   alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
+  alias WandererNotifier.Map.MapConfig
 
   @doc """
   Send a kill notification asynchronously.
@@ -80,6 +81,55 @@ defmodule WandererNotifier.DiscordNotifier do
   """
   def send_embed_async(embed, opts \\ []) do
     Task.start(fn -> send_generic_embed(embed, opts) end)
+    :ok
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Multi-Map API - MapConfig-aware send functions
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  @doc """
+  Send a kill notification for a specific map asynchronously.
+  Uses MapConfig for channel routing, feature flags, and bot token.
+  """
+  def send_kill_async(killmail, %MapConfig{} = map_config) do
+    Task.start(fn ->
+      try do
+        send_kill_notification_for_map(killmail, map_config)
+      rescue
+        error ->
+          Logger.error("Kill notification failed for map #{map_config.slug}",
+            killmail_id: killmail.killmail_id,
+            map_slug: map_config.slug,
+            error: inspect(error)
+          )
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Send a system notification for a specific map asynchronously.
+  """
+  def send_system_async(system, %MapConfig{} = map_config) do
+    Task.start(fn -> send_system_notification_for_map(system, map_config) end)
+    :ok
+  end
+
+  @doc """
+  Send a character notification for a specific map asynchronously.
+  """
+  def send_character_async(character, %MapConfig{} = map_config) do
+    Task.start(fn -> send_character_notification_for_map(character, map_config) end)
+    :ok
+  end
+
+  @doc """
+  Send a rally point notification for a specific map asynchronously.
+  """
+  def send_rally_point_async(rally_point, %MapConfig{} = map_config) do
+    Task.start(fn -> send_rally_point_notification_for_map(rally_point, map_config) end)
     :ok
   end
 
@@ -330,6 +380,177 @@ defmodule WandererNotifier.DiscordNotifier do
       e ->
         Logger.error("Exception in send_generic_embed: #{Exception.message(e)}")
         :error
+    end
+  end
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Private Implementation - Multi-Map (via HttpClient)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp send_kill_notification_for_map(killmail, %MapConfig{} = mc) do
+    if MapConfig.notifications_fully_enabled?(mc, :kill_notifications_enabled) do
+      system_id = Map.get(killmail, :system_id)
+
+      if map_wormhole_only_excluded?(mc, system_id) do
+        {:ok, :skipped}
+      else
+        channels = determine_kill_channels_for_map(killmail, mc)
+        dispatch_to_map_channels(killmail, channels, mc)
+      end
+    else
+      {:ok, :skipped}
+    end
+  rescue
+    e ->
+      Logger.error("Exception in send_kill_notification_for_map: #{Exception.message(e)}")
+      :error
+  end
+
+  defp send_system_notification_for_map(system, %MapConfig{} = mc) do
+    if MapConfig.notifications_fully_enabled?(mc, :system_notifications_enabled) do
+      case format_notification(system) do
+        {:ok, formatted} ->
+          channel_id = MapConfig.channel_for(mc, :system)
+          send_to_discord_for_map(formatted, channel_id, mc)
+
+        {:error, reason} ->
+          Logger.error("Failed to format system notification: #{inspect(reason)}")
+          :error
+      end
+    else
+      :skipped
+    end
+  rescue
+    e ->
+      Logger.error("Exception in send_system_notification_for_map: #{Exception.message(e)}")
+      :error
+  end
+
+  defp send_character_notification_for_map(character, %MapConfig{} = mc) do
+    if MapConfig.notifications_fully_enabled?(mc, :character_notifications_enabled) do
+      case format_notification(character) do
+        {:ok, formatted} ->
+          channel_id = MapConfig.channel_for(mc, :character)
+          send_to_discord_for_map(formatted, channel_id, mc)
+
+        {:error, reason} ->
+          Logger.error("Failed to format character notification: #{inspect(reason)}")
+          :error
+      end
+    else
+      :skipped
+    end
+  rescue
+    e ->
+      Logger.error("Exception in send_character_notification_for_map: #{Exception.message(e)}")
+      :error
+  end
+
+  defp send_rally_point_notification_for_map(rally_point, %MapConfig{} = mc) do
+    if MapConfig.notifications_fully_enabled?(mc, :rally_notifications_enabled) do
+      case format_notification(rally_point) do
+        {:ok, formatted} ->
+          channel_id = MapConfig.channel_for(mc, :rally)
+          content = build_rally_content_for_map(mc)
+          formatted_with_content = Map.put(formatted, :content, content)
+          send_to_discord_for_map(formatted_with_content, channel_id, mc)
+
+        {:error, reason} ->
+          Logger.error("Failed to format rally point notification: #{inspect(reason)}")
+          :error
+      end
+    else
+      :skipped
+    end
+  rescue
+    e ->
+      Logger.error("Exception in send_rally_point_notification_for_map: #{Exception.message(e)}")
+      :error
+  end
+
+  defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
+    system_id = Map.get(killmail, :system_id)
+    has_tracked_system = tracked_system?(system_id)
+    involves_focused = involves_focused_corporation_for_map?(killmail, mc)
+
+    ctx = %{
+      involves_focused_corp: involves_focused,
+      has_tracked_system: has_tracked_system,
+      wormhole_excluded: has_tracked_system && map_wormhole_only_excluded?(mc, system_id),
+      default_channel: MapConfig.channel_for(mc, :primary),
+      system_channel: MapConfig.channel_for(mc, :system_kill),
+      character_channel: MapConfig.channel_for(mc, :character_kill)
+    }
+
+    select_channels(ctx) |> Enum.uniq()
+  end
+
+  defp dispatch_to_map_channels(_killmail, [], _mc), do: {:ok, :skipped}
+
+  defp dispatch_to_map_channels(killmail, channels, mc) do
+    Enum.each(channels, fn channel_id ->
+      system_kill = channel_id == MapConfig.channel_for(mc, :system_kill)
+
+      case format_notification(killmail, use_custom_system_name: system_kill) do
+        {:ok, formatted} ->
+          send_to_discord_for_map(formatted, channel_id, mc)
+
+        {:error, reason} ->
+          Logger.error("Failed to format kill notification: #{inspect(reason)}")
+      end
+    end)
+
+    {:ok, :sent}
+  end
+
+  defp send_to_discord_for_map(embed, channel_id, %MapConfig{} = mc) do
+    content = Map.get(embed, :content)
+
+    result =
+      if is_binary(content) and String.trim(content) != "" do
+        NeoClient.send_embed_with_content_for_map(embed, mc, channel_id, content)
+      else
+        NeoClient.send_embed_for_map(embed, mc, channel_id)
+      end
+
+    case result do
+      {:ok, :sent} ->
+        Logger.info("Discord notification sent for map #{mc.slug}",
+          channel: channel_id,
+          map_slug: mc.slug
+        )
+
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Discord notification failed for map #{mc.slug}",
+          channel: channel_id,
+          map_slug: mc.slug,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp map_wormhole_only_excluded?(%MapConfig{} = mc, system_id) do
+    MapConfig.feature_enabled?(mc, :wormhole_only_kill_notifications) and
+      not wormhole_system?(system_id)
+  end
+
+  defp involves_focused_corporation_for_map?(killmail, %MapConfig{} = mc) do
+    focus_corps = MapConfig.corporation_kill_focus(mc)
+    do_involves_focused_corporation?(killmail, focus_corps)
+  end
+
+  defp build_rally_content_for_map(%MapConfig{} = mc) do
+    group_ids = MapConfig.rally_group_ids(mc)
+
+    if group_ids == [] do
+      "Rally point created!"
+    else
+      mentions = Enum.map_join(group_ids, " ", fn id -> "<@&#{id}>" end)
+      "#{mentions} Rally point created!"
     end
   end
 

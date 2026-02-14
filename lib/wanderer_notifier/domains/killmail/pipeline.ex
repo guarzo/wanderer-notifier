@@ -10,6 +10,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.ItemProcessor
   alias WandererNotifier.Infrastructure.Cache
+  alias WandererNotifier.Map.MapRegistry
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
@@ -274,12 +275,26 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     system_id_str = Integer.to_string(system_id)
     Logger.info("[Pipeline] Checking if system #{system_id_str} is tracked")
 
-    # Note: wormhole_only_kill_notifications filtering is handled at channel routing level
-    # in DiscordNotifier.determine_kill_channels/1, not here
-    with {:ok, tracked} <-
-           WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
-      Logger.info("[Pipeline] System #{system_id_str} tracked check result: #{tracked}")
-      {:ok, tracked}
+    # In API mode, use the reverse index for efficient system tracking lookup.
+    # In legacy mode, fall back to unscoped cache check.
+    tracked = system_tracked_by_mode?(system_id_str)
+    Logger.info("[Pipeline] System #{system_id_str} tracked check result: #{tracked}")
+    {:ok, tracked}
+  end
+
+  # Dialyzer reports the catch-all as unreachable because MapTrackingClient.is_system_tracked?/1
+  # always returns {:ok, boolean()}. Kept for defensive programming.
+  @dialyzer {:nowarn_function, system_tracked_by_mode?: 1}
+  defp system_tracked_by_mode?(system_id_str) do
+    case MapRegistry.mode() do
+      :api ->
+        MapRegistry.maps_tracking_system(system_id_str) != []
+
+      :legacy ->
+        case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
+          {:ok, tracked} -> tracked
+          _ -> false
+        end
     end
   end
 
@@ -303,17 +318,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     character_id_str = Integer.to_string(character_id)
     Logger.info("[Pipeline] Checking if victim character #{character_id_str} is tracked")
 
-    result =
-      WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id_str)
+    tracked = character_tracked_by_mode?(character_id_str)
 
     Logger.info(
-      "[Pipeline] Victim character #{character_id_str} tracked check result: #{inspect(result)}"
+      "[Pipeline] Victim character #{character_id_str} tracked check result: #{tracked}"
     )
 
-    case result do
-      {:ok, true} -> true
-      _ -> false
-    end
+    tracked
   end
 
   defp any_attacker_tracked?(nil), do: false
@@ -323,23 +334,31 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp attacker_tracked?(%{"character_id" => character_id}) when is_integer(character_id) do
-    character_id
-    |> Integer.to_string()
-    |> WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?()
-    |> case do
-      {:ok, true} -> true
-      _ -> false
-    end
+    character_id |> Integer.to_string() |> character_tracked_by_mode?()
   end
 
   defp attacker_tracked?(%{"character_id" => character_id}) when is_binary(character_id) do
-    case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(character_id) do
-      {:ok, true} -> true
-      _ -> false
-    end
+    character_tracked_by_mode?(character_id)
   end
 
   defp attacker_tracked?(_), do: false
+
+  # Dialyzer reports the catch-all as unreachable. Kept for defensive programming.
+  @dialyzer {:nowarn_function, character_tracked_by_mode?: 1}
+  defp character_tracked_by_mode?(character_id_str) do
+    case MapRegistry.mode() do
+      :api ->
+        MapRegistry.maps_tracking_character(character_id_str) != []
+
+      :legacy ->
+        case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
+               character_id_str
+             ) do
+          {:ok, tracked} -> tracked
+          _ -> false
+        end
+    end
+  end
 
   @spec send_notification(Killmail.t()) :: result()
   defp send_notification(%Killmail{} = killmail) do
@@ -412,16 +431,72 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    # Send kill notification using supervised task for better fault tolerance
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-      WandererNotifier.DiscordNotifier.send_kill_async(killmail)
-    end)
+    case MapRegistry.mode() do
+      :api -> fan_out_to_maps(killmail)
+      :legacy -> send_legacy_notification(killmail)
+    end
 
-    # Always return success since we're using fire-and-forget async processing
     Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
     Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
     Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
     {:ok, killmail.killmail_id}
+  end
+
+  # Multi-map fan-out: notify each map that tracks this system or involved characters
+  defp fan_out_to_maps(%Killmail{} = killmail) do
+    matching_maps = collect_matching_maps(killmail)
+
+    Logger.info("[Pipeline] Fan-out: #{length(matching_maps)} maps for killmail",
+      killmail_id: killmail.killmail_id,
+      system_id: killmail.system_id,
+      map_count: length(matching_maps)
+    )
+
+    Enum.each(matching_maps, fn map_config ->
+      Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+        WandererNotifier.DiscordNotifier.send_kill_async(killmail, map_config)
+      end)
+    end)
+  end
+
+  # Collect all unique maps that care about this killmail (by system or character)
+  defp collect_matching_maps(%Killmail{} = killmail) do
+    system_maps = MapRegistry.maps_tracking_system(killmail.system_id)
+    character_maps = collect_character_maps(killmail)
+
+    # Deduplicate by slug
+    (system_maps ++ character_maps)
+    |> Enum.uniq_by(& &1.slug)
+  end
+
+  defp collect_character_maps(%Killmail{} = killmail) do
+    character_ids = extract_all_character_ids(killmail)
+
+    Enum.flat_map(character_ids, fn id ->
+      MapRegistry.maps_tracking_character(id)
+    end)
+  end
+
+  defp extract_all_character_ids(%Killmail{} = killmail) do
+    victim_ids =
+      if killmail.victim_character_id,
+        do: [to_string(killmail.victim_character_id)],
+        else: []
+
+    attacker_ids =
+      (killmail.attackers || [])
+      |> Enum.map(&Map.get(&1, "character_id"))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&to_string/1)
+
+    victim_ids ++ attacker_ids
+  end
+
+  # Legacy single-map notification (existing behavior)
+  defp send_legacy_notification(%Killmail{} = killmail) do
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      WandererNotifier.DiscordNotifier.send_kill_async(killmail)
+    end)
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

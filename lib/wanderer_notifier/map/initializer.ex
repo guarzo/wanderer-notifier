@@ -8,6 +8,8 @@ defmodule WandererNotifier.Map.Initializer do
 
   require Logger
 
+  alias WandererNotifier.Map.MapConfig
+
   @doc """
   Initializes map data by fetching systems and characters from the API.
 
@@ -64,6 +66,44 @@ defmodule WandererNotifier.Map.Initializer do
         # Continue startup even if map data fails
         :ok
     end
+  end
+
+  @doc """
+  Initializes map data for a specific map configuration.
+
+  Used in multi-map mode to initialize data for each map independently.
+  Fetches systems and characters using scoped cache keys.
+  """
+  @spec initialize_map_data_for(MapConfig.t()) :: :ok
+  def initialize_map_data_for(%MapConfig{} = map_config) do
+    Logger.info("Initializing map data for #{map_config.slug}",
+      map_slug: map_config.slug,
+      category: :api
+    )
+
+    tracking = WandererNotifier.Domains.Tracking.MapTrackingClient
+
+    systems_result =
+      execute_timed_fetch(
+        fn -> tracking.fetch_and_cache_systems(map_config, true) end,
+        "systems(#{map_config.slug})"
+      )
+
+    characters_result =
+      execute_timed_fetch(
+        fn -> tracking.fetch_and_cache_characters(map_config, true) end,
+        "characters(#{map_config.slug})"
+      )
+
+    process_results([systems_result, characters_result])
+  rescue
+    e ->
+      Logger.error("Map initialization failed for #{map_config.slug}",
+        error: Exception.message(e),
+        category: :api
+      )
+
+      :ok
   end
 
   defp process_results(results) do
