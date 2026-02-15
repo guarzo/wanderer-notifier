@@ -32,6 +32,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   def cache_key(:system), do: Cache.Keys.map_systems()
 
   @doc """
+  Returns the scoped cache key for the given entity type and map slug.
+  """
+  @spec cache_key(entity_type(), String.t()) :: String.t()
+  def cache_key(:character, map_slug), do: Cache.Keys.map_characters(map_slug)
+  def cache_key(:system, map_slug), do: Cache.Keys.map_systems(map_slug)
+
+  @doc """
   Extracts the unique identifier from an entity based on its type.
   """
   @spec entity_id(entity_type(), map() | struct()) :: term()

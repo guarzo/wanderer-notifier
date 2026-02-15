@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
+  alias WandererNotifier.Map.MapRegistry
 
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       :system_added,
       &create_system_from_payload/1,
       &handle_cache_update(&1, payload),
-      &maybe_send_notification/1
+      &handle_system_added_notification(&1, map_slug)
     )
   end
 
@@ -41,7 +42,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       map_slug,
       :system_removed,
       &extract_system_payload/1,
-      &remove_system_from_cache/1,
+      &handle_system_removal(&1, map_slug),
       &maybe_log_system_removal/1
     )
   end
@@ -164,13 +165,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
-  defp remove_system_from_cache(payload) do
+  defp handle_system_removal(payload, map_slug) do
     system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
 
     Logger.debug("Removing system from cache",
       solar_system_id: Map.get(payload, "solar_system_id"),
       id: Map.get(payload, "id"),
       resolved_system_id: system_id,
+      map_slug: map_slug,
       category: :cache
     )
 
@@ -185,6 +187,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       |> Cache.delete()
     end
 
+    # Update reverse index for killmail fan-out
+    if system_id, do: MapRegistry.deindex_system(map_slug, system_id)
+
     {:ok, :removed}
   end
 
@@ -196,7 +201,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp maybe_send_notification(system) do
+  defp handle_system_added_notification(system, map_slug) do
+    # Update reverse index for killmail fan-out
+    MapRegistry.index_system(map_slug, system.solar_system_id)
+
     case GenericEventHandler.should_notify?(:system, system.solar_system_id, system) do
       {:ok, true} ->
         send_system_notification(system)

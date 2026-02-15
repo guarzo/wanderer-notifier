@@ -511,6 +511,64 @@ defmodule WandererNotifier.Infrastructure.Cache do
   end
 
   # ============================================================================
+  # Map-Scoped Tracking Helpers (Multi-Map Support)
+  # ============================================================================
+
+  @doc """
+  Checks if a system is tracked for a specific map.
+  """
+  @spec is_system_tracked?(String.t(), String.t()) :: boolean()
+  def is_system_tracked?(map_slug, system_id)
+      when is_binary(map_slug) and is_binary(system_id) do
+    exists?(Keys.tracked_system(map_slug, system_id))
+  end
+
+  @doc """
+  Puts tracked system data scoped to a specific map.
+  """
+  @spec put_tracked_system(String.t(), String.t(), map()) :: :ok | {:error, term()}
+  def put_tracked_system(map_slug, system_id, system_data)
+      when is_binary(map_slug) and is_binary(system_id) and is_map(system_data) do
+    put(Keys.tracked_system(map_slug, system_id), system_data, ttl(:system))
+  end
+
+  @doc """
+  Checks if a character is tracked for a specific map.
+  """
+  @spec is_character_tracked?(String.t(), integer()) :: boolean()
+  def is_character_tracked?(map_slug, character_id)
+      when is_binary(map_slug) and is_integer(character_id) do
+    exists?(Keys.tracked_character(map_slug, character_id))
+  end
+
+  @doc """
+  Puts tracked character data scoped to a specific map.
+  """
+  @spec put_tracked_character(String.t(), integer(), map()) :: :ok | {:error, term()}
+  def put_tracked_character(map_slug, character_id, character_data)
+      when is_binary(map_slug) and is_integer(character_id) and is_map(character_data) do
+    put(Keys.tracked_character(map_slug, character_id), character_data, ttl(:system))
+  end
+
+  @doc """
+  Puts the list of tracked systems scoped to a specific map.
+  """
+  @spec put_tracked_systems_list(String.t(), list()) :: :ok | {:error, term()}
+  def put_tracked_systems_list(map_slug, systems)
+      when is_binary(map_slug) and is_list(systems) do
+    put(Keys.tracked_systems_list(map_slug), systems, ttl(:system))
+  end
+
+  @doc """
+  Puts the list of tracked characters scoped to a specific map.
+  """
+  @spec put_tracked_characters_list(String.t(), list()) :: :ok | {:error, term()}
+  def put_tracked_characters_list(map_slug, characters)
+      when is_binary(map_slug) and is_list(characters) do
+    put(Keys.tracked_characters_list(map_slug), characters, ttl(:system))
+  end
+
+  # ============================================================================
   # Convenience Functions
   # ============================================================================
 

@@ -8,6 +8,8 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
   alias WandererNotifier.Domains.Notifications.Discord.ChannelResolver
+  alias WandererNotifier.Domains.Notifications.Discord.HttpClient, as: DiscordHttpClient
+  alias WandererNotifier.Map.MapConfig
   require Logger
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Shared.Utils.Retry
@@ -47,6 +49,38 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
       target_channel = resolve_target_channel(override_channel_id)
       send_embed_to_channel(embed, target_channel)
     end
+  end
+
+  # -- MULTI-MAP MESSAGING API (via HttpClient) --
+
+  @doc """
+  Sends an embed to Discord for a specific map using its bot token.
+
+  Routes through the Discord HttpClient (direct REST API) instead of Nostrum,
+  supporting multiple bot tokens for multi-map notification delivery.
+
+  ## Parameters
+    - embed: A map containing the embed data
+    - map_config: The MapConfig for the target map
+    - channel_id: The target Discord channel ID (string or integer)
+  """
+  @spec send_embed_for_map(map(), MapConfig.t(), String.t() | integer()) ::
+          {:ok, :sent} | {:error, term()}
+  def send_embed_for_map(embed, %MapConfig{} = map_config, channel_id) do
+    bot_token = MapConfig.bot_token(map_config)
+    DiscordHttpClient.send_embed(bot_token, channel_id, embed)
+  end
+
+  @doc """
+  Sends an embed with text content to Discord for a specific map.
+
+  Used for notifications that include @mentions or other text alongside the embed.
+  """
+  @spec send_embed_with_content_for_map(map(), MapConfig.t(), String.t() | integer(), String.t()) ::
+          {:ok, :sent} | {:error, term()}
+  def send_embed_with_content_for_map(embed, %MapConfig{} = map_config, channel_id, content) do
+    bot_token = MapConfig.bot_token(map_config)
+    DiscordHttpClient.send_embed_with_content(bot_token, channel_id, embed, content)
   end
 
   # Log test mode embed without sending

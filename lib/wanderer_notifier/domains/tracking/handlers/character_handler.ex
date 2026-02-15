@@ -9,6 +9,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   alias WandererNotifier.Domains.Tracking.Entities.Character, as: Character
   alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
+  alias WandererNotifier.Map.MapRegistry
 
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       :character_added,
       &extract_character_from_event/1,
       &add_character_to_cache/1,
-      &maybe_notify_character_added/1
+      &handle_character_added(&1, map_slug)
     )
   end
 
@@ -38,7 +39,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       :character_removed,
       &extract_character_from_event/1,
       &remove_character_from_cache/1,
-      &maybe_notify_character_removed/1
+      &handle_character_removed(&1, map_slug)
     )
   end
 
@@ -156,7 +157,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp maybe_notify_character_added(character) do
+  defp handle_character_added(character, map_slug) do
+    # Update reverse index for killmail fan-out
+    eve_id = character["eve_id"]
+    if eve_id, do: MapRegistry.index_character(map_slug, eve_id)
+
     case should_notify_character?(character) do
       {:ok, true} ->
         send_character_added_notification(character)
@@ -167,14 +172,17 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     end
   end
 
-  defp maybe_notify_character_removed(character) do
+  defp handle_character_removed(character, map_slug) do
+    # Update reverse index for killmail fan-out
+    eve_id = character["eve_id"]
+    if eve_id, do: MapRegistry.deindex_character(map_slug, eve_id)
+
     Logger.debug("Character removed from tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       category: :api
     )
 
-    # No notification sent for character removal
     {:ok, :skipped}
   end
 
