@@ -24,28 +24,24 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_kill_async(killmail) do
-    Task.start(fn ->
-      try do
-        send_kill_notification(killmail)
-        Logger.debug("Kill notification sent successfully", killmail_id: killmail.killmail_id)
-      rescue
-        error ->
-          Logger.error("Kill notification failed",
-            killmail_id: killmail.killmail_id,
-            error: inspect(error),
-            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-          )
+    send_kill_notification(killmail)
+    Logger.debug("Kill notification sent successfully", killmail_id: killmail.killmail_id)
+  rescue
+    error ->
+      Logger.error("Kill notification failed",
+        killmail_id: killmail.killmail_id,
+        error: inspect(error),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
 
-          # Emit telemetry for notification failures
-          :telemetry.execute([:wanderer_notifier, :notification, :failed], %{count: 1}, %{
-            type: :kill,
-            killmail_id: killmail.killmail_id,
-            reason: inspect(error)
-          })
-      end
-    end)
+      # Emit telemetry for notification failures
+      :telemetry.execute([:wanderer_notifier, :notification, :failed], %{count: 1}, %{
+        type: :kill,
+        killmail_id: killmail.killmail_id,
+        reason: inspect(error)
+      })
 
-    :ok
+      :error
   end
 
   @doc """
@@ -53,7 +49,10 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_rally_point_async(rally_point) do
-    Task.start(fn -> send_rally_point_notification(rally_point) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_rally_point_notification(rally_point)
+    end)
+
     :ok
   end
 
@@ -62,7 +61,10 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_system_async(system) do
-    Task.start(fn -> send_system_notification(system) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_system_notification(system)
+    end)
+
     :ok
   end
 
@@ -71,7 +73,10 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_character_async(character) do
-    Task.start(fn -> send_character_notification(character) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_character_notification(character)
+    end)
+
     :ok
   end
 
@@ -93,27 +98,26 @@ defmodule WandererNotifier.DiscordNotifier do
   Uses MapConfig for channel routing, feature flags, and bot token.
   """
   def send_kill_async(killmail, %MapConfig{} = map_config) do
-    Task.start(fn ->
-      try do
-        send_kill_notification_for_map(killmail, map_config)
-      rescue
-        error ->
-          Logger.error("Kill notification failed for map #{map_config.slug}",
-            killmail_id: killmail.killmail_id,
-            map_slug: map_config.slug,
-            error: inspect(error)
-          )
-      end
-    end)
+    send_kill_notification_for_map(killmail, map_config)
+  rescue
+    error ->
+      Logger.error("Kill notification failed for map #{map_config.slug}",
+        killmail_id: killmail.killmail_id,
+        map_slug: map_config.slug,
+        error: inspect(error)
+      )
 
-    :ok
+      :error
   end
 
   @doc """
   Send a system notification for a specific map asynchronously.
   """
   def send_system_async(system, %MapConfig{} = map_config) do
-    Task.start(fn -> send_system_notification_for_map(system, map_config) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_system_notification_for_map(system, map_config)
+    end)
+
     :ok
   end
 
@@ -121,7 +125,10 @@ defmodule WandererNotifier.DiscordNotifier do
   Send a character notification for a specific map asynchronously.
   """
   def send_character_async(character, %MapConfig{} = map_config) do
-    Task.start(fn -> send_character_notification_for_map(character, map_config) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_character_notification_for_map(character, map_config)
+    end)
+
     :ok
   end
 
@@ -129,7 +136,10 @@ defmodule WandererNotifier.DiscordNotifier do
   Send a rally point notification for a specific map asynchronously.
   """
   def send_rally_point_async(rally_point, %MapConfig{} = map_config) do
-    Task.start(fn -> send_rally_point_notification_for_map(rally_point, map_config) end)
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      send_rally_point_notification_for_map(rally_point, map_config)
+    end)
+
     :ok
   end
 
@@ -272,18 +282,25 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_rally_point_notification(rally_point) do
-    mc = MapConfig.from_env()
+    mc = legacy_map_config()
     send_rally_point_notification_for_map(rally_point, mc)
   end
 
   defp send_system_notification(system) do
-    mc = MapConfig.from_env()
+    mc = legacy_map_config()
     send_system_notification_for_map(system, mc)
   end
 
   defp send_character_notification(character) do
-    mc = MapConfig.from_env()
+    mc = legacy_map_config()
     send_character_notification_for_map(character, mc)
+  end
+
+  defp legacy_map_config do
+    case WandererNotifier.Map.MapRegistry.all_maps() do
+      [config | _] -> config
+      [] -> MapConfig.from_env()
+    end
   end
 
   defp send_generic_embed(embed, opts) do
@@ -441,7 +458,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case result do
       {:ok, :sent} ->
-        Logger.info("Discord notification sent for map #{mc.slug}",
+        Logger.debug("Discord notification sent for map #{mc.slug}",
           channel: channel_id,
           map_slug: mc.slug
         )

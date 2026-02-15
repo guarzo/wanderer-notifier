@@ -16,6 +16,12 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
 
   @discord_api_base "https://discord.com/api/v10"
 
+  @discord_embed_keys MapSet.new(~w(
+    title description url color timestamp footer image thumbnail
+    author fields name value inline icon_url proxy_icon_url text
+    width height proxy_url provider video
+  ))
+
   @type embed :: map()
   @type channel_id :: String.t() | integer()
   @type bot_token :: String.t()
@@ -128,15 +134,14 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
 
   defp normalize_keys(map) do
     Map.new(map, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {safe_to_existing_atom(k), v}
-    end)
-  end
+      {k, v} when is_atom(k) ->
+        {k, v}
 
-  defp safe_to_existing_atom(str) do
-    String.to_existing_atom(str)
-  rescue
-    ArgumentError -> str
+      {k, v} when is_binary(k) ->
+        if MapSet.member?(@discord_embed_keys, k),
+          do: {String.to_existing_atom(k), v},
+          else: {k, v}
+    end)
   end
 
   defp reject_nil_values(map) do

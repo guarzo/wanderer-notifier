@@ -54,10 +54,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   def all_maps do
     @configs_table
     |> :ets.tab2list()
-    |> Enum.flat_map(fn
-      {:__mode__, _} -> []
-      {_slug, config} -> [config]
-    end)
+    |> Enum.map(fn {_slug, config} -> config end)
   rescue
     ArgumentError -> []
   end
@@ -78,10 +75,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   def map_slugs do
     @configs_table
     |> :ets.tab2list()
-    |> Enum.flat_map(fn
-      {:__mode__, _} -> []
-      {slug, _config} -> [slug]
-    end)
+    |> Enum.map(fn {slug, _config} -> slug end)
   rescue
     ArgumentError -> []
   end
@@ -94,26 +88,23 @@ defmodule WandererNotifier.Map.MapRegistry do
   """
   @spec maps_tracking_system(String.t() | integer()) :: [MapConfig.t()]
   def maps_tracking_system(system_id) do
-    system_key = to_string(system_id)
+    if table_ready?() do
+      system_key = to_string(system_id)
 
-    @system_index_table
-    |> :ets.lookup(system_key)
-    |> Enum.map(fn {_key, slug} -> slug end)
-    |> resolve_configs()
-  rescue
-    ArgumentError -> []
+      @system_index_table
+      |> :ets.lookup(system_key)
+      |> Enum.map(fn {_key, slug} -> slug end)
+      |> Enum.uniq()
+      |> resolve_configs()
+    else
+      []
+    end
   end
 
   @doc "Returns the number of registered maps."
   @spec count() :: non_neg_integer()
   def count do
-    size = :ets.info(@configs_table, :size)
-
-    # Subtract 1 for the :__mode__ metadata key if it exists
-    case :ets.lookup(@configs_table, :__mode__) do
-      [{:__mode__, _}] -> max(size - 1, 0)
-      [] -> size
-    end
+    :ets.info(@configs_table, :size)
   rescue
     ArgumentError -> 0
   end
@@ -131,13 +122,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   """
   @spec index_system(String.t(), String.t() | integer()) :: :ok
   def index_system(map_slug, system_id) when is_binary(map_slug) do
-    system_key = to_string(system_id)
-    entry = {system_key, map_slug}
-
-    if :ets.match_object(@system_index_table, entry) == [] do
-      :ets.insert(@system_index_table, entry)
-    end
-
+    :ets.insert(@system_index_table, {to_string(system_id), map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -165,14 +150,17 @@ defmodule WandererNotifier.Map.MapRegistry do
   """
   @spec maps_tracking_character(String.t() | integer()) :: [MapConfig.t()]
   def maps_tracking_character(character_id) do
-    char_key = to_string(character_id)
+    if table_ready?() do
+      char_key = to_string(character_id)
 
-    @character_index_table
-    |> :ets.lookup(char_key)
-    |> Enum.map(fn {_key, slug} -> slug end)
-    |> resolve_configs()
-  rescue
-    ArgumentError -> []
+      @character_index_table
+      |> :ets.lookup(char_key)
+      |> Enum.map(fn {_key, slug} -> slug end)
+      |> Enum.uniq()
+      |> resolve_configs()
+    else
+      []
+    end
   end
 
   @doc """
@@ -182,13 +170,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   """
   @spec index_character(String.t(), String.t() | integer()) :: :ok
   def index_character(map_slug, character_id) when is_binary(map_slug) do
-    char_key = to_string(character_id)
-    entry = {char_key, map_slug}
-
-    if :ets.match_object(@character_index_table, entry) == [] do
-      :ets.insert(@character_index_table, entry)
-    end
-
+    :ets.insert(@character_index_table, {to_string(character_id), map_slug})
     :ok
   rescue
     ArgumentError -> :ok
@@ -211,12 +193,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @doc "Returns the current operating mode (:api or :legacy)."
   @spec mode() :: :api | :legacy
   def mode do
-    case :ets.lookup(@configs_table, :__mode__) do
-      [{:__mode__, m}] -> m
-      [] -> :legacy
-    end
-  rescue
-    ArgumentError -> :legacy
+    :persistent_term.get({__MODULE__, :mode}, :legacy)
   end
 
   # ============================================================================
@@ -229,6 +206,8 @@ defmodule WandererNotifier.Map.MapRegistry do
     :ets.new(@configs_table, [:named_table, :set, :public, read_concurrency: true])
     :ets.new(@system_index_table, [:named_table, :bag, :public, read_concurrency: true])
     :ets.new(@character_index_table, [:named_table, :bag, :public, read_concurrency: true])
+
+    :persistent_term.put({__MODULE__, :mode}, :legacy)
 
     state = %{
       version: 0,
@@ -264,6 +243,8 @@ defmodule WandererNotifier.Map.MapRegistry do
   # Private Implementation
   # ============================================================================
 
+  defp table_ready?, do: :ets.info(@configs_table) != :undefined
+
   defp resolve_configs(slugs) do
     Enum.flat_map(slugs, fn slug ->
       case get_map(slug) do
@@ -287,7 +268,7 @@ defmodule WandererNotifier.Map.MapRegistry do
             version: version
           )
 
-          :ets.insert(@configs_table, {:__mode__, :api})
+          :persistent_term.put({__MODULE__, :mode}, :api)
           %{state | version: version, last_fetched_at: DateTime.utc_now(), mode: :api}
         end
 
@@ -314,7 +295,7 @@ defmodule WandererNotifier.Map.MapRegistry do
 
     legacy_config = MapConfig.from_env()
     apply_config_changes([legacy_config], state)
-    :ets.insert(@configs_table, {:__mode__, :legacy})
+    :persistent_term.put({__MODULE__, :mode}, :legacy)
     %{state | last_fetched_at: DateTime.utc_now(), mode: :legacy}
   end
 
@@ -429,7 +410,7 @@ defmodule WandererNotifier.Map.MapRegistry do
 
   defp notify_sse_supervisor(changes) do
     if Process.whereis(WandererNotifier.Map.SSESupervisor) do
-      Task.start(fn ->
+      Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
         WandererNotifier.Map.SSESupervisor.handle_maps_updated(changes)
       end)
     end

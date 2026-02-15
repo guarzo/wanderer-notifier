@@ -268,12 +268,12 @@ defmodule WandererNotifier.Domains.Notifications.Determiner do
   defp extract_killmail_id_from_data(%{killmail_id: id}), do: id
   defp extract_killmail_id_from_data(%{"killmail_id" => id}), do: id
   defp extract_killmail_id_from_data(%{"killID" => id}), do: id
-  defp extract_killmail_id_from_data(data) when is_map(data), do: :erlang.phash2(data)
   defp extract_killmail_id_from_data(_), do: nil
 
   # Per-map killmail deduplication check
   defp check_scoped_killmail_dedup(_map_slug, nil) do
-    {:ok, %{should_notify: false, reason: :missing_killmail_id}}
+    Logger.warning("Killmail has no extractable ID, skipping dedup")
+    {:ok, %{should_notify: true, reason: :no_dedup_possible}}
   end
 
   defp check_scoped_killmail_dedup(map_slug, killmail_id) do

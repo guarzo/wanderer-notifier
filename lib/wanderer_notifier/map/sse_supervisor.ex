@@ -188,25 +188,30 @@ defmodule WandererNotifier.Map.SSESupervisor do
     Logger.info("Initializing #{length(maps)} maps from registry", category: :startup)
 
     # Initialize data for all maps (parallelized with concurrency limit)
-    # Task.async_stream preserves input order, so we zip maps with results
     results =
       maps
-      |> Task.async_stream(&initialize_map_data_safely/1,
+      |> Task.async_stream(
+        fn map -> {map, initialize_map_data_safely(map)} end,
         max_concurrency: 10,
         timeout: 60_000
       )
       |> Enum.to_list()
-      |> then(&Enum.zip(maps, &1))
 
     {succeeded, failed} =
       Enum.split_with(results, fn
-        {_map, {:ok, :ok}} -> true
+        {:ok, {_map, :ok}} -> true
         _ -> false
       end)
 
-    log_initialization_failures(failed)
+    failed_items =
+      Enum.map(failed, fn
+        {:ok, {map, error}} -> {map, error}
+        {:exit, reason} -> {nil, reason}
+      end)
 
-    successful_maps = Enum.map(succeeded, fn {map, _result} -> map end)
+    log_initialization_failures(failed_items)
+
+    successful_maps = Enum.map(succeeded, fn {:ok, {map, _}} -> map end)
 
     if failed != [] do
       Logger.warning(
@@ -216,9 +221,6 @@ defmodule WandererNotifier.Map.SSESupervisor do
       )
     end
 
-    # Small delay to ensure cache writes settle
-    Process.sleep(1000)
-
     # Signal PipelineWorker
     signal_pipeline_worker()
 
@@ -227,19 +229,18 @@ defmodule WandererNotifier.Map.SSESupervisor do
   end
 
   defp log_initialization_failures(failed) do
-    Enum.each(failed, fn {map_config, result} ->
-      reason =
-        case result do
-          {:ok, {:error, reason}} -> reason
-          {:exit, reason} -> reason
-          other -> other
-        end
+    Enum.each(failed, fn
+      {%MapConfig{} = mc, reason} ->
+        Logger.warning("Map initialization failed",
+          map_slug: mc.slug,
+          map_name: mc.name,
+          reason: inspect(reason)
+        )
 
-      Logger.warning("Map initialization failed",
-        map_slug: map_config.slug,
-        map_name: map_config.name,
-        reason: inspect(reason)
-      )
+      {nil, reason} ->
+        Logger.warning("Map initialization failed (unknown map)",
+          reason: inspect(reason)
+        )
     end)
   end
 
@@ -250,12 +251,11 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
   defp start_sse_clients_staggered(maps) do
     maps
-    |> Enum.with_index()
-    |> Enum.each(fn {map_config, idx} ->
-      # Stagger connections: 50ms between each to avoid thundering herd
-      if idx > 0, do: Process.sleep(50)
-      start_sse_client_for_map(map_config)
-    end)
+    |> Task.async_stream(&start_sse_client_for_map/1,
+      max_concurrency: 5,
+      timeout: 30_000
+    )
+    |> Stream.run()
 
     Logger.info("Started #{length(maps)} SSE clients", category: :startup)
   end
@@ -324,7 +324,6 @@ defmodule WandererNotifier.Map.SSESupervisor do
   end
 
   defp start_legacy_sse do
-    Process.sleep(1000)
     signal_pipeline_worker()
 
     case get_legacy_map_configuration() do

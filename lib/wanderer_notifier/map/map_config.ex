@@ -57,17 +57,6 @@ defmodule WandererNotifier.Map.MapConfig do
           settings: settings_config()
         }
 
-  defstruct [
-    :slug,
-    :name,
-    :map_id,
-    :owner,
-    :api_token,
-    :discord,
-    :features,
-    :settings
-  ]
-
   @default_features %{
     notifications_enabled: true,
     kill_notifications_enabled: true,
@@ -96,6 +85,23 @@ defmodule WandererNotifier.Map.MapConfig do
     character_exclude_list: [],
     system_exclude_list: []
   }
+
+  defstruct [
+    :slug,
+    :name,
+    :map_id,
+    :owner,
+    :api_token,
+    discord: %{
+      bot_token: nil,
+      application_id: nil,
+      guild_id: nil,
+      channels: @default_channels,
+      rally_group_ids: []
+    },
+    features: @default_features,
+    settings: @default_settings
+  ]
 
   # ============================================================================
   # Constructors
@@ -140,25 +146,25 @@ defmodule WandererNotifier.Map.MapConfig do
   """
   @spec from_env() :: t()
   def from_env do
-    map_name = safe_get_env("MAP_NAME", "default")
+    map_name = System.get_env("MAP_NAME", "default")
 
     %__MODULE__{
       slug: map_name,
       name: map_name,
       map_id: map_name,
       owner: nil,
-      api_token: safe_get_env("MAP_API_KEY"),
+      api_token: System.get_env("MAP_API_KEY"),
       discord: %{
-        bot_token: safe_get_env("DISCORD_BOT_TOKEN"),
-        application_id: safe_get_env("DISCORD_APPLICATION_ID"),
-        guild_id: safe_get_env("DISCORD_GUILD_ID"),
+        bot_token: System.get_env("DISCORD_BOT_TOKEN"),
+        application_id: System.get_env("DISCORD_APPLICATION_ID"),
+        guild_id: System.get_env("DISCORD_GUILD_ID"),
         channels: %{
-          primary: safe_get_env("DISCORD_CHANNEL_ID"),
-          system_kill: safe_get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
-          character_kill: safe_get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
-          system: safe_get_env("DISCORD_SYSTEM_CHANNEL_ID"),
-          character: safe_get_env("DISCORD_CHARACTER_CHANNEL_ID"),
-          rally: safe_get_env("DISCORD_RALLY_CHANNEL_ID")
+          primary: System.get_env("DISCORD_CHANNEL_ID"),
+          system_kill: System.get_env("DISCORD_SYSTEM_KILL_CHANNEL_ID"),
+          character_kill: System.get_env("DISCORD_CHARACTER_KILL_CHANNEL_ID"),
+          system: System.get_env("DISCORD_SYSTEM_CHANNEL_ID"),
+          character: System.get_env("DISCORD_CHARACTER_CHANNEL_ID"),
+          rally: System.get_env("DISCORD_RALLY_CHANNEL_ID")
         },
         rally_group_ids: Application.get_env(:wanderer_notifier, :discord_rally_group_ids, [])
       },
@@ -360,8 +366,4 @@ defmodule WandererNotifier.Map.MapConfig do
   defp normalize_bot_token(""), do: nil
   defp normalize_bot_token(token) when is_binary(token), do: token
   defp normalize_bot_token(_), do: nil
-
-  defp safe_get_env(key, default \\ nil) do
-    System.get_env(key) || default
-  end
 end
