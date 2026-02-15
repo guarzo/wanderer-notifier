@@ -395,17 +395,14 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
     system_id = Map.get(killmail, :system_id)
-    # Always true: Pipeline fan-out already verified this map tracks the system
-    # via MapRegistry reverse index before dispatching here.
-    # Using the global tracked_system?/1 would be incorrect in multi-map mode
-    # because it checks unscoped/legacy cache keys instead of per-map scoped keys.
-    has_tracked_system = true
     involves_focused = involves_focused_corporation_for_map?(killmail, mc)
 
+    # has_tracked_system is always true: Pipeline fan-out already verified
+    # this map tracks the system via MapRegistry reverse index before dispatching.
     ctx = %{
       involves_focused_corp: involves_focused,
-      has_tracked_system: has_tracked_system,
-      wormhole_excluded: has_tracked_system && map_wormhole_only_excluded?(mc, system_id),
+      has_tracked_system: true,
+      wormhole_excluded: map_wormhole_only_excluded?(mc, system_id),
       default_channel: MapConfig.channel_for(mc, :primary),
       system_channel: MapConfig.channel_for(mc, :system_kill),
       character_channel: MapConfig.channel_for(mc, :character_kill)

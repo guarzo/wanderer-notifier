@@ -132,7 +132,12 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec index_system(String.t(), String.t() | integer()) :: :ok
   def index_system(map_slug, system_id) when is_binary(map_slug) do
     system_key = to_string(system_id)
-    :ets.insert(@system_index_table, {system_key, map_slug})
+    entry = {system_key, map_slug}
+
+    if :ets.match_object(@system_index_table, entry) == [] do
+      :ets.insert(@system_index_table, entry)
+    end
+
     :ok
   rescue
     ArgumentError -> :ok
@@ -178,7 +183,12 @@ defmodule WandererNotifier.Map.MapRegistry do
   @spec index_character(String.t(), String.t() | integer()) :: :ok
   def index_character(map_slug, character_id) when is_binary(map_slug) do
     char_key = to_string(character_id)
-    :ets.insert(@character_index_table, {char_key, map_slug})
+    entry = {char_key, map_slug}
+
+    if :ets.match_object(@character_index_table, entry) == [] do
+      :ets.insert(@character_index_table, entry)
+    end
+
     :ok
   rescue
     ArgumentError -> :ok
@@ -434,7 +444,8 @@ defmodule WandererNotifier.Map.MapRegistry do
     cleanup_reverse_index(@system_index_table, map_slug)
     cleanup_reverse_index(@character_index_table, map_slug)
   rescue
-    _ -> :ok
+    e ->
+      Logger.debug("Cache cleanup failed for map #{map_slug}: #{Exception.message(e)}")
   end
 
   defp cleanup_reverse_index(table, map_slug) do
