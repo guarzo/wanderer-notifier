@@ -25,11 +25,9 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_kill_async(killmail) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("kill", fn ->
       handle_kill_result(send_kill_notification(killmail), killmail)
     end)
-
-    :ok
   end
 
   @doc """
@@ -37,11 +35,9 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_rally_point_async(rally_point) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("rally_point", fn ->
       send_rally_point_notification(rally_point)
     end)
-
-    :ok
   end
 
   @doc """
@@ -49,11 +45,9 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_system_async(system) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("system", fn ->
       send_system_notification(system)
     end)
-
-    :ok
   end
 
   @doc """
@@ -61,11 +55,9 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_character_async(character) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("character", fn ->
       send_character_notification(character)
     end)
-
-    :ok
   end
 
   @doc """
@@ -73,11 +65,9 @@ defmodule WandererNotifier.DiscordNotifier do
   Returns immediately, actual sending happens in background Task.
   """
   def send_embed_async(embed, opts \\ []) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("embed", fn ->
       send_generic_embed(embed, opts)
     end)
-
-    :ok
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -89,48 +79,58 @@ defmodule WandererNotifier.DiscordNotifier do
   Uses MapConfig for channel routing, feature flags, and bot token.
   """
   def send_kill_async(killmail, %MapConfig{} = map_config) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("kill(#{map_config.slug})", fn ->
       handle_kill_result(
         send_kill_notification_for_map(killmail, map_config),
         killmail,
         map_config
       )
     end)
-
-    :ok
   end
 
   @doc """
   Send a system notification for a specific map asynchronously.
   """
   def send_system_async(system, %MapConfig{} = map_config) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("system(#{map_config.slug})", fn ->
       send_system_notification_for_map(system, map_config)
     end)
-
-    :ok
   end
 
   @doc """
   Send a character notification for a specific map asynchronously.
   """
   def send_character_async(character, %MapConfig{} = map_config) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("character(#{map_config.slug})", fn ->
       send_character_notification_for_map(character, map_config)
     end)
-
-    :ok
   end
 
   @doc """
   Send a rally point notification for a specific map asynchronously.
   """
   def send_rally_point_async(rally_point, %MapConfig{} = map_config) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+    start_async("rally_point(#{map_config.slug})", fn ->
       send_rally_point_notification_for_map(rally_point, map_config)
     end)
+  end
 
-    :ok
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Async Task Helper
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp start_async(label, fun) do
+    case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fun) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to start async #{label} notification task",
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -469,19 +469,25 @@ defmodule WandererNotifier.DiscordNotifier do
   defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
     system_id = Map.get(killmail, :system_id)
     involves_focused = involves_focused_corporation_for_map?(killmail, mc)
+    has_tracked = map_tracks_system?(mc, system_id)
 
-    # has_tracked_system is always true: Pipeline fan-out already verified
-    # this map tracks the system via MapRegistry reverse index before dispatching.
     ctx = %{
       involves_focused_corp: involves_focused,
-      has_tracked_system: true,
-      wormhole_excluded: map_wormhole_only_excluded?(mc, system_id),
+      has_tracked_system: has_tracked,
+      wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
       default_channel: MapConfig.channel_for(mc, :primary),
       system_channel: MapConfig.channel_for(mc, :system_kill),
       character_channel: MapConfig.channel_for(mc, :character_kill)
     }
 
     select_channels(ctx) |> Enum.uniq()
+  end
+
+  defp map_tracks_system?(_mc, nil), do: false
+
+  defp map_tracks_system?(%MapConfig{} = mc, system_id) do
+    Dependencies.map_registry().maps_tracking_system(system_id)
+    |> Enum.any?(fn config -> config.slug == mc.slug end)
   end
 
   defp dispatch_to_map_channels(_killmail, [], _mc), do: {:ok, :skipped}

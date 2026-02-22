@@ -31,7 +31,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       map_slug,
       :system_added,
       &create_system_from_payload/1,
-      &handle_cache_update(&1, payload),
+      &handle_cache_update(&1, payload, map_slug),
       &handle_system_added_notification(&1, map_slug, registry)
     )
   end
@@ -61,7 +61,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       map_slug,
       :system_updated,
       &create_system_from_payload/1,
-      &handle_cache_update(&1, payload),
+      &handle_cache_update(&1, payload, map_slug),
       &maybe_log_system_update/1
     )
   end
@@ -132,31 +132,32 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   # Dialyzer reports {:error, reason} clause as unreachable because current implementation
   # always returns {:ok, _}. Added for defensive programming against future changes.
-  @dialyzer {:nowarn_function, handle_cache_update: 2}
-  defp handle_cache_update(enriched_system, payload) do
+  @dialyzer {:nowarn_function, handle_cache_update: 3}
+  defp handle_cache_update(enriched_system, payload, map_slug) do
     # Update main systems cache, then cache individual system data
-    case update_system_cache(enriched_system) do
+    case update_system_cache(enriched_system, map_slug) do
       {:ok, _result} ->
-        cache_individual_system(enriched_system, payload)
+        cache_individual_system(enriched_system, payload, map_slug)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp update_system_cache(system) do
+  defp update_system_cache(system, map_slug) do
     match_fn = fn cached -> system_matches?(cached, system.solar_system_id) end
-    opts = [ttl: Cache.ttl(:map_data), add_if_missing: true]
+    opts = [ttl: Cache.ttl(:map_data), add_if_missing: true, map_slug: map_slug]
     GenericEventHandler.update_in_cache_list(:system, system, match_fn, opts)
   end
 
-  defp cache_individual_system(system, payload) do
+  defp cache_individual_system(system, payload, map_slug) do
     system_id = to_string(system.solar_system_id)
 
-    case Cache.put_tracked_system(system_id, payload) do
+    case Cache.put_tracked_system(map_slug, system_id, payload) do
       :ok ->
         Logger.debug("Cached individual system data",
           system_id: system_id,
+          map_slug: map_slug,
           has_custom_name: Map.has_key?(payload, "custom_name"),
           custom_name: Map.get(payload, "custom_name"),
           category: :cache
@@ -180,14 +181,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       category: :cache
     )
 
-    # GenericEventHandler.remove_from_cache_list/2 always returns {:ok, _}
-    {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload)
+    # GenericEventHandler.remove_from_cache_list/3 always returns {:ok, _}
+    {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload, map_slug: map_slug)
 
-    # Also remove individual system cache entry
+    # Also remove individual system cache entry (map-scoped)
     if system_id do
       system_id
       |> to_string()
-      |> Cache.Keys.tracked_system()
+      |> then(&Cache.Keys.tracked_system(map_slug, &1))
       |> Cache.delete()
     end
 

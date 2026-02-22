@@ -31,10 +31,23 @@ defmodule WandererNotifier.Map.Initializer do
       # Then fetch characters
       characters_result = fetch_characters()
 
-      # Process results
+      # Process results (logs outcomes)
       results = [systems_result, characters_result]
       process_results(results)
-      {:ok, :initialized}
+
+      # Propagate errors instead of silently succeeding
+      errors =
+        Enum.filter(results, fn
+          {:error, _, _} -> true
+          _ -> false
+        end)
+
+      if errors == [] do
+        {:ok, :initialized}
+      else
+        reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
+        {:error, {:init_failures, reasons}}
+      end
     rescue
       e in [MatchError, CaseClauseError] ->
         # Handle pattern matching errors from fetch operations

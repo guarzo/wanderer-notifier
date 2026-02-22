@@ -9,15 +9,21 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
 
   setup :verify_on_exit!
 
+  @map_slug "test-map"
+  @systems_key Cache.Keys.map_systems(@map_slug)
+
   setup do
     # Clear cache before each test (both global and scoped keys)
     Cache.delete(Cache.Keys.map_characters())
-    "test-map" |> Cache.Keys.map_characters() |> Cache.delete()
+    @map_slug |> Cache.Keys.map_characters() |> Cache.delete()
     Cache.delete(Cache.Keys.map_systems())
+    Cache.delete(@systems_key)
 
-    # Clear any tracked system entries
+    # Clear any tracked system entries (both global and scoped)
     for i <- 30_000_000..31_000_010 do
-      i |> to_string() |> Cache.Keys.tracked_system() |> Cache.delete()
+      sid = to_string(i)
+      sid |> Cache.Keys.tracked_system() |> Cache.delete()
+      Cache.Keys.tracked_system(@map_slug, sid) |> Cache.delete()
     end
 
     # Stub deduplication mock to allow notifications
@@ -111,7 +117,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
 
   describe "system removal integration" do
     test "deleted_system event removes system from both caches" do
-      # Setup: Add a system to caches
+      # Setup: Add a system to caches (map-scoped)
       system = %WandererNotifier.Domains.Tracking.Entities.System{
         solar_system_id: 31_000_001,
         name: "J123456",
@@ -120,9 +126,9 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         region_name: "W-Space"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system])
+      assert_cache_put(@systems_key, [system])
 
-      Cache.put_tracked_system("31000001", %{
+      Cache.put_tracked_system(@map_slug, "31000001", %{
         "id" => 31_000_001,
         "name" => "J123456",
         "custom_name" => "Home"
@@ -140,13 +146,13 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event
-      result = EventProcessor.process_event(event, "test-map")
+      result = EventProcessor.process_event(event, @map_slug)
 
       # The system handler has a bug where it returns error on empty cache
       # But it should still remove the system from individual cache
       if result == :ok do
         # Check main cache was cleared
-        cache_result = Cache.get(Cache.Keys.map_systems())
+        cache_result = Cache.get(@systems_key)
 
         case cache_result do
           {:ok, systems} when is_list(systems) ->
@@ -161,7 +167,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       end
 
       # Individual cache should be removed regardless
-      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
 
     test "deleted_system event with empty cache" do
@@ -179,10 +185,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event - should handle gracefully
-      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, @map_slug)
 
       # Cache should still be empty
-      cache_result = Cache.get(Cache.Keys.map_systems())
+      cache_result = Cache.get(@systems_key)
       assert cache_result == {:ok, nil} or cache_result == {:error, :not_found}
     end
 
@@ -200,10 +206,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         region_name: "W-Space"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system])
+      assert_cache_put(@systems_key, [system])
 
-      # Individual cache keyed by solar_system_id
-      Cache.put_tracked_system("31000005", %{
+      # Individual cache keyed by solar_system_id (map-scoped)
+      Cache.put_tracked_system(@map_slug, "31000005", %{
         "id" => "uuid-different-from-eve-id",
         "solar_system_id" => 31_000_005,
         "name" => "J555555",
@@ -211,7 +217,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       })
 
       # Verify system is tracked before removal
-      assert Cache.is_system_tracked?("31000005") == true
+      assert Cache.is_system_tracked?(@map_slug, "31000005") == true
 
       # Create SSE event with different id vs solar_system_id
       event = %{
@@ -226,10 +232,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event
-      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, @map_slug)
 
       # Verify system was removed from main cache
-      cache_result = Cache.get(Cache.Keys.map_systems())
+      cache_result = Cache.get(@systems_key)
 
       case cache_result do
         {:ok, systems} when is_list(systems) ->
@@ -243,8 +249,8 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       end
 
       # Verify individual cache was removed - this is the critical check
-      assert {:error, :not_found} = Cache.get_tracked_system("31000005")
-      assert Cache.is_system_tracked?("31000005") == false
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000005")
+      assert Cache.is_system_tracked?(@map_slug, "31000005") == false
     end
   end
 
