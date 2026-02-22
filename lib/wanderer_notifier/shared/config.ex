@@ -155,9 +155,18 @@ defmodule WandererNotifier.Shared.Config do
   def wanderer_kills_url,
     do: get_env_private("WANDERER_KILLS_URL", "http://host.docker.internal:4004")
 
-  @doc "Get Wanderer base URL (plugin API)"
+  @doc "Get Wanderer base URL — derives from MAP_URL."
   def wanderer_base_url do
-    Application.get_env(:wanderer_notifier, :wanderer_base_url)
+    map_url_safe()
+    |> case do
+      {:ok, url} -> normalize_base_url(url)
+      {:error, _} -> nil
+    end
+  end
+
+  defp normalize_base_url(url) do
+    uri = URI.parse(url)
+    "#{uri.scheme}://#{uri.authority}"
   end
 
   @doc "Get Wanderer plugin notifier API key"

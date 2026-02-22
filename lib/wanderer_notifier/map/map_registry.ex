@@ -354,7 +354,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp fetch_from_legacy_api do
-    case Config.map_url_safe() do
+    case Config.wanderer_base_url_safe() do
       {:ok, base_url} ->
         api_key = Config.map_api_key()
         do_fetch_from_api(base_url, "/api/v1/notifier/config", api_key)

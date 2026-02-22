@@ -370,7 +370,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec build_url(entity_type(), entity_config()) :: String.t()
   defp build_url(_entity_type, config) do
-    base_url = Config.wanderer_base_url() || Config.map_url()
+    base_url = Config.wanderer_base_url()
     map_name = Config.map_name()
     endpoint = config.endpoint
 
@@ -380,7 +380,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec build_headers() :: list({String.t(), String.t()})
   defp build_headers do
-    api_key = Config.wanderer_plugin_api_key() || Config.map_api_key()
+    api_key = Config.map_api_key()
 
     [
       {"Authorization", "Bearer #{api_key}"},
@@ -691,7 +691,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   end
 
   defp build_url_for_map(map_config, config) do
-    base_url = Config.wanderer_base_url() || Config.map_url()
+    base_url = Config.wanderer_base_url()
     "#{base_url}/api/maps/#{map_config.slug}/#{config.endpoint}"
   end
 
