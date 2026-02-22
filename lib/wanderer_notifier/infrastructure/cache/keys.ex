@@ -73,17 +73,29 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
   @spec notification_dedup(String.t()) :: String.t()
   def notification_dedup(key), do: "notification:dedup:#{key}"
 
+  @doc "Generates cache key for notification deduplication scoped to a specific map."
+  @spec notification_dedup(String.t(), String.t()) :: String.t()
+  def notification_dedup(map_slug, key), do: "notification:#{map_slug}:dedup:#{key}"
+
   # ============================================================================
-  # Map-related keys
+  # Map-related keys (unscoped - legacy single-map support)
   # ============================================================================
 
   @doc "Returns cache key for map systems data."
   @spec map_systems() :: String.t()
   def map_systems, do: "map:systems"
 
+  @doc "Returns cache key for map systems data scoped to a specific map."
+  @spec map_systems(String.t()) :: String.t()
+  def map_systems(map_slug), do: "map:#{map_slug}:systems"
+
   @doc "Returns cache key for map characters data."
   @spec map_characters() :: String.t()
   def map_characters, do: "map:characters"
+
+  @doc "Returns cache key for map characters data scoped to a specific map."
+  @spec map_characters(String.t()) :: String.t()
+  def map_characters(map_slug), do: "map:#{map_slug}:characters"
 
   @doc "Generates cache key for map state data."
   @spec map_state(String.t()) :: String.t()
@@ -101,17 +113,33 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
   @spec tracked_character(integer() | String.t()) :: String.t()
   def tracked_character(id), do: "tracking:character:#{id}"
 
+  @doc "Generates cache key for tracked character data scoped to a specific map."
+  @spec tracked_character(String.t(), integer() | String.t()) :: String.t()
+  def tracked_character(map_slug, id), do: "tracking:#{map_slug}:character:#{id}"
+
   @doc "Generates cache key for tracked system data."
   @spec tracked_system(integer() | String.t()) :: String.t()
   def tracked_system(id), do: "tracking:system:#{id}"
+
+  @doc "Generates cache key for tracked system data scoped to a specific map."
+  @spec tracked_system(String.t(), integer() | String.t()) :: String.t()
+  def tracked_system(map_slug, id), do: "tracking:#{map_slug}:system:#{id}"
 
   @doc "Returns cache key for tracked systems list."
   @spec tracked_systems_list() :: String.t()
   def tracked_systems_list, do: "tracking:systems_list"
 
+  @doc "Returns cache key for tracked systems list scoped to a specific map."
+  @spec tracked_systems_list(String.t()) :: String.t()
+  def tracked_systems_list(map_slug), do: "tracking:#{map_slug}:systems_list"
+
   @doc "Returns cache key for tracked characters list."
   @spec tracked_characters_list() :: String.t()
   def tracked_characters_list, do: "tracking:characters_list"
+
+  @doc "Returns cache key for tracked characters list scoped to a specific map."
+  @spec tracked_characters_list(String.t()) :: String.t()
+  def tracked_characters_list(map_slug), do: "tracking:#{map_slug}:characters_list"
 
   # ============================================================================
   # Domain-specific data keys (using entity namespace for clarity)

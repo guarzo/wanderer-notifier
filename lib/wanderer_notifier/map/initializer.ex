@@ -8,6 +8,9 @@ defmodule WandererNotifier.Map.Initializer do
 
   require Logger
 
+  alias WandererNotifier.Map.MapConfig
+  alias WandererNotifier.Shared.Dependencies
+
   @doc """
   Initializes map data by fetching systems and characters from the API.
 
@@ -15,7 +18,7 @@ defmodule WandererNotifier.Map.Initializer do
   initial data before SSE starts. Uses sequential loading to prevent
   memory spikes from parallel bulk API calls.
   """
-  @spec initialize_map_data() :: :ok
+  @spec initialize_map_data() :: {:ok, :initialized} | {:error, term()}
   def initialize_map_data do
     Logger.info("Initializing map data (sequential loading for memory efficiency)",
       category: :api
@@ -29,9 +32,10 @@ defmodule WandererNotifier.Map.Initializer do
       # Then fetch characters
       characters_result = fetch_characters()
 
-      # Process results
+      # Process results (logs outcomes) and check for failures
       results = [systems_result, characters_result]
       process_results(results)
+      check_results_for_failures(results)
     rescue
       e in [MatchError, CaseClauseError] ->
         # Handle pattern matching errors from fetch operations
@@ -39,8 +43,7 @@ defmodule WandererNotifier.Map.Initializer do
           "Map initialization network error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
         )
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:network_error, Exception.message(e)}}
 
       e ->
         # Other unexpected errors - conditional debug info based on environment
@@ -54,16 +57,58 @@ defmodule WandererNotifier.Map.Initializer do
           )
         end
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:unexpected_error, Exception.message(e)}}
     catch
       :exit, reason ->
         # Exit handling
         Logger.error("Map initialization process exited", reason: inspect(reason), category: :api)
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:exit, reason}}
     end
+  end
+
+  @doc """
+  Initializes map data for a specific map configuration.
+
+  Used in multi-map mode to initialize data for each map independently.
+  Fetches systems and characters using scoped cache keys.
+  """
+  @spec initialize_map_data_for(MapConfig.t()) :: {:ok, :initialized} | {:error, term()}
+  def initialize_map_data_for(%MapConfig{} = map_config) do
+    Logger.info("Initializing map data for #{map_config.slug}",
+      map_slug: map_config.slug,
+      category: :api
+    )
+
+    tracking = Dependencies.map_tracking_client()
+
+    systems_result =
+      execute_timed_fetch(
+        fn -> tracking.fetch_and_cache_systems(map_config, true) end,
+        "systems(#{map_config.slug})"
+      )
+
+    characters_result =
+      execute_timed_fetch(
+        fn -> tracking.fetch_and_cache_characters(map_config, true) end,
+        "characters(#{map_config.slug})"
+      )
+
+    results = [systems_result, characters_result]
+    process_results(results)
+    check_results_for_failures(results)
+  rescue
+    e ->
+      stacktrace = __STACKTRACE__
+
+      Logger.error("Map initialization failed for #{map_config.slug}",
+        error: Exception.message(e),
+        exception: e,
+        stacktrace: Exception.format(:error, e, stacktrace),
+        category: :api
+      )
+
+      {:error, {:exception, Exception.message(e)}}
   end
 
   defp process_results(results) do
@@ -72,8 +117,8 @@ defmodule WandererNotifier.Map.Initializer do
       {:ok, type, count} ->
         Logger.info("Successfully fetched #{type}", count: count, category: :api)
 
-        # Update the stats tracking
-        case type do
+        # Update the stats tracking (normalize label to strip any "(slug)" suffix)
+        case base_label(type) do
           "systems" ->
             WandererNotifier.Shared.Metrics.set_tracked_count(
               :systems,
@@ -94,23 +139,45 @@ defmodule WandererNotifier.Map.Initializer do
         Logger.error("Failed to fetch #{type}", error: inspect(reason), category: :api)
     end)
 
-    :ok
+    {:ok, :processed}
+  end
+
+  # Strip any trailing "(slug)" suffix from labels emitted by execute_timed_fetch/2.
+  # e.g. "systems(my-map)" -> "systems", "characters" -> "characters"
+  defp base_label(label) when is_binary(label) do
+    case String.split(label, "(", parts: 2) do
+      [base, _] -> base
+      [base] -> base
+    end
+  end
+
+  defp check_results_for_failures(results) do
+    results
+    |> Enum.filter(&match?({:error, _, _}, &1))
+    |> case do
+      [] ->
+        {:ok, :initialized}
+
+      errors ->
+        reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
+        {:error, {:init_failures, reasons}}
+    end
   end
 
   defp fetch_systems do
+    tracking = Dependencies.map_tracking_client()
+
     execute_timed_fetch(
-      fn ->
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems(true)
-      end,
+      fn -> tracking.fetch_and_cache_systems(true) end,
       "systems"
     )
   end
 
   defp fetch_characters do
+    tracking = Dependencies.map_tracking_client()
+
     execute_timed_fetch(
-      fn ->
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters(true)
-      end,
+      fn -> tracking.fetch_and_cache_characters(true) end,
       "characters"
     )
   end

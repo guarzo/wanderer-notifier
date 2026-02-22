@@ -10,6 +10,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
+  alias WandererNotifier.Shared.Dependencies
+
   @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
   # ══════════════════════════════════════════════════════════════════════════════
@@ -24,8 +26,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       map_slug,
       :character_added,
       &extract_character_from_event/1,
-      &add_character_to_cache/1,
-      &maybe_notify_character_added/1
+      &add_character_to_cache(&1, map_slug),
+      &handle_character_added(&1, map_slug)
     )
   end
 
@@ -37,8 +39,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       map_slug,
       :character_removed,
       &extract_character_from_event/1,
-      &remove_character_from_cache/1,
-      &maybe_notify_character_removed/1
+      &remove_character_from_cache(&1, map_slug),
+      &handle_character_removed(&1, map_slug)
     )
   end
 
@@ -50,7 +52,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
       map_slug,
       :character_updated,
       &extract_character_from_event/1,
-      &update_character_in_cache/1,
+      &update_character_in_cache(&1, map_slug),
       &maybe_notify_character_updated/1
     )
   end
@@ -60,11 +62,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp extract_character_from_event(payload) do
-    # Try different field names for EVE ID
-    eve_id =
+    # Try different field names for EVE ID, normalize to string (or nil)
+    raw_eve_id =
       Map.get(payload, "character_eve_id") ||
         Map.get(payload, "eve_id") ||
         Map.get(payload, "character_id")
+
+    eve_id = normalize_eve_id(raw_eve_id)
 
     character = %{
       "id" => Map.get(payload, "id"),
@@ -79,6 +83,12 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
 
     validate_character(character, payload)
   end
+
+  defp normalize_eve_id(nil), do: nil
+  defp normalize_eve_id(""), do: nil
+  defp normalize_eve_id(id) when is_integer(id), do: Integer.to_string(id)
+  defp normalize_eve_id(id) when is_binary(id), do: id
+  defp normalize_eve_id(_other), do: nil
 
   defp validate_character(%{"eve_id" => eve_id, "name" => name} = character, _payload)
        when eve_id != nil and name != nil do
@@ -111,25 +121,23 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # Cache Operations (delegated to GenericEventHandler)
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp add_character_to_cache(character) do
-    GenericEventHandler.add_to_cache_list(:character, character)
+  defp add_character_to_cache(character, map_slug) do
+    GenericEventHandler.add_to_cache_list(:character, character, map_slug: map_slug)
   end
 
-  defp remove_character_from_cache(character) do
-    GenericEventHandler.remove_from_cache_list(:character, character)
+  defp remove_character_from_cache(character, map_slug) do
+    GenericEventHandler.remove_from_cache_list(:character, character, map_slug: map_slug)
   end
 
-  defp update_character_in_cache(character) do
+  defp update_character_in_cache(character, map_slug) do
     match_fn = build_character_match_fn(character)
-    GenericEventHandler.update_in_cache_list(:character, character, match_fn)
+    GenericEventHandler.update_in_cache_list(:character, character, match_fn, map_slug: map_slug)
   end
 
-  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_integer(eve_id) do
-    fn cached -> cached["eve_id"] == eve_id end
-  end
-
-  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_binary(eve_id) and eve_id != "" do
-    fn cached -> cached["eve_id"] == eve_id end
+  defp build_character_match_fn(%{"eve_id" => eve_id})
+       when eve_id != nil and eve_id != "" do
+    eve_id_str = to_string(eve_id)
+    fn cached -> to_string(cached["eve_id"]) == eve_id_str end
   end
 
   defp build_character_match_fn(%{"name" => name, "id" => id})
@@ -156,10 +164,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   # Notification Logic
   # ══════════════════════════════════════════════════════════════════════════════
 
-  defp maybe_notify_character_added(character) do
+  defp handle_character_added(character, map_slug) do
+    # Update reverse index for killmail fan-out
+    eve_id = character["eve_id"]
+
+    if is_binary(eve_id) and eve_id != "" do
+      case Dependencies.map_registry().index_character(map_slug, eve_id) do
+        :ok ->
+          :ok
+
+        other ->
+          Logger.error("Failed to index character in MapRegistry",
+            map_slug: map_slug,
+            eve_id: eve_id,
+            reason: inspect(other),
+            category: :api
+          )
+      end
+    end
+
     case should_notify_character?(character) do
       {:ok, true} ->
-        send_character_added_notification(character)
+        send_character_added_notification(character, map_slug)
         {:ok, :sent}
 
       {:ok, false} ->
@@ -167,14 +193,31 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     end
   end
 
-  defp maybe_notify_character_removed(character) do
+  defp handle_character_removed(character, map_slug) do
+    # Update reverse index for killmail fan-out
+    eve_id = character["eve_id"]
+
+    if is_binary(eve_id) and eve_id != "" do
+      case Dependencies.map_registry().deindex_character(map_slug, eve_id) do
+        :ok ->
+          :ok
+
+        other ->
+          Logger.error("Failed to deindex character from reverse index",
+            map_slug: map_slug,
+            eve_id: eve_id,
+            reason: inspect(other),
+            category: :api
+          )
+      end
+    end
+
     Logger.debug("Character removed from tracking",
       character_name: character["name"],
       eve_id: character["eve_id"],
       category: :api
     )
 
-    # No notification sent for character removal
     {:ok, :skipped}
   end
 
@@ -196,9 +239,22 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     GenericEventHandler.should_notify?(:character, character_id, character)
   end
 
-  defp send_character_added_notification(character) do
+  defp send_character_added_notification(character, map_slug) do
     map_character = Character.from_api_data(character)
-    WandererNotifier.DiscordNotifier.send_character_async(map_character)
+
+    case Dependencies.map_registry().get_map(map_slug) do
+      {:ok, map_config} ->
+        WandererNotifier.DiscordNotifier.send_character_async(map_character, map_config)
+
+      {:error, :not_found} ->
+        Logger.warning("MapConfig not found for slug, falling back to legacy notifier",
+          map_slug: map_slug,
+          category: :api
+        )
+
+        WandererNotifier.DiscordNotifier.send_character_async(map_character)
+    end
+
     {:ok, :sent}
   end
 end

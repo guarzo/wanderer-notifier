@@ -28,6 +28,10 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
       Client.request(:get, "https://api.example.com/data",
         middlewares: [RateLimiter])
 
+      # Custom bucket key (overrides per-host/global keying)
+      Client.request(:post, url, body, headers,
+        rate_limit: [bucket_key: "my-bucket"])
+
       # General rate limiting
       RateLimiter.run(fn -> HTTPClient.get("https://api.example.com") end)
 
@@ -41,6 +45,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   @type rate_limit_options :: [
           requests_per_second: pos_integer(),
           per_host: boolean(),
+          bucket_key: String.t(),
+          burst_capacity: pos_integer(),
           enable_backoff: boolean(),
           context: String.t()
         ]
@@ -80,14 +86,8 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
   """
   def bucket_key(%{url: url, options: options}) do
     rate_limit_options = Keyword.get(options, :rate_limit, [])
-    per_host = Keyword.get(rate_limit_options, :per_host, true)
-
-    if per_host do
-      host = HttpUtils.extract_host(url)
-      "http_rate_limit:#{host}"
-    else
-      :global
-    end
+    host = HttpUtils.extract_host(url)
+    resolve_bucket_id(host, rate_limit_options)
   end
 
   @doc """
@@ -106,7 +106,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
 
     # Check rate limit before making request
     case check_rate_limit(host, rate_limit_options) do
-      :ok ->
+      {:ok, :allowed} ->
         # Proceed with request
         result = next.(request)
         handle_response(result, host, rate_limit_options)
@@ -132,9 +132,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
         Keyword.get(options, :requests_per_second, @default_requests_per_second)
       )
 
-    per_host = Keyword.get(options, :per_host, true)
-
-    bucket_id = if per_host, do: "http_rate_limit:#{host}", else: :global
+    bucket_id = resolve_bucket_id(host, options)
 
     # Use our RateLimiter module to hit the rate limit bucket
     case WandererNotifier.Infrastructure.RateLimiter.hit(
@@ -143,7 +141,7 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
            limit
          ) do
       {:allow, _count} ->
-        :ok
+        {:ok, :allowed}
 
       {:deny, _limit} ->
         # Rate limit exceeded
@@ -155,6 +153,31 @@ defmodule WandererNotifier.Infrastructure.Http.Middleware.RateLimiter do
         {:error, :rate_limited}
     end
   end
+
+  # Resolve the rate limit bucket ID. Supports:
+  # - :bucket_key option for custom keying (e.g., per-bot-token)
+  # - :per_host for per-host keying (default)
+  # - :global fallback
+  defp resolve_bucket_id(host, options) when is_list(options) do
+    case Keyword.get(options, :bucket_key) do
+      key when is_binary(key) ->
+        key
+
+      nil ->
+        resolve_bucket_id_for_host(host, Keyword.get(options, :per_host, true))
+
+      other ->
+        Logger.warning("Non-binary :bucket_key option ignored",
+          bucket_key: inspect(other),
+          host: host
+        )
+
+        resolve_bucket_id_for_host(host, Keyword.get(options, :per_host, true))
+    end
+  end
+
+  defp resolve_bucket_id_for_host(host, true), do: "http_rate_limit:#{host}"
+  defp resolve_bucket_id_for_host(_host, false), do: :global
 
   defp handle_response({:ok, response} = result, host, options) do
     case response.status_code do

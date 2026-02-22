@@ -12,7 +12,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
 
   setup do
     # Clear cache before each test
-    Cache.delete(Cache.Keys.map_characters())
+    "test-map" |> Cache.Keys.map_characters() |> Cache.delete()
 
     # Stub deduplication mock to allow notifications
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
@@ -55,7 +55,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       ]
 
       # Ensure cache operation succeeds and verify data was actually stored
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Create removal event
       event = %{
@@ -72,7 +73,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_removed(event, "test-map")
 
       # Verify character was removed from cache
-      {:ok, updated_characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, updated_characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(updated_characters) == 1
       assert hd(updated_characters)["eve_id"] == "789012"
       refute Enum.any?(updated_characters, fn c -> c["eve_id"] == "123456" end)
@@ -89,7 +90,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Create removal event for non-existent character
       event = %{
@@ -106,7 +108,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_removed(event, "test-map")
 
       # Verify cache is unchanged
-      {:ok, updated_characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, updated_characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(updated_characters) == 1
       assert hd(updated_characters)["eve_id"] == "789012"
     end
@@ -127,7 +129,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_removed(event, "test-map")
 
       # Verify cache is still empty/not found
-      assert {:error, :not_found} = Cache.get(Cache.Keys.map_characters())
+      assert {:error, :not_found} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
     end
 
     test "removes all instances of character with same eve_id" do
@@ -151,7 +153,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Create removal event
       event = %{
@@ -168,7 +171,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_removed(event, "test-map")
 
       # Verify all instances with that eve_id were removed
-      {:ok, updated_characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, updated_characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(updated_characters) == 1
       assert hd(updated_characters)["eve_id"] == "789012"
       refute Enum.any?(updated_characters, fn c -> c["eve_id"] == "123456" end)
@@ -184,7 +187,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Create removal event
       event = %{
@@ -227,7 +231,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
 
       assert :ok = CharacterHandler.handle_entity_added(event, "test-map")
 
-      {:ok, characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(characters) == 1
 
       character = hd(characters)
@@ -249,7 +253,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Try to add same character again
       event = %{
@@ -266,7 +271,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_added(event, "test-map")
 
       # Verify only one character exists
-      {:ok, characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(characters) == 1
 
       # Verify it's the original character (not updated)
@@ -292,7 +297,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
         }
       ]
 
-      assert_cache_put(Cache.Keys.map_characters(), existing_characters)
+      cache_key = Cache.Keys.map_characters("test-map")
+      assert_cache_put(cache_key, existing_characters)
 
       # Update event
       event = %{
@@ -314,7 +320,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_updated(event, "test-map")
 
       # Verify character was updated
-      {:ok, characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(characters) == 1
 
       character = hd(characters)
@@ -344,7 +350,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandlerTest do
       assert :ok = CharacterHandler.handle_entity_updated(event, "test-map")
 
       # Verify character was added
-      {:ok, characters} = Cache.get(Cache.Keys.map_characters())
+      {:ok, characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
       assert length(characters) == 1
 
       character = hd(characters)

@@ -12,10 +12,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
   setup :verify_on_exit!
 
+  @map_slug "test-map"
+  @systems_key Cache.Keys.map_systems(@map_slug)
+
   setup do
-    # Clear cache before each test
+    # Clear cache before each test (both global and scoped keys)
     Cache.delete(Cache.Keys.map_systems())
+    Cache.delete(@systems_key)
     Cache.delete(Cache.Keys.tracked_systems_list())
+    @map_slug |> Cache.Keys.tracked_systems_list() |> Cache.delete()
 
     # Stub deduplication mock to allow notifications
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
@@ -46,10 +51,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       existing_systems = [system1, system2]
-      assert_cache_put(Cache.Keys.map_systems(), existing_systems)
+      assert_cache_put(@systems_key, existing_systems)
 
       # Also add to individual system cache
-      Cache.put_tracked_system("31000001", %{
+      Cache.put_tracked_system(@map_slug, "31000001", %{
         "id" => 31_000_001,
         "name" => "J123456",
         "custom_name" => "Home",
@@ -65,16 +70,16 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       # Execute removal
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Verify system was removed from main cache
-      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, updated_systems} = Cache.get(@systems_key)
       assert length(updated_systems) == 1
       assert hd(updated_systems).solar_system_id == 30_000_142
       refute Enum.any?(updated_systems, fn s -> s.solar_system_id == 31_000_001 end)
 
       # Verify individual system cache was also deleted
-      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
 
     test "handles removal gracefully when system doesn't exist in cache" do
@@ -87,7 +92,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         region_name: "The Forge"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system1])
+      assert_cache_put(@systems_key, [system1])
 
       # Create removal event for non-existent system
       event = %{
@@ -98,10 +103,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       # Execute removal
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Verify cache is unchanged
-      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, updated_systems} = Cache.get(@systems_key)
       assert length(updated_systems) == 1
       assert hd(updated_systems).solar_system_id == 30_000_142
     end
@@ -116,10 +121,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       # Execute removal
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Verify cache returns nil/empty
-      result = Cache.get(Cache.Keys.map_systems())
+      result = Cache.get(@systems_key)
       assert result == {:ok, nil} or result == {:error, :not_found}
     end
 
@@ -143,7 +148,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       existing_systems = [system_with_id, map_with_solar_system_id, map_with_id]
-      assert_cache_put(Cache.Keys.map_systems(), existing_systems)
+      assert_cache_put(@systems_key, existing_systems)
 
       # Test removal by system ID
       event1 = %{
@@ -151,9 +156,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         "payload" => %{"id" => 31_000_001}
       }
 
-      assert :ok = SystemHandler.handle_entity_removed(event1, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event1, @map_slug)
 
-      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, updated_systems} = Cache.get(@systems_key)
       assert length(updated_systems) == 2
 
       refute Enum.any?(updated_systems, fn s ->
@@ -170,8 +175,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         class_title: "C3"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system])
-      Cache.put_tracked_system("31000001", %{"id" => 31_000_001, "name" => "J123456"})
+      assert_cache_put(@systems_key, [system])
+      Cache.put_tracked_system(@map_slug, "31000001", %{"id" => 31_000_001, "name" => "J123456"})
 
       # Create removal event
       event = %{
@@ -184,7 +189,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       # Execute removal and capture logs
       log_output =
         capture_log(fn ->
-          assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+          assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
         end)
 
       assert log_output =~ "system_removed payload received"
@@ -194,7 +199,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
 
     test "removes individual system cache entry even if main cache fails" do
       # Don't add to main cache, but add individual entry
-      Cache.put_tracked_system("31000001", %{
+      Cache.put_tracked_system(@map_slug, "31000001", %{
         "id" => 31_000_001,
         "name" => "J123456",
         "custom_name" => "Home"
@@ -209,10 +214,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       # Execute removal
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Verify individual cache was deleted
-      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
 
     test "removes system when id and solar_system_id are different values" do
@@ -231,10 +236,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         region_name: "W-Space"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system])
+      assert_cache_put(@systems_key, [system])
 
       # Individual cache uses solar_system_id as key
-      Cache.put_tracked_system("31000001", %{
+      Cache.put_tracked_system(@map_slug, "31000001", %{
         "id" => "map-uuid-abc123",
         "solar_system_id" => 31_000_001,
         "name" => "J123456",
@@ -252,14 +257,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       }
 
       # Execute removal
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Verify system was removed from main cache
-      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, updated_systems} = Cache.get(@systems_key)
       assert Enum.empty?(updated_systems)
 
       # Verify individual cache was also deleted (keyed by solar_system_id)
-      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
 
     test "removes system using id fallback when solar_system_id not in payload" do
@@ -272,8 +277,8 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         class_title: "C3"
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [system])
-      Cache.put_tracked_system("31000001", %{"id" => 31_000_001, "name" => "J123456"})
+      assert_cache_put(@systems_key, [system])
+      Cache.put_tracked_system(@map_slug, "31000001", %{"id" => 31_000_001, "name" => "J123456"})
 
       # Event only has "id", no "solar_system_id"
       event = %{
@@ -283,12 +288,12 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         }
       }
 
-      assert :ok = SystemHandler.handle_entity_removed(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
 
       # Should still remove correctly using id as fallback
-      {:ok, updated_systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, updated_systems} = Cache.get(@systems_key)
       assert Enum.empty?(updated_systems)
-      assert {:error, :not_found} = Cache.get_tracked_system("31000001")
+      assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
   end
 
@@ -327,10 +332,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         }
       }
 
-      assert :ok = SystemHandler.handle_entity_added(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_added(event, @map_slug)
 
       # Check main systems cache
-      {:ok, systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, systems} = Cache.get(@systems_key)
       assert length(systems) == 1
 
       system = hd(systems)
@@ -340,7 +345,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       assert system.class_title != nil
 
       # Check individual system cache
-      {:ok, cached_system} = Cache.get_tracked_system("31000001")
+      {:ok, cached_system} = Cache.get_tracked_system(@map_slug, "31000001")
       assert cached_system["id"] == 31_000_001
       assert cached_system["custom_name"] == "Home System"
       assert cached_system["description"] == "Our main base"
@@ -377,7 +382,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         statics: ["D845"]
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [existing_system])
+      assert_cache_put(@systems_key, [existing_system])
 
       # Try to add same system again with updated data
       event = %{
@@ -390,14 +395,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         }
       }
 
-      assert :ok = SystemHandler.handle_entity_added(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_added(event, @map_slug)
 
       # Verify only one system exists
-      {:ok, systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, systems} = Cache.get(@systems_key)
       assert length(systems) == 1
 
       # Check individual cache has updated custom_name
-      {:ok, cached_system} = Cache.get_tracked_system("31000001")
+      {:ok, cached_system} = Cache.get_tracked_system(@map_slug, "31000001")
       assert cached_system["custom_name"] == "Updated Home"
     end
   end
@@ -434,9 +439,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         statics: ["D845"]
       }
 
-      assert_cache_put(Cache.Keys.map_systems(), [existing_system])
+      assert_cache_put(@systems_key, [existing_system])
 
-      Cache.put_tracked_system("31000001", %{
+      Cache.put_tracked_system(@map_slug, "31000001", %{
         "id" => 31_000_001,
         "custom_name" => "Old Name"
       })
@@ -453,14 +458,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         }
       }
 
-      assert :ok = SystemHandler.handle_entity_updated(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_updated(event, @map_slug)
 
       # Verify system still exists in main cache
-      {:ok, systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, systems} = Cache.get(@systems_key)
       assert length(systems) == 1
 
       # Verify individual cache was updated
-      {:ok, cached_system} = Cache.get_tracked_system("31000001")
+      {:ok, cached_system} = Cache.get_tracked_system(@map_slug, "31000001")
       assert cached_system["custom_name"] == "New Name"
       assert cached_system["description"] == "Updated description"
     end
@@ -499,17 +504,17 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
         }
       }
 
-      assert :ok = SystemHandler.handle_entity_updated(event, "test-map")
+      assert :ok = SystemHandler.handle_entity_updated(event, @map_slug)
 
       # Verify system was added
-      {:ok, systems} = Cache.get(Cache.Keys.map_systems())
+      {:ok, systems} = Cache.get(@systems_key)
       assert length(systems) == 1
 
       system = hd(systems)
       assert system.solar_system_id == 31_000_001
 
       # Verify individual cache was created
-      {:ok, cached_system} = Cache.get_tracked_system("31000001")
+      {:ok, cached_system} = Cache.get_tracked_system(@map_slug, "31000001")
       assert cached_system["custom_name"] == "New System"
     end
   end

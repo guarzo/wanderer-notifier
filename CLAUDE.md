@@ -309,15 +309,15 @@ All HTTP requests go through the unified `WandererNotifier.Infrastructure.Http` 
 
 Example usage:
 ```elixir
-# Primary request interface for all HTTP methods
-Http.request(:get, url, [], nil, service: :esi)
-Http.request(:post, url, [], body, service: :wanderer_kills, auth: [type: :bearer, token: token])
+# Http.request(method, url, body, headers, opts)
+Http.request(:get, url, nil, [], service: :esi)
+Http.request(:post, url, body, [], service: :wanderer_kills, auth: [type: :bearer, token: token])
 
 # Convenience methods
 Http.get(url, [], service: :esi)
 
-# POST with authentication
-Http.post(url, body, [], 
+# POST with authentication — Http.post(url, body, headers, opts)
+Http.post(url, body, [],
   service: :license,
   auth: [type: :bearer, token: api_token]
 )

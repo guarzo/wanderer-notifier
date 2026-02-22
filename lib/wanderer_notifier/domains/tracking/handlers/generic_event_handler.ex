@@ -32,6 +32,13 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   def cache_key(:system), do: Cache.Keys.map_systems()
 
   @doc """
+  Returns the scoped cache key for the given entity type and map slug.
+  """
+  @spec cache_key(entity_type(), String.t()) :: String.t()
+  def cache_key(:character, map_slug), do: Cache.Keys.map_characters(map_slug)
+  def cache_key(:system, map_slug), do: Cache.Keys.map_systems(map_slug)
+
+  @doc """
   Extracts the unique identifier from an entity based on its type.
   """
   @spec entity_id(entity_type(), map() | struct()) :: term()
@@ -58,7 +65,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   @spec add_to_cache_list(entity_type(), map() | struct(), keyword()) ::
           {:ok, :added | :already_present}
   def add_to_cache_list(entity_type, entity, opts \\ []) do
-    key = cache_key(entity_type)
+    key = resolve_cache_key(entity_type, opts)
 
     case Cache.get(key) do
       {:ok, cached_list} when is_list(cached_list) ->
@@ -93,15 +100,16 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   - `{:ok, :removed}` when entity was removed
   - `{:ok, :not_found}` when cache was empty or entity not found
   """
-  @spec remove_from_cache_list(entity_type(), map() | struct()) :: {:ok, :removed | :not_found}
-  def remove_from_cache_list(entity_type, entity) do
-    key = cache_key(entity_type)
+  @spec remove_from_cache_list(entity_type(), map() | struct(), keyword()) ::
+          {:ok, :removed | :not_found}
+  def remove_from_cache_list(entity_type, entity, opts \\ []) do
+    key = resolve_cache_key(entity_type, opts)
     entity_identifier = entity_id(entity_type, entity)
 
     case Cache.get(key) do
       {:ok, cached_list} when is_list(cached_list) ->
         updated_list = reject_entity(entity_type, cached_list, entity_identifier)
-        put_cache(entity_type, key, updated_list, [])
+        put_cache(entity_type, key, updated_list, opts)
         {:ok, :removed}
 
       {:ok, nil} ->
@@ -130,7 +138,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   @spec update_in_cache_list(entity_type(), map() | struct(), function() | nil, keyword()) ::
           {:ok, :updated | :added}
   def update_in_cache_list(entity_type, entity, match_fn \\ nil, opts \\ []) do
-    key = cache_key(entity_type)
+    key = resolve_cache_key(entity_type, opts)
     entity_identifier = entity_id(entity_type, entity)
     match_function = build_match_function(match_fn, entity_type, entity_identifier)
 
@@ -371,5 +379,14 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler do
   defp put_cache(:system, key, list, opts) do
     ttl = Keyword.get(opts, :ttl, Cache.ttl(:map_data))
     Cache.put_with_ttl(key, list, ttl)
+  end
+
+  # Resolves the cache key based on whether a map_slug option is provided.
+  # When map_slug is present, uses the scoped key for per-map isolation.
+  defp resolve_cache_key(entity_type, opts) do
+    case Keyword.get(opts, :map_slug) do
+      nil -> cache_key(entity_type)
+      map_slug -> cache_key(entity_type, map_slug)
+    end
   end
 end

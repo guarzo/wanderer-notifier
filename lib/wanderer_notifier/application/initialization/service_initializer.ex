@@ -134,6 +134,9 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # Core application service (simplified)
       {WandererNotifier.Application.Services.ApplicationCoordinator, []},
 
+      # Map registry - fetches per-map configs from API (or legacy env fallback)
+      {WandererNotifier.Map.MapRegistry, []},
+
       # Universe item and ship lookup service
       {WandererNotifier.Domains.Universe.Services.ItemLookupService, []},
 

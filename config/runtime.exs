@@ -89,15 +89,14 @@ end
 # Validate required environment variables
 # ══════════════════════════════════════════════════════════════════════════════
 
-required_vars = ["DISCORD_BOT_TOKEN", "MAP_URL", "MAP_NAME", "MAP_API_KEY"]
+required_vars = ["BASE_URL", "PLUGIN_NOTIFIER_API_KEY"]
 missing_vars = Enum.filter(required_vars, &is_nil(System.get_env(&1)))
 
 if length(missing_vars) > 0 do
-  IO.puts("ERROR: Missing required environment variables: #{Enum.join(missing_vars, ", ")}")
-
-  if config_env() == :prod do
-    System.halt(1)
-  end
+  IO.puts(
+    "WARNING: Missing recommended environment variables: #{Enum.join(missing_vars, ", ")}. " <>
+      "Falling back to legacy MAP_URL/MAP_API_KEY if available."
+  )
 end
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -106,7 +105,9 @@ end
 
 # Skip nostrum configuration in test environment - tests use config/test.exs settings
 # and nostrum is not started as an application in test mode (see mix.exs extra_applications)
-if config_env() != :test do
+# Only configure Nostrum if DISCORD_BOT_TOKEN is set (in multi-map mode, per-map bot tokens
+# are used via HttpClient instead of the Nostrum gateway)
+if config_env() != :test and System.get_env("DISCORD_BOT_TOKEN") do
   config :nostrum,
     token: RuntimeConfig.get_env("DISCORD_BOT_TOKEN"),
     gateway_intents: [:guilds, :guild_messages, :guild_voice_states]
@@ -168,7 +169,11 @@ config :wanderer_notifier,
         RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID")
     ),
 
-  # Map settings
+  # Plugin API settings (preferred)
+  wanderer_base_url: RuntimeConfig.get_env("BASE_URL"),
+  wanderer_plugin_notifier_api_key: RuntimeConfig.get_env("PLUGIN_NOTIFIER_API_KEY"),
+
+  # Map settings (legacy fallback)
   map_token: RuntimeConfig.get_env("MAP_API_KEY"),
   map_api_key: RuntimeConfig.get_env("MAP_API_KEY"),
   map_url: RuntimeConfig.get_env("MAP_URL"),
@@ -293,7 +298,7 @@ config :wanderer_notifier, :http_service_configs, %{
     decode_json: true
   ],
   map: [
-    timeout: RuntimeConfig.get_integer("HTTP_MAP_TIMEOUT", 60_000),
+    timeout: RuntimeConfig.get_integer("HTTP_MAP_TIMEOUT", 45_000),
     retry_count: RuntimeConfig.get_integer("HTTP_MAP_RETRY_COUNT", 2),
     retry_delay: RuntimeConfig.get_integer("HTTP_MAP_RETRY_DELAY", 500),
     retryable_status_codes: [500, 502, 503, 504],
