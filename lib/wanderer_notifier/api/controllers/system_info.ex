@@ -8,6 +8,14 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.TimeUtils
 
+  defp map_registry do
+    Application.get_env(
+      :wanderer_notifier,
+      :map_registry_module,
+      WandererNotifier.Map.MapRegistry
+    )
+  end
+
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
   """
@@ -187,36 +195,81 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   end
 
   defp extract_sse_stats do
-    # Try to get SSE client status - check for any registered SSE clients
     try do
-      map_name = WandererNotifier.Shared.Config.map_name()
-      # If map_name is configured, it will have a value; if not, get_required will raise
-      try do
-        status = WandererNotifier.Map.SSEClient.get_status(map_name)
-
-        %{
-          client_alive: true,
-          connection_status: to_string(status),
-          map_name: map_name
-        }
-      catch
-        :exit, _ ->
-          %{
-            client_alive: false,
-            connection_status: "not_running",
-            map_name: map_name
-          }
+      case map_registry().mode() do
+        :api -> extract_multi_map_sse_stats()
+        :legacy -> extract_legacy_sse_stats()
       end
     rescue
       _ ->
-        # Config.map_name() raised because it's not configured
         %{
+          mode: "unknown",
           client_alive: false,
           connection_status: "not_configured",
           map_name: nil
         }
     end
   end
+
+  defp extract_multi_map_sse_stats do
+    clients = WandererNotifier.Map.SSESupervisor.get_client_status()
+    map_count = map_registry().count()
+
+    connected = Enum.count(clients, fn c -> c[:status] == :connected end)
+    disconnected = length(clients) - connected
+
+    %{
+      mode: "multi_map",
+      map_count: map_count,
+      clients_running: length(clients),
+      connected: connected,
+      disconnected: disconnected,
+      maps: Enum.map(clients, &format_sse_client_status/1)
+    }
+  rescue
+    _ ->
+      %{
+        mode: "multi_map",
+        map_count: 0,
+        clients_running: 0,
+        connected: 0,
+        disconnected: 0,
+        maps: []
+      }
+  end
+
+  defp extract_legacy_sse_stats do
+    extract_legacy_sse_stats_for_map(WandererNotifier.Shared.Config.map_name())
+  end
+
+  defp extract_legacy_sse_stats_for_map(nil) do
+    %{mode: "legacy", client_alive: false, connection_status: "not_configured", map_name: nil}
+  end
+
+  defp extract_legacy_sse_stats_for_map(map_name) do
+    status = WandererNotifier.Map.SSEClient.get_status(map_name)
+
+    %{
+      mode: "legacy",
+      client_alive: true,
+      connection_status: to_string(status),
+      map_name: map_name
+    }
+  catch
+    :exit, _ ->
+      %{
+        mode: "legacy",
+        client_alive: false,
+        connection_status: "not_running",
+        map_name: map_name
+      }
+  end
+
+  defp format_sse_client_status(%{map_slug: slug, status: status}) do
+    %{map_slug: slug, status: to_string(status)}
+  end
+
+  defp format_sse_client_status(info), do: info
 
   defp extract_connection_monitor_stats do
     try do

@@ -196,7 +196,8 @@ config :wanderer_notifier,
 config :wanderer_notifier,
   character_module: WandererNotifier.Domains.CharacterTracking.Character,
   system_module: WandererNotifier.Domains.SystemTracking.System,
-  config_module: WandererNotifier.Shared.Config
+  config_module: WandererNotifier.Shared.Config,
+  map_registry_module: WandererNotifier.Map.MapRegistry
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

@@ -46,8 +46,7 @@ defmodule WandererNotifier.Map.SSEClient do
   Starts the SSE client for a specific map.
 
   ## Options
-  - `:map_id` - The map ID for the SSE endpoint
-  - `:map_slug` - The map slug for logging and identification
+  - `:map_slug` - The map slug for the SSE endpoint and identification
   - `:api_token` - Authentication token for the map API
   - `:events` - List of event types to subscribe to (optional)
   """
