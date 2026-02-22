@@ -10,15 +10,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
-  @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
+  alias WandererNotifier.Shared.Dependencies
 
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
+  @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Event Handler Implementation
@@ -140,12 +134,10 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     GenericEventHandler.update_in_cache_list(:character, character, match_fn, map_slug: map_slug)
   end
 
-  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_integer(eve_id) do
-    fn cached -> cached["eve_id"] == eve_id end
-  end
-
-  defp build_character_match_fn(%{"eve_id" => eve_id}) when is_binary(eve_id) and eve_id != "" do
-    fn cached -> cached["eve_id"] == eve_id end
+  defp build_character_match_fn(%{"eve_id" => eve_id})
+       when eve_id != nil and eve_id != "" do
+    eve_id_str = to_string(eve_id)
+    fn cached -> to_string(cached["eve_id"]) == eve_id_str end
   end
 
   defp build_character_match_fn(%{"name" => name, "id" => id})
@@ -175,11 +167,25 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   defp handle_character_added(character, map_slug) do
     # Update reverse index for killmail fan-out
     eve_id = character["eve_id"]
-    if is_binary(eve_id) and eve_id != "", do: map_registry().index_character(map_slug, eve_id)
+
+    if is_binary(eve_id) and eve_id != "" do
+      case Dependencies.map_registry().index_character(map_slug, eve_id) do
+        :ok ->
+          :ok
+
+        other ->
+          Logger.error("Failed to index character in MapRegistry",
+            map_slug: map_slug,
+            eve_id: eve_id,
+            reason: inspect(other),
+            category: :api
+          )
+      end
+    end
 
     case should_notify_character?(character) do
       {:ok, true} ->
-        send_character_added_notification(character)
+        send_character_added_notification(character, map_slug)
         {:ok, :sent}
 
       {:ok, false} ->
@@ -190,7 +196,21 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
   defp handle_character_removed(character, map_slug) do
     # Update reverse index for killmail fan-out
     eve_id = character["eve_id"]
-    if is_binary(eve_id) and eve_id != "", do: map_registry().deindex_character(map_slug, eve_id)
+
+    if is_binary(eve_id) and eve_id != "" do
+      case Dependencies.map_registry().deindex_character(map_slug, eve_id) do
+        :ok ->
+          :ok
+
+        other ->
+          Logger.error("Failed to deindex character from reverse index",
+            map_slug: map_slug,
+            eve_id: eve_id,
+            reason: inspect(other),
+            category: :api
+          )
+      end
+    end
 
     Logger.debug("Character removed from tracking",
       character_name: character["name"],
@@ -219,9 +239,22 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
     GenericEventHandler.should_notify?(:character, character_id, character)
   end
 
-  defp send_character_added_notification(character) do
+  defp send_character_added_notification(character, map_slug) do
     map_character = Character.from_api_data(character)
-    WandererNotifier.DiscordNotifier.send_character_async(map_character)
+
+    case Dependencies.map_registry().get_map(map_slug) do
+      {:ok, map_config} ->
+        WandererNotifier.DiscordNotifier.send_character_async(map_character, map_config)
+
+      {:error, :not_found} ->
+        Logger.warning("MapConfig not found for slug, falling back to legacy notifier",
+          map_slug: map_slug,
+          category: :api
+        )
+
+        WandererNotifier.DiscordNotifier.send_character_async(map_character)
+    end
+
     {:ok, :sent}
   end
 end

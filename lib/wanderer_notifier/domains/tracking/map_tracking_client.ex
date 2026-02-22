@@ -8,6 +8,11 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   """
 
   require Logger
+
+  # Suppress pattern_match_cov warnings in maybe_send_notification_for_map/4 —
+  # the `other ->` clauses are defensive guards against future Determiner changes.
+  @dialyzer {:nowarn_function, maybe_send_notification_for_map: 4}
+
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Http
   alias WandererNotifier.Map.MapConfig
@@ -59,17 +64,12 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Optional skip_notifications parameter prevents notifications during initial load.
   """
   @spec fetch_and_cache_characters(boolean()) :: {:ok, list()} | {:error, term()}
-  @spec fetch_and_cache_characters(MapConfig.t()) :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_characters(skip_notifications) when is_boolean(skip_notifications) do
     Logger.debug("MapTrackingClient.fetch_and_cache_characters called",
       skip_notifications: skip_notifications
     )
 
     fetch_and_cache_entities(:characters, skip_notifications)
-  end
-
-  def fetch_and_cache_characters(%MapConfig{} = map_config) do
-    fetch_and_cache_entities_for_map(map_config, :characters, true)
   end
 
   @doc """
@@ -85,17 +85,12 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Optional skip_notifications parameter prevents notifications during initial load.
   """
   @spec fetch_and_cache_systems(boolean()) :: {:ok, list()} | {:error, term()}
-  @spec fetch_and_cache_systems(MapConfig.t()) :: {:ok, list()} | {:error, term()}
   def fetch_and_cache_systems(skip_notifications) when is_boolean(skip_notifications) do
     Logger.debug("MapTrackingClient.fetch_and_cache_systems called",
       skip_notifications: skip_notifications
     )
 
     fetch_and_cache_entities(:systems, skip_notifications)
-  end
-
-  def fetch_and_cache_systems(%MapConfig{} = map_config) do
-    fetch_and_cache_entities_for_map(map_config, :systems, true)
   end
 
   @doc """
@@ -154,12 +149,14 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   Checks if a character is tracked on a specific map.
   """
   @spec is_character_tracked?(String.t(), String.t() | integer()) :: {:ok, boolean()}
-  def is_character_tracked?(map_slug, character_id) when is_binary(map_slug) do
-    char_id =
-      if is_integer(character_id),
-        do: character_id,
-        else: parse_character_id(character_id)
+  def is_character_tracked?(map_slug, character_id)
+      when is_binary(map_slug) and is_integer(character_id) do
+    {:ok, Cache.is_character_tracked?(map_slug, character_id)}
+  end
 
+  def is_character_tracked?(map_slug, character_id)
+      when is_binary(map_slug) and is_binary(character_id) do
+    char_id = parse_character_id(character_id)
     {:ok, char_id != nil and Cache.is_character_tracked?(map_slug, char_id)}
   end
 
@@ -373,7 +370,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec build_url(entity_type(), entity_config()) :: String.t()
   defp build_url(_entity_type, config) do
-    base_url = Config.map_url()
+    base_url = Config.wanderer_base_url() || Config.map_url()
     map_name = Config.map_name()
     endpoint = config.endpoint
 
@@ -383,14 +380,13 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
   @spec build_headers() :: list({String.t(), String.t()})
   defp build_headers do
-    headers = [
+    api_key = Config.wanderer_plugin_api_key() || Config.map_api_key()
+
+    [
+      {"Authorization", "Bearer #{api_key}"},
       {"Content-Type", "application/json"},
       {"Accept", "application/json"}
     ]
-
-    api_key = Config.map_api_key()
-
-    [{"Authorization", "Bearer #{api_key}"} | headers]
   end
 
   @spec parse_response(entity_type(), term()) :: {:ok, list()} | {:error, term()}
@@ -585,6 +581,16 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
 
         {:ok, false} ->
           :ok
+
+        other ->
+          Logger.warning("Character notification check failed",
+            character_id: character_id,
+            map_slug: map_config.slug,
+            result: inspect(other),
+            category: :notifications
+          )
+
+          :ok
       end
     end
 
@@ -612,6 +618,16 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
           WandererNotifier.DiscordNotifier.send_system_async(enriched_system, map_config)
 
         {:ok, false} ->
+          :ok
+
+        other ->
+          Logger.warning("System notification check failed",
+            system_id: system_id,
+            map_slug: map_config.slug,
+            result: inspect(other),
+            category: :notifications
+          )
+
           :ok
       end
     end
@@ -675,19 +691,11 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   end
 
   defp build_url_for_map(map_config, config) do
-    base_url = Config.map_url()
+    base_url = Config.wanderer_base_url() || Config.map_url()
     "#{base_url}/api/maps/#{map_config.slug}/#{config.endpoint}"
   end
 
-  defp build_headers_for_map(map_config) do
-    api_key = map_config.api_token || Config.map_api_key()
-
-    [
-      {"Authorization", "Bearer #{api_key}"},
-      {"Content-Type", "application/json"},
-      {"Accept", "application/json"}
-    ]
-  end
+  defp build_headers_for_map(_map_config), do: build_headers()
 
   defp cache_entities_for_map(map_slug, entity_type, entities, _config) do
     scoped_key = scoped_cache_key(entity_type, map_slug)

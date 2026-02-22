@@ -17,7 +17,7 @@ defmodule WandererNotifier.Map.Initializer do
   initial data before SSE starts. Uses sequential loading to prevent
   memory spikes from parallel bulk API calls.
   """
-  @spec initialize_map_data() :: :ok
+  @spec initialize_map_data() :: {:ok, :initialized} | {:error, term()}
   def initialize_map_data do
     Logger.info("Initializing map data (sequential loading for memory efficiency)",
       category: :api
@@ -34,6 +34,7 @@ defmodule WandererNotifier.Map.Initializer do
       # Process results
       results = [systems_result, characters_result]
       process_results(results)
+      {:ok, :initialized}
     rescue
       e in [MatchError, CaseClauseError] ->
         # Handle pattern matching errors from fetch operations
@@ -41,8 +42,7 @@ defmodule WandererNotifier.Map.Initializer do
           "Map initialization network error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
         )
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:network_error, Exception.message(e)}}
 
       e ->
         # Other unexpected errors - conditional debug info based on environment
@@ -56,15 +56,13 @@ defmodule WandererNotifier.Map.Initializer do
           )
         end
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:unexpected_error, Exception.message(e)}}
     catch
       :exit, reason ->
         # Exit handling
         Logger.error("Map initialization process exited", reason: inspect(reason), category: :api)
 
-        # Continue startup even if map data fails
-        :ok
+        {:error, {:exit, reason}}
     end
   end
 

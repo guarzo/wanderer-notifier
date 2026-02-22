@@ -6,5 +6,5 @@
   {"lib/wanderer_notifier/domains/notifications/discord/neo_client.ex", :pattern_match, 1},
 
   # Defensive nil guard - map_name() spec says binary but runtime may differ
-  {"lib/wanderer_notifier/api/controllers/system_info.ex", :pattern_match, {245, 8}}
+  {"lib/wanderer_notifier/api/controllers/system_info.ex", :pattern_match, {238, 8}}
 ]

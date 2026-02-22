@@ -12,15 +12,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
 
-  @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
+  alias WandererNotifier.Shared.Dependencies
 
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
+  @behaviour WandererNotifier.Domains.Tracking.Handlers.EventHandlerBehaviour
 
   # ══════════════════════════════════════════════════════════════════════════════
   # Event Handler Implementation
@@ -30,7 +24,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @spec handle_entity_added(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_added(event, map_slug) do
     payload = Map.get(event, "payload", %{})
-    registry = map_registry()
+    registry = Dependencies.map_registry()
 
     SharedEventLogic.handle_entity_event(
       event,
@@ -45,7 +39,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   @impl true
   @spec handle_entity_removed(map(), String.t()) :: :ok | {:error, term()}
   def handle_entity_removed(event, map_slug) do
-    registry = map_registry()
+    registry = Dependencies.map_registry()
 
     SharedEventLogic.handle_entity_event(
       event,

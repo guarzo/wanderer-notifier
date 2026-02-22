@@ -16,6 +16,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Utils.TimeUtils
   alias WandererNotifier.Domains.Notifications.Deduplication
   alias WandererNotifier.Shared.Utils.EntityUtils
+  alias WandererNotifier.Shared.Dependencies
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
@@ -23,14 +24,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   # Defensive error handling - legacy tracking clients may return errors at runtime
   @dialyzer {:nowarn_function, system_tracked_by_mode?: 1}
   @dialyzer {:nowarn_function, character_tracked_by_mode?: 1}
-
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Public API
@@ -294,9 +287,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp system_tracked_by_mode?(system_id_str) do
-    case map_registry().mode() do
+    case Dependencies.map_registry().mode() do
       :api ->
-        map_registry().maps_tracking_system(system_id_str) != []
+        Dependencies.map_registry().maps_tracking_system(system_id_str) != []
 
       :legacy ->
         case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
@@ -359,9 +352,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   defp attacker_tracked?(_), do: false
 
   defp character_tracked_by_mode?(character_id_str) do
-    case map_registry().mode() do
+    case Dependencies.map_registry().mode() do
       :api ->
-        map_registry().maps_tracking_character(character_id_str) != []
+        Dependencies.map_registry().maps_tracking_character(character_id_str) != []
 
       :legacy ->
         case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
@@ -451,24 +444,31 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    case map_registry().mode() do
+    case Dependencies.map_registry().mode() do
       :api -> handle_api_notification(killmail)
       :legacy -> handle_legacy_notification(killmail)
     end
   end
 
   defp handle_api_notification(%Killmail{} = killmail) do
-    map_count = fan_out_to_maps(killmail)
+    {matching_count, started_count} = fan_out_to_maps(killmail)
 
-    if map_count == 0 do
-      Telemetry.processing_completed(killmail.killmail_id, {:ok, :skipped})
-      Telemetry.processing_skipped(killmail.killmail_id, :no_matching_maps)
-      {:ok, :skipped}
-    else
-      Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
-      Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-      Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
-      {:ok, killmail.killmail_id}
+    cond do
+      matching_count == 0 ->
+        Telemetry.processing_completed(killmail.killmail_id, {:ok, :skipped})
+        Telemetry.processing_skipped(killmail.killmail_id, :no_matching_maps)
+        {:ok, :skipped}
+
+      started_count == 0 ->
+        Telemetry.processing_completed(killmail.killmail_id, {:ok, :skipped})
+        Telemetry.processing_skipped(killmail.killmail_id, :task_start_failed)
+        {:ok, :skipped}
+
+      true ->
+        Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
+        Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
+        Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
+        {:ok, killmail.killmail_id}
     end
   end
 
@@ -493,18 +493,21 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   # Multi-map fan-out: notify each map that tracks this system or involved characters.
-  # Returns the count of maps where notification tasks were successfully started.
+  # Returns {matching_count, started_count} so callers can distinguish "no maps matched"
+  # from "maps matched but all task starts failed".
+  @spec fan_out_to_maps(Killmail.t()) :: {non_neg_integer(), non_neg_integer()}
   defp fan_out_to_maps(%Killmail{} = killmail) do
     matching_maps = collect_matching_maps(killmail)
-    map_count = length(matching_maps)
+    matching_count = length(matching_maps)
 
-    Logger.info("[Pipeline] Fan-out: #{map_count} maps for killmail",
+    Logger.info("[Pipeline] Fan-out: #{matching_count} maps for killmail",
       killmail_id: killmail.killmail_id,
       system_id: killmail.system_id,
-      map_count: map_count
+      map_count: matching_count
     )
 
-    Enum.count(matching_maps, &start_map_notification_task(killmail, &1))
+    started_count = Enum.count(matching_maps, &start_map_notification_task(killmail, &1))
+    {matching_count, started_count}
   end
 
   defp start_map_notification_task(killmail, map_config) do
@@ -528,7 +531,8 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   # Collect all unique maps that care about this killmail (by system or character)
   defp collect_matching_maps(%Killmail{} = killmail) do
-    system_maps = map_registry().maps_tracking_system(killmail.system_id)
+    system_id_str = to_string(killmail.system_id)
+    system_maps = Dependencies.map_registry().maps_tracking_system(system_id_str)
     character_maps = collect_character_maps(killmail)
 
     # Deduplicate by slug
@@ -540,7 +544,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     character_ids = extract_all_character_ids(killmail)
 
     Enum.flat_map(character_ids, fn id ->
-      map_registry().maps_tracking_character(id)
+      Dependencies.map_registry().maps_tracking_character(id)
     end)
   end
 

@@ -7,14 +7,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.TimeUtils
-
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
+  alias WandererNotifier.Shared.Dependencies
 
   @doc """
   Collects detailed system information including server status, memory usage, and uptime.
@@ -196,7 +189,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_sse_stats do
     try do
-      case map_registry().mode() do
+      case Dependencies.map_registry().mode() do
         :api -> extract_multi_map_sse_stats()
         :legacy -> extract_legacy_sse_stats()
       end
@@ -213,7 +206,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
 
   defp extract_multi_map_sse_stats do
     clients = WandererNotifier.Map.SSESupervisor.get_client_status()
-    map_count = map_registry().count()
+    map_count = Dependencies.map_registry().count()
 
     connected = Enum.count(clients, fn c -> c[:status] == :connected end)
     disconnected = length(clients) - connected

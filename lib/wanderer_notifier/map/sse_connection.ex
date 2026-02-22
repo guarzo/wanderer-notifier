@@ -65,10 +65,9 @@ defmodule WandererNotifier.Map.SSEConnection do
   # Private functions
 
   defp build_url(map_slug, events_filter, last_event_id) do
-    # Use the map URL from configuration
-    raw_base_url = Config.map_url()
-
-    # The map_url is required and validated by Config.get_required_env
+    # Prefer plugin base URL, fall back to legacy map URL
+    # Treat empty string as nil so the legacy fallback is preserved
+    raw_base_url = non_empty(Config.wanderer_base_url()) || Config.map_url()
 
     # Normalize the base URL by removing path and query components
     base_url = normalize_base_url(raw_base_url)
@@ -173,6 +172,11 @@ defmodule WandererNotifier.Map.SSEConnection do
         {:error, {:connection_failed, reason}}
     end
   end
+
+  @spec non_empty(String.t() | nil) :: String.t() | nil
+  defp non_empty(nil), do: nil
+  defp non_empty(""), do: nil
+  defp non_empty(value), do: value
 
   # Normalizes a base URL by removing path and query components.
   #

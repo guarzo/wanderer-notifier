@@ -18,14 +18,7 @@ defmodule WandererNotifier.DiscordNotifier do
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
   alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
   alias WandererNotifier.Map.MapConfig
-
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
+  alias WandererNotifier.Shared.Dependencies
 
   @doc """
   Send a kill notification asynchronously.
@@ -153,11 +146,12 @@ defmodule WandererNotifier.DiscordNotifier do
     Logger.debug("Kill notification skipped", killmail_id: killmail.killmail_id)
   end
 
-  defp handle_kill_result(:skipped, killmail) do
-    Logger.debug("Kill notification skipped", killmail_id: killmail.killmail_id)
-  end
+  defp handle_kill_result({:error, reason}, killmail) do
+    Logger.error("Kill notification failed",
+      killmail_id: killmail.killmail_id,
+      reason: inspect(reason)
+    )
 
-  defp handle_kill_result(:error, killmail) do
     emit_kill_failure_telemetry(killmail, :internal_error)
   end
 
@@ -210,12 +204,12 @@ defmodule WandererNotifier.DiscordNotifier do
         do_send_kill_notification(killmail)
       else
         Logger.debug("Kill notifications disabled, skipping")
-        :skipped
+        {:ok, :skipped}
       end
     rescue
       e ->
         Logger.error("Exception in send_kill_notification: #{Exception.message(e)}")
-        :error
+        {:error, {:exception, Exception.message(e)}}
     end
   end
 
@@ -350,9 +344,13 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp legacy_map_config do
-    case map_registry().all_maps() do
-      [config | _] -> config
-      [] -> MapConfig.from_env()
+    case Dependencies.map_registry().all_maps() do
+      [config | _] ->
+        config
+
+      [] ->
+        Logger.debug("No maps in registry; using MapConfig.from_env()")
+        MapConfig.from_env()
     end
   end
 
@@ -509,10 +507,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case format_notification(killmail, use_custom_system_name: system_kill) do
       {:ok, formatted} ->
-        case send_to_discord_for_map(formatted, channel_id, mc) do
-          :ok -> {:ok, :sent}
-          {:error, reason} -> {:error, reason}
-        end
+        send_to_discord_for_map(formatted, channel_id, mc)
 
       {:error, reason} ->
         Logger.error("Failed to format kill notification: #{inspect(reason)}")
@@ -537,7 +532,7 @@ defmodule WandererNotifier.DiscordNotifier do
           map_slug: mc.slug
         )
 
-        :ok
+        {:ok, :sent}
 
       {:error, reason} ->
         Logger.error("Discord notification failed for map #{mc.slug}",

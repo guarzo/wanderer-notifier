@@ -11,14 +11,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Map.{Initializer, MapConfig, SSEClient}
-
-  defp map_registry do
-    Application.get_env(
-      :wanderer_notifier,
-      :map_registry_module,
-      WandererNotifier.Map.MapRegistry
-    )
-  end
+  alias WandererNotifier.Shared.Dependencies
 
   @doc """
   Starts the SSE supervisor.
@@ -149,13 +142,13 @@ defmodule WandererNotifier.Map.SSESupervisor do
   Initializes SSE clients based on application configuration.
 
   In multi-map mode (API), initializes data and starts SSE clients for all
-  maps from the map_registry(). In legacy mode, falls back to single-map behavior.
+  maps from the Dependencies.map_registry(). In legacy mode, falls back to single-map behavior.
 
   This function is called during application startup.
   """
   @spec initialize_sse_clients() :: :ok
   def initialize_sse_clients() do
-    case map_registry().mode() do
+    case Dependencies.map_registry().mode() do
       :api -> initialize_multi_map()
       :legacy -> initialize_legacy()
     end
@@ -179,7 +172,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   end
 
   defp start_added_map(slug) do
-    case map_registry().get_map(slug) do
+    case Dependencies.map_registry().get_map(slug) do
       {:ok, map_config} ->
         handle_map_start_result(slug, initialize_and_start_for_map(map_config))
 
@@ -204,7 +197,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   # ──────────────────────────────────────────────────────────────────────────────
 
   defp initialize_multi_map do
-    maps = map_registry().all_maps()
+    maps = Dependencies.map_registry().all_maps()
     Logger.info("Initializing #{length(maps)} maps from registry", category: :startup)
 
     successful_maps = run_parallel_init(maps)
@@ -335,7 +328,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   defp start_sse_client_for_map(%MapConfig{} = map_config) do
     opts = [
       map_slug: map_config.slug,
-      api_token: map_config.api_token || Config.map_api_key()
+      api_token: Config.wanderer_plugin_api_key() || Config.map_api_key()
     ]
 
     case start_sse_client(opts) do
@@ -364,13 +357,13 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
   defp initialize_legacy do
     case initialize_legacy_map_data() do
-      :ok ->
+      {:ok, _result} ->
         Logger.info("Map data initialized successfully")
         start_legacy_sse()
 
-      :error ->
+      {:error, reason} ->
         Logger.error("Map data initialization failed - SSE will not start",
-          reason: "Cannot start SSE without initial data to prevent notification spam"
+          reason: inspect(reason)
         )
 
         :ok
@@ -379,14 +372,13 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
   defp initialize_legacy_map_data do
     Initializer.initialize_map_data()
-    :ok
   rescue
     error ->
       Logger.error("Exception during map data initialization",
         error: Exception.message(error)
       )
 
-      :error
+      {:error, Exception.message(error)}
   end
 
   defp start_legacy_sse do
@@ -415,7 +407,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   defp get_legacy_map_configuration do
     map_url = Config.map_url()
     map_name = Config.map_name()
-    api_token = Config.map_api_key()
+    api_token = Config.wanderer_plugin_api_key() || Config.map_api_key()
     map_slug = extract_map_slug(map_url, map_name)
 
     {:ok, %{map_slug: map_slug, api_token: api_token}}

@@ -51,7 +51,6 @@ defmodule WandererNotifier.Map.MapConfig do
           name: String.t(),
           map_id: String.t(),
           owner: String.t() | nil,
-          api_token: String.t() | nil,
           discord: discord_config(),
           features: features_config(),
           settings: settings_config()
@@ -91,7 +90,6 @@ defmodule WandererNotifier.Map.MapConfig do
     :name,
     :map_id,
     :owner,
-    :api_token,
     discord: %{
       bot_token: nil,
       application_id: nil,
@@ -130,7 +128,6 @@ defmodule WandererNotifier.Map.MapConfig do
       name: name,
       map_id: to_string(map_id),
       owner: data["owner"],
-      api_token: data["api_token"],
       discord: parse_discord(data["discord"] || %{}),
       features: parse_features(data["features"] || %{}),
       settings: parse_settings(data["settings"] || %{})
@@ -153,9 +150,8 @@ defmodule WandererNotifier.Map.MapConfig do
       name: map_name,
       map_id: map_name,
       owner: nil,
-      api_token: System.get_env("MAP_API_KEY"),
       discord: %{
-        bot_token: System.get_env("DISCORD_BOT_TOKEN"),
+        bot_token: normalize_bot_token(System.get_env("DISCORD_BOT_TOKEN")),
         application_id: System.get_env("DISCORD_APPLICATION_ID"),
         guild_id: System.get_env("DISCORD_GUILD_ID"),
         channels: %{

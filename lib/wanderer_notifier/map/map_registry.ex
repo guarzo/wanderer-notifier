@@ -25,9 +25,9 @@ defmodule WandererNotifier.Map.MapRegistry do
   function-based DI pattern. The GenServer is required for ETS table lifecycle
   management (tables are owned by the process), periodic refresh scheduling via
   `handle_info/2`, and coordinated config updates with PubSub broadcasting.
-  Callers resolve the module via `Application.get_env(:wanderer_notifier,
-  :map_registry_module)` for test overrideability. The public API functions
-  read directly from ETS for lock-free concurrent access.
+  Callers resolve the module via `WandererNotifier.Shared.Dependencies.map_registry/0`
+  for test overrideability. The public API functions read directly from ETS for
+  lock-free concurrent access.
   """
 
   use GenServer
@@ -322,22 +322,52 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp fetch_map_configs do
-    base_url = Config.map_url_safe()
-    api_key = Config.map_api_key()
+    case fetch_from_plugin_api() do
+      {:ok, _configs, _version} = success ->
+        success
 
-    case base_url do
-      {:ok, url} ->
-        do_fetch_from_api(url, api_key)
+      {:error, plugin_reason} ->
+        Logger.info("Plugin API unavailable, trying legacy endpoint",
+          reason: inspect(plugin_reason)
+        )
 
-      {:error, _} ->
-        {:error, :map_url_not_configured}
+        fetch_from_legacy_api()
     end
   rescue
     e -> {:error, {:fetch_exception, Exception.message(e)}}
   end
 
-  defp do_fetch_from_api(base_url, api_key) do
-    url = "#{base_url}/api/v1/notifier/config"
+  defp fetch_from_plugin_api do
+    case Config.wanderer_base_url_safe() do
+      {:ok, base_url} ->
+        api_key = Config.wanderer_plugin_api_key()
+
+        if api_key do
+          do_fetch_from_api(base_url, "/api/plugins/notifier/config", api_key)
+        else
+          {:error, :plugin_api_key_not_configured}
+        end
+
+      {:error, _} ->
+        {:error, :wanderer_base_url_not_configured}
+    end
+  end
+
+  defp fetch_from_legacy_api do
+    case Config.map_url_safe() do
+      {:ok, base_url} ->
+        api_key = Config.map_api_key()
+        do_fetch_from_api(base_url, "/api/v1/notifier/config", api_key)
+
+      {:error, _} ->
+        {:error, :map_url_not_configured}
+    end
+  rescue
+    _ -> {:error, :legacy_config_not_available}
+  end
+
+  defp do_fetch_from_api(base_url, path, api_key) do
+    url = "#{base_url}#{path}"
 
     headers = [
       {"Authorization", "Bearer #{api_key}"},
@@ -349,8 +379,17 @@ defmodule WandererNotifier.Map.MapRegistry do
       {:ok, %{status_code: 200, body: body}} ->
         parse_api_response(body)
 
+      {:ok, %{status_code: 401}} ->
+        {:error, :invalid_api_key}
+
+      {:ok, %{status_code: 403}} ->
+        {:error, :plugins_disabled}
+
       {:ok, %{status_code: 404}} ->
         {:error, :endpoint_not_found}
+
+      {:ok, %{status_code: 503}} ->
+        {:error, :api_key_not_configured}
 
       {:ok, %{status_code: status}} ->
         {:error, {:api_error, status}}
