@@ -150,7 +150,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
 
       # The system handler has a bug where it returns error on empty cache
       # But it should still remove the system from individual cache
-      if result == :ok do
+      if match?({:ok, _}, result) do
         # Check main cache was cleared
         cache_result = Cache.get(@systems_key)
 
