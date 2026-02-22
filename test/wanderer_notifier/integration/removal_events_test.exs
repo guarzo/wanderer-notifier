@@ -64,7 +64,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         }
       ]
 
-      cache_key = Cache.Keys.map_characters("test-map")
+      cache_key = Cache.Keys.map_characters(@map_slug)
       assert_cache_put(cache_key, characters)
 
       # Create SSE event
@@ -82,10 +82,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event
-      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, @map_slug)
 
       # Verify character was removed
-      {:ok, remaining_characters} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
+      {:ok, remaining_characters} = @map_slug |> Cache.Keys.map_characters() |> Cache.get()
       assert length(remaining_characters) == 1
       assert hd(remaining_characters)["eve_id"] == "789012"
     end
@@ -108,10 +108,10 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
       }
 
       # Process event - should not error
-      assert {:ok, _} = EventProcessor.process_event(event, "test-map")
+      assert {:ok, _} = EventProcessor.process_event(event, @map_slug)
 
       # Cache should still be empty
-      assert {:error, :not_found} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
+      assert {:error, :not_found} = @map_slug |> Cache.Keys.map_characters() |> Cache.get()
     end
   end
 
@@ -264,7 +264,7 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
         %{"eve_id" => "444", "name" => "Char 4"}
       ]
 
-      cache_key = Cache.Keys.map_characters("test-map")
+      cache_key = Cache.Keys.map_characters(@map_slug)
       assert_cache_put(cache_key, characters)
 
       # Remove characters 2 and 3
@@ -281,11 +281,11 @@ defmodule WandererNotifier.Integration.RemovalEventsTest do
           }
         }
 
-        assert {:ok, _} = EventProcessor.process_event(event, "test-map")
+        assert {:ok, _} = EventProcessor.process_event(event, @map_slug)
       end
 
       # Verify only characters 1 and 4 remain
-      {:ok, remaining} = "test-map" |> Cache.Keys.map_characters() |> Cache.get()
+      {:ok, remaining} = @map_slug |> Cache.Keys.map_characters() |> Cache.get()
       assert length(remaining) == 2
       eve_ids = Enum.map(remaining, & &1["eve_id"]) |> Enum.sort()
       assert eve_ids == ["111", "444"]

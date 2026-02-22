@@ -20,6 +20,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
     Cache.delete(Cache.Keys.map_systems())
     Cache.delete(@systems_key)
     Cache.delete(Cache.Keys.tracked_systems_list())
+    Cache.delete(Cache.Keys.tracked_systems_list(@map_slug))
 
     # Stub deduplication mock to allow notifications
     stub(WandererNotifier.MockDeduplication, :check, fn _type, _id -> {:ok, :new} end)
