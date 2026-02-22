@@ -30,4 +30,19 @@ defmodule WandererNotifier.Shared.Dependencies do
       WandererNotifier.Map.MapRegistry
     )
   end
+
+  @doc """
+  Returns the configured MapTrackingClient module.
+
+  Defaults to `WandererNotifier.Domains.Tracking.MapTrackingClient`.
+  Override in tests via `Application.put_env(:wanderer_notifier, :map_tracking_client_module, mock)`.
+  """
+  @spec map_tracking_client() :: module()
+  def map_tracking_client do
+    Application.get_env(
+      :wanderer_notifier,
+      :map_tracking_client_module,
+      WandererNotifier.Domains.Tracking.MapTrackingClient
+    )
+  end
 end

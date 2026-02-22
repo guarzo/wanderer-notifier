@@ -9,6 +9,7 @@ defmodule WandererNotifier.Map.Initializer do
   require Logger
 
   alias WandererNotifier.Map.MapConfig
+  alias WandererNotifier.Shared.Dependencies
 
   @doc """
   Initializes map data by fetching systems and characters from the API.
@@ -31,23 +32,10 @@ defmodule WandererNotifier.Map.Initializer do
       # Then fetch characters
       characters_result = fetch_characters()
 
-      # Process results (logs outcomes)
+      # Process results (logs outcomes) and check for failures
       results = [systems_result, characters_result]
       process_results(results)
-
-      # Propagate errors instead of silently succeeding
-      errors =
-        Enum.filter(results, fn
-          {:error, _, _} -> true
-          _ -> false
-        end)
-
-      if errors == [] do
-        {:ok, :initialized}
-      else
-        reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
-        {:error, {:init_failures, reasons}}
-      end
+      check_results_for_failures(results)
     rescue
       e in [MatchError, CaseClauseError] ->
         # Handle pattern matching errors from fetch operations
@@ -92,7 +80,7 @@ defmodule WandererNotifier.Map.Initializer do
       category: :api
     )
 
-    tracking = WandererNotifier.Domains.Tracking.MapTrackingClient
+    tracking = Dependencies.map_tracking_client()
 
     systems_result =
       execute_timed_fetch(
@@ -108,19 +96,7 @@ defmodule WandererNotifier.Map.Initializer do
 
     results = [systems_result, characters_result]
     process_results(results)
-
-    errors =
-      Enum.filter(results, fn
-        {:error, _, _} -> true
-        _ -> false
-      end)
-
-    if errors == [] do
-      {:ok, :initialized}
-    else
-      reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
-      {:error, {:init_failures, reasons}}
-    end
+    check_results_for_failures(results)
   rescue
     e ->
       stacktrace = __STACKTRACE__
@@ -163,7 +139,7 @@ defmodule WandererNotifier.Map.Initializer do
         Logger.error("Failed to fetch #{type}", error: inspect(reason), category: :api)
     end)
 
-    :ok
+    {:ok, :processed}
   end
 
   # Strip any trailing "(slug)" suffix from labels emitted by execute_timed_fetch/2.
@@ -175,20 +151,33 @@ defmodule WandererNotifier.Map.Initializer do
     end
   end
 
+  defp check_results_for_failures(results) do
+    results
+    |> Enum.filter(&match?({:error, _, _}, &1))
+    |> case do
+      [] ->
+        {:ok, :initialized}
+
+      errors ->
+        reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
+        {:error, {:init_failures, reasons}}
+    end
+  end
+
   defp fetch_systems do
+    tracking = Dependencies.map_tracking_client()
+
     execute_timed_fetch(
-      fn ->
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_systems(true)
-      end,
+      fn -> tracking.fetch_and_cache_systems(true) end,
       "systems"
     )
   end
 
   defp fetch_characters do
+    tracking = Dependencies.map_tracking_client()
+
     execute_timed_fetch(
-      fn ->
-        WandererNotifier.Domains.Tracking.MapTrackingClient.fetch_and_cache_characters(true)
-      end,
+      fn -> tracking.fetch_and_cache_characters(true) end,
       "characters"
     )
   end

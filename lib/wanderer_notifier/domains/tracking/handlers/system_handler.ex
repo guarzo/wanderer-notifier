@@ -192,10 +192,23 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       |> Cache.delete()
     end
 
-    # Update reverse index for killmail fan-out (best-effort, deindex_system returns :ok)
+    # Update reverse index for killmail fan-out (best-effort)
     if system_id do
       try do
-        registry.deindex_system(map_slug, system_id)
+        case registry.deindex_system(map_slug, system_id) do
+          :ok ->
+            :ok
+
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error("Failed to deindex system from reverse index",
+              map_slug: map_slug,
+              system_id: system_id,
+              reason: inspect(reason)
+            )
+        end
       rescue
         e ->
           Logger.error("Failed to deindex system from reverse index",

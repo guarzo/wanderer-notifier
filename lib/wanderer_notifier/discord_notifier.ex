@@ -119,17 +119,18 @@ defmodule WandererNotifier.DiscordNotifier do
   # Async Task Helper
   # ═══════════════════════════════════════════════════════════════════════════════
 
+  @spec start_async(String.t(), (-> any())) :: {:ok, :started} | {:error, term()}
   defp start_async(label, fun) do
     case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fun) do
       {:ok, _pid} ->
-        :ok
+        {:ok, :started}
 
       {:error, reason} ->
         Logger.error("Failed to start async #{label} notification task",
           reason: inspect(reason)
         )
 
-        :ok
+        {:error, reason}
     end
   end
 
@@ -356,29 +357,24 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp send_generic_embed(embed, opts) do
     Logger.debug("Processing generic embed notification async")
+    channel_id = Keyword.get(opts, :channel_id, Config.discord_channel_id())
 
-    try do
-      if notifications_enabled?() do
-        # Extract channel from opts or use default
-        channel_id = Keyword.get(opts, :channel_id, Config.discord_channel_id())
-
-        case send_to_discord(embed, channel_id) do
-          :ok ->
-            Logger.debug("Generic embed sent successfully")
-            {:ok, :sent}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-      else
+    with true <- notifications_enabled?(),
+         :ok <- send_to_discord(embed, channel_id) do
+      Logger.debug("Generic embed sent successfully")
+      {:ok, :sent}
+    else
+      false ->
         Logger.debug("Notifications disabled, skipping generic embed")
         {:ok, :skipped}
-      end
-    rescue
-      e ->
-        Logger.error("Exception in send_generic_embed: #{Exception.message(e)}")
-        {:error, {:exception, Exception.message(e)}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  rescue
+    e ->
+      Logger.error("Exception in send_generic_embed: #{Exception.message(e)}")
+      {:error, {:exception, Exception.message(e)}}
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -386,17 +382,18 @@ defmodule WandererNotifier.DiscordNotifier do
   # ═══════════════════════════════════════════════════════════════════════════════
 
   defp send_kill_notification_for_map(killmail, %MapConfig{} = mc) do
-    if MapConfig.notifications_fully_enabled?(mc, :kill_notifications_enabled) do
-      system_id = Map.get(killmail, :system_id)
+    system_id = Map.get(killmail, :system_id)
 
-      if map_wormhole_only_excluded?(mc, system_id) do
+    cond do
+      not MapConfig.notifications_fully_enabled?(mc, :kill_notifications_enabled) ->
         {:ok, :skipped}
-      else
+
+      map_wormhole_only_excluded?(mc, system_id) ->
+        {:ok, :skipped}
+
+      true ->
         channels = determine_kill_channels_for_map(killmail, mc)
         dispatch_to_map_channels(killmail, channels, mc)
-      end
-    else
-      {:ok, :skipped}
     end
   rescue
     e ->
@@ -405,65 +402,41 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_system_notification_for_map(system, %MapConfig{} = mc) do
-    if MapConfig.notifications_fully_enabled?(mc, :system_notifications_enabled) do
-      case format_notification(system) do
-        {:ok, formatted} ->
-          channel_id = MapConfig.channel_for(mc, :system)
-          send_to_discord_for_map(formatted, channel_id, mc)
-
-        {:error, reason} ->
-          Logger.error("Failed to format system notification: #{inspect(reason)}")
-          {:error, {:format_error, reason}}
-      end
+    with true <- MapConfig.notifications_fully_enabled?(mc, :system_notifications_enabled),
+         {:ok, formatted} <- format_notification(system) do
+      send_to_discord_for_map(formatted, MapConfig.channel_for(mc, :system), mc)
     else
-      {:ok, :skipped}
+      false -> {:ok, :skipped}
+      {:error, reason} -> log_format_error("system", reason)
     end
   rescue
-    e ->
-      Logger.error("Exception in send_system_notification_for_map: #{Exception.message(e)}")
-      {:error, {:exception, Exception.message(e)}}
+    e -> log_notification_exception("send_system_notification_for_map", e)
   end
 
   defp send_character_notification_for_map(character, %MapConfig{} = mc) do
-    if MapConfig.notifications_fully_enabled?(mc, :character_notifications_enabled) do
-      case format_notification(character) do
-        {:ok, formatted} ->
-          channel_id = MapConfig.channel_for(mc, :character)
-          send_to_discord_for_map(formatted, channel_id, mc)
-
-        {:error, reason} ->
-          Logger.error("Failed to format character notification: #{inspect(reason)}")
-          {:error, {:format_error, reason}}
-      end
+    with true <- MapConfig.notifications_fully_enabled?(mc, :character_notifications_enabled),
+         {:ok, formatted} <- format_notification(character) do
+      send_to_discord_for_map(formatted, MapConfig.channel_for(mc, :character), mc)
     else
-      {:ok, :skipped}
+      false -> {:ok, :skipped}
+      {:error, reason} -> log_format_error("character", reason)
     end
   rescue
-    e ->
-      Logger.error("Exception in send_character_notification_for_map: #{Exception.message(e)}")
-      {:error, {:exception, Exception.message(e)}}
+    e -> log_notification_exception("send_character_notification_for_map", e)
   end
 
   defp send_rally_point_notification_for_map(rally_point, %MapConfig{} = mc) do
-    if MapConfig.notifications_fully_enabled?(mc, :rally_notifications_enabled) do
-      case format_notification(rally_point) do
-        {:ok, formatted} ->
-          channel_id = MapConfig.channel_for(mc, :rally)
-          content = build_rally_content_for_map(mc)
-          formatted_with_content = Map.put(formatted, :content, content)
-          send_to_discord_for_map(formatted_with_content, channel_id, mc)
-
-        {:error, reason} ->
-          Logger.error("Failed to format rally point notification: #{inspect(reason)}")
-          {:error, {:format_error, reason}}
-      end
+    with true <- MapConfig.notifications_fully_enabled?(mc, :rally_notifications_enabled),
+         {:ok, formatted} <- format_notification(rally_point) do
+      content = build_rally_content_for_map(mc)
+      formatted_with_content = Map.put(formatted, :content, content)
+      send_to_discord_for_map(formatted_with_content, MapConfig.channel_for(mc, :rally), mc)
     else
-      {:ok, :skipped}
+      false -> {:ok, :skipped}
+      {:error, reason} -> log_format_error("rally point", reason)
     end
   rescue
-    e ->
-      Logger.error("Exception in send_rally_point_notification_for_map: #{Exception.message(e)}")
-      {:error, {:exception, Exception.message(e)}}
+    e -> log_notification_exception("send_rally_point_notification_for_map", e)
   end
 
   defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
@@ -611,6 +584,16 @@ defmodule WandererNotifier.DiscordNotifier do
   # ═══════════════════════════════════════════════════════════════════════════════
   # Helper Functions
   # ═══════════════════════════════════════════════════════════════════════════════
+
+  defp log_format_error(type, reason) do
+    Logger.error("Failed to format #{type} notification: #{inspect(reason)}")
+    {:error, {:format_error, reason}}
+  end
+
+  defp log_notification_exception(fn_name, e) do
+    Logger.error("Exception in #{fn_name}: #{Exception.message(e)}")
+    {:error, {:exception, Exception.message(e)}}
+  end
 
   defp format_notification(data, opts \\ []) do
     try do
