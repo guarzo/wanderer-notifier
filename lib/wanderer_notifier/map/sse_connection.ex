@@ -68,6 +68,11 @@ defmodule WandererNotifier.Map.SSEConnection do
     # wanderer_base_url() already derives from MAP_URL and strips the path
     base_url = Config.wanderer_base_url()
 
+    if is_nil(base_url) or base_url == "" do
+      raise ArgumentError,
+            "wanderer_base_url is not configured. Set WANDERER_BASE_URL or MAP_URL environment variable."
+    end
+
     # Build query params with events filter
     query_params = []
 

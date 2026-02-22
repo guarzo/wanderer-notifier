@@ -360,7 +360,7 @@ defmodule WandererNotifier.Map.MapRegistry do
         do_fetch_from_api(base_url, "/api/v1/notifier/config", api_key)
 
       {:error, _} ->
-        {:error, :map_url_not_configured}
+        {:error, :wanderer_base_url_not_configured}
     end
   rescue
     _ -> {:error, :legacy_config_not_available}

@@ -166,7 +166,13 @@ defmodule WandererNotifier.Shared.Config do
 
   defp normalize_base_url(url) do
     uri = URI.parse(url)
-    "#{uri.scheme}://#{uri.authority}"
+
+    if is_binary(uri.scheme) and uri.scheme != "" and
+         is_binary(uri.authority) and uri.authority != "" do
+      "#{uri.scheme}://#{uri.authority}"
+    else
+      nil
+    end
   end
 
   @doc "Get Wanderer plugin notifier API key"
