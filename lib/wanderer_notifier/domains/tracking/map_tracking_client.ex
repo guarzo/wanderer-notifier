@@ -371,18 +371,14 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   @spec build_url(entity_type(), entity_config()) :: String.t()
   defp build_url(_entity_type, config) do
     base_url = Config.wanderer_base_url()
+
+    unless base_url do
+      raise ArgumentError,
+            "wanderer_base_url is not configured. Set MAP_URL environment variable."
+    end
+
+    # Config.map_name() raises if MAP_NAME is not set
     map_name = Config.map_name()
-
-    if is_nil(base_url) or base_url == "" do
-      raise ArgumentError,
-            "wanderer_base_url is not configured. Set WANDERER_BASE_URL or MAP_URL environment variable."
-    end
-
-    if is_nil(map_name) or map_name == "" do
-      raise ArgumentError,
-            "map_name is not configured. Set MAP_NAME environment variable."
-    end
-
     endpoint = config.endpoint
 
     # The correct pattern is /api/maps/{map_name}/{endpoint}
@@ -704,9 +700,9 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp build_url_for_map(map_config, config) do
     base_url = Config.wanderer_base_url()
 
-    if is_nil(base_url) or base_url == "" do
+    unless base_url do
       raise ArgumentError,
-            "wanderer_base_url is not configured. Set WANDERER_BASE_URL or MAP_URL environment variable."
+            "wanderer_base_url is not configured. Set MAP_URL environment variable."
     end
 
     "#{base_url}/api/maps/#{map_config.slug}/#{config.endpoint}"

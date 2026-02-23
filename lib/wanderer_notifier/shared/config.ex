@@ -168,11 +168,16 @@ defmodule WandererNotifier.Shared.Config do
     uri = URI.parse(url)
 
     if is_binary(uri.scheme) and uri.scheme != "" and
-         is_binary(uri.authority) and uri.authority != "" do
-      "#{uri.scheme}://#{uri.authority}"
+         is_binary(uri.host) and uri.host != "" do
+      "#{uri.scheme}://#{uri.host}#{port_suffix(uri)}"
     else
       nil
     end
+  end
+
+  defp port_suffix(%URI{port: port, scheme: scheme}) do
+    default_port = URI.default_port(scheme)
+    if port && port != default_port, do: ":#{port}", else: ""
   end
 
   @doc "Get Wanderer plugin notifier API key"
@@ -184,7 +189,6 @@ defmodule WandererNotifier.Shared.Config do
   def wanderer_base_url_safe do
     case wanderer_base_url() do
       nil -> {:error, :not_found}
-      "" -> {:error, :not_found}
       url -> {:ok, url}
     end
   end
