@@ -185,10 +185,6 @@ defmodule WandererNotifier.Shared.Config do
     Application.get_env(:wanderer_notifier, :wanderer_plugin_notifier_api_key)
   end
 
-  @doc "Delegates to wanderer_base_url/0. Returns {:ok, url} or {:error, reason}."
-  @spec wanderer_base_url_safe() :: {:ok, String.t()} | {:error, atom()}
-  defdelegate wanderer_base_url_safe, to: __MODULE__, as: :wanderer_base_url
-
   @doc "Get map API URL (required)"
   def map_url, do: get_required_env("MAP_URL")
 
