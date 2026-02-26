@@ -65,12 +65,16 @@ defmodule WandererNotifier.Map.SSEConnection do
   # Private functions
 
   defp build_url(map_slug, events_filter, last_event_id) do
-    # Prefer plugin base URL, fall back to legacy map URL
-    # Treat empty string as nil so the legacy fallback is preserved
-    raw_base_url = non_empty(Config.wanderer_base_url()) || Config.map_url()
+    # wanderer_base_url() already derives from MAP_URL and strips the path
+    base_url =
+      case Config.wanderer_base_url() do
+        {:ok, url} ->
+          url
 
-    # Normalize the base URL by removing path and query components
-    base_url = normalize_base_url(raw_base_url)
+        {:error, _} ->
+          raise ArgumentError,
+                "wanderer_base_url is not configured. Set MAP_URL environment variable."
+      end
 
     # Build query params with events filter
     query_params = []
@@ -171,31 +175,6 @@ defmodule WandererNotifier.Map.SSEConnection do
 
         {:error, {:connection_failed, reason}}
     end
-  end
-
-  @spec non_empty(String.t() | nil) :: String.t() | nil
-  defp non_empty(nil), do: nil
-  defp non_empty(""), do: nil
-  defp non_empty(value), do: value
-
-  # Normalizes a base URL by removing path and query components.
-  #
-  # Takes a URL string and returns a normalized URL with only the scheme, host, and port.
-  # This ensures that the URL is in a consistent format for building API endpoints.
-  #
-  # Examples:
-  #   normalize_base_url("https://example.com/some/path?param=value")
-  #   #=> "https://example.com"
-  #
-  #   normalize_base_url("http://localhost:3000/maps/test")
-  #   #=> "http://localhost:3000"
-  @spec normalize_base_url(String.t()) :: String.t()
-  defp normalize_base_url(url) do
-    url
-    |> URI.parse()
-    |> Map.put(:path, nil)
-    |> Map.put(:query, nil)
-    |> URI.to_string()
   end
 
   # Helper function to format error reasons for better logging

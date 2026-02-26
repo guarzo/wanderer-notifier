@@ -169,11 +169,10 @@ config :wanderer_notifier,
         RuntimeConfig.get_env("DISCORD_RALLY_GROUP_ID")
     ),
 
-  # Plugin API settings (preferred)
-  wanderer_base_url: RuntimeConfig.get_env("BASE_URL"),
+  # Plugin API settings
   wanderer_plugin_notifier_api_key: RuntimeConfig.get_env("PLUGIN_NOTIFIER_API_KEY"),
 
-  # Map settings (legacy fallback)
+  # Map settings
   map_token: RuntimeConfig.get_env("MAP_API_KEY"),
   map_api_key: RuntimeConfig.get_env("MAP_API_KEY"),
   map_url: RuntimeConfig.get_env("MAP_URL"),

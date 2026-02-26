@@ -328,7 +328,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   defp start_sse_client_for_map(%MapConfig{} = map_config) do
     opts = [
       map_slug: map_config.slug,
-      api_token: Config.wanderer_plugin_api_key() || Config.map_api_key()
+      api_token: Config.map_api_key()
     ]
 
     case start_sse_client(opts) do
@@ -407,7 +407,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   defp get_legacy_map_configuration do
     map_url = Config.map_url()
     map_name = Config.map_name()
-    api_token = Config.wanderer_plugin_api_key() || Config.map_api_key()
+    api_token = Config.map_api_key()
     map_slug = extract_map_slug(map_url, map_name)
 
     {:ok, %{map_slug: map_slug, api_token: api_token}}

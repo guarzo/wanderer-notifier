@@ -338,7 +338,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp fetch_from_plugin_api do
-    case Config.wanderer_base_url_safe() do
+    case Config.wanderer_base_url() do
       {:ok, base_url} ->
         api_key = Config.wanderer_plugin_api_key()
 
@@ -354,13 +354,13 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp fetch_from_legacy_api do
-    case Config.map_url_safe() do
+    case Config.wanderer_base_url() do
       {:ok, base_url} ->
         api_key = Config.map_api_key()
         do_fetch_from_api(base_url, "/api/v1/notifier/config", api_key)
 
       {:error, _} ->
-        {:error, :map_url_not_configured}
+        {:error, :wanderer_base_url_not_configured}
     end
   rescue
     _ -> {:error, :legacy_config_not_available}
