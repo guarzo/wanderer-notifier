@@ -68,7 +68,9 @@ defmodule WandererNotifier.Map.SSEConnection do
     # wanderer_base_url() already derives from MAP_URL and strips the path
     base_url =
       case Config.wanderer_base_url() do
-        {:ok, url} -> url
+        {:ok, url} ->
+          url
+
         {:error, _} ->
           raise ArgumentError,
                 "wanderer_base_url is not configured. Set MAP_URL environment variable."

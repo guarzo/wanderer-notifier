@@ -372,7 +372,9 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp build_url(_entity_type, config) do
     base_url =
       case Config.wanderer_base_url() do
-        {:ok, url} -> url
+        {:ok, url} ->
+          url
+
         {:error, _} ->
           raise ArgumentError,
                 "wanderer_base_url is not configured. Set MAP_URL environment variable."
@@ -701,7 +703,9 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp build_url_for_map(map_config, config) do
     base_url =
       case Config.wanderer_base_url() do
-        {:ok, url} -> url
+        {:ok, url} ->
+          url
+
         {:error, _} ->
           raise ArgumentError,
                 "wanderer_base_url is not configured. Set MAP_URL environment variable."
