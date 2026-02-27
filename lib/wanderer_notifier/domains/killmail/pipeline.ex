@@ -115,26 +115,38 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp log_tracking_cache_state(kill_id) do
-    # Check what tracking data is available
-    systems_result = Cache.get(Cache.Keys.map_systems())
-    chars_result = Cache.get(Cache.Keys.map_characters())
-
-    systems_count =
-      case systems_result do
-        {:ok, systems} when is_list(systems) -> length(systems)
-        _ -> 0
-      end
-
-    chars_count =
-      case chars_result do
-        {:ok, chars} when is_list(chars) -> length(chars)
-        _ -> 0
-      end
+    mode = Dependencies.map_registry().mode()
+    {systems_count, chars_count} = tracking_counts_by_mode(mode)
 
     Logger.warning(
-      "[Pipeline] Kill #{kill_id} NOT TRACKED - Cache state: #{systems_count} systems, #{chars_count} characters tracked. " <>
+      "[Pipeline] Kill #{kill_id} NOT TRACKED (mode=#{mode}) - " <>
+        "Index state: #{systems_count} systems, #{chars_count} characters tracked. " <>
         "If both are 0, SSE connection may have failed to populate tracking data."
     )
+  end
+
+  defp tracking_counts_by_mode(:api) do
+    {safe_ets_count(:map_registry_system_index),
+     safe_ets_count(:map_registry_character_index)}
+  end
+
+  defp tracking_counts_by_mode(:legacy) do
+    {cache_list_count(Cache.Keys.map_systems()),
+     cache_list_count(Cache.Keys.map_characters())}
+  end
+
+  defp cache_list_count(key) do
+    case Cache.get(key) do
+      {:ok, items} when is_list(items) -> length(items)
+      _ -> 0
+    end
+  end
+
+  defp safe_ets_count(table) do
+    case :ets.info(table, :size) do
+      :undefined -> 0
+      count -> count
+    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

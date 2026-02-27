@@ -432,6 +432,35 @@ defmodule WandererNotifierWeb.DashboardController do
     |> Enum.join("")
   end
 
+  defp build_sse_status_card(%{mode: "multi_map"} = sse_data) do
+    connected = Map.get(sse_data, :connected, 0)
+    map_count = Map.get(sse_data, :map_count, 0)
+    clients_running = Map.get(sse_data, :clients_running, 0)
+
+    status = if connected > 0, do: "connected", else: "disconnected"
+    status_class = if connected > 0, do: "connected", else: "disconnected"
+
+    """
+    <div class="card">
+        <h2 class="icon-sse">SSE Map Status</h2>
+        <div class="metric">
+            <span class="label">Connection:</span>
+            <span class="connection-status #{status_class}">
+                #{status}
+            </span>
+        </div>
+        <div class="metric">
+            <span class="label">Mode:</span>
+            <span class="value">Multi-Map</span>
+        </div>
+        <div class="metric">
+            <span class="label">Maps:</span>
+            <span class="value">#{connected}/#{map_count} connected (#{clients_running} clients)</span>
+        </div>
+    </div>
+    """
+  end
+
   defp build_sse_status_card(sse_data) do
     status = Map.get(sse_data, :connection_status, "not_configured")
 
