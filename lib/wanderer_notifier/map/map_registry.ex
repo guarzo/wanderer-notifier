@@ -218,6 +218,14 @@ defmodule WandererNotifier.Map.MapRegistry do
     :persistent_term.get({__MODULE__, :mode}, :legacy)
   end
 
+  @doc "Returns {system_index_size, character_index_size} from the reverse index ETS tables for diagnostics."
+  @spec tracking_index_counts() :: {non_neg_integer(), non_neg_integer()}
+  def tracking_index_counts do
+    sys = safe_table_size(@system_index_table)
+    chr = safe_table_size(@character_index_table)
+    {sys, chr}
+  end
+
   # ============================================================================
   # GenServer Callbacks
   # ============================================================================
@@ -492,6 +500,13 @@ defmodule WandererNotifier.Map.MapRegistry do
 
   defp cleanup_reverse_index(table, map_slug) do
     :ets.match_delete(table, {:_, map_slug})
+  end
+
+  defp safe_table_size(table) do
+    case :ets.info(table, :size) do
+      :undefined -> 0
+      n -> n
+    end
   end
 
   defp schedule_refresh do
