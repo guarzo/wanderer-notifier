@@ -730,30 +730,41 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   defp cache_individual_entities_for_map(map_slug, :characters, entities) do
     Cache.put_tracked_characters_list(map_slug, entities)
     registry = Dependencies.map_registry()
+    api_mode? = registry.mode() == :api
 
     Enum.each(entities, fn character ->
-      if character_id = get_character_id(character) do
-        Cache.put_tracked_character(map_slug, character_id, character)
-        # Seed the ETS reverse index so pipeline can find characters by ID
-        registry.index_character(map_slug, to_string(character_id))
-      end
+      cache_and_index_character(map_slug, character, registry, api_mode?)
     end)
 
-    Logger.debug("Indexed #{length(entities)} characters into reverse index for #{map_slug}")
+    if api_mode?,
+      do:
+        Logger.debug("Indexed #{length(entities)} characters into reverse index for #{map_slug}")
   end
 
   defp cache_individual_entities_for_map(map_slug, :systems, entities) do
     Cache.put_tracked_systems_list(map_slug, entities)
     registry = Dependencies.map_registry()
+    api_mode? = registry.mode() == :api
 
     Enum.each(entities, fn system ->
-      if system_id = get_system_id(system) do
-        Cache.put_tracked_system(map_slug, system_id, system)
-        # Seed the ETS reverse index so pipeline can find systems by ID
-        registry.index_system(map_slug, system_id)
-      end
+      cache_and_index_system(map_slug, system, registry, api_mode?)
     end)
 
-    Logger.debug("Indexed #{length(entities)} systems into reverse index for #{map_slug}")
+    if api_mode?,
+      do: Logger.debug("Indexed #{length(entities)} systems into reverse index for #{map_slug}")
+  end
+
+  defp cache_and_index_character(map_slug, character, registry, api_mode?) do
+    if character_id = get_character_id(character) do
+      Cache.put_tracked_character(map_slug, character_id, character)
+      if api_mode?, do: registry.index_character(map_slug, character_id)
+    end
+  end
+
+  defp cache_and_index_system(map_slug, system, registry, api_mode?) do
+    if system_id = get_system_id(system) do
+      Cache.put_tracked_system(map_slug, system_id, system)
+      if api_mode?, do: registry.index_system(map_slug, system_id)
+    end
   end
 end

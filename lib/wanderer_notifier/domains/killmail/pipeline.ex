@@ -120,32 +120,23 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
     Logger.warning(
       "[Pipeline] Kill #{kill_id} NOT TRACKED (mode=#{mode}) - " <>
-        "Index state: #{systems_count} systems, #{chars_count} characters tracked. " <>
+        "Index entries: #{systems_count} system, #{chars_count} character (includes cross-map duplicates). " <>
         "If both are 0, SSE connection may have failed to populate tracking data."
     )
   end
 
   defp tracking_counts_by_mode(:api) do
-    {safe_ets_count(:map_registry_system_index),
-     safe_ets_count(:map_registry_character_index)}
+    Dependencies.map_registry().tracking_index_counts()
   end
 
   defp tracking_counts_by_mode(:legacy) do
-    {cache_list_count(Cache.Keys.map_systems()),
-     cache_list_count(Cache.Keys.map_characters())}
+    {cache_list_count(Cache.Keys.map_systems()), cache_list_count(Cache.Keys.map_characters())}
   end
 
   defp cache_list_count(key) do
     case Cache.get(key) do
       {:ok, items} when is_list(items) -> length(items)
       _ -> 0
-    end
-  end
-
-  defp safe_ets_count(table) do
-    case :ets.info(table, :size) do
-      :undefined -> 0
-      count -> count
     end
   end
 
