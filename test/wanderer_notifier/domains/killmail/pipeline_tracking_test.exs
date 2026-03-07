@@ -25,9 +25,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     def maps_tracking_character(_), do: []
   end
 
-  defmodule LegacyModeRegistry do
+  defmodule EnvVarModeRegistry do
     @moduledoc false
-    def mode, do: :legacy
+    def mode, do: :env_var
     def tracking_index_counts, do: {0, 0}
     def maps_tracking_system(_), do: []
     def maps_tracking_character(_), do: []
@@ -65,12 +65,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       assert registry.tracking_index_counts() == {5, 3}
     end
 
-    test "legacy mode registry exposes expected interface" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, LegacyModeRegistry)
+    test "env_var mode registry exposes expected interface" do
+      Application.put_env(:wanderer_notifier, :map_registry_module, EnvVarModeRegistry)
 
       registry = Application.get_env(:wanderer_notifier, :map_registry_module)
 
-      assert registry.mode() == :legacy
+      assert registry.mode() == :env_var
       assert registry.tracking_index_counts() == {0, 0}
     end
 
@@ -83,8 +83,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       assert registry.maps_tracking_character("12345") == []
     end
 
-    test "legacy mode cache keys resolve to expected strings" do
-      # Verify the cache keys that tracking_counts_by_mode(:legacy) uses
+    test "env_var mode cache keys resolve to expected strings" do
+      # Verify the cache keys used in env_var mode
       assert CacheKeys.map_systems() == "map:systems"
       assert CacheKeys.map_characters() == "map:characters"
     end
@@ -181,8 +181,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       end
     end
 
-    test "logs mode=legacy when using legacy mode registry" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, LegacyModeRegistry)
+    test "logs mode=env_var when using env_var mode registry" do
+      Application.put_env(:wanderer_notifier, :map_registry_module, EnvVarModeRegistry)
 
       killmail_data = %{
         "killmail_id" => 99_999_002,

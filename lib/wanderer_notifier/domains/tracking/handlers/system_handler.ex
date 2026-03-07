@@ -71,11 +71,64 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   # ══════════════════════════════════════════════════════════════════════════════
 
   defp create_system_from_payload(payload) do
+    # Fetch static info upfront — used for both name resolution and enrichment
+    system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
+    static_data = fetch_static_data(system_id)
+
+    payload = maybe_resolve_system_name(payload, static_data)
+
     with {:ok, system} <- try_create_system(payload),
-         {:ok, enriched_system} <- enrich_system(system) do
+         {:ok, enriched_system} <- enrich_with_static_data(system, static_data) do
       {:ok, enriched_system}
     end
   end
+
+  defp fetch_static_data(nil), do: nil
+
+  defp fetch_static_data(system_id) do
+    case WandererNotifier.Domains.Tracking.StaticInfo.get_system_static_info(system_id) do
+      {:ok, info} -> info
+      {:error, _} -> nil
+    end
+  end
+
+  defp maybe_resolve_system_name(payload, static_data) do
+    name = payload["name"] || payload[:name]
+
+    if is_binary(name) and name != "" do
+      payload
+    else
+      resolve_and_inject_name(payload, static_data)
+    end
+  end
+
+  defp resolve_and_inject_name(payload, static_data) do
+    data = extract_static_data(static_data)
+    name = data["solar_system_name"]
+
+    if is_binary(name) and name != "" do
+      system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
+
+      Logger.info("Resolved system name from static info",
+        solar_system_id: system_id,
+        name: name
+      )
+
+      Map.put(payload, "name", name)
+    else
+      system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
+
+      Logger.warning("Could not resolve system name from static info, using fallback",
+        solar_system_id: system_id
+      )
+
+      Map.put(payload, "name", "System #{system_id}")
+    end
+  end
+
+  defp extract_static_data(%{"data" => data}) when is_map(data), do: data
+  defp extract_static_data(data) when is_map(data), do: data
+  defp extract_static_data(_), do: %{}
 
   defp try_create_system(payload) do
     Logger.debug("Creating system from SSE payload",
@@ -98,17 +151,16 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
-  defp enrich_system(system) do
-    Logger.debug("Enriching system",
+  defp enrich_with_static_data(system, static_data) do
+    Logger.debug("Enriching system with pre-fetched static data",
       system_id: system.solar_system_id,
       system_name: system.name,
-      before_enrichment: inspect(system),
+      has_static_data: not is_nil(static_data),
       category: :api
     )
 
-    # StaticInfo.enrich_system/1 always returns {:ok, _} - it returns the original
-    # system if enrichment fails, so we don't need to handle error cases
-    {:ok, enriched} = WandererNotifier.Domains.Tracking.StaticInfo.enrich_system(system)
+    {:ok, enriched} =
+      WandererNotifier.Domains.Tracking.StaticInfo.enrich_system_with_data(system, static_data)
 
     Logger.debug("System enriched successfully",
       system_id: enriched.solar_system_id,
