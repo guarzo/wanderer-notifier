@@ -9,7 +9,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   alias WandererNotifier.Shared.Telemetry
   alias WandererNotifier.Domains.Killmail.Killmail
   alias WandererNotifier.Domains.Killmail.ItemProcessor
-  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Shared.Config
   alias WandererNotifier.Shared.Utils.Startup
   alias WandererNotifier.Shared.Utils.ErrorHandler
@@ -20,10 +19,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @type killmail_data :: map()
   @type result :: {:ok, String.t() | :skipped} | {:error, term()}
-
-  # Defensive error handling - legacy tracking clients may return errors at runtime
-  @dialyzer {:nowarn_function, system_tracked_by_mode?: 1}
-  @dialyzer {:nowarn_function, character_tracked_by_mode?: 1}
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # Public API
@@ -115,29 +110,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp log_tracking_cache_state(kill_id) do
-    mode = Dependencies.map_registry().mode()
-    {systems_count, chars_count} = tracking_counts_by_mode(mode)
+    {systems_count, chars_count} = Dependencies.map_registry().tracking_index_counts()
 
     Logger.warning(
-      "[Pipeline] Kill #{kill_id} NOT TRACKED (mode=#{mode}) - " <>
+      "[Pipeline] Kill #{kill_id} NOT TRACKED - " <>
         "Index entries: #{systems_count} system, #{chars_count} character (includes cross-map duplicates). " <>
         "If both are 0, SSE connection may have failed to populate tracking data."
     )
-  end
-
-  defp tracking_counts_by_mode(:api) do
-    Dependencies.map_registry().tracking_index_counts()
-  end
-
-  defp tracking_counts_by_mode(:legacy) do
-    {cache_list_count(Cache.Keys.map_systems()), cache_list_count(Cache.Keys.map_characters())}
-  end
-
-  defp cache_list_count(key) do
-    case Cache.get(key) do
-      {:ok, items} when is_list(items) -> length(items)
-      _ -> 0
-    end
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -282,31 +261,9 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     system_id_str = Integer.to_string(system_id)
     Logger.info("[Pipeline] Checking if system #{system_id_str} is tracked")
 
-    # In API mode, use the reverse index for efficient system tracking lookup.
-    # In legacy mode, fall back to unscoped cache check.
-    tracked = system_tracked_by_mode?(system_id_str)
+    tracked = Dependencies.map_registry().maps_tracking_system(system_id_str) != []
     Logger.info("[Pipeline] System #{system_id_str} tracked check result: #{tracked}")
     {:ok, tracked}
-  end
-
-  defp system_tracked_by_mode?(system_id_str) do
-    case Dependencies.map_registry().mode() do
-      :api ->
-        Dependencies.map_registry().maps_tracking_system(system_id_str) != []
-
-      :legacy ->
-        case WandererNotifier.Domains.Tracking.MapTrackingClient.is_system_tracked?(system_id_str) do
-          {:ok, tracked} ->
-            tracked
-
-          {:error, reason} ->
-            Logger.warning("[Pipeline] System tracking check failed for #{system_id_str}",
-              reason: inspect(reason)
-            )
-
-            false
-        end
-    end
   end
 
   @spec character_tracked?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
@@ -329,7 +286,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     character_id_str = Integer.to_string(character_id)
     Logger.info("[Pipeline] Checking if victim character #{character_id_str} is tracked")
 
-    tracked = character_tracked_by_mode?(character_id_str)
+    tracked = character_in_index?(character_id_str)
 
     Logger.info(
       "[Pipeline] Victim character #{character_id_str} tracked check result: #{tracked}"
@@ -345,35 +302,17 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp attacker_tracked?(%{"character_id" => character_id}) when is_integer(character_id) do
-    character_id |> Integer.to_string() |> character_tracked_by_mode?()
+    character_id |> Integer.to_string() |> character_in_index?()
   end
 
   defp attacker_tracked?(%{"character_id" => character_id}) when is_binary(character_id) do
-    character_tracked_by_mode?(character_id)
+    character_in_index?(character_id)
   end
 
   defp attacker_tracked?(_), do: false
 
-  defp character_tracked_by_mode?(character_id_str) do
-    case Dependencies.map_registry().mode() do
-      :api ->
-        Dependencies.map_registry().maps_tracking_character(character_id_str) != []
-
-      :legacy ->
-        case WandererNotifier.Domains.Tracking.MapTrackingClient.is_character_tracked?(
-               character_id_str
-             ) do
-          {:ok, tracked} ->
-            tracked
-
-          {:error, reason} ->
-            Logger.warning("[Pipeline] Character tracking check failed for #{character_id_str}",
-              reason: inspect(reason)
-            )
-
-            false
-        end
-    end
+  defp character_in_index?(character_id_str) do
+    Dependencies.map_registry().maps_tracking_character(character_id_str) != []
   end
 
   @spec send_notification(Killmail.t()) :: result()
@@ -447,13 +386,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec handle_notification_response(Killmail.t()) :: result()
   defp handle_notification_response(%Killmail{} = killmail) do
-    case Dependencies.map_registry().mode() do
-      :api -> handle_api_notification(killmail)
-      :legacy -> handle_legacy_notification(killmail)
-    end
-  end
-
-  defp handle_api_notification(%Killmail{} = killmail) do
     {matching_count, started_count} = fan_out_to_maps(killmail)
 
     cond do
@@ -472,26 +404,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
         Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
         Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
         {:ok, killmail.killmail_id}
-    end
-  end
-
-  defp handle_legacy_notification(%Killmail{} = killmail) do
-    case send_legacy_notification(killmail) do
-      {:ok, _pid} ->
-        Telemetry.processing_completed(killmail.killmail_id, {:ok, :notified})
-        Telemetry.killmail_notified(killmail.killmail_id, killmail.system_name)
-        Logger.debug("Killmail #{killmail.killmail_id} notification queued", category: :killmail)
-        {:ok, killmail.killmail_id}
-
-      {:error, reason} ->
-        Logger.error("[Pipeline] Failed to start legacy notification task",
-          killmail_id: killmail.killmail_id,
-          reason: inspect(reason)
-        )
-
-        Telemetry.processing_completed(killmail.killmail_id, {:ok, :skipped})
-        Telemetry.processing_skipped(killmail.killmail_id, :notification_task_failed)
-        {:ok, :skipped}
     end
   end
 
@@ -564,15 +476,6 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
       |> Enum.map(&to_string/1)
 
     (victim_ids ++ attacker_ids) |> Enum.uniq()
-  end
-
-  # Legacy single-map notification (existing behavior).
-  # Returns {:ok, pid} or {:error, reason} from Task.Supervisor.start_child.
-  @spec send_legacy_notification(Killmail.t()) :: {:ok, pid()} | {:error, term()}
-  defp send_legacy_notification(%Killmail{} = killmail) do
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-      WandererNotifier.DiscordNotifier.send_kill_async(killmail)
-    end)
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════

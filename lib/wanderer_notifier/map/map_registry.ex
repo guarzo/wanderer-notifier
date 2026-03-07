@@ -226,6 +226,30 @@ defmodule WandererNotifier.Map.MapRegistry do
     {sys, chr}
   end
 
+  @doc "Returns all unique system IDs from the reverse index."
+  @spec all_tracked_system_ids() :: [integer()]
+  def all_tracked_system_ids do
+    @system_index_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {system_id_str, _slug} -> system_id_str end)
+    |> Enum.uniq()
+    |> Enum.map(&String.to_integer/1)
+  rescue
+    ArgumentError -> []
+  end
+
+  @doc "Returns all unique character IDs from the reverse index."
+  @spec all_tracked_character_ids() :: [integer()]
+  def all_tracked_character_ids do
+    @character_index_table
+    |> :ets.tab2list()
+    |> Enum.map(fn {char_id_str, _slug} -> char_id_str end)
+    |> Enum.uniq()
+    |> Enum.map(&String.to_integer/1)
+  rescue
+    ArgumentError -> []
+  end
+
   # ============================================================================
   # GenServer Callbacks
   # ============================================================================

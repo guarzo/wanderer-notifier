@@ -11,7 +11,7 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   require Logger
 
   alias WandererNotifier.Domains.Killmail.WandererKillsAPI
-  alias WandererNotifier.Shared.Utils.{EntityUtils, Retry}
+  alias WandererNotifier.Shared.Utils.Retry
 
   # Check every 30 seconds
   @check_interval 30_000
@@ -214,21 +214,9 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   end
 
   defp update_tracked_entities(state) do
-    alias WandererNotifier.Domains.Tracking.MapTrackingClient
-    {:ok, systems} = MapTrackingClient.fetch_and_cache_systems()
-    {:ok, characters} = MapTrackingClient.fetch_and_cache_characters()
-
-    tracked_systems =
-      systems
-      |> Enum.map(&extract_system_id/1)
-      |> Enum.filter(&valid_system_id?/1)
-      |> MapSet.new()
-
-    tracked_characters =
-      characters
-      |> Enum.map(&extract_character_id/1)
-      |> Enum.filter(&valid_character_id?/1)
-      |> MapSet.new()
+    registry = WandererNotifier.Shared.Dependencies.map_registry()
+    tracked_systems = registry.all_tracked_system_ids() |> MapSet.new()
+    tracked_characters = registry.all_tracked_character_ids() |> MapSet.new()
 
     %{state | tracked_systems: tracked_systems, tracked_characters: tracked_characters}
   end
@@ -355,15 +343,4 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
     length(system_results)
   end
 
-  # Helper functions (similar to WebSocket client)
-
-  defp extract_system_id(system), do: EntityUtils.extract_system_id(system)
-
-  defp valid_system_id?(system_id), do: EntityUtils.valid_system_id?(system_id)
-
-  defp extract_character_id(char), do: EntityUtils.extract_character_id(char)
-
-  defp valid_character_id?(char_id) do
-    is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000
-  end
 end

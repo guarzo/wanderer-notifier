@@ -148,10 +148,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   """
   @spec initialize_sse_clients() :: :ok
   def initialize_sse_clients() do
-    case Dependencies.map_registry().mode() do
-      :api -> initialize_multi_map()
-      :legacy -> initialize_legacy()
-    end
+    initialize_maps()
   end
 
   @doc """
@@ -193,10 +190,10 @@ defmodule WandererNotifier.Map.SSESupervisor do
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Multi-Map Initialization
+  # Map Initialization
   # ──────────────────────────────────────────────────────────────────────────────
 
-  defp initialize_multi_map do
+  defp initialize_maps do
     maps = Dependencies.map_registry().all_maps()
     Logger.info("Initializing #{length(maps)} maps from registry", category: :startup)
 
@@ -349,82 +346,6 @@ defmodule WandererNotifier.Map.SSESupervisor do
   @spec initialize_map_data_safely(MapConfig.t()) :: {:ok, :initialized} | {:error, term()}
   defp initialize_map_data_safely(%MapConfig{} = map_config) do
     Initializer.initialize_map_data_for(map_config)
-  end
-
-  # ──────────────────────────────────────────────────────────────────────────────
-  # Legacy Single-Map Initialization
-  # ──────────────────────────────────────────────────────────────────────────────
-
-  defp initialize_legacy do
-    case initialize_legacy_map_data() do
-      {:ok, _result} ->
-        Logger.info("Map data initialized successfully")
-        start_legacy_sse()
-
-      {:error, reason} ->
-        Logger.error("Map data initialization failed - SSE will not start",
-          reason: inspect(reason)
-        )
-
-        :ok
-    end
-  end
-
-  defp initialize_legacy_map_data do
-    Initializer.initialize_map_data()
-  rescue
-    error ->
-      Logger.error("Exception during map data initialization",
-        error: Exception.message(error)
-      )
-
-      {:error, Exception.message(error)}
-  end
-
-  defp start_legacy_sse do
-    signal_pipeline_worker()
-
-    case get_legacy_map_configuration() do
-      {:ok, config} ->
-        opts = [map_slug: config.map_slug, api_token: config.api_token]
-
-        case start_sse_client(opts) do
-          {:ok, _pid} ->
-            Logger.info("SSE client initialized", map_slug: config.map_slug)
-            :ok
-
-          {:error, reason} ->
-            Logger.error("Failed to start SSE client", error: inspect(reason))
-            :ok
-        end
-
-      {:error, reason} ->
-        Logger.error("Failed to get map configuration: #{inspect(reason)}")
-        :ok
-    end
-  end
-
-  defp get_legacy_map_configuration do
-    map_url = Config.map_url()
-    map_name = Config.map_name()
-    api_token = Config.map_api_key()
-    map_slug = extract_map_slug(map_url, map_name)
-
-    {:ok, %{map_slug: map_slug, api_token: api_token}}
-  rescue
-    e -> {:error, {:config_error, Exception.message(e)}}
-  end
-
-  defp extract_map_slug(map_url, map_name) do
-    case URI.parse(map_url) do
-      %URI{query: query} when is_binary(query) ->
-        query
-        |> URI.decode_query()
-        |> Map.get("name", map_name)
-
-      _ ->
-        map_name
-    end
   end
 
   # ──────────────────────────────────────────────────────────────────────────────

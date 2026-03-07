@@ -64,10 +64,60 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     def track_zkill_processing_status(_, _), do: :ok
   end
 
+  @test_map_slug "test-map"
+
+  # Helper to register a system in the reverse index for tracking
+  defp track_system(system_id) do
+    WandererNotifier.Map.MapRegistry.index_system(@test_map_slug, to_string(system_id))
+  end
+
+  # Creates ETS tables if they don't exist (e.g. if MapRegistry GenServer was killed by another test).
+  defp ensure_ets_table(table, type) do
+    if :ets.info(table) == :undefined do
+      :ets.new(table, [:named_table, type, :public, read_concurrency: true])
+    end
+  end
+
+  # Helper to set up a test map config in the registry.
+  defp ensure_test_map_config do
+    ensure_ets_table(:map_registry_configs, :set)
+    ensure_ets_table(:map_registry_system_index, :bag)
+    ensure_ets_table(:map_registry_character_index, :bag)
+
+    config = %WandererNotifier.Map.MapConfig{
+      slug: @test_map_slug,
+      name: "Test Map",
+      map_id: @test_map_slug,
+      owner: nil,
+      discord: %{
+        bot_token: nil,
+        application_id: nil,
+        guild_id: nil,
+        channels: %{primary: "test-channel"},
+        rally_group_ids: []
+      },
+      features: %{},
+      settings: %{}
+    }
+
+    :ets.insert(:map_registry_configs, {@test_map_slug, config})
+  end
+
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
   setup do
+    # Ensure MapRegistry is running so reverse index ETS tables exist
+    case WandererNotifier.Map.MapRegistry.start_link() do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    # Ensure we use the real MapRegistry (not a mock from another test)
+    Application.put_env(:wanderer_notifier, :map_registry_module, WandererNotifier.Map.MapRegistry)
+
+    ensure_test_map_config()
+
     # Ensure Cachex application is started
     case Application.ensure_all_started(:cachex) do
       {:ok, _apps} -> :ok
@@ -163,12 +213,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "solar_system_id" => 30_000_142
       }
 
-      # Set up cache data to make system tracked
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      Cachex.put(cache_name, "map:systems", [%{"solar_system_id" => 30_000_142}])
-      Cachex.put(cache_name, "map:character_list", [])
-
-      # Pipeline works with pre-enriched WebSocket data, no ESI calls needed
+      # Set up tracking via reverse index
+      track_system(30_000_142)
 
       # Execute the test - don't mock deduplication or Discord as they work in TEST MODE
       result = Pipeline.process_killmail(zkb_data)
@@ -182,11 +228,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "solar_system_id" => 30_000_142
       }
 
-      # Set up cache data with no tracked systems/characters
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      Cachex.put(cache_name, "map:systems", [])
-      Cachex.put(cache_name, "map:character_list", [])
-
+      # No tracked systems/characters in reverse index (default empty state)
       # Execute the test - should be skipped because neither system nor character is tracked
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, :skipped} = result
@@ -224,15 +266,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "solar_system_id" => 30_000_142
       }
 
-      # First, prime the cache to make this killmail appear as a duplicate
-      # by processing it once first
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      Cachex.put(cache_name, "map:systems", [%{"solar_system_id" => 30_000_142}])
-      Cachex.put(cache_name, "map:character_list", [])
-
-      # Pipeline works with pre-enriched WebSocket data, no ESI calls needed
-
-      # Process once to create the deduplication entry
+      # Set up tracking and process once to create the deduplication entry
+      track_system(30_000_142)
       Pipeline.process_killmail(zkb_data)
 
       # Now process again - this should be detected as duplicate
@@ -281,22 +316,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "attackers" => []
       }
 
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      # Mark system as tracked
-      Cachex.put(cache_name, "tracked_system:30000142", true)
-
-      # Create a proper System struct in cache
-      system_data = %WandererNotifier.Domains.Tracking.Entities.System{
-        solar_system_id: "30000142",
-        name: "Jita",
-        system_type: "k-space",
-        security_status: 1.0,
-        tracked: true
-      }
-
-      # Store in map:systems cache with proper structure
-      Cachex.put(cache_name, "map:systems", [system_data])
-      Cachex.put(cache_name, "map:character_list", [])
+      # Mark system as tracked via reverse index
+      track_system(30_000_142)
 
       result = Pipeline.process_killmail(zkb_data)
       # Kill should be processed (not skipped) - channel filtering happens in DiscordNotifier
@@ -340,22 +361,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "attackers" => []
       }
 
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      # Mark system as tracked wormhole
-      Cachex.put(cache_name, "tracked_system:31000001", true)
-
-      # Create a proper System struct in cache
-      system_data = %WandererNotifier.Domains.Tracking.Entities.System{
-        solar_system_id: "31000001",
-        name: "J123456",
-        system_type: "wormhole",
-        security_status: -0.99,
-        tracked: true
-      }
-
-      # Store in map:systems cache with proper structure
-      Cachex.put(cache_name, "map:systems", [system_data])
-      Cachex.put(cache_name, "map:character_list", [])
+      # Mark system as tracked via reverse index
+      track_system(31_000_001)
 
       # Should process successfully since it's a wormhole system
       result = Pipeline.process_killmail(zkb_data)
@@ -399,20 +406,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "attackers" => []
       }
 
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
-      # Mark system as tracked k-space
-      Cachex.put(cache_name, "tracked_system:30000142", true)
-
-      Cachex.put(cache_name, "map:systems", [
-        %{
-          "solar_system_id" => 30_000_142,
-          "system_name" => "Jita",
-          "system_type" => "k-space",
-          "security_status" => 1.0
-        }
-      ])
-
-      Cachex.put(cache_name, "map:character_list", [])
+      # Mark system as tracked via reverse index
+      track_system(30_000_142)
 
       # Should process successfully since wormhole_only flag is false
       result = Pipeline.process_killmail(zkb_data)
@@ -444,7 +439,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       # Capture original config values before any test modifications
       original_kill_focus = Application.get_env(:wanderer_notifier, :corporation_kill_focus)
       original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
-      cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
 
       # Register cleanup to run even if test fails
       on_exit(fn ->
@@ -455,36 +449,16 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
           :startup_suppression_seconds,
           original_suppression
         )
-
-        # Clean up Cachex entries
-        Cachex.del(cache_name, "tracked_system:31000001")
-        Cachex.del(cache_name, "map:systems")
-        Cachex.del(cache_name, "map:character_list")
       end)
 
-      # Return cache_name for use in tests
-      %{cache_name: cache_name}
-    end
+      # Set up tracking via reverse index for all corp exclusion tests
+      track_system(31_000_001)
 
-    defp setup_cache_for_test(cache_name) do
-      Cachex.put(cache_name, "tracked_system:31000001", true)
-
-      system_data = %WandererNotifier.Domains.Tracking.Entities.System{
-        solar_system_id: "31000001",
-        name: "J123456",
-        system_type: "wormhole",
-        security_status: -0.99,
-        tracked: true
-      }
-
-      Cachex.put(cache_name, "map:systems", [system_data])
-      Cachex.put(cache_name, "map:character_list", [])
+      :ok
     end
 
     test "process_killmail/1 processes kills even when victim corporation is in exclusion list",
-         %{
-           cache_name: cache_name
-         } do
+         _context do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list with victim's corporation
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
@@ -506,15 +480,13 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         ]
       }
 
-      setup_cache_for_test(cache_name)
-
       # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90001"} = result
     end
 
     test "process_killmail/1 processes kills even when attacker corporation is in exclusion list",
-         %{cache_name: cache_name} do
+         _context do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list with attacker's corporation
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_002])
@@ -536,16 +508,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         ]
       }
 
-      setup_cache_for_test(cache_name)
-
       # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90002"} = result
     end
 
-    test "process_killmail/1 allows kills when corporation is NOT in exclusion list", %{
-      cache_name: cache_name
-    } do
+    test "process_killmail/1 allows kills when corporation is NOT in exclusion list", _context do
       # Set up exclusion list with different corporation
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_099])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
@@ -567,15 +535,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         ]
       }
 
-      setup_cache_for_test(cache_name)
-
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90003"} = result
     end
 
-    test "process_killmail/1 processes all kills when exclusion list is empty", %{
-      cache_name: cache_name
-    } do
+    test "process_killmail/1 processes all kills when exclusion list is empty", _context do
       # Empty exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
@@ -593,15 +557,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         "attackers" => []
       }
 
-      setup_cache_for_test(cache_name)
-
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90004"} = result
     end
 
-    test "process_killmail/1 processes kills even when any attacker in exclusion list matches", %{
-      cache_name: cache_name
-    } do
+    test "process_killmail/1 processes kills even when any attacker in exclusion list matches", _context do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_003])
@@ -625,16 +585,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         ]
       }
 
-      setup_cache_for_test(cache_name)
-
       # Pipeline should process the killmail - exclusion is handled at Discord level
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90005"} = result
     end
 
-    test "process_killmail/1 handles nil victim corporation_id gracefully", %{
-      cache_name: cache_name
-    } do
+    test "process_killmail/1 handles nil victim corporation_id gracefully", _context do
       # Set up exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
@@ -655,16 +611,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
         ]
       }
 
-      setup_cache_for_test(cache_name)
-
       # Should process successfully - nil victim corp doesn't match exclusion
       result = Pipeline.process_killmail(zkb_data)
       assert {:ok, "90006"} = result
     end
 
-    test "process_killmail/1 handles attackers with missing corporation_id gracefully", %{
-      cache_name: cache_name
-    } do
+    test "process_killmail/1 handles attackers with missing corporation_id gracefully", _context do
       # Set up exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
@@ -687,8 +639,6 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
           %{"character_id" => 200, "corporation_id" => 98_000_003}
         ]
       }
-
-      setup_cache_for_test(cache_name)
 
       # Should process successfully - attackers without corp_id are safely handled
       result = Pipeline.process_killmail(zkb_data)

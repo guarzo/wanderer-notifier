@@ -8,10 +8,9 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
   use WebSockex
   require Logger
 
-  alias WandererNotifier.Domains.Tracking.MapTrackingClient
-  alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Infrastructure.Messaging.ConnectionMonitor
-  alias WandererNotifier.Shared.Utils.{EntityUtils, ErrorHandler, Retry, TimeUtils}
+  alias WandererNotifier.Shared.Dependencies
+  alias WandererNotifier.Shared.Utils.{ErrorHandler, Retry, TimeUtils}
 
   @initial_reconnect_delay 1_000
   @max_reconnect_delay 60_000
@@ -829,128 +828,14 @@ defmodule WandererNotifier.Domains.Killmail.WebSocketClient do
     )
   end
 
-  # Get tracked systems from MapTrackingClient directly
+  # Get tracked systems from the reverse index (single source of truth)
   defp get_tracked_systems do
-    case ErrorHandler.safe_execute(
-           fn ->
-             systems = get_systems_from_cache_or_api()
-             process_systems_list(systems)
-           end,
-           context: %{operation: :get_tracked_systems}
-         ) do
-      {:ok, result} when is_list(result) -> result
-      {:error, _reason} -> []
-    end
+    Dependencies.map_registry().all_tracked_system_ids()
   end
 
-  defp get_systems_from_cache_or_api do
-    case Cache.get(Cache.Keys.map_systems()) do
-      {:ok, systems} when is_list(systems) ->
-        systems
-
-      _ ->
-        fetch_systems_from_api()
-    end
-  end
-
-  defp fetch_systems_from_api do
-    case MapTrackingClient.fetch_and_cache_systems() do
-      {:ok, systems} ->
-        systems
-
-      {:error, reason} ->
-        Logger.error("Failed to get tracked systems", reason: inspect(reason))
-        []
-    end
-  end
-
-  defp process_systems_list(systems) do
-    systems
-    |> Enum.map(&extract_system_id/1)
-    |> Enum.filter(&valid_system_id?/1)
-    |> Enum.uniq()
-  end
-
-  defp extract_system_id(system), do: EntityUtils.extract_system_id(system)
-
-  defp valid_system_id?(system_id), do: EntityUtils.valid_system_id?(system_id)
-
-  # Get tracked characters from MapTrackingClient directly
+  # Get tracked characters from the reverse index (single source of truth)
   defp get_tracked_characters do
-    case ErrorHandler.safe_execute(
-           fn ->
-             Logger.debug("Fetching tracked characters from MapTrackingClient")
-
-             # Try cache first
-             fetch_characters_with_cache()
-           end,
-           context: %{operation: :get_tracked_characters}
-         ) do
-      {:ok, result} when is_list(result) -> result
-      {:error, _reason} -> []
-    end
-  end
-
-  defp fetch_characters_with_cache do
-    case Cache.get(Cache.Keys.map_characters()) do
-      {:ok, characters} when is_list(characters) ->
-        get_characters_from_cache(characters)
-
-      _ ->
-        get_characters_from_api()
-    end
-  end
-
-  defp get_characters_from_cache(characters) do
-    Logger.debug("Retrieved tracked characters from cache", characters_count: length(characters))
-    log_raw_characters(characters)
-    process_character_list(characters)
-  end
-
-  defp get_characters_from_api do
-    case MapTrackingClient.fetch_and_cache_characters() do
-      {:ok, characters} ->
-        Logger.debug("MapTrackingClient returned characters",
-          characters_count: length(characters)
-        )
-
-        log_raw_characters(characters)
-        process_character_list(characters)
-
-      {:error, reason} ->
-        Logger.error("Failed to get tracked characters", reason: inspect(reason))
-        []
-    end
-  end
-
-  defp log_raw_characters(characters) do
-    Logger.debug(
-      "Raw character data from ExternalAdapters",
-      count: length(characters),
-      sample: inspect(Enum.take(characters, 3))
-    )
-  end
-
-  defp process_character_list(characters) do
-    extracted_ids = Enum.map(characters, &extract_character_id/1)
-    valid_ids = Enum.filter(extracted_ids, &valid_character_id?/1)
-    processed = Enum.uniq(valid_ids)
-
-    Logger.debug(
-      "Processed character list",
-      inputs: length(characters),
-      extracted: length(extracted_ids),
-      valid: length(valid_ids),
-      unique: length(processed)
-    )
-
-    processed
-  end
-
-  defp extract_character_id(char), do: EntityUtils.extract_character_id(char)
-
-  defp valid_character_id?(char_id) do
-    is_integer(char_id) && char_id > 90_000_000 && char_id < 100_000_000_000
+    Dependencies.map_registry().all_tracked_character_ids()
   end
 
   # WebSocket-level deduplication to prevent immediate duplicates

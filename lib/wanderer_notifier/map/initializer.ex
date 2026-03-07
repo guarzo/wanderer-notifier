@@ -12,62 +12,6 @@ defmodule WandererNotifier.Map.Initializer do
   alias WandererNotifier.Shared.Dependencies
 
   @doc """
-  Initializes map data by fetching systems and characters from the API.
-
-  This function is called during application startup to ensure we have
-  initial data before SSE starts. Uses sequential loading to prevent
-  memory spikes from parallel bulk API calls.
-  """
-  @spec initialize_map_data() :: {:ok, :initialized} | {:error, term()}
-  def initialize_map_data do
-    Logger.info("Initializing map data (sequential loading for memory efficiency)",
-      category: :api
-    )
-
-    # Fetch sequentially to prevent memory spikes from parallel bulk operations
-    try do
-      # First fetch systems
-      systems_result = fetch_systems()
-
-      # Then fetch characters
-      characters_result = fetch_characters()
-
-      # Process results (logs outcomes) and check for failures
-      results = [systems_result, characters_result]
-      process_results(results)
-      check_results_for_failures(results)
-    rescue
-      e in [MatchError, CaseClauseError] ->
-        # Handle pattern matching errors from fetch operations
-        Logger.error(
-          "Map initialization network error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
-        )
-
-        {:error, {:network_error, Exception.message(e)}}
-
-      e ->
-        # Other unexpected errors - conditional debug info based on environment
-        if WandererNotifier.Shared.Config.production?() do
-          Logger.error(
-            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)}"
-          )
-        else
-          Logger.error(
-            "Map initialization unexpected error: #{WandererNotifier.Shared.Utils.ErrorHandler.format_error(e)} (#{e.__struct__}). Exception: #{Exception.message(e)}. Stacktrace: #{Exception.format_stacktrace(__STACKTRACE__)}"
-          )
-        end
-
-        {:error, {:unexpected_error, Exception.message(e)}}
-    catch
-      :exit, reason ->
-        # Exit handling
-        Logger.error("Map initialization process exited", reason: inspect(reason), category: :api)
-
-        {:error, {:exit, reason}}
-    end
-  end
-
-  @doc """
   Initializes map data for a specific map configuration.
 
   Used in multi-map mode to initialize data for each map independently.
@@ -162,24 +106,6 @@ defmodule WandererNotifier.Map.Initializer do
         reasons = Enum.map(errors, fn {:error, label, reason} -> {label, reason} end)
         {:error, {:init_failures, reasons}}
     end
-  end
-
-  defp fetch_systems do
-    tracking = Dependencies.map_tracking_client()
-
-    execute_timed_fetch(
-      fn -> tracking.fetch_and_cache_systems(true) end,
-      "systems"
-    )
-  end
-
-  defp fetch_characters do
-    tracking = Dependencies.map_tracking_client()
-
-    execute_timed_fetch(
-      fn -> tracking.fetch_and_cache_characters(true) end,
-      "characters"
-    )
   end
 
   # Dialyzer warns this pattern is unreachable in test environment
