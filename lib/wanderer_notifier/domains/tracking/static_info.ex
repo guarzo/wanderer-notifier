@@ -192,6 +192,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   @doc """
   Enriches a System with pre-fetched static info data, avoiding an extra API call.
   """
+  @spec enrich_system_with_data(System.t(), map() | nil) :: {:ok, System.t()} | {:error, term()}
   def enrich_system_with_data(system, nil), do: {:ok, system}
 
   def enrich_system_with_data(system, static_info) when is_map(static_info) do
@@ -217,9 +218,15 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
 
   defp valid_system_id?(_), do: false
 
-  defp extract_data_from_static_info(%{"data" => data}) when is_map(data), do: data
-  defp extract_data_from_static_info(data) when is_map(data), do: data
-  defp extract_data_from_static_info(_), do: %{}
+  @doc """
+  Extracts the data map from a static info response.
+
+  Handles both wrapped (`%{"data" => ...}`) and unwrapped map formats,
+  returning an empty map for any other input.
+  """
+  def extract_data_from_static_info(%{"data" => data}) when is_map(data), do: data
+  def extract_data_from_static_info(data) when is_map(data), do: data
+  def extract_data_from_static_info(_), do: %{}
 
   defp update_system_with_static_info(system, data_to_merge) do
     # Don't merge raw data into struct - only update specific fields

@@ -110,10 +110,13 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   end
 
   defp log_tracking_cache_state(kill_id) do
-    {systems_count, chars_count} = Dependencies.map_registry().tracking_index_counts()
+    registry = Dependencies.map_registry()
+    mode = registry.mode()
+    {systems_count, chars_count} = registry.tracking_index_counts()
 
     Logger.warning(
       "[Pipeline] Kill #{kill_id} NOT TRACKED - " <>
+        "mode=#{mode} " <>
         "Index entries: #{systems_count} system, #{chars_count} character (includes cross-map duplicates). " <>
         "If both are 0, SSE connection may have failed to populate tracking data."
     )

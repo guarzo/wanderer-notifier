@@ -11,6 +11,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   alias WandererNotifier.Domains.Tracking.Handlers.GenericEventHandler
   alias WandererNotifier.Infrastructure.Cache
   alias WandererNotifier.Domains.Tracking.Handlers.SharedEventLogic
+  alias WandererNotifier.Domains.Tracking.StaticInfo
 
   alias WandererNotifier.Shared.Dependencies
 
@@ -126,9 +127,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
-  defp extract_static_data(%{"data" => data}) when is_map(data), do: data
-  defp extract_static_data(data) when is_map(data), do: data
-  defp extract_static_data(_), do: %{}
+  defp extract_static_data(data), do: StaticInfo.extract_data_from_static_info(data)
 
   defp try_create_system(payload) do
     Logger.debug("Creating system from SSE payload",
@@ -151,6 +150,9 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     end
   end
 
+  # Dialyzer reports the non-{:ok, _} clause as unreachable because current implementation
+  # always returns {:ok, _}. Added for defensive programming against future changes.
+  @dialyzer {:nowarn_function, enrich_with_static_data: 2}
   defp enrich_with_static_data(system, static_data) do
     Logger.debug("Enriching system with pre-fetched static data",
       system_id: system.solar_system_id,
@@ -159,19 +161,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       category: :api
     )
 
-    {:ok, enriched} =
-      WandererNotifier.Domains.Tracking.StaticInfo.enrich_system_with_data(system, static_data)
+    case StaticInfo.enrich_system_with_data(system, static_data) do
+      {:ok, enriched} ->
+        Logger.debug("System enriched successfully",
+          system_id: enriched.solar_system_id,
+          system_name: enriched.name,
+          class_title: enriched.class_title,
+          statics: inspect(enriched.statics),
+          region: enriched.region_name,
+          category: :api
+        )
 
-    Logger.debug("System enriched successfully",
-      system_id: enriched.solar_system_id,
-      system_name: enriched.name,
-      class_title: enriched.class_title,
-      statics: inspect(enriched.statics),
-      region: enriched.region_name,
-      category: :api
-    )
+        {:ok, enriched}
 
-    {:ok, enriched}
+      other ->
+        Logger.error("Failed to enrich system with static data",
+          system_id: system.solar_system_id,
+          reason: inspect(other),
+          category: :api
+        )
+
+        other
+    end
   end
 
   defp extract_system_payload(payload) do

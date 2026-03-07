@@ -10,28 +10,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
   """
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
+  import Mox
 
   alias WandererNotifier.Infrastructure.Cache.Keys, as: CacheKeys
 
-  # ---------------------------------------------------------------------------
-  # Mock MapRegistry modules
-  # ---------------------------------------------------------------------------
-
-  defmodule ApiModeRegistry do
-    @moduledoc false
-    def mode, do: :api
-    def tracking_index_counts, do: {5, 3}
-    def maps_tracking_system(_), do: []
-    def maps_tracking_character(_), do: []
-  end
-
-  defmodule EnvVarModeRegistry do
-    @moduledoc false
-    def mode, do: :env_var
-    def tracking_index_counts, do: {0, 0}
-    def maps_tracking_system(_), do: []
-    def maps_tracking_character(_), do: []
-  end
+  setup :verify_on_exit!
 
   # ---------------------------------------------------------------------------
   # Setup / teardown
@@ -57,7 +40,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
 
   describe "tracking diagnostics" do
     test "api mode registry exposes expected interface" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, ApiModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :mode, fn -> :api end)
+      stub(mock, :tracking_index_counts, fn -> {5, 3} end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       registry = Application.get_env(:wanderer_notifier, :map_registry_module)
 
@@ -66,7 +54,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     end
 
     test "env_var mode registry exposes expected interface" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, EnvVarModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :mode, fn -> :env_var end)
+      stub(mock, :tracking_index_counts, fn -> {0, 0} end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       registry = Application.get_env(:wanderer_notifier, :map_registry_module)
 
@@ -75,7 +68,12 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     end
 
     test "api mode registry returns empty lists for system/character lookups" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, ApiModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :maps_tracking_system, fn _ -> [] end)
+      stub(mock, :maps_tracking_character, fn _ -> [] end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       registry = Application.get_env(:wanderer_notifier, :map_registry_module)
 
@@ -90,10 +88,14 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     end
 
     test "Dependencies.map_registry/0 respects application env override" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, ApiModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :mode, fn -> :api end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       resolved = WandererNotifier.Shared.Dependencies.map_registry()
-      assert resolved == ApiModeRegistry
+      assert resolved == mock
       assert resolved.mode() == :api
     end
 
@@ -125,7 +127,14 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     end
 
     test "logs mode=api with index counts when killmail is not tracked" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, ApiModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :mode, fn -> :api end)
+      stub(mock, :tracking_index_counts, fn -> {5, 3} end)
+      stub(mock, :maps_tracking_system, fn _ -> [] end)
+      stub(mock, :maps_tracking_character, fn _ -> [] end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       # Build a minimal killmail payload that will pass ID extraction
       # but fail should_notify? (no tracked systems/characters)
@@ -175,6 +184,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       # It may not always reach it if earlier pipeline stages fail due to
       # incomplete test mocking — in that case, skip the assertion.
       if String.contains?(log_output, "NOT TRACKED") do
+        assert String.contains?(log_output, "mode=api")
         assert String.contains?(log_output, "system")
         assert String.contains?(log_output, "character")
         assert String.contains?(log_output, "cross-map duplicates")
@@ -182,7 +192,14 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
     end
 
     test "logs mode=env_var when using env_var mode registry" do
-      Application.put_env(:wanderer_notifier, :map_registry_module, EnvVarModeRegistry)
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :mode, fn -> :env_var end)
+      stub(mock, :tracking_index_counts, fn -> {0, 0} end)
+      stub(mock, :maps_tracking_system, fn _ -> [] end)
+      stub(mock, :maps_tracking_character, fn _ -> [] end)
+
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       killmail_data = %{
         "killmail_id" => 99_999_002,
@@ -222,6 +239,7 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
         end)
 
       if String.contains?(log_output, "NOT TRACKED") do
+        assert String.contains?(log_output, "mode=env_var")
         assert String.contains?(log_output, "system")
         assert String.contains?(log_output, "character")
       end

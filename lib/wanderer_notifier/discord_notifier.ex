@@ -704,7 +704,7 @@ defmodule WandererNotifier.DiscordNotifier do
   defp safe_discord_channel_id do
     Config.discord_channel_id()
   rescue
-    _ -> nil
+    RuntimeError -> nil
   end
 
   # ═══════════════════════════════════════════════════════════════════════════════
