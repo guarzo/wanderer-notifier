@@ -114,7 +114,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     end
 
     # Ensure we use the real MapRegistry (not a mock from another test)
-    Application.put_env(:wanderer_notifier, :map_registry_module, WandererNotifier.Map.MapRegistry)
+    Application.put_env(
+      :wanderer_notifier,
+      :map_registry_module,
+      WandererNotifier.Map.MapRegistry
+    )
 
     ensure_test_map_config()
 
@@ -561,7 +565,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       assert {:ok, "90004"} = result
     end
 
-    test "process_killmail/1 processes kills even when any attacker in exclusion list matches", _context do
+    test "process_killmail/1 processes kills even when any attacker in exclusion list matches",
+         _context do
       # Corporation exclusion now happens at Discord channel routing level, not pipeline
       # Set up exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_003])
@@ -616,7 +621,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       assert {:ok, "90006"} = result
     end
 
-    test "process_killmail/1 handles attackers with missing corporation_id gracefully", _context do
+    test "process_killmail/1 handles attackers with missing corporation_id gracefully",
+         _context do
       # Set up exclusion list
       Application.put_env(:wanderer_notifier, :corporation_kill_focus, [98_000_001])
       Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)

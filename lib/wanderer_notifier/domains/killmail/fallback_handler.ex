@@ -342,5 +342,4 @@ defmodule WandererNotifier.Domains.Killmail.FallbackHandler do
   defp count_killmails(system_results) do
     length(system_results)
   end
-
 end
