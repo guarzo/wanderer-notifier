@@ -233,7 +233,12 @@ defmodule WandererNotifier.Map.MapRegistry do
     |> :ets.tab2list()
     |> Enum.map(fn {system_id_str, _slug} -> system_id_str end)
     |> Enum.uniq()
-    |> Enum.map(&String.to_integer/1)
+    |> Enum.flat_map(fn str ->
+      case Integer.parse(str) do
+        {int, ""} -> [int]
+        _ -> []
+      end
+    end)
   rescue
     ArgumentError -> []
   end
@@ -245,7 +250,12 @@ defmodule WandererNotifier.Map.MapRegistry do
     |> :ets.tab2list()
     |> Enum.map(fn {char_id_str, _slug} -> char_id_str end)
     |> Enum.uniq()
-    |> Enum.map(&String.to_integer/1)
+    |> Enum.flat_map(fn str ->
+      case Integer.parse(str) do
+        {int, ""} -> [int]
+        _ -> []
+      end
+    end)
   rescue
     ArgumentError -> []
   end

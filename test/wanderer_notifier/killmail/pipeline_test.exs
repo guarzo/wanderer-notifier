@@ -122,6 +122,15 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
 
     ensure_test_map_config()
 
+    # Clear reverse index tables so tracked entries don't leak between tests
+    if :ets.info(:map_registry_system_index) != :undefined do
+      :ets.delete_all_objects(:map_registry_system_index)
+    end
+
+    if :ets.info(:map_registry_character_index) != :undefined do
+      :ets.delete_all_objects(:map_registry_character_index)
+    end
+
     # Ensure Cachex application is started
     case Application.ensure_all_started(:cachex) do
       {:ok, _apps} -> :ok
