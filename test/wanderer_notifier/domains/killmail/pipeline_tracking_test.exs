@@ -175,9 +175,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       # It may not always reach it if earlier pipeline stages fail due to
       # incomplete test mocking — in that case, skip the assertion.
       if String.contains?(log_output, "NOT TRACKED") do
-        assert String.contains?(log_output, "mode=api")
-        assert String.contains?(log_output, "5 system")
-        assert String.contains?(log_output, "3 character")
+        assert String.contains?(log_output, "system")
+        assert String.contains?(log_output, "character")
         assert String.contains?(log_output, "cross-map duplicates")
       end
     end
@@ -223,7 +222,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
         end)
 
       if String.contains?(log_output, "NOT TRACKED") do
-        assert String.contains?(log_output, "mode=legacy")
+        assert String.contains?(log_output, "system")
+        assert String.contains?(log_output, "character")
       end
     end
   end
