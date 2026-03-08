@@ -58,6 +58,11 @@ defmodule WandererNotifier.Test.Support.Mocks.TestMocks do
     for: WandererNotifier.Contexts.ApiContextBehaviour
   )
 
+  # MapRegistry mock
+  defmock(WandererNotifier.MockMapRegistry,
+    for: WandererNotifier.Map.MapRegistryBehaviour
+  )
+
   # Discord Notifier mock
   defmock(DiscordNotifierMock,
     for: WandererNotifier.Domains.Notifications.Notifiers.Discord.NotifierBehaviour

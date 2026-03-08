@@ -138,7 +138,7 @@ defmodule WandererNotifier.DiscordNotifier do
   # Private Implementation - All Discord API calls happen here
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Legacy (single-map) result handler
+  # Default (single-map) result handler
   defp handle_kill_result({:ok, :sent}, killmail) do
     Logger.debug("Kill notification sent successfully", killmail_id: killmail.killmail_id)
   end
@@ -158,11 +158,11 @@ defmodule WandererNotifier.DiscordNotifier do
 
   # Multi-map result handler
   defp handle_kill_result({:ok, %{sent: _, failed: 0}}, killmail, mc) do
-    Logger.debug("Kill notification sent for map #{mc.slug}", killmail_id: killmail.killmail_id)
+    Logger.info("Kill notification sent for map #{mc.slug}", killmail_id: killmail.killmail_id)
   end
 
   defp handle_kill_result({:ok, :skipped}, killmail, mc) do
-    Logger.debug("Kill notification skipped for map #{mc.slug}",
+    Logger.info("Kill notification skipped for map #{mc.slug}",
       killmail_id: killmail.killmail_id
     )
   end
@@ -330,29 +330,22 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_rally_point_notification(rally_point) do
-    mc = legacy_map_config()
+    mc = default_map_config()
     send_rally_point_notification_for_map(rally_point, mc)
   end
 
   defp send_system_notification(system) do
-    mc = legacy_map_config()
+    mc = default_map_config()
     send_system_notification_for_map(system, mc)
   end
 
   defp send_character_notification(character) do
-    mc = legacy_map_config()
+    mc = default_map_config()
     send_character_notification_for_map(character, mc)
   end
 
-  defp legacy_map_config do
-    case Dependencies.map_registry().all_maps() do
-      [config | _] ->
-        config
-
-      [] ->
-        Logger.debug("No maps in registry; using MapConfig.from_env()")
-        MapConfig.from_env()
-    end
+  defp default_map_config do
+    MapConfig.from_env()
   end
 
   defp send_generic_embed(embed, opts) do
@@ -386,9 +379,18 @@ defmodule WandererNotifier.DiscordNotifier do
 
     cond do
       not MapConfig.notifications_fully_enabled?(mc, :kill_notifications_enabled) ->
+        Logger.info("Kill notifications disabled for map #{mc.slug}",
+          killmail_id: Map.get(killmail, :killmail_id)
+        )
+
         {:ok, :skipped}
 
       map_wormhole_only_excluded?(mc, system_id) ->
+        Logger.info("Kill excluded by wormhole-only filter for map #{mc.slug}",
+          killmail_id: Map.get(killmail, :killmail_id),
+          system_id: system_id
+        )
+
         {:ok, :skipped}
 
       true ->
@@ -440,20 +442,39 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp determine_kill_channels_for_map(killmail, %MapConfig{} = mc) do
+    ctx = build_map_channel_context(killmail, mc)
+    channels = select_channels(ctx) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    Logger.info("Kill channel routing for map #{mc.slug}",
+      killmail_id: Map.get(killmail, :killmail_id),
+      channels: inspect(channels),
+      has_tracked_system: ctx.has_tracked_system,
+      has_tracked_character: ctx.has_tracked_character,
+      default_channel: inspect(ctx.default_channel),
+      system_channel: inspect(ctx.system_channel)
+    )
+
+    channels
+  end
+
+  defp build_map_channel_context(killmail, %MapConfig{} = mc) do
     system_id = Map.get(killmail, :system_id)
     involves_focused = involves_focused_corporation_for_map?(killmail, mc)
     has_tracked = map_tracks_system?(mc, system_id)
+    has_tracked_char = involves_tracked_character_for_map?(killmail, mc)
 
-    ctx = %{
+    %{
+      killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused,
       has_tracked_system: has_tracked,
+      has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
-      default_channel: MapConfig.channel_for(mc, :primary),
-      system_channel: MapConfig.channel_for(mc, :system_kill),
-      character_channel: MapConfig.channel_for(mc, :character_kill)
+      default_channel: MapConfig.channel_for(mc, :primary) || safe_discord_channel_id(),
+      system_channel:
+        MapConfig.channel_for(mc, :system_kill) || Config.discord_system_kill_channel_id(),
+      character_channel:
+        MapConfig.channel_for(mc, :character_kill) || Config.discord_character_kill_channel_id()
     }
-
-    select_channels(ctx) |> Enum.uniq()
   end
 
   defp map_tracks_system?(_mc, nil), do: false
@@ -463,7 +484,39 @@ defmodule WandererNotifier.DiscordNotifier do
     |> Enum.any?(fn config -> config.slug == mc.slug end)
   end
 
-  defp dispatch_to_map_channels(_killmail, [], _mc), do: {:ok, :skipped}
+  defp involves_tracked_character_for_map?(killmail, %MapConfig{} = mc) do
+    character_ids = extract_killmail_character_ids(killmail)
+
+    Enum.any?(character_ids, fn id ->
+      Dependencies.map_registry().maps_tracking_character(id)
+      |> Enum.any?(fn config -> config.slug == mc.slug end)
+    end)
+  end
+
+  defp extract_killmail_character_ids(killmail) do
+    victim_ids =
+      case Map.get(killmail, :victim_character_id) do
+        nil -> []
+        id -> [to_string(id)]
+      end
+
+    attacker_ids =
+      (Map.get(killmail, :attackers) || [])
+      |> Enum.map(&(Map.get(&1, "character_id") || Map.get(&1, :character_id)))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&to_string/1)
+
+    Enum.uniq(victim_ids ++ attacker_ids)
+  end
+
+  defp dispatch_to_map_channels(killmail, [], mc) do
+    Logger.warning("No channels resolved for map #{mc.slug}, kill notification skipped",
+      killmail_id: Map.get(killmail, :killmail_id),
+      map_slug: mc.slug
+    )
+
+    {:ok, :skipped}
+  end
 
   defp dispatch_to_map_channels(killmail, channels, mc) do
     {sent, failed} =
@@ -482,7 +535,10 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_kill_to_map_channel(killmail, channel_id, mc) do
-    system_kill = channel_id == MapConfig.channel_for(mc, :system_kill)
+    resolved_system_channel =
+      MapConfig.channel_for(mc, :system_kill) || Config.discord_system_kill_channel_id()
+
+    system_kill = channel_id == resolved_system_channel
 
     case format_notification(killmail, use_custom_system_name: system_kill) do
       {:ok, formatted} ->
@@ -497,6 +553,12 @@ defmodule WandererNotifier.DiscordNotifier do
   defp send_to_discord_for_map(embed, channel_id, %MapConfig{} = mc) do
     content = Map.get(embed, :content)
 
+    Logger.info("Sending Discord notification for map #{mc.slug}",
+      channel: channel_id,
+      map_slug: mc.slug,
+      has_content: is_binary(content) and String.trim(content || "") != ""
+    )
+
     result =
       if is_binary(content) and String.trim(content) != "" do
         NeoClient.send_embed_with_content_for_map(embed, mc, channel_id, content)
@@ -506,7 +568,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case result do
       {:ok, :sent} ->
-        Logger.debug("Discord notification sent for map #{mc.slug}",
+        Logger.info("Discord notification sent for map #{mc.slug}",
           channel: channel_id,
           map_slug: mc.slug
         )
@@ -623,6 +685,8 @@ defmodule WandererNotifier.DiscordNotifier do
       killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused_corporation?(killmail),
       has_tracked_system: has_tracked_system,
+      has_tracked_character:
+        WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
       wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
       default_channel: Config.discord_channel_id(),
       system_channel: Config.discord_system_kill_channel_id(),
@@ -649,6 +713,11 @@ defmodule WandererNotifier.DiscordNotifier do
     []
   end
 
+  # Character tracked (but not system-tracked) -> character channel
+  defp select_channels(%{has_tracked_character: true} = ctx) do
+    [ctx.character_channel || ctx.default_channel]
+  end
+
   # Fallback -> default channel
   defp select_channels(ctx) do
     [ctx.default_channel]
@@ -662,6 +731,13 @@ defmodule WandererNotifier.DiscordNotifier do
   # Feature flags
   defp notifications_enabled?, do: Config.notifications_enabled?()
   defp kill_notifications_enabled?, do: Config.kill_notifications_enabled?()
+
+  # Safe channel ID fallback (Config.discord_channel_id raises if not set)
+  defp safe_discord_channel_id do
+    Config.discord_channel_id()
+  rescue
+    RuntimeError -> nil
+  end
 
   # ═══════════════════════════════════════════════════════════════════════════════
   # System Kill Channel Exclusions

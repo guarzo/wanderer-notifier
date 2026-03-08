@@ -89,14 +89,31 @@ end
 # Validate required environment variables
 # ══════════════════════════════════════════════════════════════════════════════
 
-required_vars = ["BASE_URL", "PLUGIN_NOTIFIER_API_KEY"]
-missing_vars = Enum.filter(required_vars, &is_nil(System.get_env(&1)))
+plugin_vars = ["BASE_URL", "PLUGIN_NOTIFIER_API_KEY"]
+fallback_vars = ["MAP_URL", "MAP_API_KEY", "MAP_NAME"]
 
-if length(missing_vars) > 0 do
-  IO.puts(
-    "WARNING: Missing recommended environment variables: #{Enum.join(missing_vars, ", ")}. " <>
-      "Falling back to legacy MAP_URL/MAP_API_KEY if available."
-  )
+env_present? = fn var ->
+  case System.get_env(var) do
+    nil -> false
+    val -> String.trim(val) != ""
+  end
+end
+
+has_plugin = Enum.all?(plugin_vars, env_present?)
+has_fallback = Enum.all?(fallback_vars, env_present?)
+
+cond do
+  has_plugin ->
+    IO.puts("INFO: Using plugin API configuration (BASE_URL + PLUGIN_NOTIFIER_API_KEY)")
+
+  has_fallback ->
+    IO.puts("INFO: Using env var configuration (MAP_URL + MAP_API_KEY + MAP_NAME)")
+
+  true ->
+    IO.puts(
+      "WARNING: No map configuration found. " <>
+        "Set BASE_URL + PLUGIN_NOTIFIER_API_KEY, or MAP_URL + MAP_API_KEY + MAP_NAME."
+    )
 end
 
 # ══════════════════════════════════════════════════════════════════════════════

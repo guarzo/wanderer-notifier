@@ -247,7 +247,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.CharacterHandler do
         WandererNotifier.DiscordNotifier.send_character_async(map_character, map_config)
 
       {:error, :not_found} ->
-        Logger.warning("MapConfig not found for slug, falling back to legacy notifier",
+        Logger.warning("MapConfig not found for slug, falling back to default notifier",
           map_slug: map_slug,
           category: :api
         )

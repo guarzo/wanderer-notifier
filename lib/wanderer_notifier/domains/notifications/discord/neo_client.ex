@@ -105,26 +105,34 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
 
   defp validate_bot_token(%MapConfig{} = map_config) do
     case MapConfig.bot_token(map_config) do
-      nil ->
-        Logger.error("Missing per-map bot token",
-          map_slug: map_config.slug,
-          map_name: map_config.name,
-          category: :discord_api
-        )
-
-        {:error, :missing_bot_token}
-
-      "" ->
-        Logger.error("Empty per-map bot token",
-          map_slug: map_config.slug,
-          map_name: map_config.name,
-          category: :discord_api
-        )
-
-        {:error, :missing_bot_token}
-
-      token when is_binary(token) ->
+      token when is_binary(token) and token != "" ->
         {:ok, token}
+
+      _ ->
+        # Fall back to global bot token from env vars
+        fallback_to_global_bot_token(map_config)
+    end
+  end
+
+  defp fallback_to_global_bot_token(map_config) do
+    alias WandererNotifier.Shared.Config
+
+    case Config.discord_bot_token_safe() do
+      {:ok, token} ->
+        Logger.debug("Using global bot token for map #{map_config.slug}",
+          category: :discord_api
+        )
+
+        {:ok, token}
+
+      {:error, _} ->
+        Logger.error(
+          "No bot token available for map #{map_config.slug} (no per-map or global token)",
+          map_slug: map_config.slug,
+          category: :discord_api
+        )
+
+        {:error, :missing_bot_token}
     end
   end
 

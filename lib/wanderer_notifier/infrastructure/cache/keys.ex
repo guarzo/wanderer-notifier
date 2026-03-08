@@ -78,7 +78,7 @@ defmodule WandererNotifier.Infrastructure.Cache.Keys do
   def notification_dedup(map_slug, key), do: "notification:#{map_slug}:dedup:#{key}"
 
   # ============================================================================
-  # Map-related keys (unscoped - legacy single-map support)
+  # Map-related keys (unscoped - single-map / env var mode support)
   # ============================================================================
 
   @doc "Returns cache key for map systems data."

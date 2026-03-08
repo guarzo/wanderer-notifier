@@ -4,7 +4,7 @@ defmodule WandererNotifier.Map.MapConfig do
 
   Holds all per-map settings: Discord credentials, channel routing,
   feature flags, and tracking settings. Constructed either from the
-  notifier config API response or from legacy environment variables.
+  notifier config API response or from environment variables.
   """
 
   alias WandererNotifier.Shared.Config
@@ -135,11 +135,10 @@ defmodule WandererNotifier.Map.MapConfig do
   end
 
   @doc """
-  Builds a MapConfig from legacy environment variables.
+  Builds a MapConfig from environment variables.
 
-  Used as a backwards-compatible fallback when the notifier config API
-  is unavailable. Constructs a single MapConfig mirroring today's
-  single-map behavior.
+  Used as a fallback when the notifier config API is unavailable.
+  Constructs a single MapConfig from env vars for single-map behavior.
   """
   @spec from_env() :: t()
   def from_env do

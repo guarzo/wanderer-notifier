@@ -8,7 +8,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   ## Features
 
   - **API-driven**: Fetches map configs from `GET {MAP_URL}/api/v1/notifier/config`
-  - **Legacy fallback**: Falls back to env vars when API is unavailable
+  - **Env var fallback**: Falls back to env vars when API is unavailable
   - **Periodic refresh**: Polls every 5 minutes for config changes
   - **Reverse indexes**: Maintains `system_id -> [map_slugs]` and `character_id -> [map_slugs]` for O(1) killmail fan-out
   - **PubSub events**: Broadcasts changes so SSE supervisor can react
@@ -47,7 +47,7 @@ defmodule WandererNotifier.Map.MapRegistry do
   @type state :: %{
           version: integer(),
           last_fetched_at: DateTime.t() | nil,
-          mode: :api | :legacy,
+          mode: :api | :env_var,
           refresh_timer: reference() | nil
         }
 
@@ -212,10 +212,10 @@ defmodule WandererNotifier.Map.MapRegistry do
     ArgumentError -> :ok
   end
 
-  @doc "Returns the current operating mode (:api or :legacy)."
-  @spec mode() :: :api | :legacy
+  @doc "Returns the current operating mode (:api or :env_var)."
+  @spec mode() :: :api | :env_var
   def mode do
-    :persistent_term.get({__MODULE__, :mode}, :legacy)
+    :persistent_term.get({__MODULE__, :mode}, :env_var)
   end
 
   @doc "Returns {system_index_size, character_index_size} from the reverse index ETS tables for diagnostics."
@@ -271,12 +271,12 @@ defmodule WandererNotifier.Map.MapRegistry do
     :ets.new(@system_index_table, [:named_table, :bag, :public, read_concurrency: true])
     :ets.new(@character_index_table, [:named_table, :bag, :public, read_concurrency: true])
 
-    :persistent_term.put({__MODULE__, :mode}, :legacy)
+    :persistent_term.put({__MODULE__, :mode}, :env_var)
 
     state = %{
       version: 0,
       last_fetched_at: nil,
-      mode: :legacy,
+      mode: :env_var,
       refresh_timer: nil
     }
 
@@ -352,15 +352,15 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp handle_fetch_failure(state, reason) do
-    # First load or never connected to API - use legacy fallback
-    Logger.info("Map config API unavailable, using legacy env vars",
+    # First load or never connected to API - use env var fallback
+    Logger.info("Map config API not available, using env var configuration",
       reason: inspect(reason)
     )
 
-    legacy_config = MapConfig.from_env()
-    apply_config_changes([legacy_config], state)
-    :persistent_term.put({__MODULE__, :mode}, :legacy)
-    %{state | last_fetched_at: DateTime.utc_now(), mode: :legacy}
+    env_config = MapConfig.from_env()
+    apply_config_changes([env_config], state)
+    :persistent_term.put({__MODULE__, :mode}, :env_var)
+    %{state | last_fetched_at: DateTime.utc_now(), mode: :env_var}
   end
 
   defp fetch_map_configs do
@@ -369,11 +369,11 @@ defmodule WandererNotifier.Map.MapRegistry do
         success
 
       {:error, plugin_reason} ->
-        Logger.info("Plugin API unavailable, trying legacy endpoint",
+        Logger.info("Plugin API not available, trying v1 endpoint",
           reason: inspect(plugin_reason)
         )
 
-        fetch_from_legacy_api()
+        fetch_from_v1_api()
     end
   rescue
     e -> {:error, {:fetch_exception, Exception.message(e)}}
@@ -395,7 +395,7 @@ defmodule WandererNotifier.Map.MapRegistry do
     end
   end
 
-  defp fetch_from_legacy_api do
+  defp fetch_from_v1_api do
     case Config.wanderer_base_url() do
       {:ok, base_url} ->
         api_key = Config.map_api_key()
@@ -405,7 +405,7 @@ defmodule WandererNotifier.Map.MapRegistry do
         {:error, :wanderer_base_url_not_configured}
     end
   rescue
-    _ -> {:error, :legacy_config_not_available}
+    _ -> {:error, :v1_config_not_available}
   end
 
   defp do_fetch_from_api(base_url, path, api_key) do
