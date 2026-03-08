@@ -685,6 +685,8 @@ defmodule WandererNotifier.DiscordNotifier do
       killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused_corporation?(killmail),
       has_tracked_system: has_tracked_system,
+      has_tracked_character:
+        WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
       wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
       default_channel: Config.discord_channel_id(),
       system_channel: Config.discord_system_kill_channel_id(),
