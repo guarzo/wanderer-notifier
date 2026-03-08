@@ -92,8 +92,15 @@ end
 plugin_vars = ["BASE_URL", "PLUGIN_NOTIFIER_API_KEY"]
 fallback_vars = ["MAP_URL", "MAP_API_KEY", "MAP_NAME"]
 
-has_plugin = Enum.all?(plugin_vars, &System.get_env(&1))
-has_fallback = Enum.all?(fallback_vars, &System.get_env(&1))
+env_present? = fn var ->
+  case System.get_env(var) do
+    nil -> false
+    val -> String.trim(val) != ""
+  end
+end
+
+has_plugin = Enum.all?(plugin_vars, env_present?)
+has_fallback = Enum.all?(fallback_vars, env_present?)
 
 cond do
   has_plugin ->

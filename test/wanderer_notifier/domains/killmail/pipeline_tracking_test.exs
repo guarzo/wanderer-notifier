@@ -134,6 +134,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       stub(mock, :maps_tracking_system, fn _ -> [] end)
       stub(mock, :maps_tracking_character, fn _ -> [] end)
 
+      # Stub ESI service so build_killmail can resolve system name
+      stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
+        {:ok, %{"name" => "System-#{id}", "system_id" => id}}
+      end)
+
       Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
       # Build a minimal killmail payload that will pass ID extraction
@@ -166,29 +171,16 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
 
       log_output =
         capture_log([level: :warning], fn ->
-          # We expect this to either produce the tracking log or fail gracefully.
-          # The key assertion is on the log content, not the return value.
-          try do
-            WandererNotifier.Domains.Killmail.Pipeline.process_killmail(killmail_data)
-          rescue
-            # If pipeline fails due to missing mocks, that is acceptable —
-            # we only care whether the tracking diagnostic log was emitted
-            # before the failure.
-            _ -> :ok
-          catch
-            :exit, _ -> :ok
-          end
+          WandererNotifier.Domains.Killmail.Pipeline.process_killmail(killmail_data)
         end)
 
-      # If the pipeline reached the tracking diagnostic log, verify its content.
-      # It may not always reach it if earlier pipeline stages fail due to
-      # incomplete test mocking — in that case, skip the assertion.
-      if String.contains?(log_output, "NOT TRACKED") do
-        assert String.contains?(log_output, "mode=api")
-        assert String.contains?(log_output, "system")
-        assert String.contains?(log_output, "character")
-        assert String.contains?(log_output, "cross-map duplicates")
-      end
+      assert String.contains?(log_output, "NOT TRACKED"),
+             "Expected 'NOT TRACKED' diagnostic log but got: #{log_output}"
+
+      assert String.contains?(log_output, "mode=api")
+      assert String.contains?(log_output, "system")
+      assert String.contains?(log_output, "character")
+      assert String.contains?(log_output, "cross-map duplicates")
     end
 
     test "logs mode=env_var when using env_var mode registry" do
@@ -198,6 +190,11 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       stub(mock, :tracking_index_counts, fn -> {0, 0} end)
       stub(mock, :maps_tracking_system, fn _ -> [] end)
       stub(mock, :maps_tracking_character, fn _ -> [] end)
+
+      # Stub ESI service so build_killmail can resolve system name
+      stub(WandererNotifier.Infrastructure.Adapters.ESI.ServiceMock, :get_system, fn id, _opts ->
+        {:ok, %{"name" => "System-#{id}", "system_id" => id}}
+      end)
 
       Application.put_env(:wanderer_notifier, :map_registry_module, mock)
 
@@ -229,20 +226,15 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
 
       log_output =
         capture_log([level: :warning], fn ->
-          try do
-            WandererNotifier.Domains.Killmail.Pipeline.process_killmail(killmail_data)
-          rescue
-            _ -> :ok
-          catch
-            :exit, _ -> :ok
-          end
+          WandererNotifier.Domains.Killmail.Pipeline.process_killmail(killmail_data)
         end)
 
-      if String.contains?(log_output, "NOT TRACKED") do
-        assert String.contains?(log_output, "mode=env_var")
-        assert String.contains?(log_output, "system")
-        assert String.contains?(log_output, "character")
-      end
+      assert String.contains?(log_output, "NOT TRACKED"),
+             "Expected 'NOT TRACKED' diagnostic log but got: #{log_output}"
+
+      assert String.contains?(log_output, "mode=env_var")
+      assert String.contains?(log_output, "system")
+      assert String.contains?(log_output, "character")
     end
   end
 end

@@ -192,7 +192,7 @@ defmodule WandererNotifier.Domains.Tracking.StaticInfo do
   @doc """
   Enriches a System with pre-fetched static info data, avoiding an extra API call.
   """
-  @spec enrich_system_with_data(System.t(), map() | nil) :: {:ok, System.t()} | {:error, term()}
+  @spec enrich_system_with_data(System.t(), map() | nil) :: {:ok, System.t()}
   def enrich_system_with_data(system, nil), do: {:ok, system}
 
   def enrich_system_with_data(system, static_info) when is_map(static_info) do

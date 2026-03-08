@@ -10,4 +10,5 @@ defmodule WandererNotifier.Map.MapRegistryBehaviour do
   @callback tracking_index_counts() :: {non_neg_integer(), non_neg_integer()}
   @callback maps_tracking_system(String.t() | integer()) :: [term()]
   @callback maps_tracking_character(String.t() | integer()) :: [term()]
+  @callback all_maps() :: [term()]
 end

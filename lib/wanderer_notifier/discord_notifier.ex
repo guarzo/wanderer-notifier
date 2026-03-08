@@ -456,6 +456,7 @@ defmodule WandererNotifier.DiscordNotifier do
       killmail_id: Map.get(killmail, :killmail_id),
       channels: inspect(channels),
       has_tracked_system: ctx.has_tracked_system,
+      has_tracked_character: ctx.has_tracked_character,
       default_channel: inspect(ctx.default_channel),
       system_channel: inspect(ctx.system_channel)
     )
@@ -467,10 +468,12 @@ defmodule WandererNotifier.DiscordNotifier do
     system_id = Map.get(killmail, :system_id)
     involves_focused = involves_focused_corporation_for_map?(killmail, mc)
     has_tracked = map_tracks_system?(mc, system_id)
+    has_tracked_char = involves_tracked_character_for_map?(killmail, mc)
 
     %{
       involves_focused_corp: involves_focused,
       has_tracked_system: has_tracked,
+      has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
       default_channel: MapConfig.channel_for(mc, :primary) || safe_discord_channel_id(),
       system_channel:
@@ -485,6 +488,31 @@ defmodule WandererNotifier.DiscordNotifier do
   defp map_tracks_system?(%MapConfig{} = mc, system_id) do
     Dependencies.map_registry().maps_tracking_system(system_id)
     |> Enum.any?(fn config -> config.slug == mc.slug end)
+  end
+
+  defp involves_tracked_character_for_map?(killmail, %MapConfig{} = mc) do
+    character_ids = extract_killmail_character_ids(killmail)
+
+    Enum.any?(character_ids, fn id ->
+      Dependencies.map_registry().maps_tracking_character(id)
+      |> Enum.any?(fn config -> config.slug == mc.slug end)
+    end)
+  end
+
+  defp extract_killmail_character_ids(killmail) do
+    victim_ids =
+      case Map.get(killmail, :victim_character_id) do
+        nil -> []
+        id -> [to_string(id)]
+      end
+
+    attacker_ids =
+      (Map.get(killmail, :attackers) || [])
+      |> Enum.map(&(Map.get(&1, "character_id") || Map.get(&1, :character_id)))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&to_string/1)
+
+    Enum.uniq(victim_ids ++ attacker_ids)
   end
 
   defp dispatch_to_map_channels(killmail, [], mc) do
@@ -684,6 +712,11 @@ defmodule WandererNotifier.DiscordNotifier do
   # System tracked but wormhole-excluded -> no notification
   defp select_channels(%{has_tracked_system: true, wormhole_excluded: true}) do
     []
+  end
+
+  # Character tracked (but not system-tracked) -> character channel
+  defp select_channels(%{has_tracked_character: true} = ctx) do
+    [ctx.character_channel || ctx.default_channel]
   end
 
   # Fallback -> default channel

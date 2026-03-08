@@ -32,7 +32,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       map_slug,
       :system_added,
       &create_system_from_payload/1,
-      &handle_cache_update(&1, payload, map_slug),
+      &handle_cache_update_from_enriched(&1, payload, map_slug),
       &handle_system_added_notification(&1, map_slug, registry)
     )
   end
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
       map_slug,
       :system_updated,
       &create_system_from_payload/1,
-      &handle_cache_update(&1, payload, map_slug),
+      &handle_cache_update_from_enriched(&1, payload, map_slug),
       &maybe_log_system_update/1
     )
   end
@@ -86,12 +86,27 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp fetch_static_data(nil), do: nil
 
-  defp fetch_static_data(system_id) do
-    case WandererNotifier.Domains.Tracking.StaticInfo.get_system_static_info(system_id) do
+  defp fetch_static_data(system_id) when is_integer(system_id) and system_id > 0 do
+    case StaticInfo.get_system_static_info(system_id) do
       {:ok, info} -> info
       {:error, _} -> nil
     end
   end
+
+  defp fetch_static_data(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, ""} when id > 0 ->
+        case StaticInfo.get_system_static_info(system_id) do
+          {:ok, info} -> info
+          {:error, _} -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp fetch_static_data(_invalid), do: nil
 
   defp maybe_resolve_system_name(payload, static_data) do
     name = payload["name"] || payload[:name]
@@ -104,26 +119,24 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp resolve_and_inject_name(payload, static_data) do
+    system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
     data = extract_static_data(static_data)
-    name = data["solar_system_name"]
 
-    if is_binary(name) and name != "" do
-      system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
+    case data["solar_system_name"] do
+      name when is_binary(name) and name != "" ->
+        Logger.info("Resolved system name from static info",
+          solar_system_id: system_id,
+          name: name
+        )
 
-      Logger.info("Resolved system name from static info",
-        solar_system_id: system_id,
-        name: name
-      )
+        Map.put(payload, "name", name)
 
-      Map.put(payload, "name", name)
-    else
-      system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]
+      _ ->
+        Logger.warning("Could not resolve system name from static info, using fallback",
+          solar_system_id: system_id
+        )
 
-      Logger.warning("Could not resolve system name from static info, using fallback",
-        solar_system_id: system_id
-      )
-
-      Map.put(payload, "name", "System #{system_id}")
+        Map.put(payload, "name", "System #{system_id}")
     end
   end
 
@@ -195,9 +208,11 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   # Dialyzer reports {:error, reason} clause as unreachable because current implementation
   # always returns {:ok, _}. Added for defensive programming against future changes.
-  @dialyzer {:nowarn_function, handle_cache_update: 3}
-  defp handle_cache_update(enriched_system, payload, map_slug) do
-    # Update main systems cache, then cache individual system data
+  @dialyzer {:nowarn_function, handle_cache_update_from_enriched: 3}
+  defp handle_cache_update_from_enriched(enriched_system, original_payload, map_slug) do
+    # Merge enriched name into original payload so the cached data reflects the resolved name
+    payload = Map.put(original_payload, "name", enriched_system.name)
+
     case update_system_cache(enriched_system, map_slug) do
       {:ok, _result} ->
         cache_individual_system(enriched_system, payload, map_slug)
