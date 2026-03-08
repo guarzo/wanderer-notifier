@@ -466,13 +466,23 @@ defmodule WandererNotifier.DiscordNotifier do
       has_tracked_system: has_tracked,
       has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
-      default_channel: MapConfig.channel_for(mc, :primary) || safe_discord_channel_id(),
+      default_channel:
+        valid_channel_id(MapConfig.channel_for(mc, :primary)) || safe_discord_channel_id(),
       system_channel:
-        MapConfig.channel_for(mc, :system_kill) || Config.discord_system_kill_channel_id(),
+        valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
+          Config.discord_system_kill_channel_id(),
       character_channel:
-        MapConfig.channel_for(mc, :character_kill) || Config.discord_character_kill_channel_id()
+        valid_channel_id(MapConfig.channel_for(mc, :character_kill)) ||
+          Config.discord_character_kill_channel_id()
     }
   end
+
+  # Validate that a channel ID is a usable non-empty string.
+  # Returns nil for anything invalid so the || fallback kicks in.
+  @dialyzer {:nowarn_function, valid_channel_id: 1}
+  defp valid_channel_id(id) when is_binary(id) and id != "", do: id
+  defp valid_channel_id(id) when is_integer(id) and id > 0, do: to_string(id)
+  defp valid_channel_id(_), do: nil
 
   defp map_tracks_system?(_mc, nil), do: false
 
@@ -584,8 +594,11 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp map_wormhole_only_excluded?(%MapConfig{} = mc, system_id) do
-    MapConfig.feature_enabled?(mc, :wormhole_only_kill_notifications) and
-      not wormhole_system?(system_id)
+    wormhole_only =
+      MapConfig.feature_enabled?(mc, :wormhole_only_kill_notifications) or
+        Config.wormhole_only_kill_notifications?()
+
+    wormhole_only and not wormhole_system?(system_id)
   end
 
   defp involves_focused_corporation_for_map?(killmail, %MapConfig{} = mc) do
