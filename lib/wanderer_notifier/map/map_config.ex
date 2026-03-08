@@ -217,7 +217,7 @@ defmodule WandererNotifier.Map.MapConfig do
   """
   @spec channel_for(t(), atom()) :: String.t() | nil
   def channel_for(%__MODULE__{discord: discord}, type) when is_atom(type) do
-    Map.get(discord.channels, type) || Map.get(discord.channels, :primary)
+    presence(Map.get(discord.channels, type)) || presence(Map.get(discord.channels, :primary))
   end
 
   @doc """
@@ -307,16 +307,21 @@ defmodule WandererNotifier.Map.MapConfig do
 
   defp parse_channels(data) when is_map(data) do
     %{
-      primary: data["primary"],
-      system_kill: data["system_kill"],
-      character_kill: data["character_kill"],
-      system: data["system"],
-      character: data["character"],
-      rally: data["rally"]
+      primary: presence(data["primary"]),
+      system_kill: presence(data["system_kill"]),
+      character_kill: presence(data["character_kill"]),
+      system: presence(data["system"]),
+      character: presence(data["character"]),
+      rally: presence(data["rally"])
     }
   end
 
   defp parse_channels(_), do: @default_channels
+
+  # Normalize empty/whitespace strings to nil
+  defp presence(nil), do: nil
+  defp presence(val) when is_binary(val), do: if(String.trim(val) == "", do: nil, else: val)
+  defp presence(val), do: val
 
   defp parse_features(data) when is_map(data) do
     %{

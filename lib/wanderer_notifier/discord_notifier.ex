@@ -445,13 +445,10 @@ defmodule WandererNotifier.DiscordNotifier do
     ctx = build_map_channel_context(killmail, mc)
     channels = select_channels(ctx) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
-    Logger.info("Kill channel routing for map #{mc.slug}",
-      killmail_id: Map.get(killmail, :killmail_id),
-      channels: inspect(channels),
-      has_tracked_system: ctx.has_tracked_system,
-      has_tracked_character: ctx.has_tracked_character,
-      default_channel: inspect(ctx.default_channel),
-      system_channel: inspect(ctx.system_channel)
+    Logger.info(
+      "Kill channel routing for map #{mc.slug}: channels=#{inspect(channels)}, " <>
+        "default=#{inspect(ctx.default_channel)}, system=#{inspect(ctx.system_channel)}, " <>
+        "tracked_system=#{ctx.has_tracked_system}, tracked_char=#{ctx.has_tracked_character}"
     )
 
     channels

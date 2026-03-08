@@ -99,7 +99,7 @@ defmodule WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient do
   defp validate_channel_id(id) when is_integer(id) and id > 0, do: :ok
 
   defp validate_channel_id(id) do
-    Logger.error("Invalid channel_id for map send", channel_id: inspect(id))
+    Logger.error("Invalid channel_id for map send: #{inspect(id)} (type: #{typeof(id)})")
     {:error, :invalid_channel_id}
   end
 
