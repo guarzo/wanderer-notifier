@@ -35,7 +35,7 @@ defmodule WandererNotifierWeb.DashboardSSECardTest do
     test "mode value is the string \"multi_map\", not an atom" do
       # SystemInfo explicitly sets mode: "multi_map" (string).
       # DashboardController matches on %{mode: "multi_map"} (string).
-      # Using an atom would silently fall through to the legacy clause.
+      # Using an atom would silently fall through to the env_var clause.
       data = %{mode: "multi_map"}
       assert is_binary(data.mode)
       refute is_atom(data.mode)
@@ -74,28 +74,28 @@ defmodule WandererNotifierWeb.DashboardSSECardTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Data contract: legacy mode
+  # Data contract: env_var mode
   # ---------------------------------------------------------------------------
-  describe "legacy mode data contract" do
-    test "SystemInfo produces all keys consumed by the legacy clause" do
-      # SystemInfo.extract_legacy_sse_stats_for_map/1 returns this shape.
+  describe "env_var mode data contract" do
+    test "SystemInfo produces all keys consumed by the env_var clause" do
+      # SystemInfo.extract_env_var_sse_stats_for_map/1 returns this shape.
       # DashboardController's fallback clause reads :connection_status and :map_name.
-      legacy_data = %{
-        mode: "legacy",
+      env_var_data = %{
+        mode: "env_var",
         client_alive: true,
         connection_status: "connected",
         map_name: "my-map"
       }
 
-      assert is_binary(legacy_data.connection_status)
-      assert is_binary(legacy_data.map_name)
+      assert is_binary(env_var_data.connection_status)
+      assert is_binary(env_var_data.map_name)
     end
 
-    test "legacy data does NOT match the multi_map pattern" do
-      legacy = %{mode: "legacy", connection_status: "connected", map_name: "test"}
+    test "env_var data does NOT match the multi_map pattern" do
+      env_var = %{mode: "env_var", connection_status: "connected", map_name: "test"}
 
-      # The controller dispatches on %{mode: "multi_map"}, so legacy must not match.
-      refute legacy.mode == "multi_map"
+      # The controller dispatches on %{mode: "multi_map"}, so env_var must not match.
+      refute env_var.mode == "multi_map"
     end
 
     test "connection_status maps to CSS class correctly" do
@@ -125,7 +125,7 @@ defmodule WandererNotifierWeb.DashboardSSECardTest do
     test "not_configured fallback when map_name is missing" do
       # When the map is nil, SystemInfo returns connection_status: "not_configured".
       nil_map_data = %{
-        mode: "legacy",
+        mode: "env_var",
         client_alive: false,
         connection_status: "not_configured",
         map_name: nil
@@ -150,9 +150,9 @@ defmodule WandererNotifierWeb.DashboardSSECardTest do
   # Data contract: error / unknown mode
   # ---------------------------------------------------------------------------
   describe "error fallback data contract" do
-    test "extract_sse_stats rescue returns unknown mode with legacy-compatible keys" do
+    test "extract_sse_stats rescue returns unknown mode with env_var-compatible keys" do
       # When extract_sse_stats/0 rescues entirely, it returns this shape.
-      # This falls through to the legacy clause in the controller (not multi_map).
+      # This falls through to the env_var clause in the controller (not multi_map).
       error_fallback = %{
         mode: "unknown",
         client_alive: false,
@@ -169,18 +169,18 @@ defmodule WandererNotifierWeb.DashboardSSECardTest do
   # Pattern-match dispatch correctness
   # ---------------------------------------------------------------------------
   describe "pattern-match dispatch" do
-    test "multi_map data is distinguishable from legacy data by mode key" do
+    test "multi_map data is distinguishable from env_var data by mode key" do
       multi_map = %{mode: "multi_map", connected: 1, map_count: 2, clients_running: 2}
-      legacy = %{mode: "legacy", connection_status: "connected", map_name: "test"}
+      env_var = %{mode: "env_var", connection_status: "connected", map_name: "test"}
       unknown = %{mode: "unknown", connection_status: "not_configured", map_name: nil}
 
       # Only multi_map should match the %{mode: "multi_map"} pattern
       assert match?(%{mode: "multi_map"}, multi_map)
-      refute match?(%{mode: "multi_map"}, legacy)
+      refute match?(%{mode: "multi_map"}, env_var)
       refute match?(%{mode: "multi_map"}, unknown)
     end
 
-    test "map without mode key falls through to legacy clause" do
+    test "map without mode key falls through to env_var clause" do
       # A map missing the :mode key entirely should not match multi_map.
       no_mode = %{connection_status: "connected", map_name: "test"}
       refute Map.get(no_mode, :mode) == "multi_map"

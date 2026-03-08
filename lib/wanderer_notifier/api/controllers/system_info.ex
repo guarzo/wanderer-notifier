@@ -191,7 +191,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
     try do
       case Dependencies.map_registry().mode() do
         :api -> extract_multi_map_sse_stats()
-        :legacy -> extract_legacy_sse_stats()
+        :env_var -> extract_env_var_sse_stats()
       end
     rescue
       _ ->
@@ -231,19 +231,19 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
       }
   end
 
-  defp extract_legacy_sse_stats do
-    extract_legacy_sse_stats_for_map(WandererNotifier.Shared.Config.map_name())
+  defp extract_env_var_sse_stats do
+    extract_env_var_sse_stats_for_map(WandererNotifier.Shared.Config.map_name())
   end
 
-  defp extract_legacy_sse_stats_for_map(nil) do
-    %{mode: "legacy", client_alive: false, connection_status: "not_configured", map_name: nil}
+  defp extract_env_var_sse_stats_for_map(nil) do
+    %{mode: "env_var", client_alive: false, connection_status: "not_configured", map_name: nil}
   end
 
-  defp extract_legacy_sse_stats_for_map(map_name) do
+  defp extract_env_var_sse_stats_for_map(map_name) do
     status = WandererNotifier.Map.SSEClient.get_status(map_name)
 
     %{
-      mode: "legacy",
+      mode: "env_var",
       client_alive: true,
       connection_status: to_string(status),
       map_name: map_name
@@ -251,7 +251,7 @@ defmodule WandererNotifier.Api.Controllers.SystemInfo do
   catch
     :exit, _ ->
       %{
-        mode: "legacy",
+        mode: "env_var",
         client_alive: false,
         connection_status: "not_running",
         map_name: map_name

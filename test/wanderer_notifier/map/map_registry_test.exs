@@ -27,7 +27,7 @@ defmodule WandererNotifier.Map.MapRegistryTest do
     :persistent_term.put({MapRegistry, :mode}, :api)
 
     on_exit(fn ->
-      # Restore mode to :legacy so other tests aren't affected
+      # Restore mode to :env_var so other tests aren't affected
       :persistent_term.erase({MapRegistry, :mode})
 
       for {name, _opts} <- tables do
@@ -70,9 +70,9 @@ defmodule WandererNotifier.Map.MapRegistryTest do
       assert MapRegistry.mode() == :api
     end
 
-    test "defaults to :legacy" do
+    test "defaults to :env_var" do
       :persistent_term.erase({MapRegistry, :mode})
-      assert MapRegistry.mode() == :legacy
+      assert MapRegistry.mode() == :env_var
 
       # Restore for other tests
       :persistent_term.put({MapRegistry, :mode}, :api)

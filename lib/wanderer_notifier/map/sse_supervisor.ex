@@ -142,7 +142,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   Initializes SSE clients based on application configuration.
 
   In multi-map mode (API), initializes data and starts SSE clients for all
-  maps from the Dependencies.map_registry(). In legacy mode, falls back to single-map behavior.
+  maps from the Dependencies.map_registry(). In env var mode, falls back to single-map behavior.
 
   This function is called during application startup.
   """

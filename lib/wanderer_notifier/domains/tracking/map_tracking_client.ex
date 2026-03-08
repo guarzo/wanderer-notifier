@@ -169,7 +169,7 @@ defmodule WandererNotifier.Domains.Tracking.MapTrackingClient do
   end
 
   @doc """
-  Checks if a character is tracked (legacy single-map).
+  Checks if a character is tracked (single-map).
   """
   @spec is_character_tracked?(String.t() | integer()) :: {:ok, boolean()}
   def is_character_tracked?(character_id) when is_binary(character_id) do
