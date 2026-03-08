@@ -118,9 +118,14 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
       cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)
 
       case Cachex.start_link(name: cache_name, limit: 1000) do
-        {:ok, _pid} -> :ok
-        {:error, {:already_started, _pid}} -> :ok
-        _ -> :ok
+        {:ok, _pid} ->
+          :ok
+
+        {:error, {:already_started, _pid}} ->
+          :ok
+
+        {:error, reason} ->
+          raise "Cachex.start_link failed for #{inspect(cache_name)}: #{inspect(reason)}"
       end
 
       :ok

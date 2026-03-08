@@ -133,11 +133,15 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
         Map.put(payload, "name", name)
 
       _ ->
+        fallback_name =
+          if system_id, do: "System #{system_id}", else: "Unknown System"
+
         Logger.warning("Could not resolve system name from static info, using fallback",
-          solar_system_id: system_id
+          solar_system_id: system_id,
+          fallback_name: fallback_name
         )
 
-        Map.put(payload, "name", "System #{system_id}")
+        Map.put(payload, "name", fallback_name)
     end
   end
 

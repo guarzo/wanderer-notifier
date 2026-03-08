@@ -345,14 +345,7 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp default_map_config do
-    case Dependencies.map_registry().all_maps() do
-      [config | _] ->
-        config
-
-      [] ->
-        Logger.debug("No maps in registry; using MapConfig.from_env()")
-        MapConfig.from_env()
-    end
+    MapConfig.from_env()
   end
 
   defp send_generic_embed(embed, opts) do
@@ -542,7 +535,10 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_kill_to_map_channel(killmail, channel_id, mc) do
-    system_kill = channel_id == MapConfig.channel_for(mc, :system_kill)
+    resolved_system_channel =
+      MapConfig.channel_for(mc, :system_kill) || Config.discord_system_kill_channel_id()
+
+    system_kill = channel_id == resolved_system_channel
 
     case format_notification(killmail, use_custom_system_name: system_kill) do
       {:ok, formatted} ->
