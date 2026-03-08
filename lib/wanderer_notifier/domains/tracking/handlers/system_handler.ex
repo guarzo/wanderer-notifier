@@ -96,7 +96,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   defp fetch_static_data(system_id) when is_binary(system_id) do
     case Integer.parse(system_id) do
       {id, ""} when id > 0 ->
-        case StaticInfo.get_system_static_info(system_id) do
+        case StaticInfo.get_system_static_info(id) do
           {:ok, info} -> info
           {:error, _} -> nil
         end
@@ -108,15 +108,16 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
 
   defp fetch_static_data(_invalid), do: nil
 
-  defp maybe_resolve_system_name(payload, static_data) do
-    name = payload["name"] || payload[:name]
+  defp maybe_resolve_system_name(%{"name" => name} = payload, _static_data)
+       when is_binary(name) and name != "",
+       do: payload
 
-    if is_binary(name) and name != "" do
-      payload
-    else
-      resolve_and_inject_name(payload, static_data)
-    end
-  end
+  defp maybe_resolve_system_name(%{name: name} = payload, _static_data)
+       when is_binary(name) and name != "",
+       do: payload
+
+  defp maybe_resolve_system_name(payload, static_data),
+    do: resolve_and_inject_name(payload, static_data)
 
   defp resolve_and_inject_name(payload, static_data) do
     system_id = payload["solar_system_id"] || payload[:solar_system_id] || payload["id"]

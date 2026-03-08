@@ -107,12 +107,12 @@ cond do
     IO.puts("INFO: Using plugin API configuration (BASE_URL + PLUGIN_NOTIFIER_API_KEY)")
 
   has_fallback ->
-    IO.puts("INFO: Using env var configuration (MAP_URL + MAP_API_KEY)")
+    IO.puts("INFO: Using env var configuration (MAP_URL + MAP_API_KEY + MAP_NAME)")
 
   true ->
     IO.puts(
       "WARNING: No map configuration found. " <>
-        "Set BASE_URL + PLUGIN_NOTIFIER_API_KEY, or MAP_URL + MAP_API_KEY."
+        "Set BASE_URL + PLUGIN_NOTIFIER_API_KEY, or MAP_URL + MAP_API_KEY + MAP_NAME."
     )
 end
 

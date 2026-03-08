@@ -471,6 +471,7 @@ defmodule WandererNotifier.DiscordNotifier do
     has_tracked_char = involves_tracked_character_for_map?(killmail, mc)
 
     %{
+      killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused,
       has_tracked_system: has_tracked,
       has_tracked_character: has_tracked_char,

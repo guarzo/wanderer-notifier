@@ -178,8 +178,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
              "Expected 'NOT TRACKED' diagnostic log but got: #{log_output}"
 
       assert String.contains?(log_output, "mode=api")
-      assert String.contains?(log_output, "system")
-      assert String.contains?(log_output, "character")
+      assert String.contains?(log_output, "5 system")
+      assert String.contains?(log_output, "3 character")
       assert String.contains?(log_output, "cross-map duplicates")
     end
 
@@ -233,8 +233,8 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTrackingTest do
              "Expected 'NOT TRACKED' diagnostic log but got: #{log_output}"
 
       assert String.contains?(log_output, "mode=env_var")
-      assert String.contains?(log_output, "system")
-      assert String.contains?(log_output, "character")
+      assert String.contains?(log_output, "0 system")
+      assert String.contains?(log_output, "0 character")
     end
   end
 end
