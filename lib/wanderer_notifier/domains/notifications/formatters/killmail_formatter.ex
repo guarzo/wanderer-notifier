@@ -540,12 +540,17 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
   defp try_scoped_cache(_map_slug, _system_id_string, _killmail), do: nil
 
+  @dialyzer {:nowarn_function, try_unscoped_cache: 2}
   defp try_unscoped_cache(system_id_string, killmail) do
     case Cache.get_tracked_system(system_id_string) do
       {:ok, data} when is_map(data) ->
         extract_system_name_from_cache(data, system_id_string, killmail)
 
       {:ok, nil} ->
+        log_cache_nil(system_id_string, killmail)
+        nil
+
+      {:error, :not_found} ->
         log_cache_nil(system_id_string, killmail)
         nil
 
@@ -610,6 +615,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     )
   end
 
+  @dialyzer {:nowarn_function, log_cache_error: 3}
   defp log_cache_error(system_id_string, reason, killmail) do
     Logger.debug("Tracked system not found in cache",
       system_id: system_id_string,
