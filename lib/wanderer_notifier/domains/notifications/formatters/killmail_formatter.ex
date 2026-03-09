@@ -52,7 +52,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Build title with system name (displays in larger font)
     # Use custom name if explicitly requested via opts (for system kill channel)
     use_custom_name = Keyword.get(opts, :use_custom_system_name, false)
-    system_name = get_system_display_name(killmail, use_custom_name) |> capitalize_name()
+    map_slug = Keyword.get(opts, :map_slug)
+
+    system_name =
+      get_system_display_name(killmail, use_custom_name, map_slug) |> capitalize_name()
+
     title = "Ship destroyed in #{system_name}"
 
     # Build description without the system line (it's now in title)
@@ -484,37 +488,69 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   # When use_custom_name is true (system kill channel), always try to use custom name
-  defp get_system_display_name(%Killmail{} = killmail, true = _use_custom_name) do
+  defp get_system_display_name(%Killmail{} = killmail, true = _use_custom_name, map_slug) do
     case killmail.system_id do
       nil ->
         get_fallback_system_name(killmail) || "Unknown System"
 
       id ->
-        get_custom_system_name(id, killmail) ||
+        get_custom_system_name(id, killmail, map_slug) ||
           get_fallback_system_name(killmail) ||
           "Unknown System"
     end
   end
 
   # When use_custom_name is false (character kill channel or default), use EVE system name
-  defp get_system_display_name(%Killmail{} = killmail, false = _use_custom_name) do
+  defp get_system_display_name(%Killmail{} = killmail, false = _use_custom_name, _map_slug) do
     get_fallback_system_name(killmail) || "Unknown System"
   end
 
-  defp get_custom_system_name(system_id, killmail) when is_integer(system_id) do
-    get_custom_system_name(Integer.to_string(system_id), killmail)
+  defp get_custom_system_name(system_id, killmail, map_slug) when is_integer(system_id) do
+    get_custom_system_name(Integer.to_string(system_id), killmail, map_slug)
   end
 
-  defp get_custom_system_name(system_id, killmail) when is_binary(system_id) do
-    fetch_system_name(system_id, killmail)
+  defp get_custom_system_name(system_id, killmail, map_slug) when is_binary(system_id) do
+    fetch_system_name(system_id, killmail, map_slug)
   end
 
-  defp fetch_system_name(system_id_string, killmail) do
-    case Cache.get_tracked_system(system_id_string) do
-      {:ok, system_data} when is_map(system_data) ->
-        extract_system_name_from_cache(system_data, system_id_string, killmail)
+  defp fetch_system_name(system_id_string, killmail, map_slug) do
+    scoped_name = try_scoped_cache(map_slug, system_id_string, killmail)
+    scoped_name || try_unscoped_cache(system_id_string, killmail)
+  end
+
+  @dialyzer {:nowarn_function, try_scoped_cache: 3}
+  defp try_scoped_cache(map_slug, system_id_string, killmail)
+       when is_binary(map_slug) and map_slug != "" do
+    case Cache.get_tracked_system(map_slug, system_id_string) do
+      {:ok, data} when is_map(data) ->
+        extract_system_name_from_cache(data, system_id_string, killmail)
 
       {:ok, nil} ->
+        log_cache_nil(system_id_string, killmail)
+        nil
+
+      {:error, :not_found} ->
+        nil
+
+      {:error, reason} ->
+        log_cache_error(system_id_string, reason, killmail)
+        nil
+    end
+  end
+
+  defp try_scoped_cache(_map_slug, _system_id_string, _killmail), do: nil
+
+  @dialyzer {:nowarn_function, try_unscoped_cache: 2}
+  defp try_unscoped_cache(system_id_string, killmail) do
+    case Cache.get_tracked_system(system_id_string) do
+      {:ok, data} when is_map(data) ->
+        extract_system_name_from_cache(data, system_id_string, killmail)
+
+      {:ok, nil} ->
+        log_cache_nil(system_id_string, killmail)
+        nil
+
+      {:error, :not_found} ->
         log_cache_nil(system_id_string, killmail)
         nil
 
@@ -579,8 +615,9 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     )
   end
 
+  @dialyzer {:nowarn_function, log_cache_error: 3}
   defp log_cache_error(system_id_string, reason, killmail) do
-    Logger.debug("Tracked system not found in cache",
+    Logger.error("Cache failure while fetching tracked system",
       system_id: system_id_string,
       reason: inspect(reason),
       killmail_id: killmail.killmail_id,
