@@ -518,6 +518,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     scoped_name || try_unscoped_cache(system_id_string, killmail)
   end
 
+  @dialyzer {:nowarn_function, try_scoped_cache: 3}
   defp try_scoped_cache(map_slug, system_id_string, killmail)
        when is_binary(map_slug) and map_slug != "" do
     case Cache.get_tracked_system(map_slug, system_id_string) do
