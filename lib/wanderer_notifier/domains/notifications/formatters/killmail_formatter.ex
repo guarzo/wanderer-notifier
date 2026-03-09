@@ -528,7 +528,11 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
         log_cache_nil(system_id_string, killmail)
         nil
 
-      {:error, _} ->
+      {:error, :not_found} ->
+        nil
+
+      {:error, reason} ->
+        log_cache_error(system_id_string, reason, killmail)
         nil
     end
   end

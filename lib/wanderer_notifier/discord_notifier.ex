@@ -470,10 +470,10 @@ defmodule WandererNotifier.DiscordNotifier do
         valid_channel_id(MapConfig.channel_for(mc, :primary)) || safe_discord_channel_id(),
       system_channel:
         valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
-          Config.discord_system_kill_channel_id(),
+          valid_channel_id(Config.discord_system_kill_channel_id()),
       character_channel:
         valid_channel_id(MapConfig.channel_for(mc, :character_kill)) ||
-          Config.discord_character_kill_channel_id()
+          valid_channel_id(Config.discord_character_kill_channel_id())
     }
   end
 
@@ -544,7 +544,7 @@ defmodule WandererNotifier.DiscordNotifier do
   defp send_kill_to_map_channel(killmail, channel_id, mc) do
     resolved_system_channel =
       valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
-        Config.discord_system_kill_channel_id()
+        valid_channel_id(Config.discord_system_kill_channel_id())
 
     system_kill = channel_id == resolved_system_channel
 
