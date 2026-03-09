@@ -543,7 +543,8 @@ defmodule WandererNotifier.DiscordNotifier do
 
   defp send_kill_to_map_channel(killmail, channel_id, mc) do
     resolved_system_channel =
-      MapConfig.channel_for(mc, :system_kill) || Config.discord_system_kill_channel_id()
+      valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
+        Config.discord_system_kill_channel_id()
 
     system_kill = channel_id == resolved_system_channel
 
@@ -605,11 +606,11 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp involves_focused_corporation_for_map?(killmail, %MapConfig{} = mc) do
-    # Check per-map config first, fall back to global env var
-    focus_corps = MapConfig.corporation_kill_focus(mc)
-
     focus_corps =
-      if focus_corps == [], do: Config.corporation_kill_focus(), else: focus_corps
+      case MapConfig.corporation_kill_focus(mc) do
+        [] -> Config.corporation_kill_focus()
+        map_corps -> map_corps
+      end
 
     do_involves_focused_corporation?(killmail, focus_corps)
   end

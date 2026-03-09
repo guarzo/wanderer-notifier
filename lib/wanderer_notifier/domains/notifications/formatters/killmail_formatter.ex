@@ -514,20 +514,31 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
   end
 
   defp fetch_system_name(system_id_string, killmail, map_slug) do
-    # Try map-scoped cache first, fall back to unscoped
-    cache_result =
-      if is_binary(map_slug) and map_slug != "" do
-        case Cache.get_tracked_system(map_slug, system_id_string) do
-          {:ok, data} when is_map(data) -> {:ok, data}
-          _ -> Cache.get_tracked_system(system_id_string)
-        end
-      else
-        Cache.get_tracked_system(system_id_string)
-      end
+    scoped_name = try_scoped_cache(map_slug, system_id_string, killmail)
+    scoped_name || try_unscoped_cache(system_id_string, killmail)
+  end
 
-    case cache_result do
-      {:ok, system_data} when is_map(system_data) ->
-        extract_system_name_from_cache(system_data, system_id_string, killmail)
+  defp try_scoped_cache(map_slug, system_id_string, killmail)
+       when is_binary(map_slug) and map_slug != "" do
+    case Cache.get_tracked_system(map_slug, system_id_string) do
+      {:ok, data} when is_map(data) ->
+        extract_system_name_from_cache(data, system_id_string, killmail)
+
+      {:ok, nil} ->
+        log_cache_nil(system_id_string, killmail)
+        nil
+
+      {:error, _} ->
+        nil
+    end
+  end
+
+  defp try_scoped_cache(_map_slug, _system_id_string, _killmail), do: nil
+
+  defp try_unscoped_cache(system_id_string, killmail) do
+    case Cache.get_tracked_system(system_id_string) do
+      {:ok, data} when is_map(data) ->
+        extract_system_name_from_cache(data, system_id_string, killmail)
 
       {:ok, nil} ->
         log_cache_nil(system_id_string, killmail)
