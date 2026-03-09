@@ -617,7 +617,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
 
   @dialyzer {:nowarn_function, log_cache_error: 3}
   defp log_cache_error(system_id_string, reason, killmail) do
-    Logger.debug("Tracked system not found in cache",
+    Logger.error("Cache failure while fetching tracked system",
       system_id: system_id_string,
       reason: inspect(reason),
       killmail_id: killmail.killmail_id,
