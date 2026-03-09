@@ -547,7 +547,10 @@ defmodule WandererNotifier.DiscordNotifier do
 
     system_kill = channel_id == resolved_system_channel
 
-    case format_notification(killmail, use_custom_system_name: system_kill) do
+    case format_notification(killmail,
+           use_custom_system_name: system_kill,
+           map_slug: mc.slug
+         ) do
       {:ok, formatted} ->
         send_to_discord_for_map(formatted, channel_id, mc)
 
@@ -602,7 +605,12 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp involves_focused_corporation_for_map?(killmail, %MapConfig{} = mc) do
+    # Check per-map config first, fall back to global env var
     focus_corps = MapConfig.corporation_kill_focus(mc)
+
+    focus_corps =
+      if focus_corps == [], do: Config.corporation_kill_focus(), else: focus_corps
+
     do_involves_focused_corporation?(killmail, focus_corps)
   end
 
@@ -704,7 +712,7 @@ defmodule WandererNotifier.DiscordNotifier do
     }
   end
 
-  # Kill involves focused corporation -> character channel only
+  # Kill involves focused corporation -> character channel only (excluded from system channel)
   defp select_channels(%{involves_focused_corp: true} = ctx) do
     Logger.info("Kill routed to character channel - focused corporation involved",
       killmail_id: ctx.killmail_id
@@ -713,7 +721,14 @@ defmodule WandererNotifier.DiscordNotifier do
     [ctx.character_channel || ctx.default_channel]
   end
 
-  # System tracked and not wormhole-excluded -> system channel
+  # System tracked AND character tracked -> character channel only
+  defp select_channels(
+         %{has_tracked_system: true, has_tracked_character: true, wormhole_excluded: false} = ctx
+       ) do
+    [ctx.character_channel || ctx.default_channel]
+  end
+
+  # System tracked (no tracked character) and not wormhole-excluded -> system channel
   defp select_channels(%{has_tracked_system: true, wormhole_excluded: false} = ctx) do
     [ctx.system_channel || ctx.default_channel]
   end
