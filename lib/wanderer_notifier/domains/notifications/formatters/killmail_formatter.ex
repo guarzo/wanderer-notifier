@@ -53,7 +53,10 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     # Use custom name if explicitly requested via opts (for system kill channel)
     use_custom_name = Keyword.get(opts, :use_custom_system_name, false)
     map_slug = Keyword.get(opts, :map_slug)
-    system_name = get_system_display_name(killmail, use_custom_name, map_slug) |> capitalize_name()
+
+    system_name =
+      get_system_display_name(killmail, use_custom_name, map_slug) |> capitalize_name()
+
     title = "Ship destroyed in #{system_name}"
 
     # Build description without the system line (it's now in title)
