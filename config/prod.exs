@@ -96,8 +96,8 @@ config :cachex,
       interval: :timer.minutes(30),
       lazy: true
     },
-    # Disable statistics collection for performance
-    stats: false,
+    # Enable statistics collection for status page monitoring
+    stats: true,
     # Enable compression for memory efficiency
     compression: [
       threshold: 1024

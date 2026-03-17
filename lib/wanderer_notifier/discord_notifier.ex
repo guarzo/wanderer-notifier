@@ -460,20 +460,18 @@ defmodule WandererNotifier.DiscordNotifier do
     has_tracked = map_tracks_system?(mc, system_id)
     has_tracked_char = involves_tracked_character_for_map?(killmail, mc)
 
+    # MapConfig is the single source of truth — no global Config fallbacks.
+    # In env_var mode, MapConfig.from_env() already has all env var values.
+    # In API mode, the API config is authoritative.
     %{
       killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused,
       has_tracked_system: has_tracked,
       has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
-      default_channel:
-        valid_channel_id(MapConfig.channel_for(mc, :primary)) || safe_discord_channel_id(),
-      system_channel:
-        valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
-          valid_channel_id(Config.discord_system_kill_channel_id()),
-      character_channel:
-        valid_channel_id(MapConfig.channel_for(mc, :character_kill)) ||
-          valid_channel_id(Config.discord_character_kill_channel_id())
+      default_channel: valid_channel_id(MapConfig.channel_for(mc, :primary)),
+      system_channel: valid_channel_id(MapConfig.channel_for(mc, :system_kill)),
+      character_channel: valid_channel_id(MapConfig.channel_for(mc, :character_kill))
     }
   end
 
@@ -526,6 +524,8 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp dispatch_to_map_channels(killmail, channels, mc) do
+    killmail_id = Map.get(killmail, :killmail_id)
+
     {sent, failed} =
       Enum.reduce(channels, {0, 0}, fn channel_id, {sent_count, fail_count} ->
         case send_kill_to_map_channel(killmail, channel_id, mc) do
@@ -533,6 +533,9 @@ defmodule WandererNotifier.DiscordNotifier do
           {:error, _} -> {sent_count, fail_count + 1}
         end
       end)
+
+    if sent > 0, do: record_notifications_sent(killmail_id, sent)
+    if failed > 0, do: record_failed_kill(killmail_id, {:partial_failure, failed})
 
     if failed == 0 do
       {:ok, %{sent: sent, failed: 0}}
@@ -542,10 +545,7 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp send_kill_to_map_channel(killmail, channel_id, mc) do
-    resolved_system_channel =
-      valid_channel_id(MapConfig.channel_for(mc, :system_kill)) ||
-        valid_channel_id(Config.discord_system_kill_channel_id())
-
+    resolved_system_channel = valid_channel_id(MapConfig.channel_for(mc, :system_kill))
     system_kill = channel_id == resolved_system_channel
 
     case format_notification(killmail,
@@ -553,6 +553,9 @@ defmodule WandererNotifier.DiscordNotifier do
            map_slug: mc.slug
          ) do
       {:ok, formatted} ->
+        {:ok, formatted} =
+          maybe_add_voice_mentions_for_map(formatted, killmail, channel_id, mc)
+
         send_to_discord_for_map(formatted, channel_id, mc)
 
       {:error, reason} ->
@@ -598,21 +601,12 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   defp map_wormhole_only_excluded?(%MapConfig{} = mc, system_id) do
-    wormhole_only =
-      MapConfig.feature_enabled?(mc, :wormhole_only_kill_notifications) or
-        Config.wormhole_only_kill_notifications?()
-
-    wormhole_only and not wormhole_system?(system_id)
+    MapConfig.feature_enabled?(mc, :wormhole_only_kill_notifications) and
+      not wormhole_system?(system_id)
   end
 
   defp involves_focused_corporation_for_map?(killmail, %MapConfig{} = mc) do
-    focus_corps =
-      case MapConfig.corporation_kill_focus(mc) do
-        [] -> Config.corporation_kill_focus()
-        map_corps -> map_corps
-      end
-
-    do_involves_focused_corporation?(killmail, focus_corps)
+    do_involves_focused_corporation?(killmail, MapConfig.corporation_kill_focus(mc))
   end
 
   defp build_rally_content_for_map(%MapConfig{} = mc) do
@@ -758,13 +752,6 @@ defmodule WandererNotifier.DiscordNotifier do
   defp notifications_enabled?, do: Config.notifications_enabled?()
   defp kill_notifications_enabled?, do: Config.kill_notifications_enabled?()
 
-  # Safe channel ID fallback (Config.discord_channel_id raises if not set)
-  defp safe_discord_channel_id do
-    Config.discord_channel_id()
-  rescue
-    RuntimeError -> nil
-  end
-
   # ═══════════════════════════════════════════════════════════════════════════════
   # System Kill Channel Exclusions
   # ═══════════════════════════════════════════════════════════════════════════════
@@ -891,5 +878,19 @@ defmodule WandererNotifier.DiscordNotifier do
     mention_string = Enum.join(mentions, " ")
     existing_content = Map.get(notification, :content, "")
     {:ok, Map.put(notification, :content, "#{mention_string} #{existing_content}")}
+  end
+
+  # Multi-map voice mentions — uses MapConfig feature flag only, no global Config fallback.
+  # Checks cheap booleans first; only calls map_tracks_system?/2 when both pass.
+  defp maybe_add_voice_mentions_for_map(notification, killmail, channel_id, %MapConfig{} = mc) do
+    with true <- MapConfig.feature_enabled?(mc, :voice_participant_notifications_enabled),
+         true <- channel_id == valid_channel_id(MapConfig.channel_for(mc, :system_kill)),
+         system_id when is_integer(system_id) or is_binary(system_id) <-
+           Map.get(killmail, :system_id),
+         true <- map_tracks_system?(mc, system_id) do
+      prepend_voice_mentions(notification)
+    else
+      _ -> {:ok, notification}
+    end
   end
 end

@@ -364,48 +364,27 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   defp fetch_map_configs do
-    case fetch_from_plugin_api() do
-      {:ok, _configs, _version} = success ->
-        success
-
-      {:error, plugin_reason} ->
-        Logger.info("Plugin API not available, trying v1 endpoint",
-          reason: inspect(plugin_reason)
-        )
-
-        fetch_from_v1_api()
+    # Only attempt API config fetch when WANDERER_PLUGIN_NOTIFIER_API_KEY is
+    # explicitly configured.  Users who only set MAP_URL + MAP_API_KEY + MAP_NAME
+    # should stay in env_var mode — the plugin API key is the explicit opt-in
+    # signal for multi-map / API-driven configuration.
+    case Config.wanderer_plugin_api_key() do
+      nil -> {:error, :plugin_api_key_not_configured}
+      "" -> {:error, :plugin_api_key_not_configured}
+      key -> fetch_from_plugin_api(key)
     end
   rescue
     e -> {:error, {:fetch_exception, Exception.message(e)}}
   end
 
-  defp fetch_from_plugin_api do
+  defp fetch_from_plugin_api(api_key) do
     case Config.wanderer_base_url() do
       {:ok, base_url} ->
-        api_key = Config.wanderer_plugin_api_key()
-
-        if api_key do
-          do_fetch_from_api(base_url, "/api/plugins/notifier/config", api_key)
-        else
-          {:error, :plugin_api_key_not_configured}
-        end
+        do_fetch_from_api(base_url, "/api/plugins/notifier/config", api_key)
 
       {:error, _} ->
         {:error, :wanderer_base_url_not_configured}
     end
-  end
-
-  defp fetch_from_v1_api do
-    case Config.wanderer_base_url() do
-      {:ok, base_url} ->
-        api_key = Config.map_api_key()
-        do_fetch_from_api(base_url, "/api/v1/notifier/config", api_key)
-
-      {:error, _} ->
-        {:error, :wanderer_base_url_not_configured}
-    end
-  rescue
-    _ -> {:error, :v1_config_not_available}
   end
 
   defp do_fetch_from_api(base_url, path, api_key) do
