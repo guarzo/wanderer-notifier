@@ -534,9 +534,8 @@ defmodule WandererNotifier.DiscordNotifier do
         end
       end)
 
-    if sent > 0 do
-      record_notifications_sent(killmail_id, sent)
-    end
+    if sent > 0, do: record_notifications_sent(killmail_id, sent)
+    if failed > 0, do: record_failed_kill(killmail_id, {:partial_failure, failed})
 
     if failed == 0 do
       {:ok, %{sent: sent, failed: 0}}
@@ -882,21 +881,16 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   # Multi-map voice mentions — uses MapConfig feature flag only, no global Config fallback.
+  # Checks cheap booleans first; only calls map_tracks_system?/2 when both pass.
   defp maybe_add_voice_mentions_for_map(notification, killmail, channel_id, %MapConfig{} = mc) do
-    voice_enabled = MapConfig.feature_enabled?(mc, :voice_participant_notifications_enabled)
-    resolved_system_channel = valid_channel_id(MapConfig.channel_for(mc, :system_kill))
-    is_system_kill_channel = channel_id == resolved_system_channel
-
-    is_tracked_system =
-      case Map.get(killmail, :system_id) do
-        nil -> false
-        system_id -> map_tracks_system?(mc, system_id)
-      end
-
-    if voice_enabled and is_system_kill_channel and is_tracked_system do
+    with true <- MapConfig.feature_enabled?(mc, :voice_participant_notifications_enabled),
+         true <- channel_id == valid_channel_id(MapConfig.channel_for(mc, :system_kill)),
+         system_id when is_integer(system_id) or is_binary(system_id) <-
+           Map.get(killmail, :system_id),
+         true <- map_tracks_system?(mc, system_id) do
       prepend_voice_mentions(notification)
     else
-      {:ok, notification}
+      _ -> {:ok, notification}
     end
   end
 end

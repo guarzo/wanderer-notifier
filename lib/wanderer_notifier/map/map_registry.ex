@@ -368,12 +368,10 @@ defmodule WandererNotifier.Map.MapRegistry do
     # explicitly configured.  Users who only set MAP_URL + MAP_API_KEY + MAP_NAME
     # should stay in env_var mode — the plugin API key is the explicit opt-in
     # signal for multi-map / API-driven configuration.
-    api_key = Config.wanderer_plugin_api_key()
-
-    if api_key do
-      fetch_from_plugin_api(api_key)
-    else
-      {:error, :plugin_api_key_not_configured}
+    case Config.wanderer_plugin_api_key() do
+      nil -> {:error, :plugin_api_key_not_configured}
+      "" -> {:error, :plugin_api_key_not_configured}
+      key -> fetch_from_plugin_api(key)
     end
   rescue
     e -> {:error, {:fetch_exception, Exception.message(e)}}
