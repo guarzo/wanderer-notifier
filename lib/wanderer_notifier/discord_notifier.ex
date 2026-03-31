@@ -386,13 +386,9 @@ defmodule WandererNotifier.DiscordNotifier do
         {:ok, :skipped}
 
       map_wormhole_only_excluded?(mc, system_id) ->
-        has_tracked_char = involves_tracked_character_for_map?(killmail, mc)
-
-        Logger.info("Kill excluded by wormhole-only filter for map #{mc.slug}" <>
-          if(has_tracked_char, do: " (character-tracked kill in non-wormhole system)", else: ""),
+        Logger.info("Kill excluded by wormhole-only filter for map #{mc.slug}",
           killmail_id: Map.get(killmail, :killmail_id),
-          system_id: system_id,
-          character_tracked: has_tracked_char
+          system_id: system_id
         )
 
         {:ok, :skipped}

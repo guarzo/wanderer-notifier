@@ -394,8 +394,6 @@ defmodule WandererNotifier.Map.SSEClient do
 
   # Private Functions
 
-  # Safely extract a human-readable error type from HTTPoison error reasons.
-  # Reasons can be tuples like {:closed, "msg"} or atoms like :timeout.
   defp format_error_type(reason) when is_tuple(reason) do
     reason |> elem(0) |> to_string() |> String.replace("_", " ")
   end

@@ -271,7 +271,7 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   @spec character_tracked?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
   defp character_tracked?(%Killmail{} = killmail) do
-    victim_tracked = victim_tracked?(killmail.killmail_id, killmail.victim_character_id)
+    victim_tracked = victim_tracked?(killmail.victim_character_id)
     {attacker_tracked, matched_attacker_id} = find_tracked_attacker(killmail.attackers)
 
     if attacker_tracked do
@@ -283,21 +283,16 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
     {:ok, victim_tracked or attacker_tracked}
   end
 
-  defp victim_tracked?(_killmail_id, nil), do: false
+  defp victim_tracked?(nil), do: false
 
-  defp victim_tracked?(killmail_id, character_id) when is_integer(character_id) do
+  defp victim_tracked?(character_id) when is_integer(character_id) do
     character_id_str = Integer.to_string(character_id)
-    Logger.info("[Pipeline] Checking if victim character #{character_id_str} is tracked")
 
     tracked = character_in_index?(character_id_str)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Victim character #{character_id_str} tracked check result: #{tracked}"
     )
-
-    if not tracked do
-      Logger.info("[Pipeline] Checking attacker characters for killmail #{killmail_id}")
-    end
 
     tracked
   end
