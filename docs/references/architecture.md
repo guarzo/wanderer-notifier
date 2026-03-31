@@ -20,7 +20,8 @@ lib/wanderer_notifier/
 │   ├── killmail/                     # Killmail processing domain
 │   │   ├── entities/                 # Killmail domain entities
 │   │   ├── services/                 # Processing and client services
-│   │   ├── pipeline/                 # Pipeline and enrichment logic
+│   │   ├── pipeline.ex               # Killmail processing pipeline
+│   │   ├── pipeline_worker.ex        # Pipeline supervised worker
 │   │   └── utils/                    # Domain-specific utilities
 │   ├── tracking/                     # Character and system tracking
 │   │   ├── entities/                 # Character and System entities
@@ -80,7 +81,7 @@ lib/wanderer_notifier/
 3. **WebSocket Client** (`lib/wanderer_notifier/domains/killmail/websocket_client.ex`) - Connects to external WandererKills service for real-time pre-enriched killmail data
 4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time Server-Sent Events connection to map API for system and character updates with connection monitoring
 5. **Processing Context** (`lib/wanderer_notifier/contexts/processing_context/`) - Coordinates killmail processing across domains
-6. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline/`) - Processes killmail data through supervised workers
+6. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline.ex`) - Processes killmail data through supervised workers
 7. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
 8. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`) - Coordinates notification processing across domains
 9. **Notification Formatters** (`lib/wanderer_notifier/domains/notifications/formatters/`) - Domain-specific message formatting

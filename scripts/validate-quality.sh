@@ -17,10 +17,10 @@ run_gate() {
   echo -e "${YELLOW}>>> ${name}${NC}"
   if "$@"; then
     echo -e "${GREEN}  PASS: ${name}${NC}\n"
-    ((PASS++))
+    ((++PASS))
   else
     echo -e "${RED}  FAIL: ${name}${NC}\n"
-    ((FAIL++))
+    ((++FAIL))
   fi
 }
 
@@ -32,7 +32,7 @@ echo ""
 run_gate "Compile"          mix compile
 run_gate "Tests"            mix test
 run_gate "Credo (strict)"   mix credo --strict
-run_gate "Dialyzer"         bash -c "MIX_ENV=dev mix dialyzer"
+run_gate "Dialyzer"         env MIX_ENV=dev mix dialyzer
 
 echo "==============================="
 echo " Results: ${PASS} passed, ${FAIL} failed"
