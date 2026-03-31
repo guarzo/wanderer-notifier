@@ -45,351 +45,55 @@ make release          # Build production release
 docker-compose up -d  # Run locally with Docker
 ```
 
-## High-Level Architecture
+## Architecture
 
-The application follows a refactored, domain-driven design with these core components:
+The application follows domain-driven design. See [docs/references/architecture.md](docs/references/architecture.md) for the full module structure, data flow, file naming standards, and infrastructure components.
 
-### Current Module Structure (Post-Sprint 4+ Consolidation)
-```
-lib/wanderer_notifier/
-├── application/                      # Application coordination layer
-│   ├── services/application_service/ # Consolidated application service
-│   │   ├── dependency_manager.ex     # Dependency injection system
-│   │   ├── metrics_tracker.ex        # Application metrics
-│   │   ├── notification_coordinator.ex # Notification processing
-│   │   └── state.ex                  # Application state management
-│   └── initialization/
-│       └── service_initializer.ex    # Multi-phase startup process
-├── contexts/                         # Cross-domain coordination
-│   ├── api_context/                  # API layer coordination
-│   ├── notification_context/         # Notification handling
-│   └── processing_context/           # Killmail processing coordination
-├── domains/                          # Business logic domains (DDD)
-│   ├── killmail/                     # Killmail processing domain
-│   │   ├── entities/                 # Killmail domain entities
-│   │   ├── services/                 # Processing and client services
-│   │   ├── pipeline/                 # Pipeline and enrichment logic
-│   │   └── utils/                    # Domain-specific utilities
-│   ├── tracking/                     # Character and system tracking
-│   │   ├── entities/                 # Character and System entities
-│   │   ├── services/                 # Tracking services
-│   │   └── handlers/                 # Event handlers
-│   │       ├── character_handler.ex  # Character event handling
-│   │       ├── system_handler.ex     # System event handling
-│   │       ├── generic_event_handler.ex # Shared handler logic
-│   │       ├── shared_event_logic.ex # Common event utilities
-│   │       └── event_handler_behaviour.ex # Handler behaviour
-│   ├── notifications/                # Notification handling
-│   │   ├── entities/                 # Notification entities
-│   │   ├── services/                 # Notification logic
-│   │   ├── formatters/               # Message formatters
-│   │   └── discord/                  # Discord integration
-│   │       ├── notifier.ex           # Main notification dispatcher
-│   │       ├── neo_client.ex         # Discord API client
-│   │       ├── channel_resolver.ex   # Channel routing logic
-│   │       ├── enrichment_helper.ex  # System name enrichment
-│   │       ├── component_builder.ex  # UI component construction
-│   │       ├── feature_flags.ex      # Feature flag checks
-│   │       ├── constants.ex          # Discord constants
-│   │       ├── connection_health.ex  # Connection monitoring
-│   │       └── discord_behaviour.ex  # Behaviour definition
-│   └── license/                      # License management
-│       ├── license.ex                # License entity
-│       ├── license_service.ex        # License business logic
-│       ├── license_validator.ex      # Pure validation functions
-│       └── license_client.ex         # HTTP client for license API
-├── infrastructure/                   # Technical infrastructure
-│   ├── http.ex                       # Unified HTTP client with middleware
-│   ├── cache.ex                      # Main cache interface
-│   ├── cache/                        # Cache submodules
-│   │   ├── keys.ex                   # Centralized cache key generation
-│   │   ├── ttl_config.ex             # TTL configuration
-│   │   └── deduplication.ex          # Notification deduplication
-│   ├── adapters/                     # External service adapters
-│   │   ├── esi/                      # EVE Swagger Interface
-│   │   └── janice/                   # Janice pricing
-│   └── messaging/                    # Message handling
-├── map/                              # Real-time map integration
-│   ├── sse_client.ex                 # Server-Sent Events client
-│   ├── connection_monitor.ex         # Connection health monitoring
-│   └── schemas/                      # Map data schemas
-├── shared/                           # Cross-cutting concerns
-│   ├── config/                       # Configuration management
-│   ├── utils/                        # Shared utilities
-│   ├── types/                        # Common types and constants
-│   └── telemetry/                    # Monitoring and metrics
-└── schedulers/                       # Background job scheduling
-```
-
-## File Naming Standards
-
-### Module Types
-- **Services**: `*_service.ex` (e.g., `notification_service.ex`, `license_service.ex`)
-- **Clients**: `*_client.ex` (e.g., `discord_client.ex`, `sse_client.ex`)
-- **Handlers**: `*_handler.ex` (e.g., `character_event_handler.ex`)
-- **Entities**: Plain names (e.g., `killmail.ex`, `character.ex`, `system.ex`)
-- **Utilities**: `*_utils.ex` in `utils/` directories (e.g., `http_utils.ex`, `notification_utils.ex`)
-- **Behaviours**: `*_behaviour.ex` (e.g., `cache_behaviour.ex`)
-- **Middleware**: `*_middleware.ex` (e.g., `retry_middleware.ex`)
-- **Formatters**: `*_formatter.ex` (e.g., `killmail_formatter.ex`)
-
-### Directory Conventions
-- **Singular nouns** for single-concern directories (`cache/`, `config/`)
-- **Plural nouns** for collections (`entities/`, `services/`, `handlers/`)
-- **Descriptive names** that clearly indicate purpose (`formatters/` not `format/`)
-- **Domain grouping** under `domains/` for business logic
-- **Technical grouping** under `infrastructure/` for technical concerns
-```
-
-### Data Flow
-1. **Application Service** (`lib/wanderer_notifier/application/services/application_service/`) - Consolidated service coordinating all application operations with dependency injection and metrics tracking
-2. **Service Initializer** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`) - Multi-phase startup process (infrastructure → foundation → integration → processing)
-3. **WebSocket Client** (`lib/wanderer_notifier/domains/killmail/websocket_client.ex`) - Connects to external WandererKills service for real-time pre-enriched killmail data
-4. **SSE Client** (`lib/wanderer_notifier/map/sse_client.ex`) - Real-time Server-Sent Events connection to map API for system and character updates with connection monitoring
-5. **Processing Context** (`lib/wanderer_notifier/contexts/processing_context/`) - Coordinates killmail processing across domains
-6. **Killmail Pipeline** (`lib/wanderer_notifier/domains/killmail/pipeline/`) - Processes killmail data through supervised workers
-7. **ESI Adapters** (`lib/wanderer_notifier/infrastructure/adapters/`) - Provides additional enrichment using unified HTTP client
-8. **Notification Context** (`lib/wanderer_notifier/contexts/notification_context/`) - Coordinates notification processing across domains
-9. **Notification Formatters** (`lib/wanderer_notifier/domains/notifications/formatters/`) - Domain-specific message formatting
-10. **Discord Integration** (`lib/wanderer_notifier/domains/notifications/discord/`) - Discord bot integration with slash commands and rich notifications
-
-### Domain-Driven Design Principles
-The reorganized codebase follows DDD patterns for better maintainability:
-
-- **Domain Boundaries**: Clear separation between killmail, tracking, notifications, and license domains
-- **Entity Organization**: Domain entities grouped in `entities/` subdirectories
-- **Service Layer**: Business logic encapsulated in domain services
-- **Infrastructure Separation**: Technical concerns isolated from business logic
-- **Shared Kernel**: Common utilities and types in `shared/` directory
-- **Consistent Structure**: All domains follow the same organizational pattern
-
-### Key Infrastructure Components (Post-Simplification)
-- **Unified HTTP Client** (`lib/wanderer_notifier/infrastructure/http.ex`): Single module handling all external HTTP requests with:
-  - Service-specific configurations (ESI, WandererKills, License, Map, Streaming)
-  - Built-in authentication (Bearer, API Key, Basic)
-  - Middleware pipeline (Telemetry, RateLimiter, Retry, CircuitBreaker)
-  - Automatic JSON encoding/decoding
-- **Cache System** (`lib/wanderer_notifier/infrastructure/cache.ex`): Cachex wrapper with supporting modules:
-  - `cache/keys.ex`: Centralized cache key generation with consistent patterns
-  - `cache/ttl_config.ex`: TTL configuration for different data types
-  - `cache/deduplication.ex`: Notification deduplication logic
-- **Simple Dependency Resolution** (`lib/wanderer_notifier/shared/dependencies.ex`): Lightweight function-based dependency injection replacing complex GenServer registry
-- **Lightweight Application Service** (`lib/wanderer_notifier/application/services/simple_application_service.ex`): Minimal coordinator with focused responsibilities
-- **Modular Metrics & Health** (`lib/wanderer_notifier/shared/metrics.ex`, `lib/wanderer_notifier/shared/health.ex`): Agent-based metrics and process-based health checks
-- **Multi-Phase Initialization** (`lib/wanderer_notifier/application/initialization/service_initializer.ex`): Sophisticated startup process with infrastructure, foundation, integration, and processing phases
-- **Real-Time Map Integration** (`lib/wanderer_notifier/map/`): Advanced SSE client with connection monitoring and health tracking
-- **Simplified Configuration** (`lib/wanderer_notifier/shared/config.ex`): Direct Application.get_env access without complex schemas or macro generation
-- **Unified Utilities** (`lib/wanderer_notifier/shared/utils/`): Consolidated error handling, time utilities, and validation
-- **Schedulers** (`lib/wanderer_notifier/schedulers/`): Background tasks for periodic updates with registry-based management
-
-### Configuration
-- Environment variables are loaded without the WANDERER_ prefix (e.g., `DISCORD_BOT_TOKEN` instead of `WANDERER_DISCORD_BOT_TOKEN`)
-- Configuration layers: `config/config.exs` (compile-time) → `config/runtime.exs` (runtime with env vars)
-- Local development uses `.env` file via Dotenvy
-- **WebSocket Configuration**: `WEBSOCKET_URL` (default: "ws://host.docker.internal:4004") for killmail processing
-- **WandererKills Configuration**: `WANDERER_KILLS_URL` (default: "http://host.docker.internal:4004")
-- **SSE Configuration**: Automatically configured from MAP_URL/MAP_NAME/MAP_API_KEY for real-time map events
-- **Discord Configuration**: `DISCORD_BOT_TOKEN` and `DISCORD_APPLICATION_ID` required for slash commands
-- **Core Services**: Killmail processing via WebSocket and map synchronization via SSE are always enabled
-
-### Testing Approach
-- Heavy use of Mox for behavior-based mocking
-- Test modules follow the same structure as implementation modules
-- Mock implementations in `test/support/mocks/`
-- Fixture data in `test/support/fixtures/`
-- **Test Coverage Progress**: Significantly improved from 19.5% to 150+ comprehensive tests
-- **Test Suite Status**: Reduced failures from 185 → 10 (94.6% improvement)
-- **Infrastructure Testing**: Complete test coverage for HTTP client, cache system, license service
-- **Integration Tests**: Full flow testing from WebSocket/SSE to Discord delivery
-- **Unit Tests**: Comprehensive testing of individual modules and functions with proper mocking
+Key domains: `killmail/`, `tracking/`, `notifications/`, `license/` under `lib/wanderer_notifier/domains/`.
 
 ## Development Standards
 
 ### Quality Gates (Mandatory)
+
 Every code change must pass these quality checks before committing:
 1. **`make compile`** - No compilation errors allowed
 2. **`make test`** - All tests must pass (100%)
 3. **`mix credo --strict`** - No credo issues allowed
 4. **`mix dialyzer`** - No dialyzer warnings allowed
 
+Run all at once: `./scripts/validate-quality.sh`
+
 ### Commit Standards
-- **Frequency**: Minimum 2-3 commits per day, ideally after each task completion
-- **Message format**: `[Sprint X.Y] Description of change`  
-- **Never**: Leave broken code uncommitted overnight
+- **Message format**: `[Sprint X.Y] Description of change`
 - **Quality first**: Fix all quality issues before continuing to next task
 
-### Development Environment Setup
-
-#### Option 1: Dev Container (Recommended)
-1. Install [Remote - Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open the repository in VS Code
-3. When prompted, reopen the project in the container
-4. All dependencies and tools are pre-configured
-
-#### Option 2: Local Development
-```bash
-# Clone and setup
-git clone https://github.com/yourusername/wanderer-notifier.git
-cd wanderer-notifier
-make deps.get
-cp .env.example .env
-# Edit .env with your configuration
-make compile
-make s  # Interactive shell
-```
-
-### Debugging and Development Commands
-```bash
-# Interactive Development
-make s
-# In IEx:
-iex> WandererNotifier.Config.discord_channel_id()
-iex> :observer.start()  # GUI monitoring tool
-
-# Check configuration
-iex> WandererNotifier.Config.validate_all()
-
-# Inspect cache state  
-iex> Cachex.stats(:wanderer_cache)
-
-# Monitor connections
-iex> GenServer.call(WandererNotifier.Killmail.WebSocketClient, :status)
-iex> GenServer.call(WandererNotifier.Map.SSEClient, :status)
-```
-
-### Architecture Evolution Status
-The codebase has completed major reorganization phases and architecture simplification:
-
-### Completed Major Phases ✅
-- **Sprint 1-3**: Foundation, shared utilities, and infrastructure consolidation ✅
-- **Sprint 4+**: Core application layer with `ApplicationService` consolidation ✅
-- **Infrastructure Unification**: Single HTTP client and cache module ✅
-- **Domain Organization**: All business domains properly structured ✅
-- **Context Layer**: Cross-domain coordination added ✅
-- **Real-Time Integration**: Advanced SSE client with monitoring ✅
-- **Architecture Simplification (2024-08)**: Removed over-engineered abstractions and simplified core systems ✅
-
-### Recent Simplification Improvements ✅
-- **Dependency System**: Replaced 3 complex DI systems with single function-based resolver
-- **Context Layer Removal**: Eliminated unnecessary abstraction layer (ProcessingContext, ApiContext)
-- **Application Service**: Simplified from complex 340+ line GenServer to focused coordinator
-- **Configuration**: Removed macro-based system for direct Application.get_env access
-- **Directory Cleanup**: Removed 10+ empty domain directories and unused abstractions
-- **Unused Dependencies Removed**: Cleaned up mix.exs by removing decimal, slipstream, crontab, and ecto
-- **Cache Modularization**: Extracted cache key generation and TTL config into dedicated modules
-- **License Domain Refactoring**: Split into license_validator.ex (pure functions) and license_client.ex (HTTP)
-- **Discord Helpers**: Added channel_resolver.ex and enrichment_helper.ex for cleaner separation
-- **Quality**: All tests passing, credo clean, full compilation success
-
-### Current Architecture State
-The application now represents a mature, production-ready architecture with:
-- Simplified `SimpleApplicationService` with focused responsibilities
-- Multi-phase initialization system for reliable startup
-- Function-based dependency injection without GenServer overhead
-- Advanced real-time data integration via SSE
-- Unified infrastructure with simplified HTTP and cache systems
-- Clean, maintainable codebase with reduced complexity
+### Testing Approach
+- Heavy use of Mox for behavior-based mocking
+- Test modules follow the same structure as implementation modules
+- Mock implementations in `test/support/mocks/`
+- Fixture data in `test/support/fixtures/`
 
 ## Important Patterns
 
-### Error Handling
+See [docs/references/patterns.md](docs/references/patterns.md) for error handling, HTTP client usage, and caching strategy details.
+
+Key rules:
 - Functions return `{:ok, result}` or `{:error, reason}` tuples
-- Use pattern matching for control flow
-- Errors are logged via centralized Logger module
-- **Exception**: Simple boolean predicates (functions ending in `?`) may return `boolean()` directly when used for straightforward validation checks. Examples: `license_key_present?/0`, `bot_token_assigned?/0`, `should_use_dev_mode?/0`
+- All HTTP requests go through `WandererNotifier.Infrastructure.Http`
+- Cache access via `WandererNotifier.Infrastructure.Cache`
+- Boolean predicates (functions ending in `?`) may return `boolean()` directly
 
-### HTTP Client Usage (Unified Infrastructure)
-All HTTP requests go through the unified `WandererNotifier.Infrastructure.Http` module which provides:
-- Service-specific configurations with predefined settings
-- Built-in authentication support (Bearer tokens, API keys)
-- Automatic retries with exponential backoff
-- Rate limiting enforced per service
-- Middleware pipeline: Telemetry → RateLimiter → Retry → CircuitBreaker
-- Consistent error handling
+## Configuration
 
-Example usage:
-```elixir
-# Http.request(method, url, body, headers, opts)
-Http.request(:get, url, nil, [], service: :esi)
-Http.request(:post, url, body, [], service: :wanderer_kills, auth: [type: :bearer, token: token])
+See [docs/references/configuration.md](docs/references/configuration.md) for environment variables, feature flags, corporation kill focus, and notification timing.
 
-# Convenience methods
-Http.get(url, [], service: :esi)
+Key points:
+- Environment variables loaded without the WANDERER_ prefix
+- Configuration layers: `config/config.exs` (compile-time) -> `config/runtime.exs` (runtime)
+- Local development uses `.env` file via Dotenvy
+- Features toggled via `_ENABLED` environment variables
 
-# POST with authentication — Http.post(url, body, headers, opts)
-Http.post(url, body, [],
-  service: :license,
-  auth: [type: :bearer, token: api_token]
-)
+## Skills
 
-# With custom options
-Http.get(url, [], [
-  service: :wanderer_kills,
-  timeout: 20_000,
-  retry_count: 5
-])
-```
-
-Service configurations:
-- `:esi` - 30s timeout, 3 retries, 20 req/s rate limit
-- `:wanderer_kills` - 15s timeout, 2 retries, 10 req/s rate limit  
-- `:license` - 10s timeout, 1 retry, 1 req/s rate limit
-- `:map` - 45s timeout, 2 retries, no rate limit
-- `:streaming` - Infinite timeout, no retries, no middleware
-
-### Caching Strategy (Unified Infrastructure)
-Direct cache access via `WandererNotifier.Infrastructure.Cache` with supporting modules:
-- **Cache.Keys** (`cache/keys.ex`): Centralized key generation with consistent patterns
-- **Cache.TtlConfig** (`cache/ttl_config.ex`): TTL configuration for different data types
-- **Cache.Deduplication** (`cache/deduplication.ex`): Notification deduplication logic
-
-Default TTL values (configurable via TtlConfig):
-- Character/corporation/alliance data: 24-hour TTL
-- System information: 1-hour TTL
-- Notification deduplication: 30-minute window
-
-Example usage:
-```elixir
-# Domain-specific helpers with automatic key generation
-Cache.get_character(character_id)
-Cache.put_system(system_id, system_data)
-Cache.get_killmail(killmail_id)
-
-# Generic operations with TTL
-Cache.get("custom:key")
-Cache.put("custom:key", value, :timer.hours(1))
-
-# Key generation via Cache.Keys module
-Cache.Keys.character(character_id)  # => "esi:character:123"
-Cache.Keys.system(system_id)        # => "esi:system:456"
-```
-
-### Feature Flags
-
-Features can be toggled via environment variables ending in `_ENABLED`:
-
-- `NOTIFICATIONS_ENABLED` - Master toggle for all notifications (default: true)
-- `KILL_NOTIFICATIONS_ENABLED` - Enable/disable kill notifications (default: true)
-- `SYSTEM_NOTIFICATIONS_ENABLED` - Enable/disable system notifications (default: true)
-- `CHARACTER_NOTIFICATIONS_ENABLED` - Enable/disable character notifications (default: true)
-- `STATUS_MESSAGES_ENABLED` - Enable/disable startup status messages (default: false)
-- `TRACK_KSPACE_ENABLED` - Enable/disable K-Space system tracking (default: true)
-- `PRIORITY_SYSTEMS_ONLY_ENABLED` - Only send notifications for priority systems (default: false)
-- `WORMHOLE_ONLY_KILL_NOTIFICATIONS_ENABLED` - Only send kill notifications for wormhole systems (default: false)
-
-### Corporation Kill Focus
-
-- `CORPORATION_KILL_FOCUS` - Comma-separated list of corporation IDs for focused kill routing. When set, kills involving characters from these corporations (as victim or attacker) will:
-  - Be routed to the **character kill channel** (or default channel if not configured)
-  - Be **excluded** from the system kill channel
-  - This is useful for tracking your own corporation's kills separately from general system activity
-
-### Notification Timing Configuration
-
-Control when notifications are sent based on timing:
-
-- `STARTUP_SUPPRESSION_SECONDS` - Suppress all notifications for this many seconds after startup (default: 30)
-- `MAX_KILLMAIL_AGE_SECONDS` - Maximum age of killmails to notify about in seconds (default: 3600 / 1 hour)
-  - Prevents notifications for old killmails when the service starts or reconnects
-  - Killmails older than this threshold will be silently skipped
-  - This works in addition to startup suppression for better control
+- **Quality check**: `.claude/skills/quality-check/SKILL.md` — Run all 4 quality gates
+- **Release**: `.claude/skills/release/SKILL.md` — Version bump and deployment workflow

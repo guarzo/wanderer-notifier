@@ -14,7 +14,6 @@ repomix.*
 /.fetch
 chart-service/node_modules/
 priv/data/invGroups.csv
-.claude
 # Crash dumps and archives
 erl_crash.dump
 *.ez
@@ -24,6 +23,12 @@ erl_crash.dump
 
 # Application config secrets (should not be committed)
 config/*.secret.exs
+config/runtime_backup.exs
+
+# Credentials and keys
+*.pem
+*.key
+credentials*
 
 # Environment and tool files
 .env

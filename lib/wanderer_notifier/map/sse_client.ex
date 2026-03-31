@@ -394,9 +394,11 @@ defmodule WandererNotifier.Map.SSEClient do
 
   # Private Functions
 
-  defp format_error_type(reason) when is_tuple(reason) do
+  defp format_error_type(reason) when is_tuple(reason) and tuple_size(reason) > 0 do
     reason |> elem(0) |> to_string() |> String.replace("_", " ")
   end
+
+  defp format_error_type(reason) when is_tuple(reason), do: inspect(reason)
 
   defp format_error_type(reason) when is_atom(reason) do
     reason |> to_string() |> String.replace("_", " ")
