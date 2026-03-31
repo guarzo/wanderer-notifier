@@ -113,14 +113,16 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       {:error, {:already_started, _pid}} -> :ok
     end
 
+    # Wait for handle_continue(:initial_fetch) to complete so it doesn't
+    # race with our test setup (it can wipe test-map config/indexes).
+    :sys.get_state(WandererNotifier.Map.MapRegistry)
+
     # Ensure we use the real MapRegistry (not a mock from another test)
     Application.put_env(
       :wanderer_notifier,
       :map_registry_module,
       WandererNotifier.Map.MapRegistry
     )
-
-    ensure_test_map_config()
 
     # Clear reverse index tables so tracked entries don't leak between tests
     if :ets.info(:map_registry_system_index) != :undefined do
@@ -130,6 +132,9 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
     if :ets.info(:map_registry_character_index) != :undefined do
       :ets.delete_all_objects(:map_registry_character_index)
     end
+
+    # Insert test map config AFTER clearing tables and after GenServer init
+    ensure_test_map_config()
 
     # Ensure Cachex application is started
     case Application.ensure_all_started(:cachex) do

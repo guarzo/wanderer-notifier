@@ -272,11 +272,11 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
   @spec character_tracked?(Killmail.t()) :: {:ok, boolean()} | {:error, term()}
   defp character_tracked?(%Killmail{} = killmail) do
     victim_tracked = victim_tracked?(killmail.victim_character_id)
-    attacker_tracked = any_attacker_tracked?(killmail.attackers)
+    {attacker_tracked, matched_attacker_id} = find_tracked_attacker(killmail.attackers)
 
-    if victim_tracked or attacker_tracked do
-      Logger.debug(
-        "[Pipeline] Killmail #{killmail.killmail_id} - victim: #{victim_tracked}, attacker: #{attacker_tracked}"
+    if attacker_tracked do
+      Logger.info(
+        "[Pipeline] Attacker character #{matched_attacker_id} tracked check result: true (killmail #{killmail.killmail_id})"
       )
     end
 
@@ -287,32 +287,35 @@ defmodule WandererNotifier.Domains.Killmail.Pipeline do
 
   defp victim_tracked?(character_id) when is_integer(character_id) do
     character_id_str = Integer.to_string(character_id)
-    Logger.info("[Pipeline] Checking if victim character #{character_id_str} is tracked")
 
     tracked = character_in_index?(character_id_str)
 
-    Logger.info(
+    Logger.debug(
       "[Pipeline] Victim character #{character_id_str} tracked check result: #{tracked}"
     )
 
     tracked
   end
 
-  defp any_attacker_tracked?(nil), do: false
+  defp find_tracked_attacker(nil), do: {false, nil}
 
-  defp any_attacker_tracked?(attackers) do
-    Enum.any?(attackers, &attacker_tracked?/1)
+  defp find_tracked_attacker(attackers) do
+    Enum.reduce_while(attackers, {false, nil}, fn attacker, acc ->
+      char_id = extract_attacker_character_id(attacker)
+
+      if char_id && character_in_index?(char_id) do
+        {:halt, {true, char_id}}
+      else
+        {:cont, acc}
+      end
+    end)
   end
 
-  defp attacker_tracked?(%{"character_id" => character_id}) when is_integer(character_id) do
-    character_id |> Integer.to_string() |> character_in_index?()
-  end
+  defp extract_attacker_character_id(%{"character_id" => id}) when is_integer(id),
+    do: Integer.to_string(id)
 
-  defp attacker_tracked?(%{"character_id" => character_id}) when is_binary(character_id) do
-    character_in_index?(character_id)
-  end
-
-  defp attacker_tracked?(_), do: false
+  defp extract_attacker_character_id(%{"character_id" => id}) when is_binary(id), do: id
+  defp extract_attacker_character_id(_), do: nil
 
   defp character_in_index?(character_id_str) do
     Dependencies.map_registry().maps_tracking_character(character_id_str) != []
