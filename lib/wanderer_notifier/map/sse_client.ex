@@ -355,7 +355,7 @@ defmodule WandererNotifier.Map.SSEClient do
     Logger.error("SSE HTTP error received",
       map_slug: state.map_slug,
       error: inspect(reason),
-      error_type: elem(reason, 0) |> to_string() |> String.replace("_", " ")
+      error_type: format_error_type(reason)
     )
 
     # Connection error, schedule reconnect
@@ -364,14 +364,47 @@ defmodule WandererNotifier.Map.SSEClient do
     {:noreply, new_state}
   end
 
+  # Catch-all: prevents crash on unexpected messages (e.g. from linked processes,
+  # HTTPoison format changes, or system messages). Without this, a single
+  # unhandled message kills the GenServer and after 3 rapid restarts the
+  # supervisor gives up silently — which is how SSE dies during long uptimes.
   @impl GenServer
-  def terminate(_reason, state) do
+  def handle_info(msg, state) do
+    Logger.warning("SSE client received unhandled message",
+      map_slug: state.map_slug,
+      message: inspect(msg, limit: 200)
+    )
+
+    {:noreply, state}
+  end
+
+  @impl GenServer
+  def terminate(reason, state) do
+    Logger.info("SSE client terminating",
+      map_slug: state.map_slug,
+      reason: inspect(reason),
+      status: state.status,
+      reconnect_attempts: state.reconnect_attempts
+    )
+
     if state.connection, do: close_connection(state.connection)
     if state.reconnect_timer, do: Process.cancel_timer(state.reconnect_timer)
     :ok
   end
 
   # Private Functions
+
+  # Safely extract a human-readable error type from HTTPoison error reasons.
+  # Reasons can be tuples like {:closed, "msg"} or atoms like :timeout.
+  defp format_error_type(reason) when is_tuple(reason) do
+    reason |> elem(0) |> to_string() |> String.replace("_", " ")
+  end
+
+  defp format_error_type(reason) when is_atom(reason) do
+    reason |> to_string() |> String.replace("_", " ")
+  end
+
+  defp format_error_type(reason), do: inspect(reason)
 
   defp via_tuple(map_slug) do
     {:via, Registry, {WandererNotifier.Registry, {:sse_client, map_slug}}}
