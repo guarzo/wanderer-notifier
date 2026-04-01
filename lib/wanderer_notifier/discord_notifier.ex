@@ -466,6 +466,7 @@ defmodule WandererNotifier.DiscordNotifier do
     %{
       killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused,
+      corp_focus_enabled: MapConfig.corporation_kill_focus_enabled?(mc),
       has_tracked_system: has_tracked,
       has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
@@ -697,6 +698,7 @@ defmodule WandererNotifier.DiscordNotifier do
     %{
       killmail_id: Map.get(killmail, :killmail_id),
       involves_focused_corp: involves_focused_corporation?(killmail),
+      corp_focus_enabled: Config.corporation_kill_focus_enabled?(),
       has_tracked_system: has_tracked_system,
       has_tracked_character:
         WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
@@ -714,6 +716,30 @@ defmodule WandererNotifier.DiscordNotifier do
     )
 
     [ctx.character_channel || ctx.default_channel]
+  end
+
+  # Corp focus active, non-focused kill, tracked system+character -> system channel
+  defp select_channels(
+         %{
+           corp_focus_enabled: true,
+           involves_focused_corp: false,
+           has_tracked_system: true,
+           has_tracked_character: true,
+           wormhole_excluded: false
+         } = ctx
+       ) do
+    [ctx.system_channel || ctx.default_channel]
+  end
+
+  # Corp focus active, non-focused kill, tracked character only -> default channel
+  defp select_channels(
+         %{
+           corp_focus_enabled: true,
+           involves_focused_corp: false,
+           has_tracked_character: true
+         } = ctx
+       ) do
+    [ctx.default_channel]
   end
 
   # System tracked AND character tracked -> character channel only

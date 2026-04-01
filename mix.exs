@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: "6.0.9",
+      version: "6.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -76,7 +76,7 @@ defmodule WandererNotifier.MixProject do
       # Development & Testing
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:bunt, "~> 1.0"},
+      {:bunt, "~> 1.0", only: [:dev, :test], runtime: false},
       {:exsync, "~> 0.4", only: :dev},
       {:mox, "~> 1.2", only: :test},
       {:stream_data, "~> 1.2", only: [:dev, :test]},
@@ -105,10 +105,23 @@ defmodule WandererNotifier.MixProject do
         "credo --strict",
         "dialyzer"
       ],
+      credo: &run_credo/1,
       "test.coverage": ["coveralls.html"],
       "test.coverage.ci": ["coveralls.json"],
       "release.bump": ["version --bump patch"],
       version: "version"
     ]
+  end
+
+  # Credo's mix task doesn't start its OTP deps (bunt, jason) automatically.
+  # This alias ensures they're loaded before Credo runs.
+  defp run_credo(args) do
+    unless Code.ensure_loaded?(Bunt) do
+      Mix.Task.run("loadpaths")
+    end
+
+    {:ok, _} = Application.ensure_all_started(:bunt)
+    {:ok, _} = Application.ensure_all_started(:jason)
+    Mix.Task.run("credo", args)
   end
 end
