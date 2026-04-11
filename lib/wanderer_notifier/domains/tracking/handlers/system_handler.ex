@@ -254,7 +254,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp handle_system_removal(payload, map_slug, registry) do
-    system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
+    system_id = extract_solar_system_id(payload)
 
     Logger.debug("Removing system from cache",
       solar_system_id: Map.get(payload, "solar_system_id"),
@@ -267,42 +267,54 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     # GenericEventHandler.remove_from_cache_list/3 always returns {:ok, _}
     {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload, map_slug: map_slug)
 
-    # Also remove individual system cache entry (map-scoped)
     if system_id do
-      system_id
-      |> to_string()
-      |> then(&Cache.Keys.tracked_system(map_slug, &1))
-      |> Cache.delete()
-    end
-
-    # Update reverse index for killmail fan-out (best-effort)
-    if system_id do
-      try do
-        case registry.deindex_system(map_slug, system_id) do
-          :ok ->
-            :ok
-
-          {:ok, _} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.error("Failed to deindex system from reverse index",
-              map_slug: map_slug,
-              system_id: system_id,
-              reason: inspect(reason)
-            )
-        end
-      rescue
-        e ->
-          Logger.error("Failed to deindex system from reverse index",
-            map_slug: map_slug,
-            system_id: system_id,
-            reason: Exception.message(e)
-          )
-      end
+      delete_individual_system_cache(map_slug, system_id)
+      deindex_system_safe(registry, map_slug, system_id)
+    else
+      Logger.warning("Skipping system removal with unresolvable solar_system_id",
+        map_slug: map_slug,
+        payload: inspect(payload, limit: 200),
+        category: :api
+      )
     end
 
     {:ok, :removed}
+  end
+
+  # Resolves a valid EVE solar_system_id from a deleted_system payload. Prefers
+  # the explicit `solar_system_id` field, falls back to `id`. Returns the
+  # integer form or `nil` — nil means the upstream payload did not carry a
+  # parseable EVE system id (e.g. only a map-internal UUID was present), and
+  # the caller MUST NOT attempt to delete/deindex with the raw value, which
+  # could never match the integer keys written by the add path.
+  defp extract_solar_system_id(payload) do
+    candidate = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
+    System.normalize_solar_system_id(candidate)
+  end
+
+  defp delete_individual_system_cache(map_slug, system_id) do
+    system_id
+    |> to_string()
+    |> then(&Cache.Keys.tracked_system(map_slug, &1))
+    |> Cache.delete()
+  end
+
+  defp deindex_system_safe(registry, map_slug, system_id) do
+    case registry.deindex_system(map_slug, system_id) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      {:error, reason} -> log_deindex_error(map_slug, system_id, reason)
+    end
+  rescue
+    e -> log_deindex_error(map_slug, system_id, Exception.message(e))
+  end
+
+  defp log_deindex_error(map_slug, system_id, reason) do
+    Logger.error("Failed to deindex system from reverse index",
+      map_slug: map_slug,
+      system_id: system_id,
+      reason: inspect(reason)
+    )
   end
 
   defp system_matches?(%System{solar_system_id: sid}, system_id), do: sid == system_id

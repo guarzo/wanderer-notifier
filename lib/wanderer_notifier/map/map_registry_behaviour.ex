@@ -11,4 +11,9 @@ defmodule WandererNotifier.Map.MapRegistryBehaviour do
   @callback maps_tracking_system(String.t() | integer()) :: [term()]
   @callback maps_tracking_character(String.t() | integer()) :: [term()]
   @callback all_maps() :: [term()]
+  @callback index_system(String.t(), String.t() | integer()) :: :ok
+  @callback deindex_system(String.t(), String.t() | integer()) :: :ok
+  @callback index_character(String.t(), String.t() | integer()) :: :ok
+  @callback deindex_character(String.t(), String.t() | integer()) :: :ok
+  @callback systems_for_map(String.t()) :: [String.t()]
 end

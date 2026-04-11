@@ -159,6 +159,22 @@ defmodule WandererNotifier.Map.MapRegistry do
   end
 
   @doc """
+  Returns all system_id strings currently indexed for a specific map slug.
+
+  Used by the reconciler to compute which systems are stale (indexed for the
+  slug but no longer present in the upstream map data). O(n) over the system
+  index table; acceptable given the hourly reconcile cadence.
+  """
+  @spec systems_for_map(String.t()) :: [String.t()]
+  def systems_for_map(map_slug) when is_binary(map_slug) do
+    @system_index_table
+    |> :ets.match_object({:"$1", map_slug})
+    |> Enum.map(fn {system_key, _slug} -> system_key end)
+  rescue
+    ArgumentError -> []
+  end
+
+  @doc """
   Returns map configs that track a given character ID.
 
   Uses the reverse index for O(1) lookup. Returns an empty list

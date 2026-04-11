@@ -85,6 +85,32 @@ defmodule WandererNotifier.Domains.Tracking.Entities.SystemTest do
     end
   end
 
+  describe "normalize_solar_system_id/1" do
+    test "returns integer as-is" do
+      assert System.normalize_solar_system_id(30_000_142) == 30_000_142
+    end
+
+    test "parses integer-valued binary" do
+      assert System.normalize_solar_system_id("30000142") == 30_000_142
+    end
+
+    test "returns nil for non-integer binary (UUID)" do
+      assert System.normalize_solar_system_id("map-uuid-abc123") == nil
+    end
+
+    test "returns nil for empty binary" do
+      assert System.normalize_solar_system_id("") == nil
+    end
+
+    test "returns nil for nil" do
+      assert System.normalize_solar_system_id(nil) == nil
+    end
+
+    test "returns nil for binary with trailing garbage" do
+      assert System.normalize_solar_system_id("30000142-suffix") == nil
+    end
+  end
+
   describe "wormhole?/1" do
     test "returns true for wormhole systems with string type" do
       system =

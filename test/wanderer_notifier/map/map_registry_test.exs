@@ -78,4 +78,36 @@ defmodule WandererNotifier.Map.MapRegistryTest do
       :persistent_term.put({MapRegistry, :mode}, :api)
     end
   end
+
+  describe "systems_for_map/1" do
+    test "returns empty list for a slug with no indexed systems" do
+      assert MapRegistry.systems_for_map("empty-map") == []
+    end
+
+    test "returns indexed system ids for a specific slug" do
+      :ets.insert(@system_index_table, {"31000001", "map-a"})
+      :ets.insert(@system_index_table, {"31000002", "map-a"})
+      :ets.insert(@system_index_table, {"31000003", "map-b"})
+
+      result = MapRegistry.systems_for_map("map-a")
+
+      assert Enum.sort(result) == ["31000001", "31000002"]
+    end
+
+    test "does not include systems indexed for other slugs only" do
+      :ets.insert(@system_index_table, {"31000001", "map-a"})
+      :ets.insert(@system_index_table, {"31000002", "map-b"})
+
+      assert MapRegistry.systems_for_map("map-a") == ["31000001"]
+      assert MapRegistry.systems_for_map("map-b") == ["31000002"]
+    end
+
+    test "includes a system shared across multiple maps" do
+      :ets.insert(@system_index_table, {"31000001", "map-a"})
+      :ets.insert(@system_index_table, {"31000001", "map-b"})
+
+      assert MapRegistry.systems_for_map("map-a") == ["31000001"]
+      assert MapRegistry.systems_for_map("map-b") == ["31000001"]
+    end
+  end
 end
