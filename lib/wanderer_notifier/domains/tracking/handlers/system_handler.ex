@@ -267,17 +267,28 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     # GenericEventHandler.remove_from_cache_list/3 always returns {:ok, _}
     {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload, map_slug: map_slug)
 
-    if system_id do
-      delete_individual_system_cache(map_slug, system_id)
-      deindex_system_safe(registry, map_slug, system_id)
-    else
-      Logger.warning("Skipping system removal with unresolvable solar_system_id",
-        map_slug: map_slug,
-        payload: inspect(payload, limit: 200),
-        category: :api
-      )
-    end
+    apply_scoped_removal(system_id, payload, map_slug, registry)
+  end
 
+  # Unresolvable solar_system_id — upstream payload carried neither a valid
+  # integer nor a parseable integer-valued binary (e.g. only a map-internal
+  # UUID was present). Operating on the raw value would write bogus ETS and
+  # cache keys that can never match the integer keys written by the add
+  # path. Log and move on; the hourly Reconciler will clean up any resulting
+  # drift.
+  defp apply_scoped_removal(nil, payload, map_slug, _registry) do
+    Logger.warning("Skipping system removal with unresolvable solar_system_id",
+      map_slug: map_slug,
+      payload: inspect(payload, limit: 200),
+      category: :api
+    )
+
+    {:ok, :removed}
+  end
+
+  defp apply_scoped_removal(system_id, _payload, map_slug, registry) do
+    delete_individual_system_cache(map_slug, system_id)
+    deindex_system_safe(registry, map_slug, system_id)
     {:ok, :removed}
   end
 

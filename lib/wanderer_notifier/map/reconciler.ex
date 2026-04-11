@@ -45,7 +45,7 @@ defmodule WandererNotifier.Map.Reconciler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Domains.Tracking.Entities.System
+  alias WandererNotifier.Domains.Tracking.Entities.System, as: SystemEntity
   alias WandererNotifier.Map.MapConfig
   alias WandererNotifier.Shared.Dependencies
 
@@ -67,22 +67,62 @@ defmodule WandererNotifier.Map.Reconciler do
 
   Exposed publicly so operators can trigger a manual reconcile from IEx if
   they suspect staleness (`WandererNotifier.Map.Reconciler.reconcile_all/0`).
+
+  Accepts the same `:registry` and `:fetch_fun` options as `reconcile_map/2`
+  to make the full-tick path testable without touching application env.
   """
-  @spec reconcile_all() :: :ok
-  def reconcile_all do
-    registry = Dependencies.map_registry()
-    fetch_fun = &default_fetch/1
+  @spec reconcile_all(keyword()) :: :ok
+  def reconcile_all(opts \\ []) do
+    registry = Keyword.get(opts, :registry, Dependencies.map_registry())
+    fetch_fun = Keyword.get(opts, :fetch_fun, &default_fetch/1)
 
-    registry.all_maps()
-    |> Task.async_stream(
-      fn map_config -> safe_reconcile(map_config, registry, fetch_fun) end,
-      max_concurrency: @max_concurrency,
-      timeout: @task_timeout,
-      on_timeout: :kill_task
-    )
-    |> Stream.run()
+    maps = registry.all_maps()
+    total = length(maps)
+    start_ms = System.monotonic_time(:millisecond)
 
+    summary =
+      maps
+      |> Task.async_stream(
+        fn map_config -> safe_reconcile(map_config, registry, fetch_fun) end,
+        max_concurrency: @max_concurrency,
+        timeout: @task_timeout,
+        on_timeout: :kill_task
+      )
+      |> Enum.reduce(empty_summary(), &aggregate_task_result/2)
+
+    elapsed_ms = System.monotonic_time(:millisecond) - start_ms
+    log_summary(summary, total, elapsed_ms)
     :ok
+  end
+
+  defp empty_summary do
+    %{reconciled: 0, empty: 0, error: 0, crash: 0}
+  end
+
+  defp aggregate_task_result({:ok, {:ok, :reconciled}}, acc),
+    do: %{acc | reconciled: acc.reconciled + 1}
+
+  defp aggregate_task_result({:ok, {:ok, :skipped_empty}}, acc),
+    do: %{acc | empty: acc.empty + 1}
+
+  defp aggregate_task_result({:ok, {:error, _reason}}, acc),
+    do: %{acc | error: acc.error + 1}
+
+  defp aggregate_task_result({:exit, _reason}, acc),
+    do: %{acc | crash: acc.crash + 1}
+
+  defp log_summary(%{reconciled: rec, empty: emp, error: err, crash: crash}, total, elapsed_ms) do
+    Logger.info(
+      "Reconciler tick complete: #{rec}/#{total} reconciled, " <>
+        "#{emp} empty (skipped), #{err} errors (skipped), #{crash} crashes",
+      category: :reconcile,
+      total: total,
+      reconciled: rec,
+      empty: emp,
+      error: err,
+      crash: crash,
+      elapsed_ms: elapsed_ms
+    )
   end
 
   @doc """
@@ -230,7 +270,7 @@ defmodule WandererNotifier.Map.Reconciler do
       system["solar_system_id"] || system[:solar_system_id] ||
         system["id"] || system[:id]
 
-    case System.normalize_solar_system_id(raw) do
+    case SystemEntity.normalize_solar_system_id(raw) do
       nil -> nil
       int_id -> Integer.to_string(int_id)
     end

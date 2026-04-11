@@ -154,6 +154,40 @@ defmodule WandererNotifier.Map.ReconcilerTest do
       assert_received {:deindex, @map_slug, "31000002"}
     end
 
+    test "reconcile_all logs a summary aggregating per-map outcomes" do
+      mock_registry = WandererNotifier.MockMapRegistry
+
+      map_a = %MapConfig{slug: "map-a", name: "A", map_id: "a"}
+      map_b = %MapConfig{slug: "map-b", name: "B", map_id: "b"}
+      map_c = %MapConfig{slug: "map-c", name: "C", map_id: "c"}
+
+      stub(mock_registry, :all_maps, fn -> [map_a, map_b, map_c] end)
+      stub(mock_registry, :systems_for_map, fn _slug -> [] end)
+      stub(mock_registry, :deindex_system, fn _slug, _id -> :ok end)
+
+      # One happy path, one empty upstream, one error
+      fetch_fun = fn
+        %MapConfig{slug: "map-a"} -> {:ok, [%{"solar_system_id" => 31_000_001}]}
+        %MapConfig{slug: "map-b"} -> {:ok, []}
+        %MapConfig{slug: "map-c"} -> {:error, :timeout}
+      end
+
+      log =
+        capture_log(fn ->
+          assert :ok =
+                   Reconciler.reconcile_all(
+                     registry: mock_registry,
+                     fetch_fun: fetch_fun
+                   )
+        end)
+
+      assert log =~ "Reconciler tick complete"
+      assert log =~ "1/3 reconciled"
+      assert log =~ "1 empty"
+      assert log =~ "1 errors"
+      assert log =~ "0 crashes"
+    end
+
     test "ignores fresh systems without a parseable solar_system_id" do
       test_pid = self()
       mock_registry = WandererNotifier.MockMapRegistry
