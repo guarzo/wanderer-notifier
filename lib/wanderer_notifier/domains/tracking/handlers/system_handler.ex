@@ -254,7 +254,7 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
   end
 
   defp handle_system_removal(payload, map_slug, registry) do
-    system_id = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
+    system_id = extract_solar_system_id(payload)
 
     Logger.debug("Removing system from cache",
       solar_system_id: Map.get(payload, "solar_system_id"),
@@ -267,42 +267,75 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     # GenericEventHandler.remove_from_cache_list/3 always returns {:ok, _}
     {:ok, _} = GenericEventHandler.remove_from_cache_list(:system, payload, map_slug: map_slug)
 
-    # Also remove individual system cache entry (map-scoped)
-    if system_id do
-      system_id
-      |> to_string()
-      |> then(&Cache.Keys.tracked_system(map_slug, &1))
-      |> Cache.delete()
-    end
+    apply_scoped_removal(system_id, payload, map_slug, registry)
+  end
 
-    # Update reverse index for killmail fan-out (best-effort)
-    if system_id do
-      try do
-        case registry.deindex_system(map_slug, system_id) do
-          :ok ->
-            :ok
-
-          {:ok, _} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.error("Failed to deindex system from reverse index",
-              map_slug: map_slug,
-              system_id: system_id,
-              reason: inspect(reason)
-            )
-        end
-      rescue
-        e ->
-          Logger.error("Failed to deindex system from reverse index",
-            map_slug: map_slug,
-            system_id: system_id,
-            reason: Exception.message(e)
-          )
-      end
-    end
+  # Unresolvable solar_system_id — upstream payload carried neither a valid
+  # integer nor a parseable integer-valued binary (e.g. only a map-internal
+  # UUID was present). Operating on the raw value would write bogus ETS and
+  # cache keys that can never match the integer keys written by the add
+  # path. Log and move on; the hourly Reconciler will clean up any resulting
+  # drift.
+  defp apply_scoped_removal(nil, payload, map_slug, _registry) do
+    Logger.warning("Skipping system removal with unresolvable solar_system_id",
+      map_slug: map_slug,
+      payload: inspect(payload, limit: 200),
+      category: :api
+    )
 
     {:ok, :removed}
+  end
+
+  defp apply_scoped_removal(system_id, _payload, map_slug, registry) do
+    delete_individual_system_cache(map_slug, system_id)
+    deindex_system_safe(registry, map_slug, system_id)
+    {:ok, :removed}
+  end
+
+  # Resolves a valid EVE solar_system_id from a deleted_system payload. Tries
+  # each candidate (solar_system_id first, then id; string and atom keys for
+  # parity with the add path) and returns the first one that normalizes
+  # cleanly to an integer. Returns `nil` only when none of the candidates
+  # parse — at that point the caller MUST NOT touch ETS or the cache with
+  # the raw value, because it could never match the integer keys written by
+  # the add path.
+  #
+  # Each candidate is normalized independently so an unparseable-but-truthy
+  # value (e.g. `"solar_system_id" => ""`) does not short-circuit a valid
+  # fallback via Elixir's `||` operator.
+  defp extract_solar_system_id(payload) do
+    [
+      Map.get(payload, "solar_system_id"),
+      Map.get(payload, :solar_system_id),
+      Map.get(payload, "id"),
+      Map.get(payload, :id)
+    ]
+    |> Enum.find_value(&System.normalize_solar_system_id/1)
+  end
+
+  defp delete_individual_system_cache(map_slug, system_id) do
+    system_id
+    |> to_string()
+    |> then(&Cache.Keys.tracked_system(map_slug, &1))
+    |> Cache.delete()
+  end
+
+  defp deindex_system_safe(registry, map_slug, system_id) do
+    case registry.deindex_system(map_slug, system_id) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      {:error, reason} -> log_deindex_error(map_slug, system_id, reason)
+    end
+  rescue
+    e -> log_deindex_error(map_slug, system_id, Exception.message(e))
+  end
+
+  defp log_deindex_error(map_slug, system_id, reason) do
+    Logger.error("Failed to deindex system from reverse index",
+      map_slug: map_slug,
+      system_id: system_id,
+      reason: inspect(reason)
+    )
   end
 
   defp system_matches?(%System{solar_system_id: sid}, system_id), do: sid == system_id

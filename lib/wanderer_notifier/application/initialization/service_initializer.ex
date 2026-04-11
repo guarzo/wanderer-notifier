@@ -174,6 +174,10 @@ defmodule WandererNotifier.Application.Initialization.ServiceInitializer do
       # SSE clients for map tracking
       {WandererNotifier.Map.SSESupervisor, []},
 
+      # Hourly reconciliation of the per-map system reverse index against
+      # upstream — safety net for lost SSE delete events
+      {WandererNotifier.Map.Reconciler, []},
+
       # Background schedulers
       {WandererNotifier.Application.Supervisors.Schedulers.Supervisor, []}
     ]

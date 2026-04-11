@@ -76,19 +76,29 @@ defmodule WandererNotifier.Domains.Tracking.Entities.System do
   # Extract system ID from various possible keys
   defp extract_system_id(attrs) do
     system_id = attrs["solar_system_id"] || attrs[:solar_system_id] || attrs["id"] || attrs[:id]
-    normalize_system_id(system_id)
+    normalize_solar_system_id(system_id)
   end
 
-  defp normalize_system_id(id) when is_integer(id), do: id
+  @doc """
+  Normalizes a solar system ID to an integer.
 
-  defp normalize_system_id(id) when is_binary(id) do
+  Accepts integers (passed through) or binaries that parse cleanly to an
+  integer. Returns `nil` for anything else — including UUID-style binaries,
+  empty strings, or binaries with trailing garbage. This is intentionally
+  strict so callers on the removal path do not silently operate with
+  non-EVE identifiers as keys.
+  """
+  @spec normalize_solar_system_id(term()) :: integer() | nil
+  def normalize_solar_system_id(id) when is_integer(id), do: id
+
+  def normalize_solar_system_id(id) when is_binary(id) do
     case Integer.parse(id, 10) do
       {int_id, ""} -> int_id
       _ -> nil
     end
   end
 
-  defp normalize_system_id(_), do: nil
+  def normalize_solar_system_id(_), do: nil
 
   # Extract name field (no fallback to :id)
   defp extract_name_field(attrs) do

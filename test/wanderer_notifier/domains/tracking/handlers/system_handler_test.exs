@@ -295,6 +295,121 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       assert Enum.empty?(updated_systems)
       assert {:error, :not_found} = Cache.get_tracked_system(@map_slug, "31000001")
     end
+
+    test "deindexes with normalized integer solar_system_id, not UUID id" do
+      test_pid = self()
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :index_system, fn _slug, _id -> :ok end)
+
+      stub(mock, :deindex_system, fn map_slug, system_id ->
+        send(test_pid, {:deindex_called, map_slug, system_id})
+        :ok
+      end)
+
+      original = Application.get_env(:wanderer_notifier, :map_registry_module)
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:wanderer_notifier, :map_registry_module, original)
+        else
+          Application.delete_env(:wanderer_notifier, :map_registry_module)
+        end
+      end)
+
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "id" => "map-uuid-abc123",
+          "solar_system_id" => 31_000_001
+        }
+      }
+
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
+
+      # Key sent to deindex must be the normalized integer, NOT the UUID
+      assert_received {:deindex_called, @map_slug, 31_000_001}
+      refute_received {:deindex_called, @map_slug, "map-uuid-abc123"}
+    end
+
+    test "falls through blank solar_system_id to a valid id fallback" do
+      test_pid = self()
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :index_system, fn _slug, _id -> :ok end)
+
+      stub(mock, :deindex_system, fn map_slug, system_id ->
+        send(test_pid, {:deindex_called, map_slug, system_id})
+        :ok
+      end)
+
+      original = Application.get_env(:wanderer_notifier, :map_registry_module)
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:wanderer_notifier, :map_registry_module, original)
+        else
+          Application.delete_env(:wanderer_notifier, :map_registry_module)
+        end
+      end)
+
+      # Blank solar_system_id (truthy, so a naive `||` short-circuits and
+      # never consults the valid `id` fallback) — the fix must normalize
+      # each candidate separately and pick the first non-nil.
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "solar_system_id" => "",
+          "id" => 31_000_001
+        }
+      }
+
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
+
+      assert_received {:deindex_called, @map_slug, 31_000_001}
+    end
+
+    test "skips deindex and warns when payload has only an unparseable id" do
+      test_pid = self()
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :index_system, fn _slug, _id -> :ok end)
+
+      stub(mock, :deindex_system, fn map_slug, system_id ->
+        send(test_pid, {:deindex_called, map_slug, system_id})
+        :ok
+      end)
+
+      original = Application.get_env(:wanderer_notifier, :map_registry_module)
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:wanderer_notifier, :map_registry_module, original)
+        else
+          Application.delete_env(:wanderer_notifier, :map_registry_module)
+        end
+      end)
+
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "id" => "map-uuid-abc123"
+        }
+      }
+
+      log =
+        capture_log(fn ->
+          assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
+        end)
+
+      # No deindex should have been attempted — the UUID is not a valid EVE system id
+      refute_received {:deindex_called, _, _}
+      # Should have logged a warning so the bad upstream payload is visible
+      assert log =~ "unresolvable solar_system_id"
+    end
   end
 
   describe "handle_entity_added/2" do
