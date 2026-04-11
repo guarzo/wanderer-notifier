@@ -333,6 +333,44 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandlerTest do
       refute_received {:deindex_called, @map_slug, "map-uuid-abc123"}
     end
 
+    test "falls through blank solar_system_id to a valid id fallback" do
+      test_pid = self()
+      mock = WandererNotifier.MockMapRegistry
+
+      stub(mock, :index_system, fn _slug, _id -> :ok end)
+
+      stub(mock, :deindex_system, fn map_slug, system_id ->
+        send(test_pid, {:deindex_called, map_slug, system_id})
+        :ok
+      end)
+
+      original = Application.get_env(:wanderer_notifier, :map_registry_module)
+      Application.put_env(:wanderer_notifier, :map_registry_module, mock)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:wanderer_notifier, :map_registry_module, original)
+        else
+          Application.delete_env(:wanderer_notifier, :map_registry_module)
+        end
+      end)
+
+      # Blank solar_system_id (truthy, so a naive `||` short-circuits and
+      # never consults the valid `id` fallback) — the fix must normalize
+      # each candidate separately and pick the first non-nil.
+      event = %{
+        "type" => "deleted_system",
+        "payload" => %{
+          "solar_system_id" => "",
+          "id" => 31_000_001
+        }
+      }
+
+      assert :ok = SystemHandler.handle_entity_removed(event, @map_slug)
+
+      assert_received {:deindex_called, @map_slug, 31_000_001}
+    end
+
     test "skips deindex and warns when payload has only an unparseable id" do
       test_pid = self()
       mock = WandererNotifier.MockMapRegistry

@@ -292,15 +292,25 @@ defmodule WandererNotifier.Domains.Tracking.Handlers.SystemHandler do
     {:ok, :removed}
   end
 
-  # Resolves a valid EVE solar_system_id from a deleted_system payload. Prefers
-  # the explicit `solar_system_id` field, falls back to `id`. Returns the
-  # integer form or `nil` — nil means the upstream payload did not carry a
-  # parseable EVE system id (e.g. only a map-internal UUID was present), and
-  # the caller MUST NOT attempt to delete/deindex with the raw value, which
-  # could never match the integer keys written by the add path.
+  # Resolves a valid EVE solar_system_id from a deleted_system payload. Tries
+  # each candidate (solar_system_id first, then id; string and atom keys for
+  # parity with the add path) and returns the first one that normalizes
+  # cleanly to an integer. Returns `nil` only when none of the candidates
+  # parse — at that point the caller MUST NOT touch ETS or the cache with
+  # the raw value, because it could never match the integer keys written by
+  # the add path.
+  #
+  # Each candidate is normalized independently so an unparseable-but-truthy
+  # value (e.g. `"solar_system_id" => ""`) does not short-circuit a valid
+  # fallback via Elixir's `||` operator.
   defp extract_solar_system_id(payload) do
-    candidate = Map.get(payload, "solar_system_id") || Map.get(payload, "id")
-    System.normalize_solar_system_id(candidate)
+    [
+      Map.get(payload, "solar_system_id"),
+      Map.get(payload, :solar_system_id),
+      Map.get(payload, "id"),
+      Map.get(payload, :id)
+    ]
+    |> Enum.find_value(&System.normalize_solar_system_id/1)
   end
 
   defp delete_individual_system_cache(map_slug, system_id) do
