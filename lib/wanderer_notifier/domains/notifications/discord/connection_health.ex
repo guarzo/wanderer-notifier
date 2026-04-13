@@ -238,7 +238,9 @@ defmodule WandererNotifier.Domains.Notifications.Discord.ConnectionHealth do
 
   @impl true
   def handle_cast({:record_failed_killmail, killmail_id, reason}, state) do
-    # Only add to failed_kills list, don't affect counters (NeoClient handles those)
+    # Only add to failed_kills list, don't affect counters.
+    # Health counters are recorded separately via record_success/record_failure
+    # at the send site (discord_notifier.ex send_to_discord_for_map).
     new_state = %{
       state
       | failed_kills: add_failed_kill(state.failed_kills, killmail_id, reason)
