@@ -24,6 +24,9 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
 
   @discord_embed_key_map Map.new(@discord_embed_keys, fn key -> {key, String.to_atom(key)} end)
 
+  @max_retries 2
+  @initial_retry_delay_ms 500
+
   @type embed :: map()
   @type channel_id :: String.t() | integer()
   @type bot_token :: String.t()
@@ -78,37 +81,66 @@ defmodule WandererNotifier.Domains.Notifications.Discord.HttpClient do
     defaults = [service: :discord, rate_limit: [bucket_key: token_bucket_key(bot_token)]]
     opts = Keyword.merge(defaults, caller_opts)
 
-    case Http.request(:post, url, payload, headers, opts) do
-      {:ok, %{status_code: status}} when status in 200..299 ->
-        {:ok, :sent}
+    do_send_with_retry(url, payload, headers, opts, channel_id, _attempt = 0)
+  end
 
-      {:ok, %{status_code: 429, body: body}} ->
-        retry_after = extract_retry_after(body)
+  defp do_send_with_retry(url, payload, headers, opts, channel_id, attempt) do
+    result = Http.request(:post, url, payload, headers, opts)
 
-        Logger.warning("Discord rate limited",
-          channel_id: channel_id,
-          retry_after: retry_after
-        )
+    case handle_response(result, channel_id) do
+      {:retry, reason} when attempt < @max_retries ->
+        delay = retry_delay(attempt)
+        log_retry(channel_id, reason, attempt)
+        Process.sleep(delay)
+        do_send_with_retry(url, payload, headers, opts, channel_id, attempt + 1)
 
-        {:error, {:rate_limited, retry_after}}
-
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.error("Discord API error",
-          status: status,
-          channel_id: channel_id,
-          body: inspect(body)
-        )
-
-        {:error, {:discord_api_error, status}}
-
-      {:error, reason} ->
-        Logger.error("Discord request failed",
-          channel_id: channel_id,
-          error: inspect(reason)
-        )
-
+      {:retry, reason} ->
+        log_exhausted(channel_id, reason)
         {:error, reason}
+
+      final ->
+        final
     end
+  end
+
+  defp handle_response({:ok, %{status_code: status}}, _channel_id) when status in 200..299 do
+    {:ok, :sent}
+  end
+
+  defp handle_response({:ok, %{status_code: 429, body: body}}, channel_id) do
+    retry_after = extract_retry_after(body)
+    Logger.warning("Discord rate limited", channel_id: channel_id, retry_after: retry_after)
+    {:error, {:rate_limited, retry_after}}
+  end
+
+  defp handle_response({:ok, %{status_code: status, body: body}}, channel_id) do
+    Logger.error("Discord API error", status: status, channel_id: channel_id, body: inspect(body))
+    {:error, {:discord_api_error, status}}
+  end
+
+  defp handle_response({:error, reason}, _channel_id) do
+    {:retry, reason}
+  end
+
+  defp log_retry(channel_id, reason, attempt) do
+    Logger.warning("Discord transport error, retrying",
+      channel_id: channel_id,
+      error: inspect(reason),
+      attempt: attempt + 1,
+      max_retries: @max_retries,
+      retry_in_ms: retry_delay(attempt)
+    )
+  end
+
+  defp log_exhausted(channel_id, reason) do
+    Logger.error("Discord request failed after #{@max_retries} retries",
+      channel_id: channel_id,
+      error: inspect(reason)
+    )
+  end
+
+  defp retry_delay(attempt) do
+    trunc(@initial_retry_delay_ms * :math.pow(2, attempt))
   end
 
   defp extract_retry_after(%{"retry_after" => seconds}) when is_number(seconds), do: seconds
