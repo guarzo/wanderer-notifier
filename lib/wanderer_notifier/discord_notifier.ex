@@ -299,8 +299,9 @@ defmodule WandererNotifier.DiscordNotifier do
   defp record_failed_kill(nil, _reason), do: {:ok, :recorded}
 
   defp record_failed_kill(killmail_id, reason) do
-    # Use record_failed_killmail to add to the failed kills list without affecting counters
-    # (NeoClient already records the failure/timeout for health metrics)
+    # Use record_failed_killmail to add to the failed kills list without affecting counters.
+    # Health counters (total_successes, total_failures) are tracked per-channel-send
+    # in send_to_discord_for_map via ConnectionHealth.record_success/record_failure.
     case ConnectionHealth.record_failed_killmail(killmail_id, reason) do
       {:ok, _} ->
         {:ok, :recorded}
