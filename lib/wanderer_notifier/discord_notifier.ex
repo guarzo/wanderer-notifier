@@ -14,6 +14,7 @@ defmodule WandererNotifier.DiscordNotifier do
 
   require Logger
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
   alias WandererNotifier.Domains.Notifications.Formatters.NotificationFormatter
   alias WandererNotifier.Domains.Notifications.Notifiers.Discord.NeoClient
   alias WandererNotifier.Infrastructure.Adapters.Discord.VoiceParticipants
@@ -298,8 +299,6 @@ defmodule WandererNotifier.DiscordNotifier do
   defp record_failed_kill(nil, _reason), do: {:ok, :recorded}
 
   defp record_failed_kill(killmail_id, reason) do
-    alias WandererNotifier.Domains.Notifications.Discord.ConnectionHealth
-
     # Use record_failed_killmail to add to the failed kills list without affecting counters
     # (NeoClient already records the failure/timeout for health metrics)
     case ConnectionHealth.record_failed_killmail(killmail_id, reason) do
@@ -583,6 +582,8 @@ defmodule WandererNotifier.DiscordNotifier do
 
     case result do
       {:ok, :sent} ->
+        ConnectionHealth.record_success()
+
         Logger.info("Discord notification sent for map #{mc.slug}",
           channel: channel_id,
           map_slug: mc.slug
@@ -591,6 +592,8 @@ defmodule WandererNotifier.DiscordNotifier do
         {:ok, :sent}
 
       {:error, reason} ->
+        ConnectionHealth.record_failure(reason)
+
         Logger.error("Discord notification failed for map #{mc.slug}",
           channel: channel_id,
           map_slug: mc.slug,
