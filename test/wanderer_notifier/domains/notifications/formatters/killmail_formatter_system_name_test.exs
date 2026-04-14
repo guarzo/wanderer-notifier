@@ -212,7 +212,7 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       assert result.title =~ "J567890"
     end
 
-    test "custom_name takes priority over temporary_name" do
+    test "temporary_name takes priority over custom_name" do
       system_id = 31_000_006
 
       # Cache system with both names
@@ -221,14 +221,14 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatterSys
       |> Cache.put_tracked_system(%{
         "solar_system_id" => system_id,
         "solar_system_name" => "J678901",
-        "custom_name" => "Primary Name",
-        "temporary_name" => "Secondary Name"
+        "custom_name" => "Secondary Name",
+        "temporary_name" => "Primary Name"
       })
 
       killmail = build_killmail(system_id, "J678901", 12_350)
       result = KillmailFormatter.format(killmail, use_custom_system_name: true)
 
-      # Should use custom_name, not temporary_name, in title
+      # Should use temporary_name, not custom_name, in title
       assert result.title =~ "Primary Name"
       refute result.title =~ "Secondary Name"
     end

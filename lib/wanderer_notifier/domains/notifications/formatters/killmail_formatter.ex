@@ -565,13 +565,13 @@ defmodule WandererNotifier.Domains.Notifications.Formatters.KillmailFormatter do
     temp_name = Map.get(system_data, "temporary_name")
 
     cond do
-      custom_name && custom_name != "" ->
-        log_custom_name(system_id_string, custom_name, killmail)
-        custom_name
-
       temp_name && temp_name != "" ->
         log_temp_name(system_id_string, temp_name, killmail)
         temp_name
+
+      custom_name && custom_name != "" ->
+        log_custom_name(system_id_string, custom_name, killmail)
+        custom_name
 
       true ->
         log_no_custom_name(system_id_string, system_data, killmail)
