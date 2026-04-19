@@ -412,7 +412,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
   end
 
   defp retry_failed_maps(maps, attempt) do
-    maps = filter_live_maps(maps)
+    maps = fetch_fresh_configs(maps)
 
     if maps == [] do
       Logger.info("All previously failed maps have been removed from registry, skipping retry",
@@ -432,12 +432,15 @@ defmodule WandererNotifier.Map.SSESupervisor do
     end
   end
 
-  defp filter_live_maps(maps) do
-    live_slugs =
-      Dependencies.map_registry().all_maps()
-      |> MapSet.new(& &1.slug)
+  defp fetch_fresh_configs(maps) do
+    registry = Dependencies.map_registry()
 
-    Enum.filter(maps, &MapSet.member?(live_slugs, &1.slug))
+    Enum.flat_map(maps, fn map ->
+      case registry.get_map(map.slug) do
+        {:ok, fresh_config} -> [fresh_config]
+        {:error, _} -> []
+      end
+    end)
   end
 
   defp attempt_map_initialization(maps) do
