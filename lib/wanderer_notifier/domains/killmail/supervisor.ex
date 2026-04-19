@@ -136,9 +136,21 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   defp start_websocket_client do
     Logger.info("Starting WebSocket client", category: :processor)
 
-    case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
+    child_spec = %{
+      id: WandererNotifier.Domains.Killmail.WebSocketClient,
+      start: {WandererNotifier.Domains.Killmail.WebSocketClient, :start_link, [[]]},
+      restart: :permanent,
+      shutdown: 5000,
+      type: :worker
+    }
+
+    case Supervisor.start_child(__MODULE__.InternalSupervisor, child_spec) do
       {:ok, pid} ->
         Logger.info("WebSocket client started successfully", pid: inspect(pid))
+        {:ok, pid}
+
+      {:error, {:already_started, pid}} ->
+        Logger.info("WebSocket client already running", pid: inspect(pid))
         {:ok, pid}
 
       {:error, reason} ->

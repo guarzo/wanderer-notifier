@@ -211,6 +211,8 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     # Schedule retry for failed maps
     schedule_failed_map_retries(failed_maps, 1)
+
+    :ok
   end
 
   defp run_parallel_init(maps) do
@@ -377,6 +379,8 @@ defmodule WandererNotifier.Map.SSESupervisor do
       map_slugs: slugs,
       category: :startup
     )
+
+    :ok
   end
 
   defp schedule_failed_map_retries(failed_maps, attempt) do
@@ -389,18 +393,54 @@ defmodule WandererNotifier.Map.SSESupervisor do
       category: :startup
     )
 
-    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-      Process.sleep(delay)
-      retry_failed_maps(failed_maps, attempt)
-    end)
+    case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+           Process.sleep(delay)
+           retry_failed_maps(failed_maps, attempt)
+         end) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to schedule map initialization retry",
+          attempt: attempt,
+          reason: inspect(reason),
+          category: :startup
+        )
+
+        :ok
+    end
   end
 
   defp retry_failed_maps(maps, attempt) do
-    Logger.info("Retrying initialization for #{length(maps)} map(s)",
-      attempt: attempt,
-      category: :startup
-    )
+    maps = filter_live_maps(maps)
 
+    if maps == [] do
+      Logger.info("All previously failed maps have been removed from registry, skipping retry",
+        attempt: attempt,
+        category: :startup
+      )
+
+      :ok
+    else
+      Logger.info("Retrying initialization for #{length(maps)} map(s)",
+        attempt: attempt,
+        category: :startup
+      )
+
+      failed_maps = attempt_map_initialization(maps)
+      schedule_failed_map_retries(failed_maps, attempt + 1)
+    end
+  end
+
+  defp filter_live_maps(maps) do
+    live_slugs =
+      Dependencies.map_registry().all_maps()
+      |> MapSet.new(& &1.slug)
+
+    Enum.filter(maps, &MapSet.member?(live_slugs, &1.slug))
+  end
+
+  defp attempt_map_initialization(maps) do
     results = Enum.map(maps, fn map -> {map, initialize_and_start_for_map(map)} end)
 
     {succeeded, still_failed} =
@@ -411,8 +451,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
       Logger.info("Map initialization retry succeeded", map_slugs: slugs, category: :startup)
     end
 
-    failed_maps = Enum.map(still_failed, fn {map, _} -> map end)
-    schedule_failed_map_retries(failed_maps, attempt + 1)
+    Enum.map(still_failed, fn {map, _} -> map end)
   end
 
   defp calculate_init_retry_delay(attempt) do
