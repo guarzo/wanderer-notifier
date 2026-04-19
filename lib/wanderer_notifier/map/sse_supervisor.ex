@@ -13,6 +13,10 @@ defmodule WandererNotifier.Map.SSESupervisor do
   alias WandererNotifier.Map.{Initializer, MapConfig, SSEClient}
   alias WandererNotifier.Shared.Dependencies
 
+  @max_init_retries 5
+  @initial_retry_delay 10_000
+  @max_retry_delay 60_000
+
   @doc """
   Starts the SSE supervisor.
   """
@@ -197,13 +201,16 @@ defmodule WandererNotifier.Map.SSESupervisor do
     maps = Dependencies.map_registry().all_maps()
     Logger.info("Initializing #{length(maps)} maps from registry", category: :startup)
 
-    successful_maps = run_parallel_init(maps)
+    {successful_maps, failed_maps} = run_parallel_init(maps)
 
     # Signal PipelineWorker
     signal_pipeline_worker()
 
     # Start SSE clients only for successfully initialized maps
     start_sse_clients_staggered(successful_maps)
+
+    # Schedule retry for failed maps
+    schedule_failed_map_retries(failed_maps, 1)
   end
 
   defp run_parallel_init(maps) do
@@ -223,6 +230,7 @@ defmodule WandererNotifier.Map.SSESupervisor do
     log_initialization_failures(failed)
 
     successful_maps = Enum.map(succeeded, fn {{:ok, {map, _}}, _} -> map end)
+    failed_maps = extract_failed_maps(failed)
 
     if failed != [] do
       Logger.warning(
@@ -232,7 +240,14 @@ defmodule WandererNotifier.Map.SSESupervisor do
       )
     end
 
-    successful_maps
+    {successful_maps, failed_maps}
+  end
+
+  defp extract_failed_maps(failed_items) do
+    Enum.flat_map(failed_items, fn
+      {%MapConfig{} = mc, _reason} -> [mc]
+      _ -> []
+    end)
   end
 
   defp partition_init_results(results) do
@@ -346,6 +361,65 @@ defmodule WandererNotifier.Map.SSESupervisor do
   @spec initialize_map_data_safely(MapConfig.t()) :: {:ok, :initialized} | {:error, term()}
   defp initialize_map_data_safely(%MapConfig{} = map_config) do
     Initializer.initialize_map_data_for(map_config)
+  end
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Retry Logic for Failed Map Initialization
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  defp schedule_failed_map_retries([], _attempt), do: :ok
+
+  defp schedule_failed_map_retries(failed_maps, attempt) when attempt > @max_init_retries do
+    slugs = Enum.map(failed_maps, & &1.slug)
+
+    Logger.error(
+      "Giving up on map initialization after #{@max_init_retries} retries",
+      map_slugs: slugs,
+      category: :startup
+    )
+  end
+
+  defp schedule_failed_map_retries(failed_maps, attempt) do
+    delay = calculate_init_retry_delay(attempt)
+    slugs = Enum.map(failed_maps, & &1.slug)
+
+    Logger.info(
+      "Scheduling retry #{attempt}/#{@max_init_retries} for #{length(failed_maps)} failed map(s) in #{delay}ms",
+      map_slugs: slugs,
+      category: :startup
+    )
+
+    Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
+      Process.sleep(delay)
+      retry_failed_maps(failed_maps, attempt)
+    end)
+  end
+
+  defp retry_failed_maps(maps, attempt) do
+    Logger.info("Retrying initialization for #{length(maps)} map(s)",
+      attempt: attempt,
+      category: :startup
+    )
+
+    {still_failed, newly_succeeded} =
+      Enum.split_with(maps, fn map ->
+        case initialize_and_start_for_map(map) do
+          {:ok, _pid} -> false
+          {:error, _} -> true
+        end
+      end)
+
+    if newly_succeeded != [] do
+      slugs = Enum.map(newly_succeeded, & &1.slug)
+      Logger.info("Map initialization retry succeeded", map_slugs: slugs, category: :startup)
+    end
+
+    schedule_failed_map_retries(still_failed, attempt + 1)
+  end
+
+  defp calculate_init_retry_delay(attempt) do
+    delay = @initial_retry_delay * Integer.pow(2, min(attempt - 1, 10))
+    min(delay, @max_retry_delay)
   end
 
   # ──────────────────────────────────────────────────────────────────────────────
