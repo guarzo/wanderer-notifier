@@ -207,10 +207,10 @@ defmodule WandererNotifier.Map.SSESupervisor do
     signal_pipeline_worker()
 
     # Start SSE clients only for successfully initialized maps
-    start_sse_clients_staggered(successful_maps)
+    failed_sse_maps = start_sse_clients_staggered(successful_maps)
 
-    # Schedule retry for failed maps
-    schedule_failed_map_retries(failed_maps, 1)
+    # Schedule retry for all failures (data init + SSE startup)
+    schedule_failed_map_retries(failed_maps ++ failed_sse_maps, 1)
 
     :ok
   end
@@ -303,7 +303,9 @@ defmodule WandererNotifier.Map.SSESupervisor do
   defp start_sse_clients_staggered(maps) do
     results =
       maps
-      |> Task.async_stream(&start_sse_client_for_map/1,
+      |> Enum.map(fn map -> {map, nil} end)
+      |> Task.async_stream(
+        fn {map, _} -> {map, start_sse_client_for_map(map)} end,
         max_concurrency: 5,
         timeout: 30_000
       )
@@ -311,16 +313,21 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     {succeeded, failed} =
       Enum.split_with(results, fn
-        {:ok, {:ok, _pid}} -> true
+        {:ok, {_map, {:ok, _pid}}} -> true
         _ -> false
       end)
 
+    log_sse_startup_results(succeeded, failed, length(maps))
+    extract_failed_sse_maps(failed)
+  end
+
+  defp log_sse_startup_results(succeeded, failed, total) do
     succeeded_count = length(succeeded)
     failed_count = length(failed)
 
     if failed_count > 0 do
       Enum.each(failed, fn
-        {:ok, {:error, reason}} ->
+        {:ok, {_map, {:error, reason}}} ->
           Logger.warning("SSE client startup failed", reason: inspect(reason))
 
         {:exit, reason} ->
@@ -331,12 +338,19 @@ defmodule WandererNotifier.Map.SSESupervisor do
       end)
 
       Logger.warning(
-        "SSE client startup: #{succeeded_count} succeeded, #{failed_count} failed out of #{length(maps)}",
+        "SSE client startup: #{succeeded_count} succeeded, #{failed_count} failed out of #{total}",
         category: :startup
       )
     else
       Logger.info("Started #{succeeded_count} SSE clients", category: :startup)
     end
+  end
+
+  defp extract_failed_sse_maps(failed_results) do
+    Enum.flat_map(failed_results, fn
+      {:ok, {%MapConfig{} = mc, {:error, _}}} -> [mc]
+      _ -> []
+    end)
   end
 
   defp start_sse_client_for_map(%MapConfig{} = map_config) do
@@ -395,7 +409,8 @@ defmodule WandererNotifier.Map.SSESupervisor do
 
     case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
            Process.sleep(delay)
-           retry_failed_maps(failed_maps, attempt)
+           fresh_maps = fetch_fresh_configs(failed_maps)
+           retry_failed_maps(fresh_maps, attempt)
          end) do
       {:ok, _pid} ->
         :ok
@@ -411,25 +426,23 @@ defmodule WandererNotifier.Map.SSESupervisor do
     end
   end
 
+  defp retry_failed_maps([], attempt) do
+    Logger.info("All previously failed maps have been removed from registry, skipping retry",
+      attempt: attempt,
+      category: :startup
+    )
+
+    :ok
+  end
+
   defp retry_failed_maps(maps, attempt) do
-    maps = fetch_fresh_configs(maps)
+    Logger.info("Retrying initialization for #{length(maps)} map(s)",
+      attempt: attempt,
+      category: :startup
+    )
 
-    if maps == [] do
-      Logger.info("All previously failed maps have been removed from registry, skipping retry",
-        attempt: attempt,
-        category: :startup
-      )
-
-      :ok
-    else
-      Logger.info("Retrying initialization for #{length(maps)} map(s)",
-        attempt: attempt,
-        category: :startup
-      )
-
-      failed_maps = attempt_map_initialization(maps)
-      schedule_failed_map_retries(failed_maps, attempt + 1)
-    end
+    failed_maps = attempt_map_initialization(maps)
+    schedule_failed_map_retries(failed_maps, attempt + 1)
   end
 
   defp fetch_fresh_configs(maps) do
