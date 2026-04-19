@@ -90,7 +90,7 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
           category: :processor
         )
 
-        schedule_websocket_retry(state, 0)
+        {:noreply, schedule_websocket_retry(state, 0)}
     end
   end
 
@@ -107,16 +107,16 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
         {:noreply, Map.delete(state, :ws_retry_attempts)}
 
       {:error, reason} ->
-        delay = calculate_retry_delay(attempts + 1)
+        new_attempts = attempts + 1
 
         Logger.warning("WebSocket client retry failed, will retry again",
           reason: inspect(reason),
-          attempt: attempts + 1,
-          retry_in_ms: delay,
+          attempt: new_attempts,
+          retry_in_ms: calculate_retry_delay(new_attempts),
           category: :processor
         )
 
-        schedule_websocket_retry(state, attempts + 1)
+        {:noreply, schedule_websocket_retry(state, new_attempts)}
     end
   end
 
@@ -152,9 +152,8 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   end
 
   defp schedule_websocket_retry(state, attempts) do
-    delay = calculate_retry_delay(attempts)
-    Process.send_after(self(), :retry_websocket, delay)
-    {:noreply, Map.put(state, :ws_retry_attempts, attempts)}
+    Process.send_after(self(), :retry_websocket, calculate_retry_delay(attempts))
+    Map.put(state, :ws_retry_attempts, attempts)
   end
 
   defp calculate_retry_delay(attempts) do

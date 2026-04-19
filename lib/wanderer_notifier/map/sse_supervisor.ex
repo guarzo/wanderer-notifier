@@ -401,20 +401,18 @@ defmodule WandererNotifier.Map.SSESupervisor do
       category: :startup
     )
 
-    {still_failed, newly_succeeded} =
-      Enum.split_with(maps, fn map ->
-        case initialize_and_start_for_map(map) do
-          {:ok, _pid} -> false
-          {:error, _} -> true
-        end
-      end)
+    results = Enum.map(maps, fn map -> {map, initialize_and_start_for_map(map)} end)
 
-    if newly_succeeded != [] do
-      slugs = Enum.map(newly_succeeded, & &1.slug)
+    {succeeded, still_failed} =
+      Enum.split_with(results, fn {_map, result} -> match?({:ok, _}, result) end)
+
+    if succeeded != [] do
+      slugs = Enum.map(succeeded, fn {map, _} -> map.slug end)
       Logger.info("Map initialization retry succeeded", map_slugs: slugs, category: :startup)
     end
 
-    schedule_failed_map_retries(still_failed, attempt + 1)
+    failed_maps = Enum.map(still_failed, fn {map, _} -> map end)
+    schedule_failed_map_retries(failed_maps, attempt + 1)
   end
 
   defp calculate_init_retry_delay(attempt) do
