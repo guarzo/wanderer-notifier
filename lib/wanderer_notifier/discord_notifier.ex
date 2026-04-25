@@ -708,7 +708,7 @@ defmodule WandererNotifier.DiscordNotifier do
       has_tracked_character:
         WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
       wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
-      system_kill_excluded: false,
+      system_kill_excluded: has_tracked_system && Config.system_excluded?(system_id),
       default_channel: Config.discord_channel_id(),
       system_channel: Config.discord_system_kill_channel_id(),
       character_channel: Config.discord_character_kill_channel_id()

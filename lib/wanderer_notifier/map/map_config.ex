@@ -387,7 +387,7 @@ defmodule WandererNotifier.Map.MapConfig do
         [val]
 
       val when is_binary(val) ->
-        case Integer.parse(val) do
+        case val |> String.trim() |> Integer.parse() do
           {int, ""} -> [int]
           _ -> []
         end

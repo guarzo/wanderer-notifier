@@ -134,6 +134,19 @@ defmodule WandererNotifier.Shared.Config do
     corporation_kill_focus() != []
   end
 
+  @doc "Get list of system IDs excluded from system-kill notifications"
+  def system_exclude_list do
+    Application.get_env(:wanderer_notifier, :system_exclude_list, [])
+  end
+
+  @doc "Check whether a system ID is in the system-kill exclude list"
+  def system_excluded?(system_id) do
+    case WandererNotifier.Shared.Utils.EntityUtils.normalize_id(system_id) do
+      nil -> false
+      int -> int in system_exclude_list()
+    end
+  end
+
   # ──────────────────────────────────────────────────────────────────────────────
   # Notable Items Configuration
   # ──────────────────────────────────────────────────────────────────────────────

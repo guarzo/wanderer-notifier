@@ -18,38 +18,44 @@ defmodule WandererNotifier.Map.MapConfigTest do
 
   describe "system_exclude_list/1" do
     test "returns the configured list" do
-      assert MapConfig.system_exclude_list(config_with_excludes([30_000_142, 30_002_187])) ==
-               [30_000_142, 30_002_187]
+      config = config_with_excludes([30_000_142, 30_002_187])
+      assert MapConfig.system_exclude_list(config) == [30_000_142, 30_002_187]
     end
 
     test "returns an empty list when none configured" do
-      assert MapConfig.system_exclude_list(config_with_excludes([])) == []
+      config = config_with_excludes([])
+      assert MapConfig.system_exclude_list(config) == []
     end
   end
 
   describe "system_excluded?/2" do
-    test "returns true when integer system id matches" do
-      assert MapConfig.system_excluded?(config_with_excludes([30_000_142]), 30_000_142)
+    setup do
+      {:ok, config: config_with_excludes([30_000_142])}
     end
 
-    test "returns false when integer system id does not match" do
-      refute MapConfig.system_excluded?(config_with_excludes([30_000_142]), 30_002_187)
+    test "returns true when integer system id matches", %{config: config} do
+      assert MapConfig.system_excluded?(config, 30_000_142)
     end
 
-    test "returns true when binary system id matches a configured integer" do
-      assert MapConfig.system_excluded?(config_with_excludes([30_000_142]), "30000142")
+    test "returns false when integer system id does not match", %{config: config} do
+      refute MapConfig.system_excluded?(config, 30_002_187)
     end
 
-    test "returns false for non-numeric binary system ids" do
-      refute MapConfig.system_excluded?(config_with_excludes([30_000_142]), "not-a-number")
+    test "returns true when binary system id matches a configured integer", %{config: config} do
+      assert MapConfig.system_excluded?(config, "30000142")
     end
 
-    test "returns false for nil system id" do
-      refute MapConfig.system_excluded?(config_with_excludes([30_000_142]), nil)
+    test "returns false for non-numeric binary system ids", %{config: config} do
+      refute MapConfig.system_excluded?(config, "not-a-number")
+    end
+
+    test "returns false for nil system id", %{config: config} do
+      refute MapConfig.system_excluded?(config, nil)
     end
 
     test "returns false when exclude list is empty" do
-      refute MapConfig.system_excluded?(config_with_excludes([]), 30_000_142)
+      config = config_with_excludes([])
+      refute MapConfig.system_excluded?(config, 30_000_142)
     end
   end
 
@@ -60,12 +66,12 @@ defmodule WandererNotifier.Map.MapConfigTest do
         "name" => "Alpha",
         "map_id" => "alpha-id",
         "settings" => %{
-          "system_exclude_list" => [30_000_142, "30002187", "not-a-number", nil]
+          "system_exclude_list" => [30_000_142, "30002187", " 30003456 ", "not-a-number", nil]
         }
       }
 
       assert {:ok, %MapConfig{} = config} = MapConfig.from_api(data)
-      assert config.settings.system_exclude_list == [30_000_142, 30_002_187]
+      assert config.settings.system_exclude_list == [30_000_142, 30_002_187, 30_003_456]
     end
   end
 end
