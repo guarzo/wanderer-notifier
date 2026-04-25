@@ -708,6 +708,7 @@ defmodule WandererNotifier.DiscordNotifier do
       has_tracked_character:
         WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
       wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
+      system_kill_excluded: false,
       default_channel: Config.discord_channel_id(),
       system_channel: Config.discord_system_kill_channel_id(),
       character_channel: Config.discord_character_kill_channel_id()
@@ -741,9 +742,7 @@ defmodule WandererNotifier.DiscordNotifier do
   end
 
   # Excluded system, no tracked character -> drop
-  defp select_channels(
-         %{system_kill_excluded: true, wormhole_excluded: false} = ctx
-       ) do
+  defp select_channels(%{system_kill_excluded: true, wormhole_excluded: false} = ctx) do
     Logger.info("Kill in excluded system dropped (no tracked character)",
       killmail_id: ctx.killmail_id
     )

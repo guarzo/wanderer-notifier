@@ -8,6 +8,7 @@ defmodule WandererNotifier.Map.MapConfig do
   """
 
   alias WandererNotifier.Shared.Config
+  alias WandererNotifier.Shared.Utils.EntityUtils
 
   @type discord_channels :: %{
           primary: String.t() | nil,
@@ -256,15 +257,10 @@ defmodule WandererNotifier.Map.MapConfig do
   Returns true when the given system ID is in the map's system-kill exclude list.
   """
   @spec system_excluded?(t(), integer() | binary() | nil) :: boolean()
-  def system_excluded?(_, nil), do: false
-
-  def system_excluded?(%__MODULE__{} = config, id) when is_integer(id),
-    do: id in system_exclude_list(config)
-
-  def system_excluded?(%__MODULE__{} = config, id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int, ""} -> system_excluded?(config, int)
-      _ -> false
+  def system_excluded?(%__MODULE__{} = config, id) do
+    case EntityUtils.normalize_id(id) do
+      nil -> false
+      int -> int in system_exclude_list(config)
     end
   end
 
