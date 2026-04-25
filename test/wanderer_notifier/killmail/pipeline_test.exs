@@ -665,4 +665,96 @@ defmodule WandererNotifier.Domains.Killmail.PipelineTest do
       assert {:ok, "90007"} = result
     end
   end
+
+  describe "process_killmail with system exclude list" do
+    # NOTE: System exclusion is handled at the Discord channel routing level
+    # in DiscordNotifier (see MapConfig.system_excluded?/2 + select_channels/1
+    # clauses), not in the pipeline. The pipeline still processes all tracked
+    # killmails; exclusion only affects which Discord channel receives the
+    # notification. These tests verify the pipeline keeps processing kills
+    # regardless of the system_exclude_list configuration.
+
+    setup do
+      original_exclude = Application.get_env(:wanderer_notifier, :system_exclude_list)
+      original_suppression = Application.get_env(:wanderer_notifier, :startup_suppression_seconds)
+
+      on_exit(fn ->
+        Application.put_env(:wanderer_notifier, :system_exclude_list, original_exclude)
+
+        Application.put_env(
+          :wanderer_notifier,
+          :startup_suppression_seconds,
+          original_suppression
+        )
+      end)
+
+      track_system(31_000_001)
+      :ok
+    end
+
+    test "process_killmail/1 processes kills even when system is in exclude list" do
+      Application.put_env(:wanderer_notifier, :system_exclude_list, [31_000_001])
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 91_001,
+        "zkb" => %{"hash" => "sys_exclude_hash1", "totalValue" => 1_000_000},
+        "solar_system_id" => 31_000_001,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 98_000_001,
+          "ship_type_id" => 670
+        },
+        "attackers" => [
+          %{"character_id" => 200, "corporation_id" => 98_000_002}
+        ]
+      }
+
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, "91001"} = result
+    end
+
+    test "process_killmail/1 processes kills when system is NOT in exclude list" do
+      Application.put_env(:wanderer_notifier, :system_exclude_list, [30_000_142])
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 91_002,
+        "zkb" => %{"hash" => "sys_exclude_hash2", "totalValue" => 1_000_000},
+        "solar_system_id" => 31_000_001,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 98_000_001,
+          "ship_type_id" => 670
+        },
+        "attackers" => []
+      }
+
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, "91002"} = result
+    end
+
+    test "process_killmail/1 processes all kills when exclude list is empty" do
+      Application.put_env(:wanderer_notifier, :system_exclude_list, [])
+      Application.put_env(:wanderer_notifier, :startup_suppression_seconds, 0)
+
+      zkb_data = %{
+        "killmail_id" => 91_003,
+        "zkb" => %{"hash" => "sys_exclude_hash3", "totalValue" => 1_000_000},
+        "solar_system_id" => 31_000_001,
+        "kill_time" => TimeUtils.to_iso8601(TimeUtils.now()),
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 98_000_001,
+          "ship_type_id" => 670
+        },
+        "attackers" => []
+      }
+
+      result = Pipeline.process_killmail(zkb_data)
+      assert {:ok, "91003"} = result
+    end
+  end
 end

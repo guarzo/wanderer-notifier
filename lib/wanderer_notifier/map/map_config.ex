@@ -43,7 +43,7 @@ defmodule WandererNotifier.Map.MapConfig do
   @type settings_config :: %{
           corporation_kill_focus: [integer()],
           character_exclude_list: [String.t()],
-          system_exclude_list: [String.t()]
+          system_exclude_list: [integer()]
         }
 
   @type t :: %__MODULE__{
@@ -247,6 +247,28 @@ defmodule WandererNotifier.Map.MapConfig do
   end
 
   @doc """
+  Gets the list of system IDs excluded from system-kill notifications for this map.
+  """
+  @spec system_exclude_list(t()) :: [integer()]
+  def system_exclude_list(%__MODULE__{settings: %{system_exclude_list: list}}), do: list
+
+  @doc """
+  Returns true when the given system ID is in the map's system-kill exclude list.
+  """
+  @spec system_excluded?(t(), integer() | binary() | nil) :: boolean()
+  def system_excluded?(_, nil), do: false
+
+  def system_excluded?(%__MODULE__{} = config, id) when is_integer(id),
+    do: id in system_exclude_list(config)
+
+  def system_excluded?(%__MODULE__{} = config, id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int, ""} -> system_excluded?(config, int)
+      _ -> false
+    end
+  end
+
+  @doc """
   Checks if notifications are fully enabled for a given type.
 
   Short-circuits on global ENV flags first (so an API map cannot re-enable
@@ -346,7 +368,7 @@ defmodule WandererNotifier.Map.MapConfig do
     %{
       corporation_kill_focus: parse_integer_list(data["corporation_kill_focus"]),
       character_exclude_list: parse_string_list(data["character_exclude_list"]),
-      system_exclude_list: parse_string_list(data["system_exclude_list"])
+      system_exclude_list: parse_integer_list(data["system_exclude_list"])
     }
   end
 

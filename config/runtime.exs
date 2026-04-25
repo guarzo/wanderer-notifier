@@ -239,7 +239,8 @@ config :wanderer_notifier,
   # Lists
   character_exclude_list:
     RuntimeConfig.parse_list(RuntimeConfig.get_env("CHARACTER_EXCLUDE_LIST", "")),
-  system_exclude_list: RuntimeConfig.parse_list(RuntimeConfig.get_env("SYSTEM_EXCLUDE_LIST", "")),
+  system_exclude_list:
+    RuntimeConfig.parse_numeric_id_list(RuntimeConfig.get_env("SYSTEM_EXCLUDE_LIST", "")),
   corporation_kill_focus:
     RuntimeConfig.parse_numeric_id_list(RuntimeConfig.get_env("CORPORATION_KILL_FOCUS", "")),
 

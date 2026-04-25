@@ -138,6 +138,14 @@ Control which notifications are sent and which are filtered out.
 |----------|-------------|---------|
 | `CHARACTER_EXCLUDE_LIST` | Character IDs to exclude from tracking | `12345678,87654321` |
 
+### System Kill Exclusion
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SYSTEM_EXCLUDE_LIST` | System IDs to exclude from system-kill notifications | `30000142,30002187` |
+
+> When set, kills in these systems are dropped from the **system kill channel**. If a tracked character is involved in the kill, it is still routed to the **character kill channel**. Useful for silencing noisy hubs (e.g., Jita) without losing kill notifications for your own pilots.
+
 ---
 
 ## Service URLs
