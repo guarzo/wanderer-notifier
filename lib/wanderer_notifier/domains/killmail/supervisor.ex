@@ -13,6 +13,9 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   use GenServer
   require Logger
 
+  @initial_retry_delay 5_000
+  @max_retry_delay 60_000
+
   @doc """
   Starts the Killmail Supervisor.
   """
@@ -76,21 +79,44 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
 
   @impl true
   def handle_continue(:start_websocket, state) do
-    # Start WebSocket client using TaskSupervisor for proper crash propagation
-    case Task.Supervisor.start_child(WandererNotifier.TaskSupervisor, fn ->
-           start_websocket_client()
-         end) do
+    case start_websocket_client() do
       {:ok, _pid} ->
         {:noreply, state}
 
       {:error, reason} ->
-        Logger.error("Failed to start WebSocket client task",
+        Logger.warning("WebSocket client failed to start, scheduling retry",
           reason: inspect(reason),
+          retry_in_ms: @initial_retry_delay,
           category: :processor
         )
 
-        # Continue running - the fallback handler will provide HTTP-based access
-        {:noreply, state}
+        {:noreply, schedule_websocket_retry(state, 0)}
+    end
+  end
+
+  @impl true
+  def handle_info(:retry_websocket, state) do
+    attempts = Map.get(state, :ws_retry_attempts, 0)
+
+    case start_websocket_client() do
+      {:ok, _pid} ->
+        Logger.info("WebSocket client started after #{attempts + 1} retry attempt(s)",
+          category: :processor
+        )
+
+        {:noreply, Map.delete(state, :ws_retry_attempts)}
+
+      {:error, reason} ->
+        new_attempts = attempts + 1
+
+        Logger.warning("WebSocket client retry failed, will retry again",
+          reason: inspect(reason),
+          attempt: new_attempts,
+          retry_in_ms: calculate_retry_delay(new_attempts),
+          category: :processor
+        )
+
+        {:noreply, schedule_websocket_retry(state, new_attempts)}
     end
   end
 
@@ -108,19 +134,42 @@ defmodule WandererNotifier.Domains.Killmail.Supervisor do
   # ──────────────────────────────────────────────────────────────────────────────
 
   defp start_websocket_client do
-    Logger.info("Starting WebSocket client via TaskSupervisor", category: :processor)
+    Logger.info("Starting WebSocket client", category: :processor)
 
-    case WandererNotifier.Domains.Killmail.WebSocketClient.start_link() do
+    child_spec = %{
+      id: WandererNotifier.Domains.Killmail.WebSocketClient,
+      start: {WandererNotifier.Domains.Killmail.WebSocketClient, :start_link, [[]]},
+      restart: :permanent,
+      shutdown: 5000,
+      type: :worker
+    }
+
+    case Supervisor.start_child(__MODULE__.InternalSupervisor, child_spec) do
       {:ok, pid} ->
         Logger.info("WebSocket client started successfully", pid: inspect(pid))
         {:ok, pid}
 
+      {:error, {:already_started, pid}} ->
+        Logger.info("WebSocket client already running", pid: inspect(pid))
+        {:ok, pid}
+
       {:error, reason} ->
-        Logger.warning("WebSocket client failed to start, will be handled by fallback",
-          reason: inspect(reason)
+        Logger.warning("WebSocket client failed to start",
+          reason: inspect(reason),
+          category: :processor
         )
 
         {:error, reason}
     end
+  end
+
+  defp schedule_websocket_retry(state, attempts) do
+    Process.send_after(self(), :retry_websocket, calculate_retry_delay(attempts))
+    Map.put(state, :ws_retry_attempts, attempts)
+  end
+
+  defp calculate_retry_delay(attempts) do
+    delay = @initial_retry_delay * Integer.pow(2, min(attempts, 10))
+    min(delay, @max_retry_delay)
   end
 end
