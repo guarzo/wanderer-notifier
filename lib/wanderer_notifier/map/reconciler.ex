@@ -162,11 +162,13 @@ defmodule WandererNotifier.Map.Reconciler do
     * `{:ok, :reconciled}` - fetch succeeded, diff was applied.
     * `{:ok, :skipped_empty}` - upstream returned an empty list; state
       intentionally left unchanged.
+    * `{:ok, :skipped_malformed}` - upstream returned a non-empty list whose
+      entries all failed id normalization; state intentionally left unchanged.
     * `{:error, reason}` - upstream fetch failed; state intentionally left
       unchanged.
   """
   @spec reconcile_map(MapConfig.t(), keyword()) ::
-          {:ok, :reconciled | :skipped_empty} | {:error, term()}
+          {:ok, :reconciled | :skipped_empty | :skipped_malformed} | {:error, term()}
   def reconcile_map(%MapConfig{} = map_config, opts \\ []) do
     registry = Keyword.get(opts, :registry, Dependencies.map_registry())
     fetch_fun = Keyword.get(opts, :fetch_fun, &default_fetch/1)
@@ -213,7 +215,7 @@ defmodule WandererNotifier.Map.Reconciler do
 
       {:ok, :skipped_malformed}
     else
-      prune_stale_systems(map_config, registry, fresh_id_set)
+      reconcile_systems(map_config, registry, fresh_id_set)
       {:ok, :reconciled}
     end
   end
@@ -283,7 +285,7 @@ defmodule WandererNotifier.Map.Reconciler do
   # killmails for that system are silently dropped until process restart.
   # The reconciler is the ONLY safety net that runs post-startup, so it
   # MUST repair gaps in both directions.
-  defp prune_stale_systems(%MapConfig{slug: slug}, registry, fresh_id_set) do
+  defp reconcile_systems(%MapConfig{slug: slug}, registry, fresh_id_set) do
     current_ids = slug |> registry.systems_for_map() |> MapSet.new()
     stale_ids = MapSet.difference(current_ids, fresh_id_set)
     missing_ids = MapSet.difference(fresh_id_set, current_ids)
