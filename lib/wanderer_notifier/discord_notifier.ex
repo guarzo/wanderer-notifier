@@ -470,6 +470,7 @@ defmodule WandererNotifier.DiscordNotifier do
       has_tracked_system: has_tracked,
       has_tracked_character: has_tracked_char,
       wormhole_excluded: has_tracked and map_wormhole_only_excluded?(mc, system_id),
+      system_kill_excluded: has_tracked and MapConfig.system_excluded?(mc, system_id),
       default_channel: valid_channel_id(MapConfig.channel_for(mc, :primary)),
       system_channel: valid_channel_id(MapConfig.channel_for(mc, :system_kill)),
       character_channel: valid_channel_id(MapConfig.channel_for(mc, :character_kill))
@@ -707,6 +708,7 @@ defmodule WandererNotifier.DiscordNotifier do
       has_tracked_character:
         WandererNotifier.Domains.Notifications.Determiner.has_tracked_character?(killmail),
       wormhole_excluded: has_tracked_system && wormhole_excluded?(system_id),
+      system_kill_excluded: has_tracked_system && Config.system_excluded?(system_id),
       default_channel: Config.discord_channel_id(),
       system_channel: Config.discord_system_kill_channel_id(),
       character_channel: Config.discord_character_kill_channel_id()
@@ -720,6 +722,32 @@ defmodule WandererNotifier.DiscordNotifier do
     )
 
     [ctx.character_channel || ctx.default_channel]
+  end
+
+  # Excluded system but a tracked character is involved -> character channel
+  # (Wormhole-only filter is stricter; if wormhole_excluded is true, fall through
+  # to the wormhole-excluded clause below which drops the kill.)
+  defp select_channels(
+         %{
+           system_kill_excluded: true,
+           has_tracked_character: true,
+           wormhole_excluded: false
+         } = ctx
+       ) do
+    Logger.info("Kill in excluded system but tracked character involved -> character channel",
+      killmail_id: ctx.killmail_id
+    )
+
+    [ctx.character_channel || ctx.default_channel]
+  end
+
+  # Excluded system, no tracked character -> drop
+  defp select_channels(%{system_kill_excluded: true, wormhole_excluded: false} = ctx) do
+    Logger.info("Kill in excluded system dropped (no tracked character)",
+      killmail_id: ctx.killmail_id
+    )
+
+    []
   end
 
   # Corp focus active, non-focused kill, tracked system+character -> system channel
