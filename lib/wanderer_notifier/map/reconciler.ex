@@ -13,15 +13,22 @@ defmodule WandererNotifier.Map.Reconciler do
 
   If an SSE event is lost — e.g. a client dies silently during a long uptime
   (see commit cfe85c5c), a reconnect window drops an event, or the upstream
-  misses a delete — the reverse index becomes permanently stale and the
-  pipeline keeps fanning killmail notifications out to maps that no longer
-  track the system. Users see "ghost" kill notifications for systems that
-  were removed from their map, sometimes more than a day after removal.
+  misses a delete — the reverse index becomes permanently out of sync. Two
+  failure modes follow:
 
-  This reconciler closes that gap by re-fetching the authoritative system
-  list from the map API every hour and pruning any reverse-index entries
-  that are no longer present upstream. It is intentionally a safety net, not
-  a replacement for SSE delta events — those remain the fast path.
+    * Lost `deleted_system` event → reverse index keeps a ghost entry; the
+      pipeline keeps fanning killmail notifications out to a map that no
+      longer tracks the system.
+    * Lost `add_system` event → reverse index is missing a real entry; the
+      WebSocket subscription never includes the new system, and killmails
+      for it are silently dropped until process restart.
+
+  This reconciler closes both gaps by re-fetching the authoritative system
+  list from the map API every 15 minutes and reconciling the reverse index
+  in BOTH directions: deindexing entries upstream no longer reports AND
+  indexing entries upstream reports that the local index is missing. It is
+  intentionally a safety net, not a replacement for SSE delta events —
+  those remain the fast path.
 
   ## Safety properties
 
@@ -32,9 +39,16 @@ defmodule WandererNotifier.Map.Reconciler do
       empty list for any reason (transient bug, caching proxy returning stale
       200s, etc.) the reconcile is skipped for that map and existing state
       is preserved. A warning is logged.
+    * **Malformed responses never clobber state.** If upstream returns a
+      non-empty list whose entries all fail id normalization, the reconcile
+      is skipped and existing state is preserved.
     * **Errors never clobber state.** If the upstream returns an error
       (timeout, 5xx, connection refused) the reconcile is skipped for that
       map and existing state is preserved. A warning is logged.
+    * **Two-way repair.** When the upstream response is valid, the reverse
+      index is reconciled in both directions: stale entries are deindexed
+      AND missing entries are indexed. A one-way reconciler can only repair
+      lost-delete events; lost-add events would persist until restart.
     * **Per-map isolation.** Reconciles run under `Task.async_stream` with a
       concurrency cap; a failure on one map does not affect any other.
     * **Systems-only.** Character tracking is not reconciled — character
@@ -49,7 +63,7 @@ defmodule WandererNotifier.Map.Reconciler do
   alias WandererNotifier.Map.MapConfig
   alias WandererNotifier.Shared.Dependencies
 
-  @reconcile_interval :timer.hours(1)
+  @reconcile_interval :timer.minutes(15)
   @max_concurrency 5
   @task_timeout :timer.seconds(30)
 
@@ -261,15 +275,26 @@ defmodule WandererNotifier.Map.Reconciler do
       {:error, {:exception, Exception.message(e)}}
   end
 
+  # Two-way reconciliation: deindex entries upstream no longer reports, AND
+  # index entries upstream reports that we're missing locally. Without the
+  # second direction, a single missed SSE `add_system` event (e.g. dropped
+  # during a reconnect window) leaves the reverse index permanently short
+  # the new system, the WebSocket subscription never includes it, and
+  # killmails for that system are silently dropped until process restart.
+  # The reconciler is the ONLY safety net that runs post-startup, so it
+  # MUST repair gaps in both directions.
   defp prune_stale_systems(%MapConfig{slug: slug}, registry, fresh_id_set) do
     current_ids = slug |> registry.systems_for_map() |> MapSet.new()
     stale_ids = MapSet.difference(current_ids, fresh_id_set)
+    missing_ids = MapSet.difference(fresh_id_set, current_ids)
     stale_count = MapSet.size(stale_ids)
+    missing_count = MapSet.size(missing_ids)
 
-    if stale_count > 0 do
-      Logger.info("Reconciler: pruning stale systems from reverse index",
+    if stale_count > 0 or missing_count > 0 do
+      Logger.info("Reconciler: repairing reverse index drift",
         map_slug: slug,
         stale_count: stale_count,
+        missing_count: missing_count,
         current_count: MapSet.size(current_ids),
         fresh_count: MapSet.size(fresh_id_set),
         category: :reconcile
@@ -277,6 +302,7 @@ defmodule WandererNotifier.Map.Reconciler do
     end
 
     Enum.each(stale_ids, &deindex_one_safe(registry, slug, &1))
+    Enum.each(missing_ids, &index_one_safe(registry, slug, &1))
   end
 
   # Defensive deindex wrapper. The real MapRegistry.deindex_system/2 always
@@ -298,6 +324,28 @@ defmodule WandererNotifier.Map.Reconciler do
   defp log_deindex_failure(slug, system_id, reason) do
     Logger.warning(
       "Reconciler: failed to deindex stale system — continuing with remaining ids",
+      map_slug: slug,
+      system_id: system_id,
+      reason: inspect(reason),
+      category: :reconcile
+    )
+  end
+
+  # Symmetric to deindex_one_safe — used when the reconciler discovers a
+  # system that upstream tracks but the local reverse index is missing.
+  defp index_one_safe(registry, slug, system_id) do
+    case registry.index_system(slug, system_id) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      {:error, reason} -> log_index_failure(slug, system_id, reason)
+    end
+  rescue
+    e -> log_index_failure(slug, system_id, Exception.message(e))
+  end
+
+  defp log_index_failure(slug, system_id, reason) do
+    Logger.warning(
+      "Reconciler: failed to index missing system — continuing with remaining ids",
       map_slug: slug,
       system_id: system_id,
       reason: inspect(reason),
