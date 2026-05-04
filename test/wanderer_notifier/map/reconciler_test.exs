@@ -126,6 +126,83 @@ defmodule WandererNotifier.Map.ReconcilerTest do
       refute_received {:deindex, _, _}
     end
 
+    test "indexes systems present upstream but missing from the reverse index" do
+      test_pid = self()
+      mock_registry = WandererNotifier.MockMapRegistry
+
+      # Local index only has 31000001; upstream tracks 31000001 + 31000002
+      # The missing one (31000002) MUST be indexed — without this, lost SSE
+      # add_system events are unrecoverable until restart.
+      stub(mock_registry, :systems_for_map, fn _slug -> ["31000001"] end)
+
+      stub(mock_registry, :index_system, fn slug, system_id ->
+        send(test_pid, {:index, slug, system_id})
+        :ok
+      end)
+
+      stub(mock_registry, :deindex_system, fn slug, system_id ->
+        send(test_pid, {:deindex, slug, system_id})
+        :ok
+      end)
+
+      fetch_fun = fn _map_config ->
+        {:ok,
+         [
+           %{"solar_system_id" => 31_000_001},
+           %{"solar_system_id" => 31_000_002}
+         ]}
+      end
+
+      assert {:ok, :reconciled} =
+               Reconciler.reconcile_map(build_map_config(),
+                 registry: mock_registry,
+                 fetch_fun: fetch_fun
+               )
+
+      # 31000002 is upstream-only — it MUST be indexed
+      assert_received {:index, @map_slug, "31000002"}
+      # 31000001 is in both — must NOT be re-indexed (avoid noise) and must NOT be deindexed
+      refute_received {:index, @map_slug, "31000001"}
+      refute_received {:deindex, _, _}
+    end
+
+    test "performs both deindex and index in the same pass when both directions drift" do
+      test_pid = self()
+      mock_registry = WandererNotifier.MockMapRegistry
+
+      # Local: [a, b]; upstream: [b, c]. Should deindex a, index c.
+      stub(mock_registry, :systems_for_map, fn _slug -> ["31000001", "31000002"] end)
+
+      stub(mock_registry, :index_system, fn slug, system_id ->
+        send(test_pid, {:index, slug, system_id})
+        :ok
+      end)
+
+      stub(mock_registry, :deindex_system, fn slug, system_id ->
+        send(test_pid, {:deindex, slug, system_id})
+        :ok
+      end)
+
+      fetch_fun = fn _map_config ->
+        {:ok,
+         [
+           %{"solar_system_id" => 31_000_002},
+           %{"solar_system_id" => 31_000_003}
+         ]}
+      end
+
+      assert {:ok, :reconciled} =
+               Reconciler.reconcile_map(build_map_config(),
+                 registry: mock_registry,
+                 fetch_fun: fetch_fun
+               )
+
+      assert_received {:deindex, @map_slug, "31000001"}
+      assert_received {:index, @map_slug, "31000003"}
+      refute_received {:deindex, @map_slug, "31000002"}
+      refute_received {:index, @map_slug, "31000002"}
+    end
+
     test "accepts fresh systems with string solar_system_id" do
       test_pid = self()
       mock_registry = WandererNotifier.MockMapRegistry
@@ -163,6 +240,7 @@ defmodule WandererNotifier.Map.ReconcilerTest do
 
       stub(mock_registry, :all_maps, fn -> [map_a, map_b, map_c] end)
       stub(mock_registry, :systems_for_map, fn _slug -> [] end)
+      stub(mock_registry, :index_system, fn _slug, _id -> :ok end)
       stub(mock_registry, :deindex_system, fn _slug, _id -> :ok end)
 
       # One happy path, one empty upstream, one error
@@ -259,6 +337,10 @@ defmodule WandererNotifier.Map.ReconcilerTest do
 
       stub(mock_registry, :systems_for_map, fn _slug -> ["31000001", "31000002"] end)
 
+      # Index_system is called for the missing id (99999999) — keep it a no-op
+      # since this test focuses on deindex error handling.
+      stub(mock_registry, :index_system, fn _slug, _id -> :ok end)
+
       # One deindex errors, the other succeeds — the reconciler must still
       # attempt every stale id and not abort midway.
       stub(mock_registry, :deindex_system, fn slug, system_id ->
@@ -289,6 +371,49 @@ defmodule WandererNotifier.Map.ReconcilerTest do
         end)
 
       assert log =~ "failed to deindex stale system"
+    end
+
+    test "logs and continues when index returns an error for one missing id" do
+      test_pid = self()
+      mock_registry = WandererNotifier.MockMapRegistry
+
+      stub(mock_registry, :systems_for_map, fn _slug -> [] end)
+      stub(mock_registry, :deindex_system, fn _slug, _id -> :ok end)
+
+      # First missing id fails to index, second succeeds — must still attempt
+      # every missing id and not abort midway.
+      stub(mock_registry, :index_system, fn slug, system_id ->
+        case system_id do
+          "31000001" ->
+            send(test_pid, {:index_error, slug, system_id})
+            {:error, :boom}
+
+          _ ->
+            send(test_pid, {:index_ok, slug, system_id})
+            :ok
+        end
+      end)
+
+      fetch_fun = fn _map_config ->
+        {:ok,
+         [
+           %{"solar_system_id" => 31_000_001},
+           %{"solar_system_id" => 31_000_002}
+         ]}
+      end
+
+      log =
+        capture_log(fn ->
+          assert {:ok, :reconciled} =
+                   Reconciler.reconcile_map(build_map_config(),
+                     registry: mock_registry,
+                     fetch_fun: fetch_fun
+                   )
+        end)
+
+      assert_received {:index_error, @map_slug, "31000001"}
+      assert_received {:index_ok, @map_slug, "31000002"}
+      assert log =~ "failed to index missing system"
     end
 
     test "ignores fresh systems without a parseable solar_system_id" do
