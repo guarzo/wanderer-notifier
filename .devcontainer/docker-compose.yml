@@ -21,8 +21,8 @@ services:
     command: sleep infinity
     user: elixir
     ports:
-      - "${HOST_BACKEND_PORT:-4000}:4000" # Backend API
-      - "${HOST_DASHBOARD_PORT:-4001}:4001" # Phoenix LiveDashboard
+      - "${HOST_BACKEND_PORT:-41000}:4000" # Backend API
+      - "${HOST_DASHBOARD_PORT:-41001}:4001" # Phoenix LiveDashboard
     # This allows the container to access host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
