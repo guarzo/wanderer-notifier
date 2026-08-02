@@ -2,7 +2,10 @@
   "name": "Notifier Dev Container",
 
   // Use docker-compose for container configuration
-  "dockerComposeFile": "docker-compose.yml",
+  "dockerComposeFile": [
+    "docker-compose.yml",
+    "docker-compose.override.yml"
+  ],
   "service": "app",
   "workspaceFolder": "/workspace",
 
